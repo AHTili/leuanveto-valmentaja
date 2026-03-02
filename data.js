@@ -834,6 +834,30 @@ async function importHistoricalCSV(text, columnMapping) {
 }
 
 // ── Create default mesocycle ──
+// ── Periodisaatiomalli ──
+// Golden standard konjugoitu/blokkihybridi lisäpainoleuanvedolle:
+//
+// VIIKKORAKENNE (3 päivää):
+//   Ma = MAKSIMIVOIMA  — kilpaveto, 2-3 toistoa, korkea intensiteetti, V1-V2
+//   Ke = PERUSVOIMA    — variaatioveto, 4-6 toistoa, volyymi + hypertrofia, V2-V3
+//   Pe = NOPEUSVOIMA   — kuminauhaveto, 2-3 toistoa max nopeus, V4+, kevyt kuorma
+//
+// MESOSYKLIRAKENNE (4 viikkoa):
+//   Vk1 = Adaptaatio (0%)   — Totuttelevat kuormat, kaikkia osa-alueita
+//   Vk2 = Loading (+2.5%)   — Progressiivinen ylikuorma
+//   Vk3 = Overreach (+3.5%) — Maksimaalinen ärsyke, pienin Vara
+//   Vk4 = Deload (-25%)     — Superkompensaatio, EI nopeuspäivää, vain kevyt ylläpito
+//
+// TUKILIIKKEET progressoivat:
+//   Vk1-2: Täysi volyymi (perusvoimatyö + hypertrofia)
+//   Vk3: Sama volyymi mutta korkeampi intensiteetti (pienemmät Vara-arvot)
+//   Vk4: -30% volyymi, korkeat Varat (aktiivinen palautuminen)
+//
+// VOIMAOMINAISUUDET:
+//   Maksimivoima = Ma (heavy) — hermoston adaptaatio, suurin kuorma
+//   Perusvoima   = Ke (volume) — lihasten poikkipinta-ala + voimakestävyys
+//   Nopeusvoima  = Pe (speed) — voimantuottonopeus, kuminauha, max intent
+
 function createDefaultMesocycle(startDateISO) {
   return {
     mesocycleId: uid(),
@@ -842,132 +866,132 @@ function createDefaultMesocycle(startDateISO) {
     weekCount: 4,
     weekDefs: [
       { week: 1, deltaPctBase: 0, label: "Adaptaatio", heavyReps: 3, heavyTargetVx: 2 },
-      { week: 2, deltaPctBase: 0.025, label: "Loading", heavyReps: 3, heavyTargetVx: 2 },
+      { week: 2, deltaPctBase: 0.025, label: "Loading", heavyReps: 3, heavyTargetVx: 1 },
       { week: 3, deltaPctBase: 0.035, label: "Overreach", heavyReps: 2, heavyTargetVx: 1 },
       { week: 4, deltaPctBase: -0.25, label: "Deload", heavyReps: 3, heavyTargetVx: 4 },
     ],
     weekPlans: [
+      // ── VIIKKO 1: ADAPTAATIO ──
       {
         week: 1,
         days: [
           {
-            dayOfWeek: 1, dayType: "heavy",
+            dayOfWeek: 1, dayType: "heavy", label: "Maksimivoima",
             slots: [
               { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 3, targetVx: 2 },
-              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", sets: 3, reps: 5, targetVx: 3 },
-              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 4, reps: 6, targetVx: 3 },
-              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 8, targetVx: 3 },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 5, targetVx: 3 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 4, reps: 6, targetVx: 3 },
+              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 8, targetVx: 3 },
               { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 3, reps: 10, targetVx: null },
             ],
           },
           {
-            dayOfWeek: 3, dayType: "volume",
+            dayOfWeek: 3, dayType: "volume", label: "Perusvoima",
             slots: [
               { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 5, targetVx: 3 },
-              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 4, reps: 8, targetVx: 3 },
-              { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja", sets: 3, reps: 10, targetVx: 3 },
+              { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja", sets: 4, reps: 8, targetVx: 3 },
+              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 3, reps: 8, targetVx: 3 },
               { role: "accessory", category: "ojentajaekstensio", defaultMovementName: "Tricep pushdown", sets: 3, reps: 12, targetVx: null },
+              { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise", sets: 3, reps: 10, targetVx: null },
             ],
           },
           {
-            dayOfWeek: 5, dayType: "speed",
+            dayOfWeek: 5, dayType: "speed", label: "Nopeusvoima",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 2, targetVx: 4 },
-              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 10, targetVx: 4 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 6, reps: 2, targetVx: 4 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 10, targetVx: null },
               { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hammer curl", sets: 3, reps: 10, targetVx: null },
             ],
           },
         ],
       },
+      // ── VIIKKO 2: LOADING ──
       {
         week: 2,
         days: [
           {
-            dayOfWeek: 1, dayType: "heavy",
+            dayOfWeek: 1, dayType: "heavy", label: "Maksimivoima",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 3, targetVx: 2 },
-              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", sets: 3, reps: 5, targetVx: 3 },
-              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 4, reps: 6, targetVx: 3 },
-              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 8, targetVx: 3 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 3, targetVx: 1 },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 5, targetVx: 2 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 4, reps: 6, targetVx: 2 },
+              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 8, targetVx: 2 },
               { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 3, reps: 10, targetVx: null },
             ],
           },
           {
-            dayOfWeek: 3, dayType: "volume",
+            dayOfWeek: 3, dayType: "volume", label: "Perusvoima",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 5, targetVx: 3 },
-              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 4, reps: 8, targetVx: 3 },
-              { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja", sets: 3, reps: 10, targetVx: 3 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 5, targetVx: 2 },
+              { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja", sets: 4, reps: 8, targetVx: 2 },
+              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 3, reps: 8, targetVx: 2 },
               { role: "accessory", category: "ojentajaekstensio", defaultMovementName: "Tricep pushdown", sets: 3, reps: 12, targetVx: null },
+              { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise", sets: 3, reps: 10, targetVx: null },
             ],
           },
           {
-            dayOfWeek: 5, dayType: "speed",
+            dayOfWeek: 5, dayType: "speed", label: "Nopeusvoima",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 2, targetVx: 4 },
-              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 10, targetVx: 4 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 6, reps: 2, targetVx: 4 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 10, targetVx: null },
               { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hammer curl", sets: 3, reps: 10, targetVx: null },
             ],
           },
         ],
       },
+      // ── VIIKKO 3: OVERREACH ──
       {
         week: 3,
         days: [
           {
-            dayOfWeek: 1, dayType: "heavy",
+            dayOfWeek: 1, dayType: "heavy", label: "Maksimivoima (overreach)",
             slots: [
               { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 2, targetVx: 1 },
-              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", sets: 3, reps: 4, targetVx: 2 },
-              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 4, reps: 6, targetVx: 2 },
-              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 8, targetVx: 2 },
-              { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 3, reps: 10, targetVx: null },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 4, targetVx: 2 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 4, reps: 5, targetVx: 2 },
+              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 6, targetVx: 2 },
+              { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 3, reps: 8, targetVx: null },
             ],
           },
           {
-            dayOfWeek: 3, dayType: "volume",
+            dayOfWeek: 3, dayType: "volume", label: "Perusvoima (overreach)",
             slots: [
               { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 4, reps: 4, targetVx: 2 },
-              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 4, reps: 8, targetVx: 3 },
-              { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja", sets: 3, reps: 10, targetVx: 3 },
-              { role: "accessory", category: "ojentajaekstensio", defaultMovementName: "Tricep pushdown", sets: 3, reps: 12, targetVx: null },
+              { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja", sets: 4, reps: 8, targetVx: 2 },
+              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 3, reps: 8, targetVx: 2 },
+              { role: "accessory", category: "ojentajaekstensio", defaultMovementName: "Tricep pushdown", sets: 3, reps: 10, targetVx: null },
+              { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise", sets: 3, reps: 10, targetVx: null },
             ],
           },
           {
-            dayOfWeek: 5, dayType: "speed",
+            dayOfWeek: 5, dayType: "speed", label: "Nopeusvoima",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 4, reps: 2, targetVx: 4 },
-              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 8, targetVx: 3 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 2, targetVx: 4 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 8, targetVx: null },
               { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hammer curl", sets: 2, reps: 10, targetVx: null },
             ],
           },
         ],
       },
+      // ── VIIKKO 4: DELOAD (superkompensaatio) ──
+      // Ei nopeuspäivää — vain kevyt maksimivoima + perusvoima
       {
         week: 4,
         days: [
           {
-            dayOfWeek: 1, dayType: "heavy",
+            dayOfWeek: 1, dayType: "heavy", label: "Maksimivoima (kevyt)",
             slots: [
               { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 3, targetVx: 4 },
-              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 6, targetVx: 4 },
               { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 8, targetVx: 4 },
+              { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 2, reps: 10, targetVx: null },
             ],
           },
           {
-            dayOfWeek: 3, dayType: "volume",
+            dayOfWeek: 3, dayType: "volume", label: "Perusvoima (kevyt)",
             slots: [
               { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 5, targetVx: 4 },
-              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 3, reps: 8, targetVx: 4 },
-              { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja", sets: 3, reps: 10, targetVx: 4 },
-            ],
-          },
-          {
-            dayOfWeek: 5, dayType: "speed",
-            slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 4, reps: 2, targetVx: 4 },
-              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 10, targetVx: 4 },
-              { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hammer curl", sets: 2, reps: 10, targetVx: null },
+              { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja", sets: 3, reps: 8, targetVx: 4 },
+              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 2, reps: 8, targetVx: 4 },
             ],
           },
         ],

@@ -558,6 +558,9 @@ function formatDate(iso) {
   } catch { return iso; }
 }
 
+const DAY_TYPE_LABELS = { heavy: "Maksimivoima", volume: "Perusvoima", speed: "Nopeusvoima", competition: "Kilpailu", rest: "Lepo" };
+function dayTypeLabel(dt) { return DAY_TYPE_LABELS[dt] || dt; }
+
 function formatDateShort(iso) {
   if (!iso) return "-";
   try {
@@ -622,7 +625,6 @@ function renderDashboard() {
   const mesoNum = state.mesocycle ? (state.sessions.length > 0 ? Math.ceil(state.sessions.length / 12) : 1) : 1;
 
   // Day type labels in Finnish
-  const dayTypeLabels = { heavy: "Heavy", volume: "Volume", speed: "Speed", competition: "Kilpailu", rest: "Lepo" };
   const isPeaking = rec?.mesocycleType === "peaking";
 
   // Readiness badge
@@ -689,7 +691,7 @@ function renderDashboard() {
     <div class="flex-between mb">
       <div>
         <div style="font-size:13px;color:var(--muted)">${formatDate(today)}</div>
-        <div style="font-size:20px;font-weight:700">${dayTypeLabels[dayType] || dayType}</div>
+        <div style="font-size:20px;font-weight:700">${dayTypeLabel(dayType)}</div>
         <div class="muted">Viikko ${weekNum} / ${weekLabel}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
@@ -810,7 +812,7 @@ function renderFutureWorkoutsPreview() {
     ${futureWorkouts.slice(0, 5).map(fw => `<div class="program-slot" style="flex-direction:column;align-items:stretch;gap:4px">
       <div class="flex-between">
         <span style="font-weight:600">${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5)}</span>
-        <span class="muted">${fw.dayType} — Vk ${fw.weekNum} ${fw.weekLabel}</span>
+        <span class="muted">${dayTypeLabel(fw.dayType)} — Vk ${fw.weekNum} ${fw.weekLabel}</span>
       </div>
       <div class="muted">${fw.slots.map(s => {
         const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : ["warmup","opener","attempt2","attempt3"].includes(s.role) ? "🏆" : "•";
@@ -887,7 +889,7 @@ function renderWorkoutSetup() {
   return `<div class="fade-in">
     <div class="section-header">Treeni</div>
     <div class="card">
-      <div style="font-size:16px;font-weight:600">${formatDate(todayISO())} — ${dayType}</div>
+      <div style="font-size:16px;font-weight:600">${formatDate(todayISO())} — ${dayTypeLabel(dayType)}</div>
       <div class="muted">Viikko ${rec?.weekNum || "?"} / ${rec?.weekLabel || ""}</div>
     </div>
     <button class="btn btn-big btn-full" id="btn-begin-workout">▶ ALOITA TREENI</button>
@@ -914,8 +916,14 @@ function renderActiveWorkout() {
 
   const progressPct = ((currentExIdx * 100 + (currentSetIdx / totalSets) * 100) / totalExercises).toFixed(0);
 
+  // Warmup detection
+  const isWarmupSet = currentSet.isWarmup === true;
+  const warmupCount = exercise.sets.filter(s => s.isWarmup).length;
+  const workSetCount = exercise.sets.filter(s => !s.isWarmup).length;
+  const warmupSetIdx = isWarmupSet ? exercise.sets.filter((s, i) => s.isWarmup && i <= currentSetIdx).length : 0;
+
   // Load display
-  const loadStr = currentSet.loadKg !== null ? `${currentSet.loadKg} kg` : "–";
+  const loadStr = currentSet.loadKg !== null ? `${currentSet.loadKg === 0 ? "Kehonpaino" : currentSet.loadKg + " kg"}` : "–";
   const isLoadIncrease = exercise.progressSuggestion === "increase";
 
   // Rest time recommendation
@@ -928,8 +936,9 @@ function renderActiveWorkout() {
     ? `<div id="rest-timer-display" style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:var(--acc)">${formatRestTime(state.restTimerSeconds)}<div class="muted" style="font-size:11px;font-weight:400">Suositus: ${restRec.label}</div></div>`
     : `<div id="rest-timer-display" style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:var(--acc);display:none"></div>`;
 
-  // Completed sets summary for this exercise
-  const completedSetsHTML = exercise.sets.filter(s => s.completed).map((s, i) =>
+  // Completed sets summary (work sets only, warmup omitted)
+  const completedWorkSets = exercise.sets.filter(s => s.completed && !s.isWarmup);
+  const completedSetsHTML = completedWorkSets.map((s, i) =>
     `<div class="muted" style="padding:2px 0;font-size:12px">✓ Sarja ${i + 1}: ${s.loadKg} kg × ${s.reps} V${s.actualVx ?? "?"} ${s.velocity ? `(${s.velocity} m/s)` : ""}</div>`
   ).join("");
 
@@ -968,8 +977,18 @@ function renderActiveWorkout() {
       ${restTimerHTML}
 
       <div style="margin-top:12px">
+        ${isWarmupSet ? `
+        <div style="text-align:center;padding:12px 0">
+          <div class="chip chip-yellow" style="margin-bottom:8px">🔥 Lämmittely ${warmupSetIdx}/${warmupCount}</div>
+          <div class="load-display" style="font-size:36px">${loadStr}</div>
+          <div class="muted mt">${currentSet.targetReps} toistoa — kontrolloidusti</div>
+          <div class="muted" style="font-size:11px;margin-top:4px">Työsarjat alkavat tämän jälkeen (${workSetCount} sarjaa)</div>
+        </div>
+        <button class="btn btn-full btn-ok mt" id="btn-warmup-done">✓ Valmis — seuraava</button>
+        <button class="btn btn-outline btn-full mt" id="btn-skip-warmup" style="font-size:13px">⏩ Ohita lämmittely</button>
+        ` : `
         <div class="flex-between">
-          <span class="muted">Sarja ${currentSetIdx + 1}/${totalSets}</span>
+          <span class="muted">Sarja ${currentSetIdx + 1 - warmupCount}/${workSetCount}</span>
           <span class="muted">Tavoite: ${currentSet.targetReps} × V${currentSet.targetVx ?? "?"}</span>
         </div>
 
@@ -994,10 +1013,13 @@ function renderActiveWorkout() {
 
         <label style="margin-top:14px">Velocity (valinnainen)</label>
         <input type="number" inputmode="decimal" step="0.01" id="input-set-velocity" placeholder="Setin mean velocity m/s">
+        `}
       </div>
 
+      ${!isWarmupSet ? `
       <button class="btn btn-full mt" id="btn-next-set" disabled>→ Seuraava sarja</button>
       <button class="btn btn-outline btn-full mt" id="btn-add-set" style="font-size:13px">+ Lisäsarja</button>
+      ` : ""}
     </div>
 
     ${(exercise.role === "primary" || exercise.role === "backoff") && exercise.category === "vertikaaliveto" ? '<button class="btn btn-outline btn-full mt" id="btn-swap-variant" style="font-size:13px">🔀 Vaihda variaatio</button>' : ""}
@@ -1178,7 +1200,7 @@ function renderMesocycle() {
       ${futureWorkouts.map(fw => `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
         <div class="flex-between">
           <span style="font-weight:600">${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5)}</span>
-          <span class="chip" style="font-size:11px">${fw.dayType}</span>
+          <span class="chip" style="font-size:11px">${dayTypeLabel(fw.dayType)}</span>
         </div>
         <div style="margin-top:6px">
           ${fw.slots.map((s, i) => {
@@ -1204,7 +1226,7 @@ function renderWeekPlanDays(meso, weekNum, dayNames) {
   return `<div style="margin-top:8px">
     ${weekPlan.days.map(d => `<div style="padding:6px 0;border-top:1px solid var(--border)">
       <div class="flex-between">
-        <span style="font-size:13px;font-weight:600">${dayNames[d.dayOfWeek]} — ${d.dayType}</span>
+        <span style="font-size:13px;font-weight:600">${dayNames[d.dayOfWeek]} — ${d.label || dayTypeLabel(d.dayType)}</span>
         <button class="btn btn-sm btn-outline" data-edit-day="${weekNum}-${d.dayOfWeek}" style="font-size:11px;padding:4px 8px;min-height:28px">✏️</button>
       </div>
       <div class="muted" style="font-size:12px">${d.slots.map(s => {
@@ -1302,7 +1324,7 @@ function renderHistory() {
         <div class="flex-between">
           <div>
             <div style="font-weight:600">${formatDateShort(s.dateISO)}</div>
-            <div class="muted">${dayType} | ${sets.length} sarjaa</div>
+            <div class="muted">${dayTypeLabel(dayType)} | ${sets.length} sarjaa</div>
           </div>
           <button class="btn btn-sm btn-outline" data-delete-session="${s.sessionId}">🗑</button>
         </div>
@@ -1468,7 +1490,7 @@ function renderSettingsView() {
     <div class="card">
       <div class="card-title">Diagnostiikka</div>
       <div class="muted">
-        Versio: 2.3.1 | Schema: 3<br>
+        Versio: 2.4.0 | Schema: 3<br>
         Sessioita: ${state.sessions.length} | Sarjoja: ${state.allSets.length}<br>
         Liikkeitä: ${state.movements.length}
       </div>
@@ -1599,7 +1621,7 @@ function bind() {
 
       // Step 1: Choose action
       const action = await showListModal(
-        `${dayNames[dayOfWeek]} — ${day.dayType}`,
+        `${dayNames[dayOfWeek]} — ${day.label || dayTypeLabel(day.dayType)}`,
         [
           { icon: "🔄", label: "Vaihda liike", desc: "Korvaa olemassa oleva liike toisella" },
           { icon: "➕", label: "Lisää liike", desc: "Lisää uusi liike päivään" },
@@ -1847,32 +1869,23 @@ async function startWorkout() {
   const bw = state.settings?.bodyweightKg || 91;
   const exercises = [];
 
-  // Build warm-up for primary movement (non-peaking only)
+  // Build warm-up sets for primary movement (prepended to primary exercise below)
   const isPeakingMeso = state.mesocycle?.type === "peaking";
+  let warmupSets = [];
   if (!isPeakingMeso && rec?.targetExternalLoad && rec.targetExternalLoad >= 20) {
     const wuLoad = rec.targetExternalLoad;
     const warmupPcts = wuLoad >= 60 ? [0, 0.30, 0.55, 0.75, 0.90] : wuLoad >= 30 ? [0, 0.50, 0.80] : [0, 0.60];
-    exercises.push({
-      movementId: state.movements.find(m => m.isPrimary)?.movementId || null,
-      name: "Lämmittely — Lisäpainoleuanveto",
-      category: "vertikaaliveto",
-      originalCategory: "vertikaaliveto",
-      role: "warmup",
-      variantName: null,
-      tempoNote: "Kontrolloidusti, nouseva kuorma",
-      loadKg: 0,
-      progressSuggestion: "hold",
-      sets: warmupPcts.map((pct, i) => ({
-        idx: i,
-        targetReps: pct === 0 ? 5 : pct < 0.7 ? 3 : 2,
-        targetVx: null,
-        loadKg: roundToHalf(wuLoad * pct),
-        reps: null,
-        actualVx: null,
-        velocity: null,
-        completed: false,
-      })),
-    });
+    warmupSets = warmupPcts.map((pct, i) => ({
+      idx: i,
+      targetReps: pct === 0 ? 5 : pct < 0.7 ? 3 : 2,
+      targetVx: null,
+      loadKg: roundToHalf(wuLoad * pct),
+      reps: null,
+      actualVx: null,
+      velocity: null,
+      completed: false,
+      isWarmup: true,
+    }));
   }
 
   // Build exercises from day plan
@@ -1943,6 +1956,12 @@ async function startWorkout() {
         };
       });
 
+      // Prepend warmup sets to primary exercise (not a separate exercise)
+      const finalSets = (isPrimary && warmupSets.length > 0)
+        ? [...warmupSets, ...setsList].map((s, i) => ({ ...s, idx: i }))
+        : setsList;
+      if (isPrimary && warmupSets.length > 0) warmupSets = []; // consume once
+
       exercises.push({
         movementId: movId,
         name: slot.defaultMovementName || slot.category,
@@ -1953,7 +1972,7 @@ async function startWorkout() {
         tempoNote: vOverride?.tempoNote || null,
         loadKg,
         progressSuggestion,
-        sets: setsList,
+        sets: finalSets,
       });
     }
   } else {
@@ -2024,6 +2043,41 @@ function bindWorkoutEvents() {
     const nextBtn = $("#btn-next-set");
     if (nextBtn) nextBtn.disabled = !(selectedReps !== null && selectedVara !== null);
   }
+
+  // Warmup done — advance to next warmup set (or first work set)
+  const warmupDoneBtn = $("#btn-warmup-done");
+  if (warmupDoneBtn) warmupDoneBtn.addEventListener("click", () => {
+    const exercise = w.exercises[w.currentExerciseIdx];
+    const currentSet = exercise?.sets[w.currentSetIdx];
+    if (!currentSet) return;
+    currentSet.completed = true;
+    currentSet.reps = currentSet.targetReps;
+    currentSet.actualVx = null; // warmup — no Vara tracking
+    w.currentSetIdx++;
+    selectedReps = null;
+    selectedVara = null;
+    render();
+  });
+
+  // Skip all remaining warmup sets
+  const skipWarmupBtn = $("#btn-skip-warmup");
+  if (skipWarmupBtn) skipWarmupBtn.addEventListener("click", () => {
+    const exercise = w.exercises[w.currentExerciseIdx];
+    if (!exercise) return;
+    // Mark all warmup sets as completed and skip to first work set
+    exercise.sets.forEach(s => {
+      if (s.isWarmup && !s.completed) {
+        s.completed = true;
+        s.reps = s.targetReps;
+        s.actualVx = null;
+      }
+    });
+    const firstWorkIdx = exercise.sets.findIndex(s => !s.isWarmup);
+    w.currentSetIdx = firstWorkIdx >= 0 ? firstWorkIdx : exercise.sets.length;
+    selectedReps = null;
+    selectedVara = null;
+    render();
+  });
 
   // Edit load
   const loadBtn = $("#btn-edit-load");
@@ -2298,11 +2352,11 @@ async function saveWorkoutToDb() {
     }
   }
 
-  // Save sets
+  // Save sets (exclude warmup sets — they are not training data)
   const sets = [];
   for (const exercise of w.exercises) {
     for (const s of exercise.sets) {
-      if (!s.completed) continue;
+      if (!s.completed || s.isWarmup) continue;
       sets.push({
         setId: uid(),
         sessionId: w.sessionId,
