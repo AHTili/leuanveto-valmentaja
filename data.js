@@ -129,7 +129,7 @@ const PRIMARY_VARIANTS = [
 // Speed: kuminauha
 // Peaking-only: korokeveto (supramaksimaalinen, ei normaalisyklissä)
 const VARIANT_DAY_TYPE_MAP = {
-  heavy: ["Kilpaveto (leveä vastaote)", "Myötäoteveto"],
+  heavy: ["Kilpaveto (leveä vastaote)"],
   speed: ["Nopeusveto kuminauhalla"],
   volume: ["Myötäoteveto", "Neutraaliote", "2s ylipito", "1.5-toisto hiissaus"],
   peaking: ["Kilpaveto (leveä vastaote)", "Korokeveto"],

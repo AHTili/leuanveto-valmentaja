@@ -1468,7 +1468,7 @@ function renderSettingsView() {
     <div class="card">
       <div class="card-title">Diagnostiikka</div>
       <div class="muted">
-        Versio: 2.3.0 | Schema: 3<br>
+        Versio: 2.3.1 | Schema: 3<br>
         Sessioita: ${state.sessions.length} | Sarjoja: ${state.allSets.length}<br>
         Liikkeitä: ${state.movements.length}
       </div>
@@ -2465,7 +2465,25 @@ function checkUrlParams() {
 // ═══════════════════════════════════════════════════════════════
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
+  navigator.serviceWorker.register("sw.js").then(reg => {
+    // Check for updates every 60 seconds
+    setInterval(() => reg.update(), 60000);
+    reg.addEventListener("updatefound", () => {
+      const newSW = reg.installing;
+      if (!newSW) return;
+      newSW.addEventListener("statechange", () => {
+        if (newSW.state === "activated" && navigator.serviceWorker.controller) {
+          // New version activated — reload to get fresh code
+          showToast("Uusi versio ladattu — päivitetään...", "ok", 2000);
+          setTimeout(() => location.reload(), 1500);
+        }
+      });
+    });
+  }).catch(() => {});
+  // Also reload if controller changes (another tab triggered update)
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    location.reload();
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════

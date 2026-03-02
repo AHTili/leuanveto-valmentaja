@@ -1,7 +1,7 @@
 // sw.js — Service Worker (offline-first, cache-first)
 // LeVe Coach v1.0.0
 
-const APP_VERSION = "2.3.0";
+const APP_VERSION = "2.3.1";
 const CACHE_NAME = `leve-coach-v${APP_VERSION}`;
 
 const CORE_ASSETS = [
@@ -36,31 +36,42 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Fetch: cache-first, network fallback
+// Fetch: stale-while-revalidate for core assets, cache-first for others
 self.addEventListener("fetch", (event) => {
   // Only handle GET requests
   if (event.request.method !== "GET") return;
 
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
+  const url = new URL(event.request.url);
+  const isCoreAsset = CORE_ASSETS.some(a => url.pathname.endsWith(a.replace("./", "/")));
 
-      return fetch(event.request)
-        .then((response) => {
-          // Cache successful responses
-          if (response && response.status === 200 && response.type === "basic") {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+  if (isCoreAsset || event.request.mode === "navigate") {
+    // Stale-while-revalidate: serve cache immediately, update in background
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        const fetchPromise = fetch(event.request).then((response) => {
+          if (response && response.status === 200) {
+            cache.put(event.request, response.clone());
           }
           return response;
-        })
-        .catch(() => {
-          // Offline fallback for navigation requests
-          if (event.request.mode === "navigate") {
-            return caches.match("./index.html");
+        }).catch(() => null);
+
+        return cached || fetchPromise || new Response("Offline", { status: 503 });
+      })
+    );
+  } else {
+    // Non-core assets: cache-first, network fallback
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((response) => {
+          if (response && response.status === 200 && response.type === "basic") {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(event.request, clone));
           }
-          return new Response("Offline", { status: 503, statusText: "Offline" });
-        });
-    })
-  );
+          return response;
+        }).catch(() => new Response("Offline", { status: 503 }));
+      })
+    );
+  }
 });
