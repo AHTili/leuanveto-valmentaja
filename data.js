@@ -1,7 +1,7 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
 // LeVe Coach v3.0.0 — Schema version 3
 
-const APP_VERSION = "3.1.0";
+const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 3;
 const DB_NAME = "LeVeCoachDB";
 const TIMEZONE = "Europe/Helsinki";

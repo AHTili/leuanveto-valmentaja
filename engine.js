@@ -1486,13 +1486,25 @@ async function recommendPeaking(options = {}) {
     trace("COMPETITION_LOADS", {}, attemptLoads, "Kilpailukuormat laskettu");
   }
 
-  // Normal peaking day: compute load from weekDef
-  const deltaPct = weekDef?.deltaPctBase || 0;
-  let targetReps = weekDef?.heavyReps || 2;
-  let targetVx = weekDef?.heavyTargetVx || 1;
-  if (dayType === "volume") {
-    targetReps = Math.max(3, targetReps + 2);
-    targetVx = Math.min(4, targetVx + 1);
+  // Normal peaking day: compute load from slot reps/vx (not weekDef!)
+  // Apply dayMult to delta like normal recommend() does
+  const dayMult = DAY_TYPE_MULTIPLIERS[dayType] ?? 1.0;
+  const deltaPct = (weekDef?.deltaPctBase || 0) * dayMult;
+
+  // Read reps/vx from primary slot (accurate per-day prescription)
+  const primarySlot = dayPlan?.slots?.find(s => s.role === "primary");
+  let targetReps, targetVx;
+  if (primarySlot) {
+    targetReps = primarySlot.reps;
+    targetVx = primarySlot.targetVx ?? (dayType === "heavy" ? 1 : dayType === "volume" ? 2 : 4);
+  } else {
+    // Fallback to weekDef if no slot found
+    targetReps = weekDef?.heavyReps || 2;
+    targetVx = weekDef?.heavyTargetVx || 1;
+    if (dayType === "volume") {
+      targetReps = Math.max(3, targetReps + 2);
+      targetVx = Math.min(4, targetVx + 1);
+    }
   }
 
   let targetExternalLoad;
