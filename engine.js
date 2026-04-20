@@ -246,17 +246,64 @@ function combineReadiness(velocityR, hrvR, varaR) {
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Determine which week of the mesocycle we're in based on date
+ * Resolve full mesocycle position — handles inserted deload weeks.
+ * Returns { programWeek, isInsertedDeload, calendarWeek } or null if past end.
+ *
+ * Inserted deload: occupies a calendar week between program weeks, extending
+ * the effective mesocycle length by 1 week per insert. The `programWeek`
+ * returned during a deload insert = the program week just completed (so phase
+ * logic, accessory slot lookups etc. resolve against the pre-deload state).
  */
-function getMesocycleWeek(mesocycle, dateISO) {
+function resolveMesocyclePosition(mesocycle, dateISO) {
   if (!mesocycle || !mesocycle.startDateISO) return null;
   const start = new Date(mesocycle.startDateISO);
   const current = new Date(dateISO);
   const diffDays = Math.floor((current - start) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) return null;
-  const weekNum = Math.floor(diffDays / 7) + 1;
-  if (weekNum > mesocycle.weekCount) return null; // Past end of mesocycle
-  return weekNum;
+  const calendarWeek = Math.floor(diffDays / 7) + 1;
+
+  const inserts = [...(mesocycle.insertedDeloads || [])]
+    .map(d => (typeof d === "number" ? d : d.afterProgramWeek))
+    .filter(n => Number.isInteger(n) && n >= 0)
+    .sort((a, b) => a - b);
+
+  const effectiveWeekCount = mesocycle.weekCount + inserts.length;
+  if (calendarWeek > effectiveWeekCount) return null;
+
+  let programWeek = 0;
+  let insertIdx = 0;
+  let isDeload = false;
+  for (let cw = 1; cw <= calendarWeek; cw++) {
+    isDeload = false;
+    if (insertIdx < inserts.length && inserts[insertIdx] === programWeek) {
+      isDeload = true;
+      insertIdx++;
+    } else {
+      programWeek++;
+    }
+  }
+  return { programWeek: Math.max(programWeek, 1), isInsertedDeload: isDeload, calendarWeek };
+}
+
+/**
+ * Determine which program week of the mesocycle we're in based on date.
+ * Backward-compatible: returns a number (or null). For full state including
+ * inserted-deload flag, use resolveMesocyclePosition().
+ */
+function getMesocycleWeek(mesocycle, dateISO) {
+  const pos = resolveMesocyclePosition(mesocycle, dateISO);
+  return pos ? pos.programWeek : null;
+}
+
+function isInsertedDeloadWeek(mesocycle, dateISO) {
+  const pos = resolveMesocyclePosition(mesocycle, dateISO);
+  return pos ? pos.isInsertedDeload : false;
+}
+
+function getEffectiveWeekCount(mesocycle) {
+  if (!mesocycle) return 0;
+  const inserts = mesocycle.insertedDeloads?.length || 0;
+  return (mesocycle.weekCount || 0) + inserts;
 }
 
 /**
@@ -736,10 +783,29 @@ async function recommend(options = {}) {
     trace("MESOCYCLE_NEW_CYCLE", {}, { weekNum: 1 }, "Edellinen mesosykli päättyi → uusi aloitettu");
   }
 
-  const weekDef = getWeekDef(mesocycle, weekNum);
+  let weekDef = getWeekDef(mesocycle, weekNum);
   const dayOfWeek = new Date(dateISO).getDay() || 7; // 1=Mon, 7=Sun
   let dayPlan = getTodayPlan(mesocycle, weekNum, dayOfWeek);
   let dayType = dayPlan?.dayType || options.dayType || "heavy";
+
+  const isInsertedDeload = isInsertedDeloadWeek(mesocycle, dateISO);
+  if (isInsertedDeload) {
+    // Override: käyttäjän lisäämä kevennysviikko.
+    // Volyymi ~50%, kuorma -20%, Vx +2, pakotetaan volume-päivä.
+    dayType = "volume";
+    weekDef = { ...(weekDef || {}), week: weekNum, deltaPctBase: -0.20, label: `Kevennysviikko (lisätty vk ${weekNum} jälkeen)`, heavyReps: weekDef?.heavyReps || 5, heavyTargetVx: (weekDef?.heavyTargetVx ?? 2) + 2 };
+    if (dayPlan && dayPlan.slots) {
+      const prunedSlots = dayPlan.slots
+        .filter(s => s.role === "primary" || s.role === "backoff" || s.slotId === "scapular-control" || s.slotId === "core-hollow")
+        .map(s => ({
+          ...s,
+          sets: Math.max(1, Math.ceil((s.sets || 3) / 2)),
+          targetVx: s.targetVx !== null && s.targetVx !== undefined ? s.targetVx + 2 : null,
+        }));
+      dayPlan = { ...dayPlan, slots: prunedSlots, dayType: "volume" };
+    }
+    trace("INSERTED_DELOAD", {}, { weekNum, dayType }, `Käyttäjän kevennysviikko: volyymi ~50%, kuorma -20%, Vx +2`);
+  }
 
   trace("MESOCYCLE_PHASE", {}, { weekNum, dayType, label: weekDef?.label }, `Viikko ${weekNum}: ${weekDef?.label || "?"}`);
 
@@ -2001,6 +2067,9 @@ export {
   // Accessory slot resolution (v4.11)
   phaseForWeek,
   resolveAccessorySlot,
+  resolveMesocyclePosition,
+  isInsertedDeloadWeek,
+  getEffectiveWeekCount,
   resolveDayPlanSlots,
   suggestAccessorySwaps,
   // Default plan
