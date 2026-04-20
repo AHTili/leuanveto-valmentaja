@@ -135,7 +135,75 @@ const PRESET_MOVEMENTS = [
   { name: "Paused squat", category: "alaraaja", isPrimary: false, isPreset: true },
 ];
 
-// ─── Accessory slot catalog (v4.11) ──────────────────────────────
+// ─── Movement descriptions (v4.12) ───────────────────────────────
+// Tiiviit suoritusohjeet + cue per liike. Näytetään workout-näkymän ⓘ-modalissa
+// yhdessä slot-perustelun kanssa, jotta käyttäjä ymmärtää liikkeen roolin.
+const MOVEMENT_DESCRIPTIONS = {
+  // ─── Kisaliikkeet ───
+  "Lisäpainoleuanveto": { howTo: "Leveä vastaote, rinta tankoon. Vedä lapaluut ensin alas, sitten kyynärpäät sivuille-taakse. Täysi alapysähdys ilman svingausta.", cue: "Lapaluut alas ennen kuin käsivarret vetävät" },
+  "Muscle-up": { howTo: "Leuanveto explosiivisesti rinnan yli, false grip, transition kyynärvarsi pystyyn, lopuksi dippi lukitukseen. Koko liike yhtenä ketjuna.", cue: "Vedä itsesi tangon yli, älä tangolle" },
+  "Lisäpainodippi": { howTo: "Kahvat hartianleveydellä, rinta hieman eteen, kyynärpäät taakse. Alas täyteen dippiin, ylös lukitukseen. Kontrolloitu alas.", cue: "Alas, kunnes olkapäät ovat kyynärpäiden alla" },
+  "Takakyykky": { howTo: "Tanko takakulmalle, jalat hartianleveydellä. Istu taaksepäin, polvet kääntyvät varpaiden suuntaan. Reiden yläpinta alle vaakatason.", cue: "Rintakehä auki koko liikeradan ajan" },
+
+  // ─── Streetlifting-spesifiset (v4.11) ───
+  "Räjähtävä leuka": { howTo: "Kehonpainoleuka maksimaalisella kiihdytyksellä — yritä saada rinta tangon yli. 3 räjähtävää toistoa/sarja, 2 min palautus.", cue: "Nopeus > volyymi — keskeytä jos hidastuu" },
+  "Leuanveto chest-to-bar": { howTo: "Vastaote, vedä kunnes rinta koskettaa tangon. Rintaranka taakse, lapaluut kokoon. Kontrolloitu alas.", cue: "Rinta tankoon, ei leuka" },
+  "False grip pull-up": { howTo: "Ranteet tangon yli (false grip), vedä chest-to-bar. Valmistaa muscle-upin transition-vaiheen — ranteiden täytyy olla tangon yläpuolella.", cue: "Rannekulma pysyy — ei pudota pohjalla" },
+  "False grip row": { howTo: "Matala tanko, false grip, vedä rintaa tankoon. Kehonpaino-soutu — jalat maassa, vartalo suora.", cue: "Harjoittaa tranistionin voimaa ilman koko MU:n kuormaa" },
+  "Archer pull-up": { howTo: "Leuanveto toiselle sivulle, toinen käsi suorana sivulle. Tee 3-5/sivu. Asymmetrinen veto rakentaa yksittäisen käden voimaa.", cue: "Vetävä käsi tekee työn, tukikäsi vain ohjaa" },
+  "Scapular pull-up": { howTo: "Roiku tangossa, aktivoi vain lapaluut — lasku alas ja nosto ylös ILMAN kyynärpäiden koukistusta. 10 s holdeja mukaan.", cue: "Kyynärpäät suoriksi — vain lapalihakset työskentelevät" },
+  "Band-assisted muscle-up": { howTo: "Kuminauha tangon ympäri, jalat/polvet nauhaan. Tee koko MU-liikerata kevyemmällä kuormalla.", cue: "Harjoittele transition-liikerataa, älä pelkkää vetoa" },
+  "Pendlay row": { howTo: "Tanko maasta, selkä vaakatasossa, vedä tanko alarintaan, tanko PALAA maahan joka toistolla. Ei selän rullaamista.", cue: "Pysähdys maahan = nollasta starttaus joka toisto" },
+  "Weighted inverted row": { howTo: "Matala tanko, vartalo suora, lisäpaino vyötäröllä/rinnassa. Vedä tanko rintaan.", cue: "Tanko rintaan, ei napaan" },
+  "Ring dip": { howTo: "Dippi renkailla — epävakaus pakottaa olkapäät stabiloimaan. Aloita pienemmällä kuormalla kuin tankodipissä.", cue: "Renkaat pysyvät vartalon lähellä — ei levitä" },
+  "Close-grip dip": { howTo: "Kapea dippiote (harppuna lähes kohtaa), kyynärpäät taakse. Triceps-fokus, vähemmän rintaa.", cue: "Kyynärpäät aivan vartalon vieressä" },
+  "Straight bar dip": { howTo: "Dippi suoralla tangolla — spesifi kisa-asento MU:n lukitukseen. Tanko vartalon edessä, nojaa eteen.", cue: "Sama asento kuin MU:n huipulla" },
+  "Russian dip": { howTo: "Dippi, laske kyynärvarret tangolle, nosta sieltä takaisin ylös täydeksi dipiksi. MU:n transition-loppuvaiheen spesifi.", cue: "Hallittu lasku kyynärvarsille — älä pudota" },
+  "Close-grip bench": { howTo: "Penkkipunnerrus kapealla otteella (~hartiain leveys), kyynärpäät lähellä vartaloa. Tricepsin voimaliike.", cue: "Kyynärpäät 45° — ei sivulle" },
+  "L-sit hold": { howTo: "Istu käsiin tukeutuen, jalat suorat ja vaakatasossa. Pidä. Core + hollow body = MU:n läpipuhallus.", cue: "Lantio rullaa taakse, alaselkä pyöristyy" },
+  "Hollow body hold": { howTo: "Selällään, alaselkä painuu maahan, jalat ja ylävartalo irti matosta. Pidä 20-40 s.", cue: "Alaselkä ei saa irrota maasta" },
+  "Front-foot elevated split squat": { howTo: "Takajalan askelkyykky etujalka 5-10 cm korokkeella. Syvempi polven ekstensio, quad-fokus.", cue: "Laskeudu suoraan alas, ei eteenpäin" },
+  "Paused squat": { howTo: "Takakyykky 2 s pysähdys alaasennossa. Ei pomppua — startti nollasta. Rakentaa pohjalukituksen.", cue: "Laske 1-2 sekunnissa, pysähdy, nouse räjähtävästi" },
+
+  // ─── Pull (legacy slot-variantit) ───
+  "Chest-supported row": { howTo: "Soutu penkin päälle kasvot alaspäin — estää selän rullaamisen. Raskas volyymi turvallisesti.", cue: "Rinta pysyy penkissä — kyynärpäät taakse" },
+  "Seal row": { howTo: "Vaakapenkin päällä makuulla — tanko lattialta rintaan. Eliminoi hipsit ja svingin täysin.", cue: "Pää pysyy penkissä" },
+  "T-bar row": { howTo: "T-tangon kulmasoutu, jalat hartianleveydellä, vedä rintaan. Raskas variantti.", cue: "Selkä neutraali — ei pyöristy" },
+  "Face pull": { howTo: "Yläaljasta kasvojen korkeudelle, vedä kahvat korvien tasolle, kyynärpäät korkealla. Takaolka + lapaluut.", cue: "Lapaluut taakse, ei vain käsivarret" },
+  "Hauiskääntö tanko": { howTo: "Tanko alaotteella, kyynärpäät paikallaan, käännä ilman svingausta. Täysi liikerata.", cue: "Kyynärpäät eivät liiku — vain kyynärvarret" },
+  "Hauiskääntö käsipainot": { howTo: "Käsipainot sivuilla, käännä yksi kerrallaan tai samanaikaisesti. Supinoi otetta liikkeessä.", cue: "Pikkurilli ylös liikkeen huipussa" },
+  "Hammer curl": { howTo: "Käsipainokääntö neutraaliotteella (vasara-asento). Kohdistaa brachialisiin + hauis.", cue: "Peukalo kohti kattoa koko ajan" },
+  "Preacher curl": { howTo: "Saarnaajan penkissä — kyynärpäät tuetaan, eliminoi svingausmahdollisuus.", cue: "Älä lukitse kyynärpäitä suoriksi alhaalla" },
+  "Incline curl": { howTo: "Vinopenkissä takanoja 45-60°, käsipainot roikkuvat — suurempi venytys hauikseen.", cue: "Kyynärpäät pysyvät vartalon takana" },
+
+  // ─── Push (legacy slot-variantit) ───
+  "Penkkipunnerrus": { howTo: "Tanko rintalastaan, ranteet tangon alla, lapaluut penkissä. Jalat maassa, lantio kontaktissa.", cue: "Lapaluut pysyvät sisäänvedettyinä koko liikkeen ajan" },
+  "Pystypunnerrus": { howTo: "Seisten tai istuen, tanko leuan alta ylös pään yli. Takapuoli kireänä, kylkiluut alas.", cue: "Älä työnnä lantiota eteen — tanko suoraa linjaa" },
+  "Pystypunnerrus käsipainot": { howTo: "Käsipainot hartioilla, työnnä ylös pään yli, ala hartiatasolle.", cue: "Tanko suoraan ylös, ei eteen" },
+  "Shoulder press laite": { howTo: "Laite tukee selkää — puhdas isolaatio hartioille.", cue: "Pidä kylkiluut alhaalla, ei selkää kaareen" },
+  "Sivunosto": { howTo: "Käsipainot sivuille hartiatasolle, pikkurilli ylös. Kyynärpää hieman koukussa.", cue: "Nosta kyynärpäillä, ei käsipainoilla" },
+  "Lateral raise kone": { howTo: "Laiteen sivunosto — konsistentti kuorma koko liikerataan.", cue: "Laskeudu hallitusti" },
+  "Tricep pushdown": { howTo: "Yläaljasta köydellä tai tangolla, kyynärpäät paikallaan, työnnä alas.", cue: "Vain kyynärvarret liikkuvat" },
+  "Overhead tricep ext": { howTo: "Käsipaino/köysi pään taakse, kyynärpäät osoittavat ylös. Ojentajan pitkän pään fokus.", cue: "Kyynärpäät eivät levitä sivuille" },
+  "Skull crusher": { howTo: "Selinmakuulla, tanko suoraan ylhäällä, laske otsaa/pään taakse kyynärpäät koukistuen.", cue: "Kyynärpäät osoittavat kattoon koko ajan" },
+  "Vinopenkkipunnerrus": { howTo: "30-45° vinopenkki, ylärinnan fokus. Muuten kuin tasopenkki.", cue: "Tanko ylärintaan, ei kaulaan" },
+
+  // ─── Lower (legacy slot-variantit) ───
+  "Maastaveto": { howTo: "Tanko lähellä säären, lantio liikkuu taaksepäin (hinge), selkä neutraali. RDL-tyyli: tanko liukuu jalkoja pitkin.", cue: "Pyllyä taakse — ei kyykkää alas" },
+  "Hip thrust": { howTo: "Yläselkä penkillä, tanko lantion päällä, työnnä lantio ylös. Pakara puree huipussa.", cue: "Leuka rintaan — älä kaareudu lannerankaan" },
+  "Jalkaprässi": { howTo: "Jalat laitteella hartianleveydellä, laske reidet rintaa kohti. Älä lukitse polvia yläpisteessä.", cue: "Kantapää painaa koko liikkeen ajan" },
+  "Leg extension": { howTo: "Polven ekstensio laitteella — puhdas quad-isolaatio.", cue: "Huiput lukitaan 1 s pohjalla" },
+  "Bulgarian split squat": { howTo: "Takajalka penkillä, etujalka ~1 m edessä. Laskeudu suoraan alas. Pakara + quad unilateraalisti.", cue: "Etujalan polvi ei ylitä varvasta" },
+  "Leg curl": { howTo: "Takareiden koukistus laitteella — makuulla tai istuen. Kontrolloitu alas.", cue: "Lantio pysyy penkissä — ei irtoa" },
+
+  // ─── Core ───
+  "Ab wheel rollout": { howTo: "Polvillaan, työnnä rulla eteen mahdollisimman kauas, palaa aktiivisesti. Hollow body asento koko ajan.", cue: "Alaselkä ei saa notkahdella" },
+  "Hanging leg raise": { howTo: "Roiku tangossa, nosta suorat jalat vaakatasoon tai ylempäänkin. Ei svingiä.", cue: "Aloita lantion rullauksella, ei jalkojen swingillä" },
+
+  // ─── Primääreiden variantit (osa jo PRIMARY_VARIANTS:ssa) ───
+  "Leuanveto (kehonpaino)": { howTo: "Kehonpainoleuka täydellä liikeradalla — alas täyteen hangiin, ylös leuka tangon yli.", cue: "Lapaluut aktivoituvat ENNEN käsivarsia" },
+};
+
 // Each slot represents a FUNCTION (what biomechanical role it fills),
 // not a fixed movement. Phase variants rotate only at block boundaries or
 // on detected stagnation — otherwise stay persistent so adaptation compounds.
@@ -146,6 +214,7 @@ const ACCESSORY_SLOT_CATALOG = {
   // ─── PULL PATTERNS ───
   "pull-horizontal-heavy": {
     function: "Raskas horisontaaliveto, selän paksuus",
+    rationale: "Paksuntaa keskiselkää → suora tuki leuanvedolle ja MU-transitiolle. Hypertrofiassa chest-supported/seal (turvallinen volyymi), voimablokissa Pendlay (raskas ja eksplosiivinen).",
     phaseVariants: {
       foundation: ["Chest-supported row", "Seal row", "T-bar row"],
       strength:   ["Pendlay row", "T-bar row", "Chest-supported row"],
@@ -161,6 +230,7 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "pull-vertical-explosive": {
     function: "Räjähtävä veto, speed-strength leuanvetoon",
+    rationale: "Kisaveto kehittyy vain kun konsentrinen vaihe tehdään maksiminopeudella. Pitää Rate of Force Developmentin korkealla — ilman tätä raskas veto hidastuu ja seuraavat PR:t karkaavat.",
     phaseVariants: {
       foundation: ["Räjähtävä leuka", "Leuanveto chest-to-bar"],
       strength:   ["Leuanveto chest-to-bar", "Archer pull-up"],
@@ -176,6 +246,7 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "scapular-control": {
     function: "Lapa- ja takaolka, prehab + asennonhallinta",
+    rationale: "Face pull estää olkapään impingement-ongelmia raskaissa blokkeissa. Scapular pull opettaa lapalukon, joka on MU:n käynnistyksen perusta. Pieni investointi, iso vammansuoja.",
     phaseVariants: {
       foundation: ["Face pull", "Scapular pull-up"],
       strength:   ["Face pull", "Scapular pull-up"],
@@ -191,6 +262,7 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "bicep-chain": {
     function: "Hauiskoukistajat, vetovoiman tuki",
+    rationale: "Kun selkä on vahva, leuanvedon rajoittava tekijä siirtyy usein hauiksiin. Hypertrofiablokissa volyymi (curls), voimablokissa raskaammat variantit (barbell curl).",
     phaseVariants: {
       foundation: ["Hauiskääntö tanko", "Preacher curl", "Incline curl"],
       strength:   ["Hauiskääntö tanko", "Hauiskääntö käsipainot", "Hammer curl"],
@@ -208,6 +280,7 @@ const ACCESSORY_SLOT_CATALOG = {
   // ─── PUSH PATTERNS ───
   "bench-heavy": {
     function: "Kapean otteen rintapunnerrus, ojentajan veto",
+    rationale: "Kapea ote = ojentajan voimaraja → suoraan kisadipin lukitus ja MU:n huippuasento. Raskas kompoundiliike ilman kisa-CNS-kuormaa.",
     phaseVariants: {
       foundation: ["Penkkipunnerrus", "Close-grip bench", "Vinopenkkipunnerrus"],
       strength:   ["Close-grip bench", "Penkkipunnerrus"],
@@ -223,6 +296,7 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "shoulder-vertical": {
     function: "Vertikaalityöntö, hartiaseudun voima",
+    rationale: "Pystypunnerrus tukee sekä dipin yläasentoa että MU:n 'standing on top' -lukitusta. Ilman pystyvoimaa dipin huippu on epästabiili kisapainoilla.",
     phaseVariants: {
       foundation: ["Pystypunnerrus", "Pystypunnerrus käsipainot", "Shoulder press laite"],
       strength:   ["Pystypunnerrus", "Pystypunnerrus käsipainot"],
@@ -238,6 +312,7 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "tricep-lockout": {
     function: "Ojentajan lockout, dipin lukitusvoima",
+    rationale: "Dipin ja MU:n viimeiset 10 cm ovat puhdasta ojentajan voimaa. Skull crusher + close-grip bench kehittävät juuri lukitusta, ei lihasmassaa yleisesti.",
     phaseVariants: {
       foundation: ["Tricep pushdown", "Overhead tricep ext"],
       strength:   ["Skull crusher", "Close-grip bench"],
@@ -253,6 +328,7 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "shoulder-isolation": {
     function: "Deltoideusten isolaatio",
+    rationale: "Kasvattaa hartialihakset turvallisesti ilman CNS-kuormaa. Isot deltoidit = vakaampi dipin yläasento ja parempi MU:n ylävartalon lukitus.",
     phaseVariants: {
       foundation: ["Sivunosto", "Lateral raise kone"],
       strength:   ["Sivunosto", "Lateral raise kone"],
@@ -270,6 +346,7 @@ const ACCESSORY_SLOT_CATALOG = {
   // ─── LOWER ───
   "hip-hinge": {
     function: "Lonkkahinge, takaketju",
+    rationale: "RDL rakentaa takaketjun (hamstring + pakara + alaselkä), joka on kyykyn alaosan räjähtävyyden moottori. Peakingissä siirrytään hip thrustiin — matalampi CNS-kuorma.",
     phaseVariants: {
       foundation: ["Maastaveto", "Hip thrust"],
       strength:   ["Maastaveto", "Hip thrust"],
@@ -285,6 +362,7 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "knee-dominant-accessory": {
     function: "Polven ekstensio, quadien volyymi",
+    rationale: "Jalkaprässi antaa quad-volyymia turvallisesti (ei selkä-CNS:ää). Voima/intensiteettiblokissa paused squat opettaa pohjalukon — suoraan kisakyykyn startin räjähtävyys.",
     phaseVariants: {
       foundation: ["Jalkaprässi", "Leg extension"],
       strength:   ["Jalkaprässi", "Paused squat"],
@@ -300,6 +378,7 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "knee-unilateral": {
     function: "Yksijalkaisuus, asymmetrian hallinta",
+    rationale: "Korjaa oikea/vasen-epäsymmetriaa, stabiloi lantio. Pudotetaan peakingissä (vk 13-16) CNS-säästön vuoksi — kisakyykky tarvitsee kaiken palautumisen.",
     phaseVariants: {
       foundation: ["Bulgarian split squat", "Front-foot elevated split squat"],
       strength:   ["Bulgarian split squat"],
@@ -315,6 +394,7 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "hamstring-isolation": {
     function: "Takareiden isolaatio",
+    rationale: "Balansoi kyykyn etureiden dominanssia, suojaa polvia. Vahva hamstring = parempi lonkkahinge kyykyn alaosassa ja pienempi rasitusvammariski.",
     phaseVariants: {
       foundation: ["Leg curl"],
       strength:   ["Leg curl"],
@@ -332,6 +412,7 @@ const ACCESSORY_SLOT_CATALOG = {
   // ─── MU-SPESIFI (LA-päivä) ───
   "mu-transition": {
     function: "Muscle-up -transition, false grip + räjähtävä veto",
+    rationale: "MU:n kriittisin kohta: veto loppuu ja siirrytään työntöön. Hypertrofiassa false grip row (volyymi), voimablokissa band-MU (koko liikerata kevyemmällä), peakingissä räjähtävä leuka (nopeus).",
     phaseVariants: {
       foundation: ["False grip row", "Leuanveto chest-to-bar"],
       strength:   ["Band-assisted muscle-up", "False grip row"],
@@ -347,6 +428,7 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "mu-dip-support": {
     function: "MU:n lukitus — dippi-spesifi",
+    rationale: "MU:n yläasento = kisa-dippi. Variantit kuormittavat eri kulmista (ring = stabiliteetti, Russian = transition-loppuvaihe, straight bar = spesifi MU-huippu) ilman pääliikkeen kuormaa.",
     phaseVariants: {
       foundation: ["Lisäpainodippi", "Ring dip"],
       strength:   ["Lisäpainodippi", "Russian dip"],
@@ -364,6 +446,7 @@ const ACCESSORY_SLOT_CATALOG = {
   // ─── CORE ───
   "core-hollow": {
     function: "Hollow body / L-sit, MU:n keskivartalon lukitus",
+    rationale: "Ilman hollow body -lukkoa MU:n transition 'pettää' — keskivartalo yhdistää vedon ja työnnön. L-sit on hollow:n ultimate-muoto: MU-painoja kannatteleva koko kehon jäykkyys.",
     phaseVariants: {
       foundation: ["Ab wheel rollout", "Hollow body hold"],
       strength:   ["L-sit hold", "Hanging leg raise"],
@@ -2590,6 +2673,7 @@ export {
   PULL_VOLUME_CATEGORIES,
   PRESET_MOVEMENTS,
   ACCESSORY_SLOT_CATALOG,
+  MOVEMENT_DESCRIPTIONS,
   PRIMARY_VARIANTS,
   VARIANT_DAY_TYPE_MAP,
   // Utilities

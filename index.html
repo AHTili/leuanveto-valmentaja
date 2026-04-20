@@ -272,7 +272,7 @@ import {
   parseCSV, importHistoricalCSV,
   getMovementProgress, getAllMovementProgress, saveMovementProgress,
   getTracesForRec,
-  CATEGORIES, PULL_VOLUME_CATEGORIES, VARIANT_DAY_TYPE_MAP, ACCESSORY_SLOT_CATALOG,
+  CATEGORIES, PULL_VOLUME_CATEGORIES, VARIANT_DAY_TYPE_MAP, ACCESSORY_SLOT_CATALOG, MOVEMENT_DESCRIPTIONS,
   validateVelocity, validateLoad, validateReps, validateHRV, validateBodyweight,
   isVelocityTypo,
 } from "./data.js";
@@ -526,6 +526,57 @@ function showInputModal(title, placeholder, defaultValue = "", inputType = "numb
     overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
     document.body.appendChild(overlay);
     setTimeout(() => inp.focus(), 50);
+  });
+}
+
+/**
+ * Info modal — näyttää liikkeen suoritusohjeen + cuen + slot-perustelun.
+ * Käyttö: showInfoModal({ title, howTo, cue, slotFunction, slotRationale, slotPhase, slotVariants, currentVariant })
+ */
+function showInfoModal({ title, howTo, cue, slotFunction, slotRationale, slotPhase, slotVariants, currentVariant }) {
+  return new Promise(resolve => {
+    closeModal();
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    const phaseLabels = { foundation: "Perusta (vk 1–4)", strength: "Voima (vk 5–8)", intensity: "Intensiteetti (vk 9–12)", peaking: "Peaking (vk 13–16)" };
+    const variantList = (slotVariants && slotVariants.length)
+      ? slotVariants.map(v => `<li${v === currentVariant ? ' style="font-weight:600;color:var(--acc)"' : ''}>${v === currentVariant ? "→ " : ""}${v}</li>`).join("")
+      : "";
+    overlay.innerHTML = `
+      <div class="modal-sheet" style="max-height:85vh;overflow-y:auto">
+        <div class="modal-handle"></div>
+        <div class="modal-title">ⓘ ${title}</div>
+        ${howTo ? `
+          <div style="margin-top:8px">
+            <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Suoritus</div>
+            <div style="font-size:13px;line-height:1.5">${howTo}</div>
+          </div>` : ""}
+        ${cue ? `
+          <div style="margin-top:10px;padding:8px;background:var(--card2);border-radius:var(--radius-sm)">
+            <div style="font-size:11px;color:var(--acc);margin-bottom:2px">💡 Kriittinen cue</div>
+            <div style="font-size:13px">${cue}</div>
+          </div>` : ""}
+        ${slotFunction ? `
+          <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border)">
+            <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">🎯 Tämän tukiliikkeen rooli</div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:4px">${slotFunction}</div>
+            ${slotRationale ? `<div style="font-size:12px;line-height:1.5;color:var(--muted)">${slotRationale}</div>` : ""}
+          </div>` : ""}
+        ${slotPhase ? `
+          <div style="margin-top:10px;font-size:11px;color:var(--dim)">
+            Nykyinen faasi: <span style="color:var(--acc)">${phaseLabels[slotPhase] || slotPhase}</span>
+          </div>` : ""}
+        ${variantList ? `
+          <div style="margin-top:10px">
+            <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Variantit tällä faasilla</div>
+            <ul style="font-size:12px;margin:0;padding-left:18px;line-height:1.6">${variantList}</ul>
+          </div>` : ""}
+        ${!howTo && !slotFunction ? `<div class="muted" style="font-size:13px;margin-top:10px">Ei tarkempaa kuvausta saatavilla tälle liikkeelle.</div>` : ""}
+        <button class="btn btn-outline btn-full" style="margin-top:14px" data-modal-cancel>Sulje</button>
+      </div>`;
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); resolve(null); });
+    overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
+    document.body.appendChild(overlay);
   });
 }
 
@@ -1087,7 +1138,7 @@ function renderActiveWorkout() {
     <div class="exercise-card">
       <div class="flex-between">
         <div>
-          <div class="exercise-name" id="btn-swap-exercise">🔄 ${exercise.name}${exercise.slotId ? ` <span id="btn-lock-slot" title="Lukitse/vapauta tämä tukiliike" style="cursor:pointer;font-size:14px;margin-left:4px">${(state.mesocycle?.accessorySlotOverrides?.[exercise.slotId]?.locked) ? "🔒" : "🔓"}</span>` : ""}</div>
+          <div class="exercise-name" id="btn-swap-exercise">🔄 ${exercise.name} <span id="btn-info-exercise" title="Tietoja liikkeestä" style="cursor:pointer;font-size:14px;margin-left:2px;color:var(--acc)">ⓘ</span>${exercise.slotId ? ` <span id="btn-lock-slot" title="Lukitse/vapauta tämä tukiliike" style="cursor:pointer;font-size:14px;margin-left:2px">${(state.mesocycle?.accessorySlotOverrides?.[exercise.slotId]?.locked) ? "🔒" : "🔓"}</span>` : ""}</div>
           <div class="exercise-meta">
             ${exercise.role === "primary" ? "⭐ Pääliike" : exercise.role === "backoff" ? "↩ Back-off" : ["warmup","opener","attempt2","attempt3"].includes(exercise.role) ? "🏆 " + (exercise.role === "warmup" ? "Lämmittely" : exercise.role === "opener" ? "1. yritys" : exercise.role === "attempt2" ? "2. yritys" : "3. yritys") : exercise.category}
             ${isLoadIncrease ? ' <span class="text-ok">↑ Progressio</span>' : ""}
@@ -3406,6 +3457,27 @@ function bindWorkoutEvents() {
       exercise.category = options[idx].category;
       render();
     }
+  });
+
+  // Info modal (v4.12) — liikeselostus + slot-perustelu
+  const infoBtn = $("#btn-info-exercise");
+  if (infoBtn) infoBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const exercise = w.exercises[w.currentExerciseIdx];
+    if (!exercise) return;
+    const desc = MOVEMENT_DESCRIPTIONS?.[exercise.name] || null;
+    const catalog = exercise.slotId ? ACCESSORY_SLOT_CATALOG?.[exercise.slotId] : null;
+    const weekNum = state.recommendation?.weekNum || 1;
+    showInfoModal({
+      title: exercise.name,
+      howTo: desc?.howTo || null,
+      cue: desc?.cue || null,
+      slotFunction: catalog?.function || exercise.slotFunction || null,
+      slotRationale: catalog?.rationale || null,
+      slotPhase: exercise.slotId ? phaseForWeek(weekNum) : null,
+      slotVariants: exercise.slotVariants || null,
+      currentVariant: exercise.name,
+    });
   });
 
   // Lock/unlock slot (v4.11)
