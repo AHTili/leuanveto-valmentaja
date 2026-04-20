@@ -185,8 +185,9 @@
     .set-number { font-size: 12px; color: var(--dim); width: 24px; text-align: center; }
     .load-display {
       background: var(--card2); border: 1px solid var(--border2); border-radius: var(--radius);
-      padding: 14px 20px; font-weight: 700; font-size: 22px;
+      padding: 18px 28px; font-weight: 700; font-size: 44px;
       cursor: pointer; min-width: 100px; text-align: center;
+      letter-spacing: -0.5px;
       display: inline-block;
     }
     .load-display:active { background: var(--border); }
@@ -244,6 +245,42 @@
     .modal-input-row input { flex: 1; }
     .modal-input-row .btn { min-width: 80px; }
     .modal-category { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px; }
+
+    /* ── Progress view ── */
+    .kpi-strip { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+    .kpi-card-p { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 8px; text-align: center; }
+    .kpi-card-p .k { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.1; }
+    .kpi-card-p .k small { font-size: 11px; color: var(--muted); font-weight: 600; margin-left: 2px; letter-spacing: 0; }
+    .kpi-card-p .kl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 3px; font-weight: 600; }
+    .kpi-card-p.ok .k { color: var(--ok); }
+    .kpi-card-p.warn .k { color: var(--warn); }
+    .range-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 3px; margin-bottom: 10px; }
+    .range-tabs button { background: transparent; border: none; color: var(--muted); font-size: 11px; font-weight: 600; padding: 6px 4px; border-radius: 5px; cursor: pointer; letter-spacing: 0.3px; }
+    .range-tabs button.active { background: var(--card2); color: var(--fg); }
+    .move-card { padding: 12px 14px 4px; }
+    .move-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px; gap: 8px; }
+    .move-name { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .move-name .star { color: var(--warn); font-size: 11px; }
+    .move-cat { font-size: 10px; color: var(--dim); margin-top: 1px; }
+    .move-cur { text-align: right; flex-shrink: 0; }
+    .move-cur .v { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; line-height: 1; }
+    .move-cur .v small { font-size: 11px; color: var(--muted); font-weight: 600; margin-left: 2px; letter-spacing: 0; }
+    .move-cur .d { font-size: 10px; font-weight: 700; margin-top: 2px; white-space: nowrap; }
+    .move-cur .d.up { color: var(--ok); }
+    .move-cur .d.down { color: var(--bad); }
+    .sparkline-wrap { margin: 6px -4px 2px; position: relative; }
+    .sparkline-wrap svg { display: block; width: 100%; }
+    .spark-x-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--dim); padding: 0 4px; margin-top: 2px; }
+    .spark-stats { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 6px; padding: 6px 0 0; border-top: 1px solid var(--border); }
+    .spark-stats b { color: var(--fg); font-weight: 700; }
+    .vol-card { padding: 12px 14px 14px; }
+    .vol-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 10px; font-size: 10px; color: var(--muted); }
+    .vol-legend .lg { display: inline-flex; align-items: center; gap: 4px; }
+    .vol-legend .sw { width: 10px; height: 10px; border-radius: 2px; }
+    .vol-filter { display: flex; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; margin: 2px -2px 8px; scrollbar-width: none; }
+    .vol-filter::-webkit-scrollbar { display: none; }
+    .vol-filter button { flex-shrink: 0; background: var(--card2); border: 1px solid var(--border2); color: var(--muted); padding: 5px 9px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .vol-filter button.active { background: var(--acc); border-color: var(--acc); color: #fff; }
   </style>
 </head>
 <body>
@@ -272,7 +309,8 @@ import {
   parseCSV, importHistoricalCSV,
   getMovementProgress, getAllMovementProgress, saveMovementProgress,
   getTracesForRec,
-  CATEGORIES, PULL_VOLUME_CATEGORIES, VARIANT_DAY_TYPE_MAP, ACCESSORY_SLOT_CATALOG, MOVEMENT_DESCRIPTIONS,
+  CATEGORIES, PULL_VOLUME_CATEGORIES, MRV_SETS_PER_CATEGORY, CATEGORY_LABELS_SHORT, CATEGORY_COLORS,
+  VARIANT_DAY_TYPE_MAP, ACCESSORY_SLOT_CATALOG, MOVEMENT_DESCRIPTIONS,
   validateVelocity, validateLoad, validateReps, validateHRV, validateBodyweight,
   isVelocityTypo,
 } from "./data.js";
@@ -324,6 +362,8 @@ const state = {
   todayVelocity: null,
   // Latest bodyweight
   latestBodyweight: null,
+  // All bodyweight measurements (for progress sparkline)
+  allBodyweights: [],
   // PR records (type:"pr" from measurements)
   prs: [],
   // Kaikki mesosyklit (export-valinnat)
@@ -335,6 +375,9 @@ const state = {
   // Rest timer
   restTimerInterval: null,
   restTimerSeconds: 0,
+  // Progress view UI state
+  progressRange: "16",       // 4 | 8 | 16 | all
+  progressVolFilter: "all",  // "all" or category id
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -348,6 +391,7 @@ async function init() {
   state.sessions = await getAllSessions();
   state.allSets = await getAllSets();
   state.latestBodyweight = await getLatestBodyweight(state.settings);
+  state.allBodyweights = await getMeasurementsByType("bodyweight");
   await seedHistoricalPRsIfNeeded();
   state.prs = await getAllPRs();
   state.allMesocycles = await getAllMesocycles();
@@ -376,6 +420,7 @@ async function refresh() {
   state.sessions = await getAllSessions();
   state.allSets = await getAllSets();
   state.latestBodyweight = await getLatestBodyweight(state.settings);
+  state.allBodyweights = await getMeasurementsByType("bodyweight");
   state.prs = await getAllPRs();
   state.allMesocycles = await getAllMesocycles();
   state.mesocycle = await getActiveMesocycle();
@@ -711,6 +756,7 @@ function render() {
     case "history": app.innerHTML = renderHistory(); break;
     case "prs": app.innerHTML = renderPRs(); break;
     case "trends": app.innerHTML = renderTrends(); break;
+    case "progress": app.innerHTML = renderProgress(); break;
     case "settings": app.innerHTML = renderSettingsView(); break;
     default: app.innerHTML = renderDashboard();
   }
@@ -724,7 +770,7 @@ function renderNav() {
     { id: "mesocycle", icon: "📅", label: "Sykli" },
     { id: "movements", icon: "💪", label: "Liikkeet" },
     { id: "history", icon: "📊", label: "Historia" },
-    { id: "prs", icon: "🏆", label: "PR:t" },
+    { id: "progress", icon: "📈", label: "Edistyminen" },
     { id: "settings", icon: "⚙️", label: "Asetukset" },
   ];
   document.getElementById("nav").innerHTML = navItems.map(n =>
@@ -1787,6 +1833,428 @@ function renderHistory() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// PROGRESS VIEW (v5) — KPI strip + e1RM sparklines + volume stack + bodyweight
+// ═══════════════════════════════════════════════════════════════
+
+const KISALIIKKEET_NAMES = ["Lisäpainoleuanveto", "Muscle-up", "Lisäpainodippi", "Takakyykky"];
+
+function isoWeekKey(dateISO) {
+  if (!dateISO) return null;
+  const d = new Date(dateISO.slice(0, 10) + "T00:00:00Z");
+  const day = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - day + 3);
+  const firstThu = d.getTime();
+  const yStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const yDay = (yStart.getUTCDay() + 6) % 7;
+  yStart.setUTCDate(yStart.getUTCDate() - yDay + 3);
+  const week = 1 + Math.round((firstThu - yStart.getTime()) / 604800000);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+function daysAgoISO(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+function linearRegressionSlope(ys) {
+  const n = ys.length;
+  if (n < 2) return 0;
+  const xs = ys.map((_, i) => i);
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2; }
+  return den === 0 ? 0 : num / den;
+}
+
+function resampleWeeklyMaxE1RM(history) {
+  const byWeek = new Map();
+  for (const p of history) {
+    const wk = isoWeekKey(p.dateISO);
+    if (!wk) continue;
+    const cur = byWeek.get(wk);
+    if (!cur || p.e1rm > cur.e1rm) byWeek.set(wk, { wk, e1rm: p.e1rm, dateISO: p.dateISO });
+  }
+  return [...byWeek.values()].sort((a, b) => a.wk.localeCompare(b.wk));
+}
+
+function annotatePRs(weekly) {
+  let max = -Infinity;
+  return weekly.map(p => {
+    const isPR = p.e1rm > max;
+    if (isPR) max = p.e1rm;
+    return { ...p, isPR };
+  });
+}
+
+/**
+ * Piirrä e1RM sparkline SVG inline. Series: [{ e1rm, isPR }], opts: { height, downturn }
+ */
+function drawE1RMSparkline(series, opts = {}) {
+  const w = 362, h = opts.height || 110, padL = 6, padR = 6, padT = 16, padB = 10;
+  const iw = w - padL - padR, ih = h - padT - padB;
+  if (series.length < 2) {
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}"><text x="${w/2}" y="${h/2}" fill="var(--dim)" font-size="11" text-anchor="middle">Ei riittävästi dataa</text></svg>`;
+  }
+  const vals = series.map(p => p.e1rm);
+  const min = Math.min(...vals) * 0.97;
+  const max = Math.max(...vals) * 1.03;
+  const range = max - min || 1;
+  const xStep = iw / (series.length - 1);
+
+  const points = series.map((p, i) => ({
+    x: padL + i * xStep,
+    y: padT + ih - ((p.e1rm - min) / range) * ih,
+    isPR: p.isPR,
+  }));
+  const pathD = points.map((p, i) => (i === 0 ? "M" : "L") + p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" ");
+  const areaD = pathD + ` L${points[points.length-1].x.toFixed(1)},${(padT+ih)} L${padL},${padT+ih} Z`;
+
+  // 4-week moving avg
+  const avgPts = points.map((p, i) => {
+    const s = Math.max(0, i - 3);
+    const slice = vals.slice(s, i + 1);
+    const avg = slice.reduce((a, b) => a + b, 0) / slice.length;
+    return { x: p.x, y: padT + ih - ((avg - min) / range) * ih };
+  });
+  const avgD = avgPts.map((p, i) => (i === 0 ? "M" : "L") + p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" ");
+
+  const downturn = !!opts.downturn;
+  const line = downturn ? "var(--bad)" : "var(--acc)";
+  const fill0 = downturn ? "#ef4444" : "#4f8cff";
+  const gid = "spark-grad-" + Math.random().toString(36).slice(2, 8);
+  const prPts = points.filter(p => p.isPR);
+  const last = points[points.length - 1];
+
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${fill0}" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="${fill0}" stop-opacity="0"/>
+    </linearGradient></defs>
+    ${[0.25, 0.5, 0.75].map(f => `<line x1="${padL}" x2="${w-padR}" y1="${padT+ih*f}" y2="${padT+ih*f}" stroke="var(--border)" stroke-width="1"/>`).join("")}
+    <path d="${areaD}" fill="url(#${gid})"/>
+    <path d="${avgD}" fill="none" stroke="var(--dim)" stroke-width="1.3" stroke-dasharray="3 3"/>
+    <path d="${pathD}" fill="none" stroke="${line}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${prPts.map(p => `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="var(--ok)" stroke="var(--bg)" stroke-width="1.5"/>`).join("")}
+    <circle cx="${last.x}" cy="${last.y}" r="4" fill="${line}" stroke="var(--bg)" stroke-width="2"/>
+  </svg>`;
+}
+
+/**
+ * Piirrä kehonpaino-sparkline (ei PR-merkkejä, pelkkä trendi)
+ */
+function drawBodyweightSparkline(series) {
+  const w = 362, h = 86, padL = 6, padR = 6, padT = 10, padB = 10;
+  const iw = w - padL - padR, ih = h - padT - padB;
+  if (series.length < 2) {
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}"><text x="${w/2}" y="${h/2}" fill="var(--dim)" font-size="11" text-anchor="middle">Ei riittävästi dataa</text></svg>`;
+  }
+  const vals = series.map(p => p.v);
+  const mn = Math.min(...vals) - 0.3, mx = Math.max(...vals) + 0.3;
+  const range = mx - mn || 1;
+  const xStep = iw / (series.length - 1);
+  const pts = series.map((p, i) => ({ x: padL + i * xStep, y: padT + ih - ((p.v - mn) / range) * ih }));
+  const pathD = pts.map((p, i) => (i === 0 ? "M" : "L") + p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" ");
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
+    ${[0.5].map(f => `<line x1="${padL}" x2="${w-padR}" y1="${padT+ih*f}" y2="${padT+ih*f}" stroke="var(--border)" stroke-width="1" stroke-dasharray="2 3"/>`).join("")}
+    <path d="${pathD}" fill="none" stroke="var(--acc)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${pts[pts.length-1].x}" cy="${pts[pts.length-1].y}" r="3.5" fill="var(--acc)" stroke="var(--bg)" stroke-width="2"/>
+  </svg>`;
+}
+
+/**
+ * Stack-palkkikaavio viikkovolyymille. volByWeek: [{ wk, byCat: {cat: sets} }]
+ * filter: "all" tai kategorian nimi. Jos yksittäinen, näyttää MRV-viivan.
+ */
+function drawVolumeStack(volByWeek, filter) {
+  const w = 362, h = 170, padL = 18, padR = 6, padT = 10, padB = 18;
+  const iw = w - padL - padR, ih = h - padT - padB;
+  const n = volByWeek.length;
+  if (n === 0) {
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}"><text x="${w/2}" y="${h/2}" fill="var(--dim)" font-size="11" text-anchor="middle">Ei dataa</text></svg>`;
+  }
+  const isAll = filter === "all";
+  const cats = Object.keys(CATEGORY_COLORS);
+
+  const totals = volByWeek.map(wk => isAll
+    ? cats.reduce((a, c) => a + (wk.byCat[c] || 0), 0)
+    : (wk.byCat[filter] || 0));
+  const mrv = isAll ? 0 : (MRV_SETS_PER_CATEGORY[filter] || 20);
+  const barMax = isAll
+    ? Math.max(...totals, 1) * 1.08
+    : Math.max(mrv * 1.25, Math.max(...totals, 1) * 1.1);
+
+  const xStep = iw / n;
+  const barW = Math.min(22, xStep * 0.72);
+
+  const bars = volByWeek.map((wk, i) => {
+    let yCursor = padT + ih;
+    const x = padL + i * xStep + (xStep - barW) / 2;
+    const segs = isAll ? cats : [filter];
+    const stacks = segs.map(cat => {
+      const v = wk.byCat[cat] || 0;
+      if (v === 0) return "";
+      const segH = (v / barMax) * ih;
+      yCursor -= segH;
+      let color = CATEGORY_COLORS[cat] || "#5a6a8a";
+      if (!isAll && v > mrv) color = "var(--bad)";
+      return `<rect x="${x.toFixed(1)}" y="${yCursor.toFixed(1)}" width="${barW}" height="${segH.toFixed(1)}" fill="${color}" rx="1"/>`;
+    }).join("");
+    const isLast = i === n - 1;
+    const topLabel = isLast && totals[i] > 0
+      ? `<text x="${(padL + i * xStep + xStep/2).toFixed(1)}" y="${(yCursor - 3).toFixed(1)}" font-size="10" fill="var(--fg)" font-weight="700" text-anchor="middle">${totals[i]}</text>`
+      : "";
+    const lbl = i % 2 === 0
+      ? `<text x="${(padL + i * xStep + xStep/2).toFixed(1)}" y="${h - 4}" font-size="9" fill="var(--dim)" text-anchor="middle">${i + 1}</text>`
+      : "";
+    return stacks + topLabel + lbl;
+  }).join("");
+
+  let mrvLine = "", mrvLabel = "";
+  if (!isAll && mrv > 0) {
+    const mrvY = padT + ih - (mrv / barMax) * ih;
+    mrvLine = `<line x1="${padL}" x2="${w-padR}" y1="${mrvY}" y2="${mrvY}" stroke="var(--warn)" stroke-width="1.4" stroke-dasharray="4 3"/>`;
+    mrvLabel = `<text x="${w-padR-2}" y="${mrvY - 4}" font-size="9" fill="var(--warn)" text-anchor="end" font-weight="700">MRV ${mrv}</text>`;
+  }
+
+  const yTicks = [
+    { v: 0, y: padT + ih },
+    { v: Math.round(barMax), y: padT },
+  ];
+  const yAxis = yTicks.map(t => `<text x="${padL - 3}" y="${(t.y + 3).toFixed(1)}" font-size="9" fill="var(--dim)" text-anchor="end">${t.v}</text>`).join("");
+
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
+    ${[0.25, 0.5, 0.75].map(f => `<line x1="${padL}" x2="${w-padR}" y1="${padT+ih*f}" y2="${padT+ih*f}" stroke="var(--border)" stroke-width="1"/>`).join("")}
+    ${yAxis}
+    ${bars}
+    ${mrvLine}${mrvLabel}
+    <line x1="${padL}" x2="${w-padR}" y1="${padT+ih}" y2="${padT+ih}" stroke="var(--border2)" stroke-width="1"/>
+    <text x="${padL}" y="${h-4}" font-size="9" fill="var(--dim)">vk</text>
+  </svg>`;
+}
+
+function renderProgress() {
+  const range = state.progressRange || "16";
+  const rangeWeeks = range === "all" ? 999 : parseInt(range);
+  const filter = state.progressVolFilter || "all";
+  const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
+
+  // ── KPI strip ──
+  const weekAgo = daysAgoISO(7);
+  const prs7 = (state.prs || []).filter(p => (p.dateISO || "") >= weekAgo).length;
+  const sessionMap = new Map(state.sessions.map(s => [s.sessionId, s]));
+  const recentSets = state.allSets.filter(s => {
+    const sess = sessionMap.get(s.sessionId);
+    return sess && (sess.dateISO || "") >= weekAgo;
+  });
+  const sessionsSet = new Set(recentSets.map(s => s.sessionId));
+  const sessions7 = sessionsSet.size;
+  const tonnage7 = recentSets.reduce((sum, s) => sum + (s.externalLoadKg || 0) * (s.reps || 0), 0);
+  const tonnageStr = tonnage7 >= 1000 ? `${(tonnage7/1000).toFixed(1)}t` : `${Math.round(tonnage7)}kg`;
+
+  // ── e1RM sparklines for kisaliike ──
+  const moveCards = KISALIIKKEET_NAMES.map(name => {
+    const mov = state.movements.find(m => m.name === name);
+    if (!mov) return null;
+    const sets = state.allSets.filter(s => s.movementId === mov.movementId);
+    if (sets.length === 0) return null;
+    const history = computeMovementE1RMHistory(sets, state.sessions, mov.isPrimary, bw);
+    if (history.length === 0) return null;
+    const weekly = resampleWeeklyMaxE1RM(history);
+    const sliced = rangeWeeks >= weekly.length ? weekly : weekly.slice(-rangeWeeks);
+    const annotated = annotatePRs(sliced);
+    return { mov, sets, annotated, fullWeekly: weekly };
+  }).filter(Boolean);
+
+  const moveCardsHTML = moveCards.map(({ mov, sets, annotated, fullWeekly }) => {
+    const n = annotated.length;
+    const current = n > 0 ? annotated[n-1].e1rm : 0;
+    const first = n > 0 ? annotated[0].e1rm : 0;
+    const delta = current - first;
+    const allVals = annotated.map(p => p.e1rm);
+    const minV = allVals.length ? Math.min(...allVals) : 0;
+    const maxV = allVals.length ? Math.max(...allVals) : 0;
+
+    // PR: find last isPR across entire history (not just range)
+    const fullAnn = annotatePRs(fullWeekly);
+    const lastPR = [...fullAnn].reverse().find(p => p.isPR);
+
+    // Stagnation: weeks since last PR
+    let stagnWeeks = 0;
+    if (lastPR) {
+      const lastPRIdx = fullAnn.lastIndexOf(lastPR);
+      stagnWeeks = fullAnn.length - 1 - lastPRIdx;
+    }
+    const isStagnated = stagnWeeks >= 3;
+    const trendDown = n >= 2 && annotated[n-1].e1rm < annotated[Math.max(0, n-3)].e1rm;
+    const showRed = isStagnated || trendDown;
+
+    const deltaHTML = isStagnated
+      ? `<div class="d down">↓ stagnaatio ${stagnWeeks} vk</div>`
+      : delta > 0.1
+        ? `<div class="d up">↑ +${delta.toFixed(1)} kg</div>`
+        : delta < -0.1
+          ? `<div class="d down">↓ ${delta.toFixed(1)} kg</div>`
+          : `<div class="d" style="color:var(--muted)">±0</div>`;
+
+    const prStr = lastPR
+      ? `PR <b class="text-ok">${lastPR.e1rm.toFixed(1)} kg</b>`
+      : `PR <b class="muted">–</b>`;
+
+    return `<div class="card move-card">
+      <div class="move-head">
+        <div>
+          <div class="move-name"><span class="star">⭐</span>${mov.name}</div>
+          <div class="move-cat">${mov.category} · ${sets.length} sarjaa</div>
+        </div>
+        <div class="move-cur">
+          <div class="v">${current.toFixed(1)}<small>kg</small></div>
+          ${deltaHTML}
+        </div>
+      </div>
+      <div class="sparkline-wrap">${drawE1RMSparkline(annotated, { downturn: showRed })}</div>
+      <div class="spark-x-labels"><span>Vk 1</span><span>Vk ${Math.ceil(n/2)}</span><span>Vk ${n}</span></div>
+      <div class="spark-stats">
+        <span>Min <b>${minV.toFixed(1)}</b></span>
+        <span>${prStr}</span>
+        <span>Viim. <b>${current.toFixed(1)}</b></span>
+      </div>
+    </div>`;
+  }).join("");
+
+  // ── Volume stack ──
+  // Group sets by ISO week + category. Count only non-warmup sets.
+  const movementMap = new Map(state.movements.map(m => [m.movementId, m]));
+  const volMap = new Map(); // wk -> { cat: sets }
+  for (const s of state.allSets) {
+    if (s.isWarmup) continue;
+    const sess = sessionMap.get(s.sessionId);
+    if (!sess) continue;
+    const wk = isoWeekKey(sess.dateISO);
+    if (!wk) continue;
+    const mov = movementMap.get(s.movementId);
+    const cat = mov?.category || "muu";
+    if (!volMap.has(wk)) volMap.set(wk, {});
+    const byCat = volMap.get(wk);
+    byCat[cat] = (byCat[cat] || 0) + 1;
+  }
+  const allWeeks = [...volMap.entries()].map(([wk, byCat]) => ({ wk, byCat })).sort((a, b) => a.wk.localeCompare(b.wk));
+  const volWeeks = rangeWeeks >= allWeeks.length ? allWeeks : allWeeks.slice(-rangeWeeks);
+
+  const volFilterBtns = ["all", ...Object.keys(CATEGORY_COLORS)].map(cat => {
+    const label = cat === "all" ? "Kaikki" : CATEGORY_LABELS_SHORT[cat] || cat;
+    const active = filter === cat ? "active" : "";
+    return `<button class="${active}" data-vol-filter="${cat}">${label}</button>`;
+  }).join("");
+
+  const volSvg = drawVolumeStack(volWeeks, filter);
+
+  let volLegend = "";
+  if (filter === "all") {
+    volLegend = Object.keys(CATEGORY_COLORS).map(cat =>
+      `<span class="lg"><span class="sw" style="background:${CATEGORY_COLORS[cat]}"></span>${CATEGORY_LABELS_SHORT[cat] || cat}</span>`
+    ).join("");
+  } else {
+    const mrv = MRV_SETS_PER_CATEGORY[filter] || 20;
+    volLegend = `<span class="lg"><span class="sw" style="background:${CATEGORY_COLORS[filter]}"></span>${CATEGORY_LABELS_SHORT[filter]} (MRV ${mrv})</span>
+      <span class="lg"><span class="sw" style="background:var(--bad)"></span>Yli MRV</span>`;
+  }
+
+  const latestTotals = volWeeks.length ? volWeeks[volWeeks.length - 1].byCat : {};
+  const overCount = Object.keys(CATEGORY_COLORS).filter(cat => (latestTotals[cat] || 0) > (MRV_SETS_PER_CATEGORY[cat] || 99)).length;
+  const overChip = overCount > 0
+    ? `<span class="chip" style="color:var(--bad);border-color:var(--bad)">⚠ ${overCount} yli MRV</span>`
+    : "";
+
+  // ── Bodyweight card ──
+  const bwMeasurements = (state.allBodyweights || []).filter(m => m.dateISO && m.value)
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  let bwHTML = "";
+  if (bwMeasurements.length >= 2) {
+    const bwByWeek = new Map();
+    for (const m of bwMeasurements) {
+      const wk = isoWeekKey(m.dateISO);
+      if (!bwByWeek.has(wk)) bwByWeek.set(wk, []);
+      bwByWeek.get(wk).push(m.value);
+    }
+    const bwWeekly = [...bwByWeek.entries()]
+      .map(([wk, vals]) => ({ wk, v: vals.reduce((a, b) => a + b, 0) / vals.length }))
+      .sort((a, b) => a.wk.localeCompare(b.wk));
+    const bwSliced = rangeWeeks >= bwWeekly.length ? bwWeekly : bwWeekly.slice(-rangeWeeks);
+    const current = bwSliced[bwSliced.length - 1].v;
+    const first = bwSliced[0].v;
+    const dlt = current - first;
+    const slope = linearRegressionSlope(bwSliced.map(p => p.v));
+    const slopeCls = slope < -0.02 ? "text-ok" : slope > 0.02 ? "text-bad" : "";
+    const last7 = bwMeasurements.slice(-7).map(m => m.value);
+    const avg7 = last7.reduce((a, b) => a + b, 0) / last7.length;
+    const variance = Math.sqrt(last7.reduce((a, b) => a + (b - avg7) ** 2, 0) / last7.length);
+
+    bwHTML = `<div class="section-header">Kehonpaino</div>
+      <div class="card" style="padding:12px 14px">
+        <div class="flex-between" style="align-items:baseline">
+          <div>
+            <div class="card-title" style="margin-bottom:0">KEHONPAINO · ${bwSliced.length} VK</div>
+            <div style="font-size:10px;color:var(--dim);margin-top:2px">${first.toFixed(1)} → ${current.toFixed(1)} kg · <span class="${dlt < 0 ? 'text-ok' : dlt > 0 ? 'text-bad' : ''}">${dlt > 0 ? '+' : ''}${dlt.toFixed(1)} kg</span></div>
+          </div>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px">${current.toFixed(1)}<small style="font-size:11px;color:var(--muted);font-weight:600;margin-left:2px">kg</small></div>
+        </div>
+        <div class="sparkline-wrap">${drawBodyweightSparkline(bwSliced)}</div>
+        <div class="spark-stats">
+          <span>7pv ka <b>${avg7.toFixed(1)}</b></span>
+          <span>Vaihtelu <b>±${variance.toFixed(1)}</b></span>
+          <span>Trend <b class="${slopeCls}">${slope >= 0 ? '↑' : '↓'} ${Math.abs(slope).toFixed(2)} kg/vk</b></span>
+        </div>
+      </div>`;
+  }
+
+  return `<div class="fade-in">
+    <div class="section-header">📈 Edistyminen</div>
+
+    <div class="kpi-strip">
+      <div class="kpi-card-p ${prs7 >= 1 ? 'ok' : ''}">
+        <div class="k">${prs7}</div>
+        <div class="kl">PR · 7 pv</div>
+      </div>
+      <div class="kpi-card-p ${sessions7 >= 3 ? 'ok' : sessions7 >= 1 ? 'warn' : ''}">
+        <div class="k">${sessions7}<small>tr</small></div>
+        <div class="kl">Treenit · 7 pv</div>
+      </div>
+      <div class="kpi-card-p">
+        <div class="k">${tonnageStr}</div>
+        <div class="kl">Tonnage · 7 pv</div>
+      </div>
+    </div>
+
+    <div class="range-tabs" id="progress-range-tabs">
+      ${["4", "8", "16", "all"].map(r =>
+        `<button class="${range === r ? 'active' : ''}" data-range="${r}">${r === "all" ? "Kaikki" : r + " vk"}</button>`
+      ).join("")}
+    </div>
+
+    ${moveCardsHTML || '<div class="card"><div class="muted">Ei e1RM-dataa kisaliikkeille. Tee sarjoja nähdäksesi trendit.</div></div>'}
+
+    <div class="section-header">Viikkovolyymi (hard sets)</div>
+    <div class="card vol-card">
+      <div class="flex-between" style="margin-bottom:6px">
+        <div class="card-title" style="margin:0">SARJAT KATEGORIOITTAIN</div>
+        ${overChip}
+      </div>
+      <div class="vol-filter" id="progress-vol-filter">${volFilterBtns}</div>
+      ${volSvg}
+      <div class="vol-legend">${volLegend}</div>
+    </div>
+
+    ${bwHTML}
+
+    <div class="muted" style="text-align:center;margin-top:14px;font-size:11px">
+      Per-liike-detalji: <button class="btn btn-sm btn-outline" data-nav="trends" style="font-size:11px">Trendit per liike →</button>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // TRENDS VIEW (placeholder)
 // ═══════════════════════════════════════════════════════════════
 
@@ -2344,6 +2812,20 @@ function bind() {
     btn.addEventListener("click", () => {
       const target = document.getElementById(btn.dataset.toggle);
       if (target) target.classList.toggle("open");
+    });
+  });
+
+  // Progress view — range tabs + volume filter
+  $$("#progress-range-tabs button[data-range]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.progressRange = btn.dataset.range;
+      render();
+    });
+  });
+  $$("#progress-vol-filter button[data-vol-filter]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.progressVolFilter = btn.dataset.volFilter;
+      render();
     });
   });
 
