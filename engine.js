@@ -355,9 +355,22 @@ function varaFeedback(recentSets) {
 }
 
 /**
- * Compute Vara trend correction for recommend()
+ * Compute Vara trend correction for recommend().
+ * Asymmetric: more aggressive UP when crushing (acceleration mode),
+ * conservative DOWN when struggling (safety).
+ *
+ * meanOvr > 0 ⇒ sarjat olivat helpompia kuin target (target-Vx > actual-Vx väärin päin? ei)
+ * meanOvr = targetVx - actualVx; actualVx > targetVx ⇒ meanOvr < 0 ⇒ TOO EASY (crushed)
+ * actualVx < targetVx ⇒ meanOvr > 0 ⇒ TOO HARD (struggled)
+ *
+ * Convention in this codebase (varaFeedback etc.): if actualVx > targetVx, set is "easier than target"
+ * because more reps in reserve means less effort. overshoot here = target - actual, so:
+ *   meanOvr < 0 (actual > target) = crushed → ACCELERATE (+)
+ *   meanOvr > 0 (actual < target) = struggled → HOLD BACK (-)
  */
-function varaTrendCorrection(recentTopSets, maxCorrection = 0.015) {
+function varaTrendCorrection(recentTopSets, opts = {}) {
+  const maxUp = opts.maxUp ?? 0.035;   // aggressive acceleration
+  const maxDown = opts.maxDown ?? 0.020; // conservative hold-back
   const withVara = recentTopSets.filter(
     (s) => s.actualVx !== null && s.targetVx !== null
   ).slice(-6);
@@ -366,10 +379,47 @@ function varaTrendCorrection(recentTopSets, maxCorrection = 0.015) {
   const overshoots = withVara.map((s) => s.targetVx - s.actualVx);
   const meanOvr = avg(overshoots);
 
-  // Systematic undershoot → negative correction (too heavy)
-  // Systematic overshoot → positive correction (too easy)
-  if (meanOvr > 0.5) return clamp(meanOvr * 0.005, 0, maxCorrection);
-  if (meanOvr < -0.5) return clamp(meanOvr * 0.005, -maxCorrection, 0);
+  // Consecutive crushing bonus: last 3 sets all actualVx >= targetVx+1
+  const last3 = withVara.slice(-3);
+  const crushingStreak = last3.length === 3 && last3.every(s => (s.actualVx - s.targetVx) >= 1);
+
+  if (meanOvr < -0.5) {
+    // Crushed on average: accelerate
+    const base = clamp(Math.abs(meanOvr) * 0.015, 0, maxUp);
+    const bonus = crushingStreak ? 0.010 : 0;
+    return Math.min(base + bonus, maxUp);
+  }
+  if (meanOvr > 0.5) {
+    // Struggled on average: hold back (conservative)
+    return clamp(-meanOvr * 0.008, -maxDown, 0);
+  }
+  return 0;
+}
+
+/**
+ * e1RM momentum bonus: if recent e1RM shows a PR trend,
+ * add additional deltaPct to accelerate future sessions.
+ *
+ * Trigger: latest e1RM >= 1.02 × max(previous 3 e1RMs)
+ *   AND 3+ consecutive sessions with rising e1RM.
+ * Bonus: +0.5–1.5% depending on magnitude.
+ */
+function e1rmMomentumBonus(e1rmHistory, maxBonus = 0.015) {
+  if (!e1rmHistory || e1rmHistory.length < 4) return 0;
+  const recent = e1rmHistory.slice(-4).map(h => h.e1rm).filter(v => v != null);
+  if (recent.length < 4) return 0;
+
+  const [a, b, c, latest] = recent;
+  const priorMax = Math.max(a, b, c);
+  if (priorMax <= 0) return 0;
+
+  const pctJump = (latest - priorMax) / priorMax;
+  const rising = (b > a) && (c > b) && (latest > c);
+
+  if (pctJump >= 0.02 && rising) {
+    // Scale linearly: 2% jump → 0.5%, 5% jump → 1.5%
+    return clamp(pctJump * 0.30, 0.005, maxBonus);
+  }
   return 0;
 }
 
@@ -737,12 +787,21 @@ async function recommend(options = {}) {
   let deltaPctRawValue = (weekDef?.deltaPctBase || 0) * dayMult;
   trace("DELTA_PCT_RAW", {}, { deltaPctRaw: deltaPctRawValue }, `deltaPct_raw = ${weekDef?.deltaPctBase || 0} × ${dayMult}`);
 
-  // 7. Vara trend correction
+  // 7. Vara trend correction (asymmetric: aggressive up, conservative down)
   const varaCorr = varaTrendCorrection(recentTopSets);
   if (varaCorr !== 0) {
     const oldDelta = deltaPctRawValue;
     deltaPctRawValue += varaCorr;
-    trace("VARA_TREND_CORRECTION", { deltaPct: oldDelta }, { deltaPct: deltaPctRawValue }, `Vara-trendikorjaus: ${varaCorr > 0 ? "+" : ""}${(varaCorr * 100).toFixed(2)}%`);
+    trace("VARA_TREND_CORRECTION", { deltaPct: oldDelta }, { deltaPct: deltaPctRawValue }, `Vara-trendikorjaus: ${varaCorr > 0 ? "+" : ""}${(varaCorr * 100).toFixed(2)}% ${varaCorr > 0.015 ? "(AKSELEROINTI 🚀)" : ""}`);
+  }
+
+  // 7b. e1RM momentum bonus (PR-trendi kiihdyttää)
+  const e1rmSeries = e1rmValues.map(v => ({ e1rm: v }));
+  const momentumBonus = e1rmMomentumBonus(e1rmSeries);
+  if (momentumBonus > 0) {
+    const oldDelta = deltaPctRawValue;
+    deltaPctRawValue += momentumBonus;
+    trace("E1RM_MOMENTUM_BONUS", { deltaPct: oldDelta }, { deltaPct: deltaPctRawValue }, `PR-momentum +${(momentumBonus * 100).toFixed(2)}% (e1RM nousutrendi)`);
   }
 
   // 8. Break modifier
@@ -1063,7 +1122,7 @@ function analyzeSessionAdaptation(sessionExercises, dayPlanSlots) {
     if (matchedExercises.length === 0) continue;
 
     for (const ex of matchedExercises) {
-      const completedSets = ex.sets.filter((s) => s.completed).length;
+      const completedSets = ex.sets.filter((s) => s.completed && !s.isWarmup).length;
       const plannedSets = slot.sets;
       const delta = completedSets - plannedSets;
 
@@ -1096,7 +1155,7 @@ function analyzeSessionAdaptation(sessionExercises, dayPlanSlots) {
   // 2. Check for extra exercises the user added (not in plan)
   const plannedCategories = new Set(dayPlanSlots.map((s) => s.category));
   const extraExercises = sessionExercises.filter(
-    (ex) => !plannedCategories.has(ex.originalCategory || ex.category) && ex.sets.some((s) => s.completed)
+    (ex) => !plannedCategories.has(ex.originalCategory || ex.category) && ex.sets.some((s) => s.completed && !s.isWarmup)
   );
 
   for (const ex of extraExercises) {
@@ -1649,6 +1708,7 @@ export {
   // Vara
   varaFeedback,
   varaTrendCorrection,
+  e1rmMomentumBonus,
   // Break
   breakAnalysis,
   mesocycleBreakReset,

@@ -467,7 +467,7 @@ async function getPrimaryMovement() {
   return all.find((m) => m.isPrimary) || null;
 }
 
-async function addMovement(name, category) {
+async function addMovement(name, category, tutorialUrl = "") {
   const mov = {
     movementId: uid(),
     name,
@@ -476,6 +476,7 @@ async function addMovement(name, category) {
     countsAsPullVolume: PULL_VOLUME_CATEGORIES.has(category),
     isPreset: false,
     tags: [],
+    tutorialUrl: tutorialUrl || "",
   };
   await dbPut(STORES.movements, mov);
   return mov;
@@ -2039,11 +2040,11 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       slots:[...slots, ...pushAcc(sets >= 5 ? 3 : 4)] };
   }
 
-  function laDay(label, muLoad, muSets, muNote) {
+  function laDay(label, muLoad, muSets, muNote, muVx) {
     const isSkill = muLoad === 0;
     const slots = [
       { role:"primary", category:"vertikaaliveto", defaultMovementName:"Muscle-up",
-        sets:muSets || 5, reps:isSkill ? 3 : 1, targetVx:null,
+        sets:muSets || 5, reps:isSkill ? 3 : 1, targetVx:isSkill ? null : (muVx ?? null),
         suggestedLoadKg:muLoad, competitionLift:true, muSkillPhase:isSkill,
         note:muNote || (isSkill ? "Skill: eksentriset + transitiot + banded" : `+${muLoad} kg`) },
       { role:"accessory", category:"vertikaaliveto", defaultMovementName:"Lisäpainoleuanveto",
@@ -2095,19 +2096,19 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       maDay("MA — Leuka 5×4",  5,4,2, 55,  45,   null),
       tiDay("TI — Kyykky 5×4", 5,4,2, 150, null),
       toDay("TO — Dippi 5×4",  5,4,2, 50,  40,   null),
-      laDay("LA — MU +2.5 kg", 2.5, 3, "Ensimmäinen painolla (+2.5 kg) — jos strict puhdas"),
+      laDay("LA — MU +2.5 kg", 2.5, 3, "Ensimmäinen painolla (+2.5 kg) — jos strict puhdas", 2),
     ]},
     { week:6, days:[
       maDay("MA — Leuka 5×4",  5,4,2, 60,  50,  null),
       tiDay("TI — Kyykky 5×4", 5,4,2, 160, null),
       toDay("TO — Dippi 5×4",  5,4,2, 55,  45,  null),
-      laDay("LA — MU +2.5 kg", 2.5, 3, "+2.5 kg (tai +5 jos edellinen meni hyvin)"),
+      laDay("LA — MU +2.5 kg", 2.5, 3, "+2.5 kg (tai +5 jos edellinen meni hyvin)", 2),
     ]},
     { week:7, days:[
       maDay("MA — Leuka 5×4 (raskas)", 5,4,1, 65,  52.5, null),
       tiDay("TI — Kyykky 5×4",         5,4,2, 170, null),
       toDay("TO — Dippi 5×4 (raskas)", 5,4,1, 60,  50,   null),
-      laDay("LA — MU +5 kg",           5, 3, "+5 kg — raskas viikko"),
+      laDay("LA — MU +5 kg",           5, 3, "+5 kg — raskas viikko", 1),
     ]},
     { week:8, days:[
       maDay("MA — Deload + leuka testi", 3,3,4, 35,  null, 80),
@@ -2121,19 +2122,19 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       maDay("MA — Leuka 4×3 + top single", 4,3,1, 75, null, 85),
       tiDay("TI — Kyykky 4×3 + top single",4,3,1, 165,185),
       toDay("TO — Dippi 4×3 + top single", 4,3,1, 65, null, 72.5),
-      laDay("LA — MU +7.5 kg", 7.5, 4, "+7.5 kg — intensifikaatio"),
+      laDay("LA — MU +7.5 kg", 7.5, 4, "+7.5 kg — intensifikaatio", 1),
     ]},
     { week:10, days:[
       maDay("MA — Leuka 4×3 + top single", 4,3,1, 80, null, 90),
       tiDay("TI — Kyykky 4×3 + top single",4,3,1, 175,190),
       toDay("TO — Dippi 4×3 + top single", 4,3,1, 70, null, 77.5),
-      laDay("LA — MU +10 kg", 10, 3, "+10 kg"),
+      laDay("LA — MU +10 kg", 10, 3, "+10 kg", 1),
     ]},
     { week:11, days:[
       maDay("MA — Leuka 4×3 + top single", 4,3,1, 85, null, 92.5),
       tiDay("TI — Kyykky 4×3 + top single",4,3,1, 180,195),
       toDay("TO — Dippi 4×3 + top single", 4,3,1, 75, null, 82.5),
-      laDay("LA — MU +12.5 kg (viimeinen raskas)", 12.5, 3, "+12.5 kg"),
+      laDay("LA — MU +12.5 kg (viimeinen raskas)", 12.5, 3, "+12.5 kg", 1),
     ]},
     { week:12, days:[
       maDay("MA — Deload + RPE9 leuka testi 🎯", 2,2,4, 50,  null, 92),
@@ -2143,17 +2144,19 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     ]},
 
     // ── BLOKKI 4: REALIZATION + TAPER (vk 13-16) ──
+    // vk 13: 3×2 @~100% (Vx=1) + backoff 3×3 @~75% fatiikan hallintaan
+    // vk 14: 2×1 @~108% PR-yritys + backoff 2×2 @~78% (ei pelkkiä singletejä — KoW/CA-benchmark)
     { week:13, days:[
-      maDay("MA — Realization 3×2",  3,2,1, 85,  null, null),
-      tiDay("TI — Realization 3×2",  3,2,1, 190, null),
-      toDay("TO — Realization 3×2",  3,2,1, 75,  null, null),
-      laDay("LA — MU +15 kg",        15, 4, "+15 kg — competition ready"),
+      maDay("MA — Realization 3×2 + backoff", 3,2,1, 85,  65, null),
+      tiDay("TI — Realization 3×2 + backoff", 3,2,1, 190,null),
+      toDay("TO — Realization 3×2 + backoff", 3,2,1, 75,  57.5, null),
+      laDay("LA — MU +15 kg",        15, 4, "+15 kg — competition ready", 1),
     ]},
     { week:14, days:[
-      maDay("MA — Peaking 2×1 @ 92%",  2,1,1, 92,  null, null),
-      tiDay("TI — Peaking 2×1 @ 92%",  2,1,1, 195, null),
-      toDay("TO — Peaking 2×1 @ 92%",  2,1,1, 80,  null, null),
-      laDay("LA — MU opener rehearsal", 15, 3, "Opener harjoitus +15 kg"),
+      maDay("MA — Peaking 2×1 PR-yritys + backoff", 2,1,1, 92,  67.5, null),
+      tiDay("TI — Peaking 2×1 PR-yritys + backoff", 2,1,1, 195, null),
+      toDay("TO — Peaking 2×1 PR-yritys + backoff", 2,1,1, 80,  60,   null),
+      laDay("LA — MU opener rehearsal", 15, 3, "Opener harjoitus +15 kg", 1),
     ]},
     { week:15, days:[
       { dayOfWeek:1, dayType:"heavy", label:"MA — Taper opener-harjoitus", slots:[
@@ -2202,13 +2205,13 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       ]},
       { dayOfWeek:7, dayType:"competition", label:"SU T-0 — KISA 🏆", slots:[
         { role:"primary",   category:"vertikaaliveto",   defaultMovementName:"Muscle-up",
-          sets:3, reps:1, targetVx:null, suggestedLoadKg:5,    note:"1. Muscle-up: +5 / +10 / +15 kg", competitionLift:true },
+          sets:3, reps:1, targetVx:null, suggestedLoadKg:5,    note:"1. Muscle-up — Opener +5 · 2nd +10 · 3rd +15 kg (~92/~97/~102% 1RM)", competitionLift:true },
         { role:"secondary", category:"vertikaaliveto",   defaultMovementName:"Lisäpainoleuanveto",
-          sets:3, reps:1, targetVx:null, suggestedLoadKg:l(75), note:"2. Leuanveto: +75 / +85 / +95 kg", competitionLift:true },
+          sets:3, reps:1, targetVx:null, suggestedLoadKg:l(75), note:"2. Leuanveto — Opener +75 · 2nd +85 · 3rd +95 kg (~92/~97/~102% 1RM)", competitionLift:true },
         { role:"backoff",   category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
-          sets:3, reps:1, targetVx:null, suggestedLoadKg:d(65), note:"3. Dippi: +65 / +75 / +82.5 kg", competitionLift:true },
+          sets:3, reps:1, targetVx:null, suggestedLoadKg:d(65), note:"3. Dippi — Opener +65 · 2nd +75 · 3rd +82.5 kg (~92/~97/~102% 1RM)", competitionLift:true },
         { role:"accessory", category:"alaraaja",         defaultMovementName:"Takakyykky",
-          sets:3, reps:1, targetVx:null, suggestedLoadKg:k(180), note:"4. Kyykky: 180 / 195 / 205 kg", competitionLift:true, isBarbell:true },
+          sets:3, reps:1, targetVx:null, suggestedLoadKg:k(180), note:"4. Kyykky — Opener 180 · 2nd 195 · 3rd 205 kg (~92/~97/~102% 1RM)", competitionLift:true, isBarbell:true },
       ]},
     ]},
   ];

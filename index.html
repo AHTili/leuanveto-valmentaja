@@ -257,7 +257,7 @@
 <script type="module">
 import {
   initDB, uid, todayISO, parseNumericInput,
-  getAllMovements, getMovementsByCategory, getPrimaryMovement, addMovement, deleteMovement,
+  getAllMovements, getMovementsByCategory, getPrimaryMovement, addMovement, updateMovement, deleteMovement,
   getVariantsForMovement, getVariantByName, getAllVariants,
   getAllSessions, getSession, saveSession, deleteSession,
   getSetsForSession, getAllSets, saveSet, saveSets, deleteSet,
@@ -1064,6 +1064,12 @@ function renderActiveWorkout() {
           <div class="muted mt">${currentSet.targetReps} toistoa — kontrolloidusti</div>
           <div class="muted" style="font-size:11px;margin-top:4px">Työsarjat alkavat tämän jälkeen (${workSetCount} sarjaa)</div>
         </div>
+        ${state.settings?.velocityEnabled && exercise.role === "primary" && warmupSetIdx === warmupCount ? `
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;margin:8px 0">
+          <label style="margin-top:0;font-size:12px">📊 Readiness-velocity (viimeinen lämppä, max intent)</label>
+          <input type="number" inputmode="decimal" step="0.01" id="input-warmup-velocity" placeholder="esim. 0.53 m/s" value="${state.todayVelocity || ''}">
+          <div class="muted" style="font-size:10px;margin-top:4px">Vapaaehtoinen — rep 1 mean velocity. Syötä vain jos sinulla on mittausväline.</div>
+        </div>` : ""}
         <button class="btn btn-full btn-ok mt" id="btn-warmup-done">✓ Valmis — seuraava</button>
         <button class="btn btn-outline btn-full mt" id="btn-skip-warmup" style="font-size:13px">⏩ Ohita lämmittely</button>
         ` : `
@@ -1091,8 +1097,8 @@ function renderActiveWorkout() {
           ).join("")}
         </div>
 
-        <label style="margin-top:14px">Velocity (valinnainen)</label>
-        <input type="number" inputmode="decimal" step="0.01" id="input-set-velocity" placeholder="Setin mean velocity m/s">
+        ${state.settings?.velocityEnabled ? `<label style="margin-top:14px">Velocity (valinnainen)</label>
+        <input type="number" inputmode="decimal" step="0.01" id="input-set-velocity" placeholder="Setin mean velocity m/s">` : `<input type="hidden" id="input-set-velocity" value="">`}
 
         <div id="attempted-reps-container" class="hidden">
           <label style="margin-top:14px">Yritetty toistoja (failure)</label>
@@ -1211,14 +1217,15 @@ function renderWorkoutSummary() {
   const w = state.workout;
   if (!w) return "";
 
-  const totalSets = w.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.completed).length, 0);
+  const totalSets = w.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.completed && !s.isWarmup).length, 0);
+  const warmupSets = w.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.completed && s.isWarmup).length, 0);
   const bw = state.settings?.bodyweightKg || 91;
   const totalTonnageExt = w.exercises.reduce((sum, ex) =>
-    sum + ex.sets.filter(s => s.completed).reduce((ss, s) => ss + (s.loadKg || 0) * (s.reps || 0), 0), 0);
-  // System tonnage includes bodyweight for primary/backoff movements
+    sum + ex.sets.filter(s => s.completed && !s.isWarmup).reduce((ss, s) => ss + (s.loadKg || 0) * (s.reps || 0), 0), 0);
+  // System tonnage includes bodyweight for primary/backoff movements (työsarjat only)
   const totalTonnageSys = w.exercises.reduce((sum, ex) => {
     const isPull = ex.role === "primary" || ex.role === "backoff";
-    return sum + ex.sets.filter(s => s.completed).reduce((ss, s) => {
+    return sum + ex.sets.filter(s => s.completed && !s.isWarmup).reduce((ss, s) => {
       const load = isPull ? (bw + (s.loadKg || 0)) : (s.loadKg || 0);
       return ss + load * (s.reps || 0);
     }, 0);
@@ -1242,30 +1249,34 @@ function renderWorkoutSummary() {
       <div style="font-size:48px;margin-bottom:12px">💪</div>
       <div style="font-size:20px;font-weight:700">Treeni valmis!</div>
       <div class="kpi-row mt">
-        <div class="kpi-box"><div class="kpi">${totalSets}</div><div class="kpi-label">Sarjat</div></div>
+        <div class="kpi-box"><div class="kpi">${totalSets}</div><div class="kpi-label">Työsarjat</div></div>
         <div class="kpi-box"><div class="kpi">${Math.round(totalTonnageSys)}</div><div class="kpi-label">Tonnage sys</div></div>
         <div class="kpi-box"><div class="kpi">${Math.round(totalTonnageExt)}</div><div class="kpi-label">Tonnage lisäp.</div></div>
       </div>
+      ${warmupSets > 0 ? `<div class="muted" style="font-size:11px;margin-top:6px">+ ${warmupSets} lämmittelysarjaa (ei laskettu mukaan)</div>` : ""}
     </div>
 
     ${w.exercises.map(ex => {
       const completedSets = ex.sets.filter(s => s.completed);
       if (completedSets.length === 0) return "";
+      const warmups = completedSets.filter(s => s.isWarmup);
+      const workSets = completedSets.filter(s => !s.isWarmup);
+      const firstWork = workSets[0];
       const isPri = ex.role === "primary" || ex.role === "backoff";
-      const exE1RM = isPri
-        ? e1rmExternal(bw, completedSets[0].loadKg || 0, completedSets[0].reps || 3, completedSets[0].actualVx ?? 2)
-        : e1rmAccessory(completedSets[0].loadKg || 0, completedSets[0].reps || 3);
+      const exE1RM = firstWork ? (isPri
+        ? e1rmExternal(bw, firstWork.loadKg || 0, firstWork.reps || 3, firstWork.actualVx ?? 2)
+        : e1rmAccessory(firstWork.loadKg || 0, firstWork.reps || 3)) : null;
       const isAttempt = ["warmup","opener","attempt2","attempt3"].includes(ex.role);
       const icon = ex.role === "primary" ? "⭐ " : ex.role === "backoff" ? "↩ " : isAttempt ? "🏆 " : "";
       const attemptLabel = isAttempt ? ` (${ex.role === "warmup" ? "Lämmittely" : ex.role === "opener" ? "1. yritys" : ex.role === "attempt2" ? "2. yritys" : "3. yritys"})` : "";
+      const renderSet = s => `<div class="muted">${s.loadKg} kg × ${s.reps}${s.isWarmup ? "" : ` @ V${s.actualVx ?? "?"}`}${s.velocity ? ` (${s.velocity} m/s)` : ""}</div>`;
       return `<div class="card">
         <div class="flex-between">
           <div style="font-weight:600">${icon}${ex.name}${attemptLabel}</div>
           ${exE1RM !== null ? `<span class="muted">e1RM: ${exE1RM.toFixed(1)} kg</span>` : ""}
         </div>
-        ${completedSets.map(s =>
-          `<div class="muted">${s.loadKg} kg × ${s.reps} @ V${s.actualVx ?? "?"} ${s.velocity ? `(${s.velocity} m/s)` : ""}</div>`
-        ).join("")}
+        ${warmups.length > 0 ? `<div style="font-size:10px;color:var(--dim);margin-top:6px;text-transform:uppercase;letter-spacing:0.5px">Lämmittely</div>${warmups.map(renderSet).join("")}` : ""}
+        ${workSets.length > 0 ? `<div style="font-size:10px;color:var(--acc);margin-top:6px;text-transform:uppercase;letter-spacing:0.5px">Työsarjat</div>${workSets.map(renderSet).join("")}` : ""}
       </div>`;
     }).join("")}
 
@@ -1315,6 +1326,10 @@ function renderMesocycle() {
         return `<div class="muted mt" style="font-size:11px">Suositeltu seuraava: ${nextLabel}</div>`;
       })()}
     </div>
+
+    ${renderPerLiftAutoregStatus(meso)}
+    ${renderProgramOverviewTable(meso, currentWeek)}
+    ${renderVolumeDashboard(meso)}
 
     ${meso.weekDefs.map(w => {
       const isCurrent = w.week === currentWeek;
@@ -1375,6 +1390,183 @@ function renderWeekPlanDays(meso, weekNum, dayNames) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// PROGRAM OVERVIEW TABLE + VOLUME DASHBOARD
+// ═══════════════════════════════════════════════════════════════
+
+function renderPerLiftAutoregStatus(meso) {
+  if (meso.type !== "streetlifting_16w") return "";
+  const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
+  const lifts = [
+    { name: "Lisäpainoleuanveto", label: "⭐ Leuka",   icon: "🎯" },
+    { name: "Takakyykky",         label: "⭐ Kyykky",  icon: "🎯" },
+    { name: "Lisäpainodippi",     label: "⭐ Dippi",   icon: "🎯" },
+    { name: "Muscle-up",          label: "⭐ Muscle-up", icon: "🎯" },
+  ];
+
+  const renderOne = (l) => {
+    const mov = state.movements.find(m => m.name === l.name);
+    if (!mov) return `<div class="muted" style="font-size:11px">${l.label}: ei löydy</div>`;
+    const sets = state.allSets
+      .filter(s => s.movementId === mov.movementId && s.setRole === "top")
+      .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+    const last = sets[sets.length - 1];
+    const e1rm = computeMovementE1RM(sets, mov.isPrimary, bw);
+
+    const recentN = sets.slice(-6).filter(s => s.actualVx !== null && s.targetVx !== null);
+    let trendLabel = "—", trendColor = "var(--muted)";
+    if (recentN.length >= 3) {
+      const meanOvr = recentN.reduce((sum, s) => sum + (s.targetVx - s.actualVx), 0) / recentN.length;
+      if (meanOvr < -0.5) { trendLabel = "🚀 Kiihdytys"; trendColor = "var(--acc, #4cd964)"; }
+      else if (meanOvr > 0.5) { trendLabel = "⚠ Hidastus"; trendColor = "var(--warn, #ff9500)"; }
+      else { trendLabel = "➡ Vakaa"; trendColor = "var(--muted)"; }
+    }
+    const e1rmHistory = sets.slice(-5).map(s => {
+      const loadTotal = mov.isPrimary ? (s.externalLoadKg + bw) : s.externalLoadKg;
+      const eff = (s.reps || 0) + (s.actualVx ?? 0);
+      return loadTotal * (1 + eff / 30);
+    });
+    let prTag = "";
+    if (e1rmHistory.length >= 4) {
+      const [a, b, c, latest] = e1rmHistory.slice(-4);
+      const priorMax = Math.max(a, b, c);
+      if (priorMax > 0 && latest >= priorMax * 1.02 && b > a && c > b && latest > c) {
+        prTag = `<span style="padding:1px 5px;border-radius:3px;background:#8a3e3e;color:#fff;font-size:10px;margin-left:4px">PR 🔥</span>`;
+      }
+    }
+    const lastDate = last?.timestamp ? new Date(last.timestamp).toLocaleDateString("fi-FI", { day: "numeric", month: "numeric" }) : "-";
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+      <div class="flex-between">
+        <span style="font-weight:600;font-size:12px">${l.label}${prTag}</span>
+        <span style="font-size:11px;color:${trendColor};font-weight:600">${trendLabel}</span>
+      </div>
+      <div style="display:flex;gap:12px;font-size:11px;color:var(--muted);margin-top:2px">
+        <span>e1RM: <strong>${e1rm !== null ? e1rm.toFixed(1) + " kg" : "-"}</strong></span>
+        <span>Viim: ${lastDate}</span>
+        <span>Sarjoja: ${sets.length}</span>
+      </div>
+    </div>`;
+  };
+
+  return `<div class="card">
+    <div class="card-title">🎯 Per-liike autoregulaatio</div>
+    ${lifts.map(renderOne).join("")}
+    <div class="muted mt" style="font-size:10px">Kiihdytys = Vx:t helpompia kuin target → seuraava treeni saa +kuorma. Hidastus = vaikeampia → kevennys.</div>
+  </div>`;
+}
+
+function renderProgramOverviewTable(meso, currentWeek) {
+  const days = [1, 2, 4, 6];
+  const dayHeaders = { 1: "MA", 2: "TI", 4: "TO", 6: "LA" };
+  const summarizeDay = (day) => {
+    if (!day?.slots?.length) return "—";
+    const p = day.slots.find(s => s.role === "primary");
+    if (!p) return "—";
+    return `${p.sets}×${p.reps}${p.targetVx != null ? ` V${p.targetVx}` : ""}`;
+  };
+  const blockColor = (w) => {
+    if (w <= 4) return "#3a6b5c";
+    if (w <= 8) return "#5a4e7a";
+    if (w <= 12) return "#7a5a3e";
+    return "#8a3e3e";
+  };
+
+  return `<div class="card">
+    <div class="card-title">📋 Koko 16 vk — yleiskatsaus</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border)">
+            <th style="text-align:left;padding:6px 4px;font-weight:600">Vk</th>
+            <th style="text-align:left;padding:6px 4px;font-weight:600">Blokki</th>
+            ${days.map(d => `<th style="text-align:center;padding:6px 4px;font-weight:600">${dayHeaders[d]}</th>`).join("")}
+            <th style="text-align:right;padding:6px 4px;font-weight:600">Δ%</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(meso.weekPlans || []).map(wp => {
+            const wdef = meso.weekDefs.find(w => w.week === wp.week);
+            const isCurrent = wp.week === currentWeek;
+            const isPast = currentWeek && wp.week < currentWeek;
+            const blockName = wp.week <= 4 ? "Hyp" : wp.week <= 8 ? "Voima" : wp.week <= 12 ? "Int" : "Peak";
+            return `<tr style="border-bottom:1px solid var(--border);${isCurrent ? 'background:rgba(100,180,255,0.08)' : isPast ? 'opacity:0.55' : ''}">
+              <td style="padding:5px 4px;font-weight:${isCurrent ? '700' : '500'}">${wp.week}${isCurrent ? ' ←' : ''}</td>
+              <td style="padding:5px 4px"><span style="padding:2px 6px;border-radius:3px;background:${blockColor(wp.week)};color:#fff;font-size:10px">${blockName}</span></td>
+              ${days.map(d => {
+                const day = wp.days.find(x => x.dayOfWeek === d);
+                return `<td style="text-align:center;padding:5px 4px;color:var(--muted)">${summarizeDay(day)}</td>`;
+              }).join("")}
+              <td style="text-align:right;padding:5px 4px;color:var(--muted)">${wdef ? ((wdef.deltaPctBase || 0) * 100).toFixed(0) + "%" : ""}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="muted mt" style="font-size:10px">Solu: primary-sarjat × toistot V-tavoite</div>
+  </div>`;
+}
+
+function renderVolumeDashboard(meso) {
+  const CAT_LABELS = {
+    vertikaaliveto: "Leuka/MU",
+    alaraaja: "Kyykky",
+    "horisontaalityöntö": "Dippi/penkki",
+    "horisontaaliveto": "Rivaukset",
+    hauisfleksio: "Hauis",
+    "vertikaalityöntö": "Pystypunn.",
+    ojentajaekstensio: "Ojentaja",
+    core: "Core",
+  };
+  const blocks = [
+    { name: "Hypertrofia", color: "#3a6b5c", weeks: [1,2,3,4] },
+    { name: "Voima",       color: "#5a4e7a", weeks: [5,6,7,8] },
+    { name: "Intensifikaatio", color: "#7a5a3e", weeks: [9,10,11,12] },
+    { name: "Realization/Peak", color: "#8a3e3e", weeks: [13,14,15,16] },
+  ];
+  const weeklyTotals = (weeks) => {
+    const totals = {};
+    weeks.forEach(w => {
+      const wp = (meso.weekPlans || []).find(x => x.week === w);
+      if (!wp) return;
+      wp.days.forEach(d => {
+        (d.slots || []).forEach(s => {
+          if (!s.category) return;
+          totals[s.category] = (totals[s.category] || 0) + (s.sets || 0);
+        });
+      });
+    });
+    return totals;
+  };
+
+  return `<div class="card">
+    <div class="card-title">📊 Volyymi-dashboard (sarjat/blokki)</div>
+    <div style="display:grid;grid-template-columns:1fr;gap:12px">
+      ${blocks.map(b => {
+        const totals = weeklyTotals(b.weeks);
+        const perWeek = {};
+        Object.keys(totals).forEach(k => perWeek[k] = (totals[k] / b.weeks.length).toFixed(1));
+        const keys = Object.keys(totals).filter(k => totals[k] > 0).sort((a, b) => totals[b] - totals[a]);
+        if (!keys.length) return "";
+        const max = Math.max(...keys.map(k => totals[k]));
+        return `<div>
+          <div style="font-weight:600;margin-bottom:6px;color:#fff;background:${b.color};padding:4px 8px;border-radius:4px;font-size:12px">${b.name} (vk ${b.weeks[0]}–${b.weeks[b.weeks.length-1]})</div>
+          ${keys.map(k => {
+            const pct = (totals[k] / max) * 100;
+            return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:11px">
+              <div style="width:90px;color:var(--muted)">${CAT_LABELS[k] || k}</div>
+              <div style="flex:1;background:var(--border);border-radius:3px;overflow:hidden;height:14px">
+                <div style="width:${pct}%;height:100%;background:${b.color}"></div>
+              </div>
+              <div style="width:80px;text-align:right;color:var(--muted)">${totals[k]} (${perWeek[k]}/vk)</div>
+            </div>`;
+          }).join("")}
+        </div>`;
+      }).join("")}
+    </div>
+    <div class="muted mt" style="font-size:10px">Benchmark: 6–10 working sets/liike/vk eliittitasoa (KoW/Heavyweight Cali)</div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // MOVEMENTS VIEW
 // ═══════════════════════════════════════════════════════════════
 
@@ -1420,6 +1612,8 @@ function renderMovements() {
               <div class="muted" style="font-size:11px">e1RM: <strong>${e1rmStr}</strong></div>
             </div>
             <div style="display:flex;gap:4px;align-items:center">
+              ${m.tutorialUrl ? `<a href="${m.tutorialUrl}" target="_blank" rel="noopener" class="btn btn-sm btn-outline" style="font-size:11px;padding:4px 8px;min-height:28px;text-decoration:none" title="Katso tutoriaali">🎬</a>` : ""}
+              <button class="btn btn-sm btn-outline" data-edit-video="${m.movementId}" style="font-size:11px;padding:4px 8px;min-height:28px" title="Lisää/muokkaa tutoriaalivideolinkki">🔗</button>
               <button class="btn btn-sm btn-outline" data-view-movement="${m.movementId}" style="font-size:11px;padding:4px 8px;min-height:28px">📊</button>
               ${!m.isPreset ? `<button class="btn btn-sm btn-outline" data-delete-mov="${m.movementId}" style="font-size:11px;padding:4px 8px;min-height:28px">🗑</button>` : ""}
             </div>
@@ -1436,6 +1630,8 @@ function renderMovements() {
       <select id="new-mov-category">
         ${CATEGORIES.map(c => `<option value="${c}">${categoryLabels[c] || c}</option>`).join("")}
       </select>
+      <label>Tutoriaalivideon URL (valinnainen)</label>
+      <input id="new-mov-video" placeholder="https://youtube.com/..." type="url">
       <button class="btn btn-full mt" id="btn-save-movement">Tallenna</button>
     </div>
 
@@ -1590,6 +1786,13 @@ function renderSettingsView() {
           <label>HRV ikkuna (N)</label>
           <input type="number" id="set-hrvwindow" value="${s.readinessHrvWindowN || 14}">
         </div>
+      </div>
+      <div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:6px">
+        <label style="margin-top:0;display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="set-velocity-enabled" ${s.velocityEnabled ? "checked" : ""} style="width:18px;height:18px">
+          <span>Velocity-mittaus käytössä</span>
+        </label>
+        <div class="muted" style="font-size:11px;margin-top:4px">Näyttää velocity-syötön viimeisessä lämppäsarjassa (readiness-testi). Poista käytöstä jos sinulla ei ole mittausvälinettä (Vitruve, Enode Pro, puhelinappi).</div>
       </div>
     </div>
 
@@ -1962,11 +2165,26 @@ function bind() {
   if (saveMovBtn) saveMovBtn.addEventListener("click", async () => {
     const name = $("#new-mov-name")?.value?.trim();
     const category = $("#new-mov-category")?.value;
+    const tutorialUrl = $("#new-mov-video")?.value?.trim() || "";
     if (!name) { showToast("Syötä liikkeen nimi", "bad"); return; }
-    await addMovement(name, category);
+    await addMovement(name, category, tutorialUrl);
     await refresh();
     showToast(`${name} lisätty`, "ok");
     render();
+  });
+
+  $$("[data-edit-video]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.editVideo;
+      const mov = state.movements.find(m => m.movementId === id);
+      const current = mov?.tutorialUrl || "";
+      const url = prompt(`Tutoriaalivideon URL liikkeelle "${mov?.name}":`, current);
+      if (url === null) return;
+      await updateMovement(id, { tutorialUrl: url.trim() });
+      await refresh();
+      showToast(url.trim() ? "Videolinkki tallennettu" : "Videolinkki poistettu", "ok");
+      render();
+    });
   });
 
   $$("[data-delete-mov]").forEach(btn => {
@@ -2000,6 +2218,7 @@ function bind() {
     state.settings.vlStopPercent = parseNumericInput($("#set-vlstop")?.value) || 20;
     state.settings.readinessVelocityWindowN = parseNumericInput($("#set-velwindow")?.value) || 10;
     state.settings.readinessHrvWindowN = parseNumericInput($("#set-hrvwindow")?.value) || 14;
+    state.settings.velocityEnabled = !!$("#set-velocity-enabled")?.checked;
     // Read variant load modifiers
     const variantModifiers = {};
     $$("[data-variant-mod]").forEach(inp => {
@@ -2289,6 +2508,16 @@ function bindWorkoutEvents() {
     currentSet.completed = true;
     currentSet.reps = currentSet.targetReps;
     currentSet.actualVx = null; // warmup — no Vara tracking
+    // Capture readiness velocity from last warmup of primary lift
+    const velInput = document.getElementById("input-warmup-velocity");
+    if (velInput && velInput.value) {
+      const vv = parseFloat(velInput.value);
+      if (!isNaN(vv) && vv > 0.1 && vv < 2.0) {
+        state.todayVelocity = vv;
+        currentSet.velocity = vv;
+        currentSet.setRole = "readiness_test";
+      }
+    }
     w.currentSetIdx++;
     selectedReps = null;
     selectedVara = null;

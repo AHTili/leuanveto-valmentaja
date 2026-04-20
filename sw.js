@@ -1,7 +1,7 @@
 // sw.js — Service Worker (offline-first, cache-first)
-// LeVe Coach v4.0.1
+// LeVe Coach v4.4.0
 
-const APP_VERSION = "4.0.1";
+const APP_VERSION = "4.4.0";
 const CACHE_NAME = `leve-coach-v${APP_VERSION}`;
 
 const CORE_ASSETS = [
