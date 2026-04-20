@@ -262,6 +262,7 @@ import {
   getAllSessions, getSession, saveSession, deleteSession,
   getSetsForSession, getAllSets, saveSet, saveSets, deleteSet,
   saveMeasurement, getMeasurementsByType, getLatestBodyweight, saveBodyweightEntry,
+  getAllPRs, savePR, deletePR, seedHistoricalPRsIfNeeded,
   MESOCYCLE_TEMPLATES,
   getActiveMesocycle, saveMesocycle, createDefaultMesocycle, createPeakingMesocycle, getAllMesocycles,
   createHypertrofiaMesocycle, createMaksimivoimaMesocycle, createEksenterinenMesocycle,
@@ -271,7 +272,7 @@ import {
   parseCSV, importHistoricalCSV,
   getMovementProgress, getAllMovementProgress, saveMovementProgress,
   getTracesForRec,
-  CATEGORIES, PULL_VOLUME_CATEGORIES, VARIANT_DAY_TYPE_MAP,
+  CATEGORIES, PULL_VOLUME_CATEGORIES, VARIANT_DAY_TYPE_MAP, ACCESSORY_SLOT_CATALOG,
   validateVelocity, validateLoad, validateReps, validateHRV, validateBodyweight,
   isVelocityTypo,
 } from "./data.js";
@@ -298,6 +299,7 @@ import {
   readinessTestLoad,
   variantLoadModifier, variantRepOverride, assignVariantRotation,
   computeAttemptLoads,
+  phaseForWeek, resolveAccessorySlot, resolveDayPlanSlots, suggestAccessorySwaps,
 } from "./engine.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -320,6 +322,12 @@ const state = {
   todayVelocity: null,
   // Latest bodyweight
   latestBodyweight: null,
+  // PR records (type:"pr" from measurements)
+  prs: [],
+  // Kaikki mesosyklit (export-valinnat)
+  allMesocycles: [],
+  // "Lisää PR" -lomakkeen näkyvyys
+  showAddPRForm: false,
   // Adaptation history for volume optimization
   adaptationHistory: [],
   // Rest timer
@@ -338,6 +346,9 @@ async function init() {
   state.sessions = await getAllSessions();
   state.allSets = await getAllSets();
   state.latestBodyweight = await getLatestBodyweight(state.settings);
+  await seedHistoricalPRsIfNeeded();
+  state.prs = await getAllPRs();
+  state.allMesocycles = await getAllMesocycles();
   state.mesocycle = await getActiveMesocycle();
   if (!state.mesocycle) {
     state.mesocycle = createDefaultMesocycle(todayISO());
@@ -363,6 +374,8 @@ async function refresh() {
   state.sessions = await getAllSessions();
   state.allSets = await getAllSets();
   state.latestBodyweight = await getLatestBodyweight(state.settings);
+  state.prs = await getAllPRs();
+  state.allMesocycles = await getAllMesocycles();
   state.mesocycle = await getActiveMesocycle();
   await computeReadiness();
   await computeRecommendation();
@@ -643,6 +656,7 @@ function render() {
     case "mesocycle": app.innerHTML = renderMesocycle(); break;
     case "movements": app.innerHTML = renderMovements(); break;
     case "history": app.innerHTML = renderHistory(); break;
+    case "prs": app.innerHTML = renderPRs(); break;
     case "trends": app.innerHTML = renderTrends(); break;
     case "settings": app.innerHTML = renderSettingsView(); break;
     default: app.innerHTML = renderDashboard();
@@ -657,6 +671,7 @@ function renderNav() {
     { id: "mesocycle", icon: "📅", label: "Sykli" },
     { id: "movements", icon: "💪", label: "Liikkeet" },
     { id: "history", icon: "📊", label: "Historia" },
+    { id: "prs", icon: "🏆", label: "PR:t" },
     { id: "settings", icon: "⚙️", label: "Asetukset" },
   ];
   document.getElementById("nav").innerHTML = navItems.map(n =>
@@ -1072,11 +1087,12 @@ function renderActiveWorkout() {
     <div class="exercise-card">
       <div class="flex-between">
         <div>
-          <div class="exercise-name" id="btn-swap-exercise">🔄 ${exercise.name}</div>
+          <div class="exercise-name" id="btn-swap-exercise">🔄 ${exercise.name}${exercise.slotId ? ` <span id="btn-lock-slot" title="Lukitse/vapauta tämä tukiliike" style="cursor:pointer;font-size:14px;margin-left:4px">${(state.mesocycle?.accessorySlotOverrides?.[exercise.slotId]?.locked) ? "🔒" : "🔓"}</span>` : ""}</div>
           <div class="exercise-meta">
             ${exercise.role === "primary" ? "⭐ Pääliike" : exercise.role === "backoff" ? "↩ Back-off" : ["warmup","opener","attempt2","attempt3"].includes(exercise.role) ? "🏆 " + (exercise.role === "warmup" ? "Lämmittely" : exercise.role === "opener" ? "1. yritys" : exercise.role === "attempt2" ? "2. yritys" : "3. yritys") : exercise.category}
             ${isLoadIncrease ? ' <span class="text-ok">↑ Progressio</span>' : ""}
           </div>
+          ${exercise.slotFunction ? `<div class="muted" style="font-size:11px;margin-top:2px">🎯 ${exercise.slotFunction}${exercise.slotSource === "stagnation-swap" ? ' <span class="text-warn">· auto-swap stagnaatiosta</span>' : exercise.slotSource === "user-locked" ? ' <span class="text-acc">· 🔒 lukittu</span>' : exercise.slotSource === "user-override" ? ' <span class="text-acc">· käyttäjän valinta</span>' : ""}</div>` : ""}
           ${exercise.variantName ? `<div class="muted" style="font-size:11px;margin-top:2px">🔀 ${exercise.variantName}${exercise.tempoNote ? ` — <strong>${exercise.tempoNote}</strong>` : ""}</div>` : ""}
         </div>
       </div>
@@ -1293,8 +1309,8 @@ function renderWorkoutSummary() {
       const firstWork = workSets[0];
       const isPri = ex.role === "primary" || ex.role === "backoff";
       const exE1RM = firstWork ? (isPri
-        ? e1rmExternal(bw, firstWork.loadKg || 0, firstWork.reps || 3, firstWork.actualVx ?? 2)
-        : e1rmAccessory(firstWork.loadKg || 0, firstWork.reps || 3)) : null;
+        ? e1rmExternal(bw, firstWork.loadKg || 0, firstWork.reps || 3, firstWork.actualVx ?? 1)
+        : e1rmAccessory(firstWork.loadKg || 0, firstWork.reps || 3, firstWork.actualVx ?? 1)) : null;
       const isAttempt = ["warmup","opener","attempt2","attempt3"].includes(ex.role);
       const icon = ex.role === "primary" ? "⭐ " : ex.role === "backoff" ? "↩ " : isAttempt ? "🏆 " : "";
       const attemptLabel = isAttempt ? ` (${ex.role === "warmup" ? "Lämmittely" : ex.role === "opener" ? "1. yritys" : ex.role === "attempt2" ? "2. yritys" : "3. yritys"})` : "";
@@ -1790,6 +1806,339 @@ function renderMiniChart(history) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// PR:t VIEW — henkilökohtaiset ennätykset aikajanalla
+// ═══════════════════════════════════════════════════════════════
+
+const PR_MOVEMENT_OPTIONS = [
+  "Lisäpainoleuanveto",
+  "Muscle-up",
+  "Lisäpainodippi",
+  "Takakyykky",
+  "Etukyykky",
+  "Penkkipunnerrus",
+  "Maastaveto",
+  "Pystypunnerrus",
+  "Muu",
+];
+
+function renderPRs() {
+  const prs = [...(state.prs || [])].sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""));
+
+  // Ryhmittele liikkeen mukaan, laske kunkin "best" (suurin value)
+  const byMovement = {};
+  for (const pr of prs) {
+    const key = pr.movementName || "Muu";
+    if (!byMovement[key]) byMovement[key] = [];
+    byMovement[key].push(pr);
+  }
+  const bestPerMovement = Object.entries(byMovement).map(([name, list]) => {
+    const best = list.reduce((a, b) => ((b.value || 0) > (a.value || 0) ? b : a), list[0]);
+    return { name, best, count: list.length };
+  }).sort((a, b) => (b.best?.value || 0) - (a.best?.value || 0));
+
+  const addFormHTML = state.showAddPRForm ? `
+    <div class="card" style="border:1px solid var(--acc)">
+      <div class="card-title">Lisää uusi PR</div>
+      <label>Päivämäärä</label>
+      <input type="date" id="pr-date" value="${todayISO()}">
+      <label style="margin-top:8px">Liike</label>
+      <select id="pr-movement">
+        ${PR_MOVEMENT_OPTIONS.map(m => `<option value="${m}">${m}</option>`).join("")}
+      </select>
+      <label style="margin-top:8px">Kuorma (kg)</label>
+      <input type="number" inputmode="decimal" id="pr-load" step="0.5" placeholder="esim. 100">
+      <label style="margin-top:8px">Kehonpaino (kg) <span class="muted">— valinnainen</span></label>
+      <input type="number" inputmode="decimal" id="pr-bw" step="0.1" placeholder="${state.latestBodyweight || 91}">
+      <label style="margin-top:8px">Konteksti <span class="muted">— valinnainen</span></label>
+      <input type="text" id="pr-context" placeholder="esim. Kisa, testi, treenissä">
+      <label style="margin-top:8px;display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="pr-is-comp"> Kisa-PR
+      </label>
+      <div class="flex-gap" style="margin-top:12px">
+        <button class="btn btn-primary" id="btn-save-pr">Tallenna</button>
+        <button class="btn btn-outline" id="btn-cancel-pr">Peruuta</button>
+      </div>
+    </div>` : "";
+
+  return `<div class="fade-in">
+    <div class="section-header">🏆 Ennätykset (PR)</div>
+
+    <div class="flex-gap" style="margin-bottom:12px">
+      <button class="btn btn-primary" id="btn-show-add-pr" ${state.showAddPRForm ? 'disabled' : ''}>+ Lisää PR</button>
+    </div>
+
+    ${addFormHTML}
+
+    ${bestPerMovement.length === 0 ? '<div class="card"><div class="muted">Ei PR-merkintöjä vielä. Aloita painamalla "+ Lisää PR".</div></div>' : ""}
+
+    ${bestPerMovement.length > 0 ? `
+    <div class="card">
+      <div class="card-title">Huiput per liike</div>
+      ${bestPerMovement.map(m => `
+        <div class="flex-between" style="padding:6px 0;border-bottom:1px solid var(--border)">
+          <div>
+            <div style="font-weight:600">${m.name}</div>
+            <div class="muted" style="font-size:11px">${formatDateShort(m.best.dateISO)} ${m.best.isCompetition ? '• 🏅 Kisa' : ''} ${m.count > 1 ? `• ${m.count} merkintää` : ''}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:18px;font-weight:700">${m.best.value} kg</div>
+            ${m.best.bodyweightKg ? `<div class="muted" style="font-size:11px">@ ${m.best.bodyweightKg} kg BW</div>` : ''}
+          </div>
+        </div>
+      `).join("")}
+    </div>` : ""}
+
+    ${prs.length > 0 ? `
+    <div class="card">
+      <div class="card-title">Aikajana (uusin ylhäällä)</div>
+      ${prs.map(pr => `
+        <div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-weight:600">
+              ${pr.isCompetition ? '🏅 ' : ''}${pr.movementName} — <span style="color:var(--acc)">${pr.value} kg</span>
+            </div>
+            <div class="muted" style="font-size:11px">
+              ${formatDateShort(pr.dateISO)}
+              ${pr.bodyweightKg ? ` • BW ${pr.bodyweightKg} kg` : ''}
+              ${pr.context ? ` • ${pr.context}` : ''}
+              ${pr.source === "seed" ? ' • <span style="opacity:0.6">historia</span>' : ''}
+            </div>
+          </div>
+          <button class="btn btn-sm btn-outline" data-delete-pr="${pr.measurementId}">🗑</button>
+        </div>
+      `).join("")}
+    </div>` : ""}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EXPORT: CSV + Markdown-raportti
+// ═══════════════════════════════════════════════════════════════
+
+function csvEscape(v) {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  if (/[",\n;]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function downloadFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function dayOfWeekShort(iso) {
+  if (!iso) return "";
+  const d = ["Su","Ma","Ti","Ke","To","Pe","La"];
+  return d[new Date(iso).getDay()];
+}
+
+function filterSessionsForExport(scope, mesocycleId, fromISO, toISO) {
+  let sessions = [...state.sessions];
+  if (scope === "mesocycle" && mesocycleId) {
+    sessions = sessions.filter(s => s.mesocycleId === mesocycleId);
+  } else if (scope === "range") {
+    if (fromISO) sessions = sessions.filter(s => (s.dateISO || "") >= fromISO);
+    if (toISO)   sessions = sessions.filter(s => (s.dateISO || "") <= toISO);
+  }
+  return sessions.sort((a,b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+}
+
+function buildCSVExport({ scope, mesocycleId, fromISO, toISO }) {
+  const sessions = filterSessionsForExport(scope, mesocycleId, fromISO, toISO);
+  const sessionIds = new Set(sessions.map(s => s.sessionId));
+  const sets = state.allSets.filter(s => sessionIds.has(s.sessionId));
+  const movById = new Map(state.movements.map(m => [m.movementId, m]));
+  const mesoById = new Map((state.allMesocycles || []).map(m => [m.mesocycleId, m]));
+  const sessById = new Map(sessions.map(s => [s.sessionId, s]));
+
+  const header = [
+    "Pvm","Vk","Mesosykli","Päivä","Päivätyyppi","Liike","Rooli",
+    "Sarja #","Toistot","Toistotavoite","Kuorma (kg)","BW (kg)","System load",
+    "Vx tavoite","Vx toteutunut","Velocity (m/s)",
+    "e1RM ext","e1RM sys","Readiness cap","Muistiinpano","Aikaleima",
+  ];
+  const rows = [header.map(csvEscape).join(",")];
+
+  // Sarjat päivä+sessio+timestamp-järjestyksessä, sarjanumerointi per (sessio, liike)
+  const sortedSets = [...sets].sort((a,b) => {
+    const sa = sessById.get(a.sessionId), sb = sessById.get(b.sessionId);
+    const da = (sa?.dateISO || ""), db = (sb?.dateISO || "");
+    if (da !== db) return da.localeCompare(db);
+    return (a.timestamp || "").localeCompare(b.timestamp || "");
+  });
+
+  const setCounter = new Map(); // key = sessionId+movementId
+  for (const set of sortedSets) {
+    const sess = sessById.get(set.sessionId);
+    if (!sess) continue;
+    const mov = movById.get(set.movementId);
+    const meso = mesoById.get(sess.mesocycleId);
+    const key = `${set.sessionId}|${set.movementId}`;
+    const n = (setCounter.get(key) || 0) + 1;
+    setCounter.set(key, n);
+    const isPrimary = mov?.isPrimary;
+    const bw = sess.bodyweightKg || state.latestBodyweight || 91;
+    const load = set.externalLoadKg || 0;
+    const systemLoad = isPrimary ? (bw + load) : load;
+    const e1rmExt = isPrimary ? e1rmExternal(bw, load, set.reps, set.actualVx)
+                              : e1rmAccessory(load, set.reps, set.actualVx);
+    const e1rmSys = isPrimary ? e1rmSystem(bw, load, set.reps, set.actualVx)
+                              : e1rmAccessory(load, set.reps, set.actualVx);
+    const readinessLabel = sess.readinessCapLevel === 2 ? "RED"
+                         : sess.readinessCapLevel === 1 ? "YELLOW"
+                         : sess.readinessCapLevel === 0 ? "GREEN" : "";
+
+    const row = [
+      sess.dateISO || "",
+      sess.mesocycleWeek ?? "",
+      meso?.name || meso?.type || "",
+      dayOfWeekShort(sess.dateISO),
+      sess.plannedDayType || "",
+      mov?.name || "",
+      set.setRole || "",
+      n,
+      set.reps ?? "",
+      set.targetReps ?? "",
+      load,
+      bw,
+      systemLoad.toFixed(1),
+      set.targetVx ?? "",
+      set.actualVx ?? "",
+      set.velocityMean ?? set.velocityRep1 ?? "",
+      e1rmExt !== null ? e1rmExt.toFixed(2) : "",
+      e1rmSys !== null ? e1rmSys.toFixed(2) : "",
+      readinessLabel,
+      (sess.sessionNotes || "").replace(/\n/g, " "),
+      set.timestamp || "",
+    ];
+    rows.push(row.map(csvEscape).join(","));
+  }
+  return rows.join("\n");
+}
+
+function buildMesocycleMarkdown(mesocycleId) {
+  const meso = (state.allMesocycles || []).find(m => m.mesocycleId === mesocycleId);
+  if (!meso) return "# Ohjelmaa ei löytynyt\n";
+  const sessions = state.sessions
+    .filter(s => s.mesocycleId === mesocycleId)
+    .sort((a,b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+  const sessionIds = new Set(sessions.map(s => s.sessionId));
+  const sets = state.allSets.filter(s => sessionIds.has(s.sessionId));
+  const movById = new Map(state.movements.map(m => [m.movementId, m]));
+
+  const firstDate = sessions[0]?.dateISO || meso.startDateISO || "?";
+  const lastDate = sessions[sessions.length - 1]?.dateISO || "?";
+  const plannedWeeks = (meso.weekPlans || []).length || null;
+  const plannedSessions = (meso.weekPlans || []).reduce((n, wp) => n + (wp.days?.length || 0), 0);
+
+  // Tonnage per liike
+  const byMov = new Map();
+  for (const set of sets) {
+    const mov = movById.get(set.movementId);
+    if (!mov) continue;
+    if (!byMov.has(mov.movementId)) byMov.set(mov.movementId, { mov, sets: [], tonnage: 0 });
+    const rec = byMov.get(mov.movementId);
+    rec.sets.push(set);
+    rec.tonnage += (set.externalLoadKg || 0) * (set.reps || 0);
+  }
+
+  // e1RM first vs last per primary movement
+  const e1rmLines = [];
+  for (const { mov, sets: ms } of byMov.values()) {
+    if (ms.length < 2) continue;
+    const isPrimary = mov.isPrimary;
+    const sorted = [...ms].sort((a,b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+    const compute = (s) => {
+      const sess = sessions.find(ss => ss.sessionId === s.sessionId);
+      const bw = sess?.bodyweightKg || 91;
+      return isPrimary ? e1rmExternal(bw, s.externalLoadKg || 0, s.reps, s.actualVx)
+                       : e1rmAccessory(s.externalLoadKg || 0, s.reps, s.actualVx);
+    };
+    const firstE = compute(sorted[0]);
+    const lastE = compute(sorted[sorted.length - 1]);
+    const maxE = Math.max(...sorted.map(s => compute(s) ?? 0));
+    if (firstE === null || lastE === null) continue;
+    const delta = lastE - firstE;
+    const sign = delta > 0 ? "+" : "";
+    e1rmLines.push(`- **${mov.name}**: ${firstE.toFixed(1)} → ${lastE.toFixed(1)} kg (${sign}${delta.toFixed(1)}), huippu ${maxE.toFixed(1)} kg`);
+  }
+
+  // PR:t aikavälillä
+  const prs = (state.prs || [])
+    .filter(p => (p.dateISO || "") >= firstDate && (p.dateISO || "") <= lastDate)
+    .sort((a,b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+
+  // Readiness-jakauma
+  const rCounts = { GREEN: 0, YELLOW: 0, RED: 0 };
+  for (const s of sessions) {
+    const l = s.readinessCapLevel;
+    if (l === 2) rCounts.RED++;
+    else if (l === 1) rCounts.YELLOW++;
+    else rCounts.GREEN++;
+  }
+
+  const totalSets = sets.length;
+  const totalTonnage = [...byMov.values()].reduce((n, r) => n + r.tonnage, 0);
+
+  const lines = [];
+  lines.push(`# ${meso.name || meso.type || "Ohjelma"}`);
+  lines.push("");
+  lines.push(`**Aikaväli:** ${firstDate} → ${lastDate}`);
+  lines.push(`**Treenit:** ${sessions.length}${plannedSessions ? ` / ${plannedSessions} suunniteltu` : ""}`);
+  lines.push(`**Viikot:** ${plannedWeeks || "?"}`);
+  lines.push(`**Sarjat yhteensä:** ${totalSets}`);
+  lines.push(`**Tonnage (external):** ${(totalTonnage / 1000).toFixed(1)} t`);
+  lines.push("");
+  lines.push(`## Readiness-jakauma`);
+  lines.push(`- 🟢 GREEN: ${rCounts.GREEN}`);
+  lines.push(`- 🟡 YELLOW: ${rCounts.YELLOW}`);
+  lines.push(`- 🔴 RED: ${rCounts.RED}`);
+  lines.push("");
+  if (e1rmLines.length > 0) {
+    lines.push(`## e1RM-kehitys per liike`);
+    lines.push(...e1rmLines);
+    lines.push("");
+  }
+  if (prs.length > 0) {
+    lines.push(`## PR:t ohjelman aikana`);
+    for (const pr of prs) {
+      const comp = pr.isCompetition ? " 🏅" : "";
+      const bw = pr.bodyweightKg ? ` @ ${pr.bodyweightKg} kg BW` : "";
+      const ctx = pr.context ? ` — ${pr.context}` : "";
+      lines.push(`- **${pr.dateISO}**${comp} ${pr.movementName}: ${pr.value} kg${bw}${ctx}`);
+    }
+    lines.push("");
+  }
+
+  // Muistiinpanot (jos on)
+  const notes = sessions.filter(s => s.sessionNotes && s.sessionNotes.trim());
+  if (notes.length > 0) {
+    lines.push(`## Treenimuistiinpanot`);
+    for (const s of notes) {
+      lines.push(`- **${s.dateISO}** (${dayOfWeekShort(s.dateISO)}): ${s.sessionNotes.trim()}`);
+    }
+    lines.push("");
+  }
+
+  // Sarjat per liike tiiviisti
+  lines.push(`## Sarjat per liike`);
+  const movRows = [...byMov.values()]
+    .sort((a,b) => b.tonnage - a.tonnage)
+    .map(r => `- ${r.mov.name}: ${r.sets.length} sarjaa, ${(r.tonnage/1000).toFixed(2)} t`);
+  lines.push(...movRows);
+  lines.push("");
+  lines.push(`---`);
+  lines.push(`*Luotu LeVe Coach -sovelluksesta ${todayISO()}*`);
+  return lines.join("\n");
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SETTINGS VIEW
 // ═══════════════════════════════════════════════════════════════
 
@@ -1863,6 +2212,40 @@ function renderSettingsView() {
       <div class="btn-group mt">
         <button class="btn btn-sm btn-outline" id="btn-import-csv">📄 Import CSV</button>
         <input type="file" id="file-csv" accept=".csv" class="hidden">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Vie ohjelma analyysiin</div>
+      <label>Laajuus</label>
+      <select id="export-scope">
+        <option value="mesocycle">Yksittäinen ohjelma</option>
+        <option value="range">Aikaväli</option>
+        <option value="all">Kaikki data</option>
+      </select>
+
+      <div id="export-scope-meso" style="margin-top:8px">
+        <label>Valitse ohjelma</label>
+        <select id="export-mesocycle">
+          ${(state.allMesocycles || []).slice().sort((a,b) => (b.startDateISO || "").localeCompare(a.startDateISO || "")).map(m =>
+            `<option value="${m.mesocycleId}">${m.name || m.type || "(nimetön)"} — ${m.startDateISO || "?"}</option>`
+          ).join("") || '<option value="">(ei ohjelmia)</option>'}
+        </select>
+      </div>
+
+      <div id="export-scope-range" style="display:none;margin-top:8px">
+        <label>Alku</label>
+        <input type="date" id="export-from">
+        <label style="margin-top:6px">Loppu</label>
+        <input type="date" id="export-to">
+      </div>
+
+      <div class="btn-group mt">
+        <button class="btn btn-sm btn-primary" id="btn-export-csv">📊 Vie CSV</button>
+        <button class="btn btn-sm btn-outline" id="btn-export-md">📝 Vie Markdown-raportti</button>
+      </div>
+      <div class="muted" style="font-size:11px;margin-top:6px">
+        CSV: rivi per sarja (avaa Excelillä). Markdown-raportti vaatii "Yksittäinen ohjelma" -valinnan.
       </div>
     </div>
 
@@ -2245,6 +2628,55 @@ function bind() {
     });
   });
 
+  // PRs — näytä lomake
+  const showAddPRBtn = $("#btn-show-add-pr");
+  if (showAddPRBtn) showAddPRBtn.addEventListener("click", () => {
+    state.showAddPRForm = true;
+    render();
+  });
+
+  // PRs — peruuta
+  const cancelPRBtn = $("#btn-cancel-pr");
+  if (cancelPRBtn) cancelPRBtn.addEventListener("click", () => {
+    state.showAddPRForm = false;
+    render();
+  });
+
+  // PRs — tallenna
+  const savePRBtn = $("#btn-save-pr");
+  if (savePRBtn) savePRBtn.addEventListener("click", async () => {
+    const dateISO = $("#pr-date")?.value;
+    const movementName = $("#pr-movement")?.value;
+    const load = parseNumericInput($("#pr-load")?.value);
+    const bw = parseNumericInput($("#pr-bw")?.value);
+    const context = ($("#pr-context")?.value || "").trim();
+    const isComp = !!$("#pr-is-comp")?.checked;
+    if (!dateISO) { showToast("Päivämäärä puuttuu", "bad"); return; }
+    if (!movementName) { showToast("Valitse liike", "bad"); return; }
+    if (load === null || load <= 0) { showToast("Anna kuorma (kg)", "bad"); return; }
+    await savePR({
+      dateISO, movementName, value: load,
+      bodyweightKg: bw,
+      context: context || null,
+      isCompetition: isComp,
+      source: "manual",
+    });
+    state.showAddPRForm = false;
+    state.prs = await getAllPRs();
+    showToast("PR tallennettu", "ok");
+    render();
+  });
+
+  // PRs — poista
+  $$("[data-delete-pr]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Poistetaanko PR?")) return;
+      await deletePR(btn.dataset.deletePr);
+      state.prs = await getAllPRs();
+      render();
+    });
+  });
+
   // Settings
   const saveSettingsBtn = $("#btn-save-settings");
   if (saveSettingsBtn) saveSettingsBtn.addEventListener("click", async () => {
@@ -2270,6 +2702,56 @@ function bind() {
     await computeRecommendation();
     showToast("Asetukset tallennettu", "ok");
     render();
+  });
+
+  // Export scope — näytä/piilota alueet
+  const scopeSelect = $("#export-scope");
+  if (scopeSelect) {
+    const updateScopeVisibility = () => {
+      const v = scopeSelect.value;
+      const meso = $("#export-scope-meso");
+      const range = $("#export-scope-range");
+      if (meso)  meso.style.display  = v === "mesocycle" ? "" : "none";
+      if (range) range.style.display = v === "range"     ? "" : "none";
+    };
+    scopeSelect.addEventListener("change", updateScopeVisibility);
+    updateScopeVisibility();
+  }
+
+  // Export CSV
+  const exportCsvBtn = $("#btn-export-csv");
+  if (exportCsvBtn) exportCsvBtn.addEventListener("click", () => {
+    const scope = $("#export-scope")?.value || "mesocycle";
+    const mesocycleId = $("#export-mesocycle")?.value || null;
+    const fromISO = $("#export-from")?.value || null;
+    const toISO = $("#export-to")?.value || null;
+    if (scope === "mesocycle" && !mesocycleId) {
+      showToast("Valitse ohjelma", "bad"); return;
+    }
+    const csv = buildCSVExport({ scope, mesocycleId, fromISO, toISO });
+    const meso = (state.allMesocycles || []).find(m => m.mesocycleId === mesocycleId);
+    const baseName = scope === "mesocycle" && meso
+      ? (meso.name || meso.type || "ohjelma").replace(/[^\wäöåÄÖÅ-]+/g, "-")
+      : scope === "range"
+        ? `aikavali-${fromISO || "alku"}_${toISO || "loppu"}`
+        : "kaikki-data";
+    downloadFile(`leve-${baseName}-${todayISO()}.csv`, "\ufeff" + csv, "text/csv;charset=utf-8");
+    showToast("CSV ladattu", "ok");
+  });
+
+  // Export Markdown
+  const exportMdBtn = $("#btn-export-md");
+  if (exportMdBtn) exportMdBtn.addEventListener("click", () => {
+    const scope = $("#export-scope")?.value || "mesocycle";
+    const mesocycleId = $("#export-mesocycle")?.value || null;
+    if (scope !== "mesocycle" || !mesocycleId) {
+      showToast("Valitse 'Yksittäinen ohjelma'", "bad"); return;
+    }
+    const md = buildMesocycleMarkdown(mesocycleId);
+    const meso = (state.allMesocycles || []).find(m => m.mesocycleId === mesocycleId);
+    const baseName = (meso?.name || meso?.type || "ohjelma").replace(/[^\wäöåÄÖÅ-]+/g, "-");
+    downloadFile(`leve-raportti-${baseName}-${todayISO()}.md`, md, "text/markdown;charset=utf-8");
+    showToast("Raportti ladattu", "ok");
   });
 
   // Backup
@@ -2458,6 +2940,12 @@ async function startWorkout() {
         loadKg,
         progressSuggestion,
         sets: finalSets,
+        // Slot metadata (v4.11) for smart swap/lock UI
+        slotId: slot.slotId || null,
+        slotFunction: slot._resolvedFrom?.slotFunction || null,
+        slotSource: slot._resolvedFrom?.source || null,
+        slotVariantIndex: slot._resolvedFrom?.variantIndex ?? null,
+        slotVariants: slot._resolvedFrom?.availableVariants || null,
       });
     }
   } else {
@@ -2847,12 +3335,60 @@ function bindWorkoutEvents() {
     render();
   });
 
-  // Swap exercise
+  // Swap exercise (slot-aware in v4.11)
   const swapBtn = $("#btn-swap-exercise");
   if (swapBtn) swapBtn.addEventListener("click", async () => {
     const exercise = w.exercises[w.currentExerciseIdx];
     if (!exercise) return;
-    // Show same category movements first
+
+    // Slot-driven: offer slot variants first, then remainder of library
+    if (exercise.slotId && exercise.slotVariants?.length) {
+      const variants = exercise.slotVariants.filter(n => n !== exercise.name);
+      const variantMovs = variants.map(n => state.movements.find(m => m.name === n)).filter(Boolean);
+      const variantNames = new Set(variantMovs.map(m => m.name));
+      const sameCat = state.movements.filter(m =>
+        m.category === exercise.category && !variantNames.has(m.name) && m.name !== exercise.name
+      );
+      const others = state.movements.filter(m =>
+        m.category !== exercise.category && !variantNames.has(m.name) && m.name !== exercise.name
+      );
+      const opts = [...variantMovs, ...sameCat, ...others];
+      const idx = await showListModal(
+        `Vaihda ${exercise.slotFunction || exercise.name}`,
+        opts.map((m, i) => ({
+          icon: i < variantMovs.length ? "🎯" : m.category === exercise.category ? "✅" : "🔹",
+          label: m.name,
+          desc: i < variantMovs.length ? "Slot-variantti (sama funktio)" : m.category,
+        }))
+      );
+      if (idx !== null && idx >= 0 && idx < opts.length) {
+        const chosen = opts[idx];
+        exercise.name = chosen.name;
+        exercise.movementId = chosen.movementId;
+        exercise.category = chosen.category;
+        exercise.slotSource = "user-override";
+        // Persist override on mesocycle
+        if (state.mesocycle) {
+          if (!state.mesocycle.accessorySlotOverrides) state.mesocycle.accessorySlotOverrides = {};
+          const existing = state.mesocycle.accessorySlotOverrides[exercise.slotId] || {};
+          const variantIdx = exercise.slotVariants.indexOf(chosen.name);
+          state.mesocycle.accessorySlotOverrides[exercise.slotId] = {
+            ...existing,
+            movementName: chosen.name,
+            variantIndex: variantIdx >= 0 ? variantIdx : null,
+            locked: existing.locked || false,
+            swappedAt: todayISO(),
+            reason: "Käyttäjän valinta",
+          };
+          await saveMesocycle(state.mesocycle);
+          showToast(`Vaihdettu ${chosen.name} — tallennettu ohjelmaan`, "ok");
+        }
+        render();
+      }
+      return;
+    }
+
+    // Legacy path (non-slot exercises)
     const sameCategory = state.movements.filter(m => m.category === exercise.category && m.name !== exercise.name);
     const others = state.movements.filter(m => m.category !== exercise.category && m.name !== exercise.name);
     const options = [...sameCategory, ...others];
@@ -2870,6 +3406,28 @@ function bindWorkoutEvents() {
       exercise.category = options[idx].category;
       render();
     }
+  });
+
+  // Lock/unlock slot (v4.11)
+  const lockBtn = $("#btn-lock-slot");
+  if (lockBtn) lockBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const exercise = w.exercises[w.currentExerciseIdx];
+    if (!exercise?.slotId || !state.mesocycle) return;
+    if (!state.mesocycle.accessorySlotOverrides) state.mesocycle.accessorySlotOverrides = {};
+    const existing = state.mesocycle.accessorySlotOverrides[exercise.slotId] || {};
+    const newLocked = !existing.locked;
+    state.mesocycle.accessorySlotOverrides[exercise.slotId] = {
+      ...existing,
+      movementName: existing.movementName || exercise.name,
+      locked: newLocked,
+      variantIndex: existing.variantIndex ?? (exercise.slotVariants?.indexOf(exercise.name) ?? null),
+      swappedAt: existing.swappedAt || todayISO(),
+      reason: newLocked ? "Käyttäjä lukitsi" : "Käyttäjä vapautti",
+    };
+    await saveMesocycle(state.mesocycle);
+    showToast(newLocked ? `🔒 ${exercise.name} lukittu koko ohjelman ajaksi` : `🔓 ${exercise.name} vapautettu auto-swapille`, "ok");
+    render();
   });
 }
 
@@ -2972,8 +3530,8 @@ async function saveWorkoutToDb(sessionNotes = "") {
       actualVx: s.actualVx, targetVx: s.targetVx,
     }));
     const nowE1RMs = nowSets.map(s => isPrimary
-      ? e1rmSystem(bw, s.externalLoadKg, s.reps, s.actualVx ?? 2)
-      : e1rmAccessory(s.externalLoadKg, s.reps)
+      ? e1rmSystem(bw, s.externalLoadKg, s.reps, s.actualVx ?? 1)
+      : e1rmAccessory(s.externalLoadKg, s.reps, s.actualVx)
     ).filter(v => v !== null);
     const nowBest = nowE1RMs.length > 0 ? Math.max(...nowE1RMs) : 0;
     if (nowBest > prevBest && prevBest > 0) {

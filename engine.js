@@ -12,6 +12,7 @@ import {
   getAllMesocycles,
   PULL_VOLUME_CATEGORIES,
   VARIANT_DAY_TYPE_MAP,
+  ACCESSORY_SLOT_CATALOG,
 } from "./data.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -93,7 +94,8 @@ function roundToHalf(value) {
 function e1rmSystem(bodyweightKg, externalLoadKg, reps, vara) {
   const systemLoad = bodyweightKg + externalLoadKg;
   if (systemLoad <= 0 || reps < 1) return null;
-  const effectiveReps = reps + (vara ?? 2);
+  // Vx ??= 1: käyttäjällä grinding-taipumus, tyhjä raportointi tarkoittaa tyypillisesti V0-V1
+  const effectiveReps = reps + (vara ?? 1);
   return systemLoad * (1 + effectiveReps / 30);
 }
 
@@ -107,12 +109,14 @@ function e1rmExternal(bodyweightKg, externalLoadKg, reps, vara) {
 }
 
 /**
- * Accessory e1RM: simple Epley without system load logic
- * e1RM = weight × (1 + reps / 30)
+ * Accessory / external-load e1RM.
+ * Ilman Vx:ää: simple Epley = weight × (1 + reps / 30)
+ * Vx annettu: Epley-Vara = weight × (1 + (reps + Vx) / 30)
  */
-function e1rmAccessory(weightKg, reps) {
+function e1rmAccessory(weightKg, reps, vara = null) {
   if (weightKg <= 0 || reps < 1) return null;
-  return weightKg * (1 + reps / 30);
+  const effectiveReps = reps + (vara ?? 0);
+  return weightKg * (1 + effectiveReps / 30);
 }
 
 /**
@@ -789,9 +793,9 @@ async function recommend(options = {}) {
   const recentTopSets = topSets.slice(-6);
   const e1rmValues = recentTopSets
     .map((s) => {
-      const vara = s.actualVx ?? s.targetVx ?? 2;
+      const vara = s.actualVx ?? s.targetVx ?? 1;
       if (isBarbell) {
-        return e1rmAccessory(s.externalLoadKg || 0, s.reps || s.targetReps || 3);
+        return e1rmAccessory(s.externalLoadKg || 0, s.reps || s.targetReps || 3, vara);
       }
       return e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || s.targetReps || 3, vara);
     })
@@ -979,6 +983,27 @@ async function recommend(options = {}) {
     })};
   }
 
+  // 15b. Resolve accessory slots (slotId → phase-appropriate movement, honoring overrides + stagnation)
+  if (dayPlan && dayPlan.slots && dayPlan.slots.some(s => s.slotId)) {
+    const allMovements = options.allMovements || (await getAllMovements());
+    const movementsByName = {};
+    for (const m of allMovements) movementsByName[m.name] = m;
+    const progressByMovementId = {};
+    for (const m of allMovements) {
+      const p = await getMovementProgress(m.movementId);
+      if (p) progressByMovementId[m.movementId] = p;
+    }
+    dayPlan = resolveDayPlanSlots(dayPlan, {
+      mesocycle, weekNum, movementsByName, progressByMovementId,
+    });
+    const swaps = dayPlan.slots.filter(s => s._resolvedFrom?.source === "stagnation-swap");
+    if (swaps.length) {
+      trace("ACCESSORY_SWAP_AUTO", {},
+        { count: swaps.length, slots: swaps.map(s => s._resolvedFrom.slotId) },
+        `Automaattinen tukiliikevaihto stagnaation perusteella (${swaps.length} liikettä)`);
+    }
+  }
+
   // 16. Enrich dayPlan with variant names (if not already assigned from mesocycle)
   if (dayPlan && dayPlan.slots) {
     const variantMap = VARIANT_DAY_TYPE_MAP[dayType] || VARIANT_DAY_TYPE_MAP.heavy;
@@ -1076,7 +1101,7 @@ function weeklyStimulus(sets, movements) {
       pullVolumeTonnage += tonnage;
     }
 
-    const effectiveReps = reps + (s.actualVx ?? s.targetVx ?? 2);
+    const effectiveReps = reps + (s.actualVx ?? s.targetVx ?? 1);
     if (effectiveReps <= 4) heavyExposures++;
 
     if (!byCategory[category]) byCategory[category] = { sets: 0, tonnage: 0 };
@@ -1113,6 +1138,180 @@ function checkStagnation(progress) {
     severity: "yellow",
     message: `${progress.stagnationWeeks} viikkoa ilman edistystä — harkitse liikkeen vaihtoa`,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ACCESSORY SLOT RESOLUTION (v4.11)
+// Each accessory slot has a function (role) + phase variants. Engine resolves
+// movement at render time: priority 1) user lock, 2) user soft-override,
+// 3) stagnation-advanced variant, 4) phase default (variant index 0).
+// ═══════════════════════════════════════════════════════════════
+
+function phaseForWeek(weekNum) {
+  if (weekNum <= 4)  return "foundation";
+  if (weekNum <= 8)  return "strength";
+  if (weekNum <= 12) return "intensity";
+  return "peaking";
+}
+
+/**
+ * Resolve an accessory slot into a concrete movement + rep scheme.
+ *
+ * @param {object} slot — slot object from weekPlan.days[].slots[]. Must have slotId to be resolvable.
+ * @param {object} ctx — { mesocycle, weekNum, movementsByName, progressByMovementId }
+ * @returns {object} { movementName, sets, reps, targetVx, note, source, variantIndex, slotFunction }
+ *   source: "legacy" | "user-locked" | "user-override" | "stagnation-swap" | "phase-default" | "fallback"
+ */
+function resolveAccessorySlot(slot, ctx = {}) {
+  const { mesocycle, weekNum, movementsByName, progressByMovementId } = ctx;
+
+  // Legacy slot without slotId — fall through untouched
+  if (!slot?.slotId) {
+    return {
+      movementName: slot.defaultMovementName,
+      sets: slot.sets, reps: slot.reps, targetVx: slot.targetVx,
+      note: slot.note,
+      source: "legacy",
+      variantIndex: null,
+      slotFunction: null,
+    };
+  }
+
+  const catalog = ACCESSORY_SLOT_CATALOG?.[slot.slotId];
+  if (!catalog) {
+    return {
+      movementName: slot.defaultMovementName,
+      sets: slot.sets, reps: slot.reps, targetVx: slot.targetVx,
+      note: slot.note,
+      source: "fallback",
+      variantIndex: null,
+      slotFunction: null,
+    };
+  }
+
+  const phase = phaseForWeek(weekNum || 1);
+  const variants = catalog.phaseVariants?.[phase] || [];
+  const phaseRep = catalog.repScheme?.[phase] || null;
+
+  // Phase may have no variants (e.g. knee-unilateral during peaking) → drop slot
+  if (!variants.length) {
+    return { movementName: null, sets: 0, reps: 0, targetVx: null,
+             source: "dropped-for-phase", variantIndex: null, slotFunction: catalog.function };
+  }
+
+  const overrides = mesocycle?.accessorySlotOverrides || {};
+  const ov = overrides[slot.slotId];
+
+  // Honor hard lock absolutely
+  if (ov?.locked && ov.movementName) {
+    return {
+      movementName: ov.movementName,
+      sets:    phaseRep?.sets    ?? slot.sets,
+      reps:    phaseRep?.reps    ?? slot.reps,
+      targetVx: phaseRep?.targetVx ?? slot.targetVx,
+      note: ov.reason || phaseRep?.note || slot.note,
+      source: "user-locked",
+      variantIndex: variants.indexOf(ov.movementName),
+      slotFunction: catalog.function,
+    };
+  }
+
+  // Determine variant index: user-picked, stagnation-advanced, or 0
+  let idx = 0;
+  let source = "phase-default";
+  let reason = null;
+
+  if (Number.isInteger(ov?.variantIndex)) {
+    idx = Math.max(0, Math.min(variants.length - 1, ov.variantIndex));
+    source = "user-override";
+    reason = ov.reason || null;
+  } else if (ov?.movementName && variants.includes(ov.movementName)) {
+    idx = variants.indexOf(ov.movementName);
+    source = "user-override";
+    reason = ov.reason || null;
+  } else {
+    // Auto: stagnation on default variant → advance
+    const defaultMov = movementsByName?.[variants[0]];
+    if (defaultMov && progressByMovementId) {
+      const prog = progressByMovementId[defaultMov.movementId];
+      if (prog && prog.stagnationWeeks >= 3 && variants.length > 1) {
+        idx = 1;
+        source = "stagnation-swap";
+        reason = `Stagnaatio ${prog.stagnationWeeks} vk — vaihto variantin 2 liikkeeseen`;
+      }
+    }
+  }
+
+  return {
+    movementName: variants[idx],
+    sets:    phaseRep?.sets    ?? slot.sets    ?? 3,
+    reps:    phaseRep?.reps    ?? slot.reps    ?? 8,
+    targetVx: phaseRep?.targetVx ?? slot.targetVx ?? null,
+    note: phaseRep?.note || slot.note || reason,
+    source,
+    variantIndex: idx,
+    slotFunction: catalog.function,
+    availableVariants: variants,
+    reason,
+  };
+}
+
+/**
+ * Resolve all accessory slots in a dayPlan; return new dayPlan with resolved slots.
+ * Drops slots whose phase has no variants (e.g. unilateral during peaking).
+ * Preserves primary/backoff/secondary slots as-is (they never have slotId).
+ */
+function resolveDayPlanSlots(dayPlan, ctx) {
+  if (!dayPlan?.slots) return dayPlan;
+  const resolvedSlots = [];
+  for (const slot of dayPlan.slots) {
+    if (!slot.slotId) { resolvedSlots.push(slot); continue; }
+    const r = resolveAccessorySlot(slot, ctx);
+    if (r.source === "dropped-for-phase" || !r.movementName) continue;
+    resolvedSlots.push({
+      ...slot,
+      defaultMovementName: r.movementName,
+      sets: r.sets,
+      reps: r.reps,
+      targetVx: r.targetVx,
+      note: r.note || slot.note,
+      _resolvedFrom: { slotId: slot.slotId, source: r.source, variantIndex: r.variantIndex,
+                      availableVariants: r.availableVariants, slotFunction: r.slotFunction },
+    });
+  }
+  return { ...dayPlan, slots: resolvedSlots };
+}
+
+/**
+ * Compute stagnation-driven swap suggestions for the whole mesocycle.
+ * Returns list of { slotId, currentMovement, suggestedMovement, reason }.
+ * Used for decision-trace logging + surfacing suggestions to the user.
+ */
+function suggestAccessorySwaps(mesocycle, weekNum, movementsByName, progressByMovementId) {
+  const suggestions = [];
+  const phase = phaseForWeek(weekNum || 1);
+  const overrides = mesocycle?.accessorySlotOverrides || {};
+
+  for (const [slotId, catalog] of Object.entries(ACCESSORY_SLOT_CATALOG)) {
+    if (overrides[slotId]?.locked) continue; // respect lock
+    const variants = catalog.phaseVariants?.[phase] || [];
+    if (variants.length < 2) continue;
+    const currentIdx = overrides[slotId]?.variantIndex ?? 0;
+    const currentName = variants[Math.min(currentIdx, variants.length - 1)];
+    const mov = movementsByName?.[currentName];
+    const prog = mov ? progressByMovementId?.[mov.movementId] : null;
+    if (prog && prog.stagnationWeeks >= 3 && currentIdx < variants.length - 1) {
+      suggestions.push({
+        slotId,
+        slotFunction: catalog.function,
+        currentMovement: currentName,
+        suggestedMovement: variants[currentIdx + 1],
+        stagnationWeeks: prog.stagnationWeeks,
+        reason: `${prog.stagnationWeeks} vk stagnaatio — vaihto seuraavaan varianttiin`,
+      });
+    }
+  }
+  return suggestions;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1383,11 +1582,11 @@ function computeMovementE1RM(movementSets, isPrimary, bodyweightKg) {
   if (!recent.length) return null;
 
   const values = recent.map((s) => {
+    const vara = s.actualVx ?? s.targetVx ?? 1;
     if (isPrimary) {
-      const vara = s.actualVx ?? s.targetVx ?? 2;
       return e1rmSystem(bodyweightKg, s.externalLoadKg, s.reps, vara);
     } else {
-      return e1rmAccessory(s.externalLoadKg, s.reps);
+      return e1rmAccessory(s.externalLoadKg, s.reps, vara);
     }
   }).filter((v) => v !== null);
 
@@ -1406,12 +1605,12 @@ function computeMovementE1RMHistory(movementSets, sessions, isPrimary, bodyweigh
     const session = sessionMap.get(s.sessionId);
     if (!session) continue;
 
+    const vara = s.actualVx ?? s.targetVx ?? 1;
     let e1rm;
     if (isPrimary) {
-      const vara = s.actualVx ?? s.targetVx ?? 2;
       e1rm = e1rmSystem(bodyweightKg, s.externalLoadKg, s.reps, vara);
     } else {
-      e1rm = e1rmAccessory(s.externalLoadKg, s.reps);
+      e1rm = e1rmAccessory(s.externalLoadKg, s.reps, vara);
     }
 
     if (e1rm !== null) {
@@ -1598,15 +1797,24 @@ async function recommendPeaking(options = {}) {
     .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
 
   const recentTopSets = topSets.slice(-6);
+  // Detect barbell-only lift (squat): no bodyweight added to system load
+  const peakingPrimarySlot = dayPlan?.slots?.find(s => s.role === "primary");
+  const isBarbellPeaking = peakingPrimarySlot?.isBarbell === true
+    || options.primaryLoadType === "external";
   const e1rmValues = recentTopSets
     .map(s => {
-      const vara = s.actualVx ?? s.targetVx ?? 2;
-      return e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || s.targetReps || 3, vara);
+      const vara = s.actualVx ?? s.targetVx ?? 1;
+      return isBarbellPeaking
+        ? e1rmAccessory(s.externalLoadKg || 0, s.reps || s.targetReps || 3, vara)
+        : e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || s.targetReps || 3, vara);
     })
     .filter(v => v !== null);
 
   const currentE1RMSystem = e1rmValues.length > 0 ? median(e1rmValues) : null;
-  const currentE1RMExternal = currentE1RMSystem !== null ? Math.max(0, currentE1RMSystem - bodyweightKg) : null;
+  // Barbell: external = system (ei BW-vähennystä). Muut: sys - BW.
+  const currentE1RMExternal = currentE1RMSystem !== null
+    ? (isBarbellPeaking ? currentE1RMSystem : Math.max(0, currentE1RMSystem - bodyweightKg))
+    : null;
 
   // Use peakingConfig e1RM if no computed e1RM
   const useE1RM = currentE1RMExternal || mesocycle.peakingConfig?.e1rmExternal || 93;
@@ -1790,6 +1998,11 @@ export {
   weeklyStimulus,
   // Stagnation
   checkStagnation,
+  // Accessory slot resolution (v4.11)
+  phaseForWeek,
+  resolveAccessorySlot,
+  resolveDayPlanSlots,
+  suggestAccessorySwaps,
   // Default plan
   generateDefaultDayPlan,
   // Readiness test

@@ -114,7 +114,271 @@ const PRESET_MOVEMENTS = [
   { name: "Muscle-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, isCompetitionLift: true, loadType: "system" },
   { name: "Lisäpainodippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true, isCompetitionLift: true, loadType: "system" },
   { name: "Takakyykky", category: "alaraaja", isPrimary: false, isPreset: true, isCompetitionLift: true, loadType: "external" },
+  // ─── Streetlifting-spesifiset tukiliikkeet (v4.11) ───
+  { name: "Leuanveto chest-to-bar", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "False grip pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "False grip row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
+  { name: "Archer pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Scapular pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Band-assisted muscle-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Räjähtävä leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Pendlay row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
+  { name: "Weighted inverted row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
+  { name: "Ring dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Close-grip dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Straight bar dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Russian dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Close-grip bench", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "L-sit hold", category: "core", isPrimary: false, isPreset: true },
+  { name: "Hollow body hold", category: "core", isPrimary: false, isPreset: true },
+  { name: "Front-foot elevated split squat", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Paused squat", category: "alaraaja", isPrimary: false, isPreset: true },
 ];
+
+// ─── Accessory slot catalog (v4.11) ──────────────────────────────
+// Each slot represents a FUNCTION (what biomechanical role it fills),
+// not a fixed movement. Phase variants rotate only at block boundaries or
+// on detected stagnation — otherwise stay persistent so adaptation compounds.
+//
+// Phase order: foundation (vk 1-4), strength (vk 5-8), intensity (vk 9-12), peaking (vk 13-16).
+// First item in each phase = default. If stagnation detected, engine advances index.
+const ACCESSORY_SLOT_CATALOG = {
+  // ─── PULL PATTERNS ───
+  "pull-horizontal-heavy": {
+    function: "Raskas horisontaaliveto, selän paksuus",
+    phaseVariants: {
+      foundation: ["Chest-supported row", "Seal row", "T-bar row"],
+      strength:   ["Pendlay row", "T-bar row", "Chest-supported row"],
+      intensity:  ["Pendlay row", "Chest-supported row"],
+      peaking:    ["Chest-supported row"],
+    },
+    repScheme: {
+      foundation: { sets: 4, reps: 8, targetVx: null },
+      strength:   { sets: 4, reps: 6, targetVx: 3 },
+      intensity:  { sets: 3, reps: 5, targetVx: 2 },
+      peaking:    { sets: 2, reps: 6, targetVx: 4 },
+    },
+  },
+  "pull-vertical-explosive": {
+    function: "Räjähtävä veto, speed-strength leuanvetoon",
+    phaseVariants: {
+      foundation: ["Räjähtävä leuka", "Leuanveto chest-to-bar"],
+      strength:   ["Leuanveto chest-to-bar", "Archer pull-up"],
+      intensity:  ["Archer pull-up", "Leuanveto chest-to-bar"],
+      peaking:    ["Räjähtävä leuka"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 5, targetVx: 3 },
+      strength:   { sets: 3, reps: 4, targetVx: 3 },
+      intensity:  { sets: 3, reps: 3, targetVx: 3 },
+      peaking:    { sets: 2, reps: 3, targetVx: 4 },
+    },
+  },
+  "scapular-control": {
+    function: "Lapa- ja takaolka, prehab + asennonhallinta",
+    phaseVariants: {
+      foundation: ["Face pull", "Scapular pull-up"],
+      strength:   ["Face pull", "Scapular pull-up"],
+      intensity:  ["Face pull"],
+      peaking:    ["Face pull"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 15, targetVx: null },
+      strength:   { sets: 3, reps: 12, targetVx: null },
+      intensity:  { sets: 2, reps: 12, targetVx: null },
+      peaking:    { sets: 2, reps: 15, targetVx: null },
+    },
+  },
+  "bicep-chain": {
+    function: "Hauiskoukistajat, vetovoiman tuki",
+    phaseVariants: {
+      foundation: ["Hauiskääntö tanko", "Preacher curl", "Incline curl"],
+      strength:   ["Hauiskääntö tanko", "Hauiskääntö käsipainot", "Hammer curl"],
+      intensity:  ["Hammer curl", "Hauiskääntö tanko"],
+      peaking:    ["Hauiskääntö käsipainot"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 12, targetVx: null },
+      strength:   { sets: 3, reps: 10, targetVx: null },
+      intensity:  { sets: 2, reps: 10, targetVx: null },
+      peaking:    { sets: 2, reps: 12, targetVx: null },
+    },
+  },
+
+  // ─── PUSH PATTERNS ───
+  "bench-heavy": {
+    function: "Kapean otteen rintapunnerrus, ojentajan veto",
+    phaseVariants: {
+      foundation: ["Penkkipunnerrus", "Close-grip bench", "Vinopenkkipunnerrus"],
+      strength:   ["Close-grip bench", "Penkkipunnerrus"],
+      intensity:  ["Close-grip bench"],
+      peaking:    ["Penkkipunnerrus"],
+    },
+    repScheme: {
+      foundation: { sets: 4, reps: 6, targetVx: 3, note: "kapea ote" },
+      strength:   { sets: 4, reps: 5, targetVx: 3 },
+      intensity:  { sets: 3, reps: 4, targetVx: 2 },
+      peaking:    { sets: 2, reps: 5, targetVx: 4 },
+    },
+  },
+  "shoulder-vertical": {
+    function: "Vertikaalityöntö, hartiaseudun voima",
+    phaseVariants: {
+      foundation: ["Pystypunnerrus", "Pystypunnerrus käsipainot", "Shoulder press laite"],
+      strength:   ["Pystypunnerrus", "Pystypunnerrus käsipainot"],
+      intensity:  ["Pystypunnerrus käsipainot", "Shoulder press laite"],
+      peaking:    ["Shoulder press laite"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 8, targetVx: null },
+      strength:   { sets: 3, reps: 6, targetVx: 3 },
+      intensity:  { sets: 3, reps: 5, targetVx: 2 },
+      peaking:    { sets: 2, reps: 8, targetVx: 4 },
+    },
+  },
+  "tricep-lockout": {
+    function: "Ojentajan lockout, dipin lukitusvoima",
+    phaseVariants: {
+      foundation: ["Tricep pushdown", "Overhead tricep ext"],
+      strength:   ["Skull crusher", "Close-grip bench"],
+      intensity:  ["Skull crusher", "Tricep pushdown"],
+      peaking:    ["Tricep pushdown"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 12, targetVx: null },
+      strength:   { sets: 3, reps: 8, targetVx: null },
+      intensity:  { sets: 3, reps: 8, targetVx: null },
+      peaking:    { sets: 2, reps: 12, targetVx: null },
+    },
+  },
+  "shoulder-isolation": {
+    function: "Deltoideusten isolaatio",
+    phaseVariants: {
+      foundation: ["Sivunosto", "Lateral raise kone"],
+      strength:   ["Sivunosto", "Lateral raise kone"],
+      intensity:  ["Lateral raise kone"],
+      peaking:    ["Sivunosto"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 15, targetVx: null },
+      strength:   { sets: 3, reps: 12, targetVx: null },
+      intensity:  { sets: 2, reps: 12, targetVx: null },
+      peaking:    { sets: 2, reps: 15, targetVx: null },
+    },
+  },
+
+  // ─── LOWER ───
+  "hip-hinge": {
+    function: "Lonkkahinge, takaketju",
+    phaseVariants: {
+      foundation: ["Maastaveto", "Hip thrust"],
+      strength:   ["Maastaveto", "Hip thrust"],
+      intensity:  ["Maastaveto"],
+      peaking:    ["Hip thrust"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 8, targetVx: null, note: "RDL" },
+      strength:   { sets: 3, reps: 6, targetVx: 3, note: "RDL" },
+      intensity:  { sets: 3, reps: 5, targetVx: 2, note: "RDL" },
+      peaking:    { sets: 2, reps: 8, targetVx: 4 },
+    },
+  },
+  "knee-dominant-accessory": {
+    function: "Polven ekstensio, quadien volyymi",
+    phaseVariants: {
+      foundation: ["Jalkaprässi", "Leg extension"],
+      strength:   ["Jalkaprässi", "Paused squat"],
+      intensity:  ["Paused squat", "Jalkaprässi"],
+      peaking:    ["Jalkaprässi"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 10, targetVx: null },
+      strength:   { sets: 3, reps: 8, targetVx: null },
+      intensity:  { sets: 3, reps: 6, targetVx: 2 },
+      peaking:    { sets: 2, reps: 10, targetVx: 4 },
+    },
+  },
+  "knee-unilateral": {
+    function: "Yksijalkaisuus, asymmetrian hallinta",
+    phaseVariants: {
+      foundation: ["Bulgarian split squat", "Front-foot elevated split squat"],
+      strength:   ["Bulgarian split squat"],
+      intensity:  ["Bulgarian split squat"],
+      peaking:    [],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 10, targetVx: null },
+      strength:   { sets: 3, reps: 8, targetVx: null },
+      intensity:  { sets: 2, reps: 8, targetVx: null },
+      peaking:    null,
+    },
+  },
+  "hamstring-isolation": {
+    function: "Takareiden isolaatio",
+    phaseVariants: {
+      foundation: ["Leg curl"],
+      strength:   ["Leg curl"],
+      intensity:  ["Leg curl"],
+      peaking:    ["Leg curl"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 12, targetVx: null },
+      strength:   { sets: 3, reps: 10, targetVx: null },
+      intensity:  { sets: 2, reps: 10, targetVx: null },
+      peaking:    { sets: 2, reps: 12, targetVx: null },
+    },
+  },
+
+  // ─── MU-SPESIFI (LA-päivä) ───
+  "mu-transition": {
+    function: "Muscle-up -transition, false grip + räjähtävä veto",
+    phaseVariants: {
+      foundation: ["False grip row", "Leuanveto chest-to-bar"],
+      strength:   ["Band-assisted muscle-up", "False grip row"],
+      intensity:  ["Band-assisted muscle-up", "Räjähtävä leuka"],
+      peaking:    ["Räjähtävä leuka"],
+    },
+    repScheme: {
+      foundation: { sets: 4, reps: 5, targetVx: 3 },
+      strength:   { sets: 3, reps: 4, targetVx: 3 },
+      intensity:  { sets: 3, reps: 3, targetVx: 3 },
+      peaking:    { sets: 2, reps: 3, targetVx: 4 },
+    },
+  },
+  "mu-dip-support": {
+    function: "MU:n lukitus — dippi-spesifi",
+    phaseVariants: {
+      foundation: ["Lisäpainodippi", "Ring dip"],
+      strength:   ["Lisäpainodippi", "Russian dip"],
+      intensity:  ["Straight bar dip", "Lisäpainodippi"],
+      peaking:    ["Lisäpainodippi"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 8, targetVx: 3, note: "Kevyt — prehab" },
+      strength:   { sets: 3, reps: 5, targetVx: 3 },
+      intensity:  { sets: 2, reps: 4, targetVx: 3 },
+      peaking:    { sets: 2, reps: 5, targetVx: 4 },
+    },
+  },
+
+  // ─── CORE ───
+  "core-hollow": {
+    function: "Hollow body / L-sit, MU:n keskivartalon lukitus",
+    phaseVariants: {
+      foundation: ["Ab wheel rollout", "Hollow body hold"],
+      strength:   ["L-sit hold", "Hanging leg raise"],
+      intensity:  ["L-sit hold", "Ab wheel rollout"],
+      peaking:    ["Hollow body hold"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 10, targetVx: null },
+      strength:   { sets: 3, reps: 8, targetVx: null, note: "Holdit 10-20 s" },
+      intensity:  { sets: 2, reps: 8, targetVx: null },
+      peaking:    { sets: 2, reps: 10, targetVx: null },
+    },
+  },
+};
+
 
 // ── Primary variants ──
 const PRIMARY_VARIANTS = [
@@ -610,6 +874,60 @@ async function saveBodyweightEntry(weightKg, dateISO) {
     valueTransformed: weightKg,
     source: "manual",
   });
+}
+
+// ── PRs (stored in measurements with type:"pr") ──
+async function getAllPRs() {
+  return getMeasurementsByType("pr");
+}
+
+async function savePR(pr) {
+  if (!pr.measurementId) pr.measurementId = uid();
+  pr.type = "pr";
+  if (!pr.source) pr.source = "manual";
+  return dbPut(STORES.measurements, pr);
+}
+
+async function deletePR(measurementId) {
+  return dbDelete(STORES.measurements, measurementId);
+}
+
+const HISTORICAL_PRS_SEED = [
+  { dateISO: "2025-04-04", movementName: "Lisäpainoleuanveto", value: 97, bodyweightKg: null, context: "Leuanvetofokus-kausi (ennen voimanostoblokkia)", isCompetition: false },
+  { dateISO: "2025-08-02", movementName: "Penkkipunnerrus",    value: 170, bodyweightKg: 90, context: "Voimanostokisa 1", isCompetition: true },
+  { dateISO: "2025-09-27", movementName: "Penkkipunnerrus",    value: 180, bodyweightKg: 90, context: "Voimanostokisa 2", isCompetition: true },
+  { dateISO: "2025-09-27", movementName: "Takakyykky",          value: 200, bodyweightKg: 90, context: "Voimanostokisa 2", isCompetition: true },
+  { dateISO: "2025-09-27", movementName: "Maastaveto",          value: 235, bodyweightKg: 90, context: "Voimanostokisa 2", isCompetition: true },
+  { dateISO: "2026-04-13", movementName: "Lisäpainoleuanveto", value: 98, bodyweightKg: 90.3, context: "Maanantain testi (kisaa edeltävä)", isCompetition: false },
+  { dateISO: "2026-04-18", movementName: "Lisäpainoleuanveto", value: 94, bodyweightKg: 88.5, context: "Leuanvetokisa 2026", isCompetition: true },
+];
+
+async function seedHistoricalPRsIfNeeded() {
+  const meta = (await getAppMeta()) || { key: "meta" };
+  if (meta.prsSeeded) return { seeded: false, count: 0 };
+  const existing = await getAllPRs();
+  if (existing.length > 0) {
+    meta.prsSeeded = true;
+    await dbPut(STORES.appMeta, meta);
+    return { seeded: false, count: 0 };
+  }
+  let count = 0;
+  for (const pr of HISTORICAL_PRS_SEED) {
+    await savePR({
+      type: "pr",
+      dateISO: pr.dateISO,
+      movementName: pr.movementName,
+      value: pr.value,
+      bodyweightKg: pr.bodyweightKg,
+      context: pr.context,
+      isCompetition: pr.isCompetition,
+      source: "seed",
+    });
+    count++;
+  }
+  meta.prsSeeded = true;
+  await dbPut(STORES.appMeta, meta);
+  return { seeded: true, count };
 }
 
 // Mesocycles
@@ -1949,29 +2267,43 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   const d = kg => Math.round(Math.max(0, kg * dS) * 4) / 4;
   const k = kg => Math.round(Math.max(0, kg * kS) / 2.5) * 2.5; // nearest 2.5 kg
 
-  // ─── Shared accessory slot arrays ───
-  const pullAcc = (sets4 = 4) => [
-    { role:"accessory", category:"vertikaaliveto",    defaultMovementName:"Leuanveto chest-to-bar",  sets:3, reps:5,  targetVx:3 },
-    { role:"accessory", category:"horisontaaliveto",  defaultMovementName:"Chest-supported row",     sets:sets4, reps:8, targetVx:null },
-    { role:"accessory", category:"hauisfleksio",      defaultMovementName:"Hauiskääntö tanko",        sets:3, reps:12, targetVx:null },
-    { role:"accessory", category:"horisontaaliveto",  defaultMovementName:"Face pull",               sets:3, reps:15, targetVx:null },
+  // ─── Slot-driven accessory arrays (v4.11) ───
+  // Each slot carries slotId → engine resolves movement + rep scheme at render time
+  // based on current phase + mesocycle overrides + stagnation signals.
+  // The defaultMovementName here is a fallback for legacy renderers and initial view.
+  const slotAccessory = (slotId, category, fallbackName, overrides = {}) => ({
+    role: "accessory",
+    slotId,
+    category,
+    defaultMovementName: fallbackName,
+    // repScheme is resolved per phase by engine; these are foundation-phase defaults.
+    sets: overrides.sets ?? 3,
+    reps: overrides.reps ?? 10,
+    targetVx: overrides.targetVx ?? null,
+    ...(overrides.note ? { note: overrides.note } : {}),
+  });
+
+  const pullAcc = () => [
+    slotAccessory("pull-vertical-explosive", "vertikaaliveto",   "Leuanveto chest-to-bar", { sets:3, reps:5,  targetVx:3 }),
+    slotAccessory("pull-horizontal-heavy",   "horisontaaliveto", "Chest-supported row",    { sets:4, reps:8 }),
+    slotAccessory("bicep-chain",             "hauisfleksio",     "Hauiskääntö tanko",       { sets:3, reps:12 }),
+    slotAccessory("scapular-control",        "horisontaaliveto", "Face pull",              { sets:3, reps:15 }),
   ];
   const lowerAcc = () => [
-    { role:"accessory", category:"alaraaja", defaultMovementName:"Maastaveto",           sets:3, reps:8,  targetVx:null, note:"RDL" },
-    { role:"accessory", category:"alaraaja", defaultMovementName:"Jalkaprässi",          sets:3, reps:10, targetVx:null },
-    { role:"accessory", category:"alaraaja", defaultMovementName:"Bulgarian split squat",sets:3, reps:10, targetVx:null },
-    { role:"accessory", category:"alaraaja", defaultMovementName:"Leg curl",             sets:3, reps:12, targetVx:null },
+    slotAccessory("hip-hinge",                  "alaraaja", "Maastaveto",              { sets:3, reps:8,  note:"RDL" }),
+    slotAccessory("knee-dominant-accessory",    "alaraaja", "Jalkaprässi",             { sets:3, reps:10 }),
+    slotAccessory("knee-unilateral",            "alaraaja", "Bulgarian split squat",   { sets:3, reps:10 }),
+    slotAccessory("hamstring-isolation",        "alaraaja", "Leg curl",                { sets:3, reps:12 }),
   ];
-  const pushAcc = (benchSets = 4) => [
-    { role:"accessory", category:"horisontaalityöntö", defaultMovementName:"Penkkipunnerrus",   sets:benchSets, reps:6,  targetVx:3, note:"kapea ote" },
-    { role:"accessory", category:"vertikaalityöntö",   defaultMovementName:"Pystypunnerrus",    sets:3, reps:8,  targetVx:null },
-    { role:"accessory", category:"ojentajaekstensio",  defaultMovementName:"Tricep pushdown",   sets:3, reps:12, targetVx:null },
-    { role:"accessory", category:"vertikaalityöntö",   defaultMovementName:"Sivunosto",         sets:3, reps:15, targetVx:null },
+  const pushAcc = () => [
+    slotAccessory("bench-heavy",         "horisontaalityöntö", "Penkkipunnerrus",    { sets:4, reps:6,  targetVx:3, note:"kapea ote" }),
+    slotAccessory("shoulder-vertical",   "vertikaalityöntö",   "Pystypunnerrus",     { sets:3, reps:8 }),
+    slotAccessory("tricep-lockout",      "ojentajaekstensio",  "Tricep pushdown",    { sets:3, reps:12 }),
+    slotAccessory("shoulder-isolation",  "vertikaalityöntö",   "Sivunosto",          { sets:3, reps:15 }),
   ];
   const mixAcc = () => [
-    { role:"accessory", category:"horisontaaliveto", defaultMovementName:"Chest-supported row", sets:3, reps:10, targetVx:null },
-    { role:"accessory", category:"core",             defaultMovementName:"Ab wheel rollout",    sets:3, reps:10, targetVx:null },
-    { role:"accessory", category:"horisontaaliveto", defaultMovementName:"Face pull",           sets:2, reps:15, targetVx:null },
+    slotAccessory("core-hollow",     "core",             "Ab wheel rollout",   { sets:3, reps:10 }),
+    slotAccessory("scapular-control","horisontaaliveto", "Face pull",          { sets:2, reps:15 }),
   ];
 
   // ─── Day builders ───
@@ -1995,7 +2327,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         { name: "Face pull", desc: "2×15, kevyt — hartiat ja lapaluut liikkeeseen" },
         { name: "Scapular hang", desc: "3×10 s, lapa-aktivaatio ennen vetoja" },
       ],
-      slots:[...slots, ...pullAcc(sets >= 5 ? 3 : 4)] };
+      slots:[...slots, ...pullAcc()] };
   }
 
   function tiDay(label, sets, reps, vx, kLoad, topSingle) {
@@ -2037,7 +2369,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         { name: "Face pull", desc: "2×15, kevyt — hartiakapselit liikkeeseen" },
         { name: "Band pull-apart", desc: "2×15, takaolka auki" },
       ],
-      slots:[...slots, ...pushAcc(sets >= 5 ? 3 : 4)] };
+      slots:[...slots, ...pushAcc()] };
   }
 
   function laDay(label, muLoad, muSets, muNote, muVx) {
@@ -2047,10 +2379,8 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         sets:muSets || 5, reps:isSkill ? 3 : 1, targetVx:isSkill ? null : (muVx ?? null),
         suggestedLoadKg:muLoad, competitionLift:true, muSkillPhase:isSkill,
         note:muNote || (isSkill ? "Skill: eksentriset + transitiot + banded" : `+${muLoad} kg`) },
-      { role:"accessory", category:"vertikaaliveto", defaultMovementName:"Lisäpainoleuanveto",
-        sets:4, reps:isSkill ? 8 : 5, targetVx:3, note:"Kevyt — nopeus" },
-      { role:"accessory", category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
-        sets:3, reps:isSkill ? 8 : 5, targetVx:3, note:"Kevyt — prehab" },
+      slotAccessory("mu-transition",   "vertikaaliveto",     "Leuanveto chest-to-bar", { sets:4, reps:isSkill?8:5, targetVx:3, note:"Kevyt — nopeus" }),
+      slotAccessory("mu-dip-support",  "horisontaalityöntö", "Lisäpainodippi",         { sets:3, reps:isSkill?8:5, targetVx:3, note:"Kevyt — prehab" }),
       ...mixAcc(),
     ];
     return { dayOfWeek:6, dayType:"volume", label:label || "LA — Muscle-up + Kevyt",
@@ -2245,6 +2575,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     ],
     weekPlans,
     postCycleAnalysis: null,
+    accessorySlotOverrides: {}, // { [slotId]: { movementName, locked, variantIndex, reason, swappedAt } }
   };
 }
 
@@ -2258,6 +2589,7 @@ export {
   CATEGORIES,
   PULL_VOLUME_CATEGORIES,
   PRESET_MOVEMENTS,
+  ACCESSORY_SLOT_CATALOG,
   PRIMARY_VARIANTS,
   VARIANT_DAY_TYPE_MAP,
   // Utilities
@@ -2316,6 +2648,11 @@ export {
   saveMeasurement,
   getLatestBodyweight,
   saveBodyweightEntry,
+  // PRs
+  getAllPRs,
+  savePR,
+  deletePR,
+  seedHistoricalPRsIfNeeded,
   // Mesocycles
   MESOCYCLE_TEMPLATES,
   getAllMesocycles,
