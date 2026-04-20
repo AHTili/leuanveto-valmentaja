@@ -2660,6 +2660,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     postCycleAnalysis: null,
     accessorySlotOverrides: {}, // { [slotId]: { movementName, locked, variantIndex, reason, swappedAt } }
     insertedDeloads: [], // [{ afterProgramWeek: N, invokedDateISO, reason }] — laajentaa kalenteripituutta
+    replacedWithDeload: [], // [{ programWeek: N, invokedDateISO, reason }] — korvaa kyseisen vk:n kevennyksellä, ei pidennä
   };
 }
 

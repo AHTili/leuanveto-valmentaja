@@ -300,6 +300,19 @@ function isInsertedDeloadWeek(mesocycle, dateISO) {
   return pos ? pos.isInsertedDeload : false;
 }
 
+function isReplacedDeloadWeek(mesocycle, dateISO) {
+  const pos = resolveMesocyclePosition(mesocycle, dateISO);
+  if (!pos || pos.isInsertedDeload) return false;
+  const replaced = (mesocycle?.replacedWithDeload || [])
+    .map(r => (typeof r === "number" ? r : r.programWeek))
+    .filter(Number.isInteger);
+  return replaced.includes(pos.programWeek);
+}
+
+function isDeloadOverrideWeek(mesocycle, dateISO) {
+  return isInsertedDeloadWeek(mesocycle, dateISO) || isReplacedDeloadWeek(mesocycle, dateISO);
+}
+
 function getEffectiveWeekCount(mesocycle) {
   if (!mesocycle) return 0;
   const inserts = mesocycle.insertedDeloads?.length || 0;
@@ -789,11 +802,16 @@ async function recommend(options = {}) {
   let dayType = dayPlan?.dayType || options.dayType || "heavy";
 
   const isInsertedDeload = isInsertedDeloadWeek(mesocycle, dateISO);
-  if (isInsertedDeload) {
-    // Override: käyttäjän lisäämä kevennysviikko.
+  const isReplacedDeload = isReplacedDeloadWeek(mesocycle, dateISO);
+  const isDeloadOverride = isInsertedDeload || isReplacedDeload;
+  if (isDeloadOverride) {
+    // Override: käyttäjän kevennysviikko (lisätty tai korvaava).
     // Volyymi ~50%, kuorma -20%, Vx +2, pakotetaan volume-päivä.
     dayType = "volume";
-    weekDef = { ...(weekDef || {}), week: weekNum, deltaPctBase: -0.20, label: `Kevennysviikko (lisätty vk ${weekNum} jälkeen)`, heavyReps: weekDef?.heavyReps || 5, heavyTargetVx: (weekDef?.heavyTargetVx ?? 2) + 2 };
+    const deloadLabel = isInsertedDeload
+      ? `Kevennysviikko (lisätty vk ${weekNum} jälkeen)`
+      : `Kevennysviikko (korvaa vk ${weekNum})`;
+    weekDef = { ...(weekDef || {}), week: weekNum, deltaPctBase: -0.20, label: deloadLabel, heavyReps: weekDef?.heavyReps || 5, heavyTargetVx: (weekDef?.heavyTargetVx ?? 2) + 2 };
     if (dayPlan && dayPlan.slots) {
       const prunedSlots = dayPlan.slots
         .filter(s => s.role === "primary" || s.role === "backoff" || s.slotId === "scapular-control" || s.slotId === "core-hollow")
@@ -804,7 +822,7 @@ async function recommend(options = {}) {
         }));
       dayPlan = { ...dayPlan, slots: prunedSlots, dayType: "volume" };
     }
-    trace("INSERTED_DELOAD", {}, { weekNum, dayType }, `Käyttäjän kevennysviikko: volyymi ~50%, kuorma -20%, Vx +2`);
+    trace("DELOAD_OVERRIDE", {}, { weekNum, dayType, mode: isInsertedDeload ? "insert" : "replace" }, `Käyttäjän kevennysviikko (${isInsertedDeload ? "lisätty" : "korvaava"}): volyymi ~50%, kuorma -20%, Vx +2`);
   }
 
   trace("MESOCYCLE_PHASE", {}, { weekNum, dayType, label: weekDef?.label }, `Viikko ${weekNum}: ${weekDef?.label || "?"}`);
@@ -2069,6 +2087,8 @@ export {
   resolveAccessorySlot,
   resolveMesocyclePosition,
   isInsertedDeloadWeek,
+  isReplacedDeloadWeek,
+  isDeloadOverrideWeek,
   getEffectiveWeekCount,
   resolveDayPlanSlots,
   suggestAccessorySwaps,

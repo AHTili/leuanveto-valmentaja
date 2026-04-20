@@ -300,7 +300,8 @@ import {
   variantLoadModifier, variantRepOverride, assignVariantRotation,
   computeAttemptLoads,
   phaseForWeek, resolveAccessorySlot, resolveDayPlanSlots, suggestAccessorySwaps,
-  isInsertedDeloadWeek, getEffectiveWeekCount, resolveMesocyclePosition,
+  isInsertedDeloadWeek, isReplacedDeloadWeek, isDeloadOverrideWeek,
+  getEffectiveWeekCount, resolveMesocyclePosition,
 } from "./engine.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -868,11 +869,11 @@ function renderDashboard() {
     </button>
 
     ${state.mesocycle ? `<button class="btn btn-outline btn-full mb" id="btn-insert-deload" style="font-size:14px">
-      🌿 ${isInsertedDeloadWeek(state.mesocycle, today) ? "Kevennysviikko meneillään" : "Ota kevennysviikko ensi viikolle"}
+      🌿 ${isDeloadOverrideWeek(state.mesocycle, today) ? "Kevennysviikko meneillään" : "Korvaa ensi viikko kevennyksellä"}
     </button>` : ""}
 
     <div class="card">
-      <div class="card-title">Päivän ohjelma${isInsertedDeloadWeek(state.mesocycle, today) ? ' <span class="chip chip-yellow" style="margin-left:6px;font-size:11px">🌿 KEVENNYS</span>' : ""}</div>
+      <div class="card-title">Päivän ohjelma${isDeloadOverrideWeek(state.mesocycle, today) ? ' <span class="chip chip-yellow" style="margin-left:6px;font-size:11px">🌿 KEVENNYS</span>' : ""}</div>
       ${warmupHTML}${programHTML || '<div class="muted">Ei ohjelmaa — aloita mesosykli</div>'}
     </div>
 
@@ -2358,34 +2359,50 @@ function bind() {
     const meso = state.mesocycle;
     if (!meso) return;
     const today = todayISO();
-    if (isInsertedDeloadWeek(meso, today)) {
+    if (isDeloadOverrideWeek(meso, today)) {
       showToast("Olet jo kevennysviikolla", "warn");
       return;
     }
     const pos = resolveMesocyclePosition(meso, today);
     if (!pos) { showToast("Ei aktiivista mesosykliä", "bad"); return; }
     const currentProgWeek = pos.programWeek;
-    const inserts = [...(meso.insertedDeloads || [])];
-    const alreadyInsertedAfterThis = inserts.some(d => (typeof d === "number" ? d : d.afterProgramWeek) === currentProgWeek);
-    if (alreadyInsertedAfterThis) {
-      showToast("Kevennysviikko on jo lisätty tähän kohtaan", "warn");
+    const targetWeek = currentProgWeek + 1;
+    if (targetWeek > (meso.weekCount || 16)) {
+      showToast("Et voi korvata viimeistä viikkoa kevennyksellä", "warn");
       return;
     }
-    const effBefore = getEffectiveWeekCount(meso);
+    const replaced = [...(meso.replacedWithDeload || [])];
+    const alreadyReplaced = replaced.some(r => (typeof r === "number" ? r : r.programWeek) === targetWeek);
+    if (alreadyReplaced) {
+      showToast(`Vk ${targetWeek} on jo merkitty kevennykseksi`, "warn");
+      return;
+    }
+    const targetWeekDef = meso.weekDefs?.find(w => w.week === targetWeek);
+    const targetLabel = targetWeekDef?.label || `Vk ${targetWeek}`;
+    const isAlreadyDeload = (targetWeekDef?.deltaPctBase ?? 0) < -0.1;
+    if (isAlreadyDeload) {
+      showToast(`Vk ${targetWeek} on jo suunniteltu deload (${targetLabel.split("—")[1]?.trim() || "deload"})`, "warn");
+      return;
+    }
     const ok = confirm(
-      `Lisää kevennysviikko ohjelmaviikon ${currentProgWeek} jälkeen?\n\n` +
+      `Korvaa vk ${targetWeek} kevennyksellä?\n\n` +
+      `• ${targetLabel}\n\n` +
+      `TOIMINTA:\n` +
       `• Volyymi ~50 %, kuorma -20 %, Vx +2\n` +
       `• Vain kisaliikkeet + scapular/core-prehab\n` +
-      `• Mesosykli pitenee 1 vk (${effBefore} → ${effBefore + 1})\n` +
-      `• Jatkuu vk ${currentProgWeek + 1}:stä normaalisti kevennyksen jälkeen`
+      `• Kisapäivä EI siirry\n\n` +
+      `MENETYS:\n` +
+      `• Kyseisen viikon adaptaatio (${targetLabel})\n` +
+      `• Periodisointi palaa vk ${targetWeek + 1}:een kevennyksen jälkeen\n\n` +
+      `Jatketaanko?`
     );
     if (!ok) return;
-    inserts.push({ afterProgramWeek: currentProgWeek, invokedDateISO: today, reason: "user" });
-    meso.insertedDeloads = inserts;
+    replaced.push({ programWeek: targetWeek, invokedDateISO: today, reason: "user" });
+    meso.replacedWithDeload = replaced;
     await saveMesocycle(meso);
     state.mesocycle = meso;
     await computeRecommendation();
-    showToast("Kevennysviikko lisätty 🌿", "ok");
+    showToast(`Vk ${targetWeek} korvattu kevennyksellä 🌿`, "ok");
     render();
   });
 
