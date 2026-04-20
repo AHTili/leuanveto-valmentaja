@@ -140,13 +140,13 @@ const PRESET_MOVEMENTS = [
 // yhdessä slot-perustelun kanssa, jotta käyttäjä ymmärtää liikkeen roolin.
 const MOVEMENT_DESCRIPTIONS = {
   // ─── Kisaliikkeet ───
-  "Lisäpainoleuanveto": { howTo: "Leveä vastaote, rinta tankoon. Vedä lapaluut ensin alas, sitten kyynärpäät sivuille-taakse. Täysi alapysähdys ilman svingausta.", cue: "Lapaluut alas ennen kuin käsivarret vetävät" },
+  "Lisäpainoleuanveto": { howTo: "Leveä vastaote. Kilpasääntö: leuka tangon yli (ei rintaa tankoon — se on eri liike). Vedä lapaluut ensin alas, sitten kyynärpäät sivuille-taakse. Täysi alapysähdys, kyynärvarret lukkoon alhaalla ennen seuraavaa toistoa — ei svingausta.", cue: "Lapaluut alas ennen kuin käsivarret vetävät" },
   "Muscle-up": { howTo: "Leuanveto explosiivisesti rinnan yli, false grip, transition kyynärvarsi pystyyn, lopuksi dippi lukitukseen. Koko liike yhtenä ketjuna.", cue: "Vedä itsesi tangon yli, älä tangolle" },
   "Lisäpainodippi": { howTo: "Kahvat hartianleveydellä, rinta hieman eteen, kyynärpäät taakse. Alas täyteen dippiin, ylös lukitukseen. Kontrolloitu alas.", cue: "Alas, kunnes olkapäät ovat kyynärpäiden alla" },
   "Takakyykky": { howTo: "Tanko takakulmalle, jalat hartianleveydellä. Istu taaksepäin, polvet kääntyvät varpaiden suuntaan. Reiden yläpinta alle vaakatason.", cue: "Rintakehä auki koko liikeradan ajan" },
 
   // ─── Streetlifting-spesifiset (v4.11) ───
-  "Räjähtävä leuka": { howTo: "Kehonpainoleuka maksimaalisella kiihdytyksellä — yritä saada rinta tangon yli. 3 räjähtävää toistoa/sarja, 2 min palautus.", cue: "Nopeus > volyymi — keskeytä jos hidastuu" },
+  "Räjähtävä leuka": { howTo: "Leuanveto maksimaalisella kiihdytyksellä — yritä saada leuka reilusti tangon yli. Speed-strength-zone on ~30–60% 1RM: jos BW on yli 55% 1RM:stä (vahvat vetäjät), käytä kuminauha-assistia ylävaiheessa nopeuden säilyttämiseksi. Jos BW on alle 40% 1RM:stä, lisää kuormaa (vyö) 30–50% 1RM tasolle. 3 räjähtävää toistoa/sarja, 2 min palautus.", cue: "Nopeus > volyymi — keskeytä jos hidastuu" },
   "Leuanveto chest-to-bar": { howTo: "Vastaote, vedä kunnes rinta koskettaa tangon. Rintaranka taakse, lapaluut kokoon. Kontrolloitu alas.", cue: "Rinta tankoon, ei leuka" },
   "False grip pull-up": { howTo: "Ranteet tangon yli (false grip), vedä chest-to-bar. Valmistaa muscle-upin transition-vaiheen — ranteiden täytyy olla tangon yläpuolella.", cue: "Rannekulma pysyy — ei pudota pohjalla" },
   "False grip row": { howTo: "Matala tanko, false grip, vedä rintaa tankoon. Kehonpaino-soutu — jalat maassa, vartalo suora.", cue: "Harjoittaa tranistionin voimaa ilman koko MU:n kuormaa" },
