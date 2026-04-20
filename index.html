@@ -789,9 +789,12 @@ function renderDashboard() {
       const vxStr = slot.targetVx !== null ? ` V${slot.targetVx}` : "";
       const icon = isPrimary ? "⭐ " : isBackoff ? "↩ " : isAttempt ? "🏆 " : "";
       const variantStr = slot.variantName && (isPrimary || isBackoff) ? `<div class="muted" style="font-size:11px">${slot.variantName}</div>` : "";
+      const infoBtn = (MOVEMENT_DESCRIPTIONS?.[movName] || slot.slotId)
+        ? ` <span class="preview-info-btn" data-preview-info-idx="${i}" title="Tietoja liikkeestä" style="cursor:pointer;color:var(--acc);font-size:13px;margin-left:2px">ⓘ</span>`
+        : "";
       return `<div class="program-slot">
         <span class="program-slot-num">${i + 1}.</span>
-        <span class="program-slot-name">${icon}${movName}${variantStr}</span>
+        <span class="program-slot-name">${icon}${movName}${infoBtn}${variantStr}</span>
         <div class="program-slot-detail">
           <span class="program-slot-sets">${setsReps}${vxStr}</span><br>
           ${loadStr}
@@ -2344,6 +2347,30 @@ function bind() {
 
   const readinessBtn = $("#btn-readiness");
   if (readinessBtn) readinessBtn.addEventListener("click", () => { state.view = "readiness"; render(); });
+
+  document.querySelectorAll(".preview-info-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.previewInfoIdx, 10);
+      const slot = state.recommendation?.dayPlan?.slots?.[idx];
+      if (!slot) return;
+      const movName = slot.movementName || slot.defaultMovementName || slot.category;
+      const desc = MOVEMENT_DESCRIPTIONS?.[movName] || null;
+      const catalog = slot.slotId ? ACCESSORY_SLOT_CATALOG?.[slot.slotId] : null;
+      const weekNum = state.recommendation?.weekNum || 1;
+      const phase = slot.slotId ? phaseForWeek(weekNum) : null;
+      showInfoModal({
+        title: movName,
+        howTo: desc?.howTo || null,
+        cue: desc?.cue || null,
+        slotFunction: catalog?.function || null,
+        slotRationale: catalog?.rationale || null,
+        slotPhase: phase,
+        slotVariants: (catalog && phase) ? catalog.phaseVariants?.[phase] || null : null,
+        currentVariant: movName,
+      });
+    });
+  });
 
   // Readiness
   const saveReadinessBtn = $("#btn-save-readiness");
