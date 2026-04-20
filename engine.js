@@ -689,6 +689,10 @@ async function recommend(options = {}) {
   const allSets = options.allSets || (await getAllSets());
   const primaryMovementId = options.primaryMovementId || null;
 
+  // Detect barbell-only lift (squat): no bodyweight added to system load
+  const primarySlotMeta = dayPlan?.slots?.find(s => s.role === "primary");
+  const isBarbell = primarySlotMeta?.isBarbell === true;
+
   // Filter to primary movement top sets, sorted by date
   const topSets = allSets
     .filter((s) => {
@@ -701,16 +705,22 @@ async function recommend(options = {}) {
     });
 
   // e1RM from last 4-6 top sets
+  // Barbell lifts (squat): external-load-only formula. CKC lifts: system load (BW + ext).
   const recentTopSets = topSets.slice(-6);
   const e1rmValues = recentTopSets
     .map((s) => {
       const vara = s.actualVx ?? s.targetVx ?? 2;
+      if (isBarbell) {
+        return e1rmAccessory(s.externalLoadKg || 0, s.reps || s.targetReps || 3);
+      }
       return e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || s.targetReps || 3, vara);
     })
     .filter((v) => v !== null);
 
   const currentE1RMSystem = e1rmValues.length > 0 ? median(e1rmValues) : null;
-  const currentE1RMExternal = currentE1RMSystem !== null ? Math.max(0, currentE1RMSystem - bodyweightKg) : null;
+  const currentE1RMExternal = currentE1RMSystem !== null
+    ? (isBarbell ? currentE1RMSystem : Math.max(0, currentE1RMSystem - bodyweightKg))
+    : null;
 
   trace("E1RM_COMPUTED", {}, {
     e1rmSystem: currentE1RMSystem?.toFixed(1),
@@ -782,11 +792,24 @@ async function recommend(options = {}) {
   let targetExternalLoad;
   if (currentE1RMSystem !== null) {
     const effectiveReps = targetReps + targetVx;
-    const targetSystemLoad = currentE1RMSystem / (1 + effectiveReps / 30);
-    const rawExternal = targetSystemLoad * (1 + deltaPct) - bodyweightKg;
-    targetExternalLoad = roundToHalf(Math.max(0, rawExternal));
+    if (isBarbell) {
+      // Squat: e1RM is external-only, target = e1RM / (1 + eff/30) × (1 + deltaPct)
+      targetExternalLoad = roundToHalf(Math.max(0,
+        (currentE1RMSystem / (1 + effectiveReps / 30)) * (1 + deltaPct)));
+    } else {
+      const targetSystemLoad = currentE1RMSystem / (1 + effectiveReps / 30);
+      const rawExternal = targetSystemLoad * (1 + deltaPct) - bodyweightKg;
+      targetExternalLoad = roundToHalf(Math.max(0, rawExternal));
+    }
   } else {
     targetExternalLoad = null;
+  }
+
+  // Fallback: use slot's suggestedLoadKg when no e1RM history (e.g. new lift / start of program)
+  if (targetExternalLoad === null && primarySlotMeta?.suggestedLoadKg !== undefined && primarySlotMeta.suggestedLoadKg !== null) {
+    targetExternalLoad = primarySlotMeta.suggestedLoadKg;
+    trace("SUGGESTED_LOAD_FALLBACK", {}, { targetExternalLoad },
+      "Ei e1RM-dataa — käytetään ohjelman ehdotettu lähtökuorma");
   }
 
   trace("TARGET_LOAD", {}, {
@@ -794,6 +817,7 @@ async function recommend(options = {}) {
     deltaPct: (deltaPct * 100).toFixed(2) + "%",
     targetReps,
     targetVx,
+    isBarbell,
   }, `Ehdotettu kuorma: +${targetExternalLoad} kg`);
 
   // 12. Set prescription

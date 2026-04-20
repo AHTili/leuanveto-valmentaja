@@ -265,7 +265,7 @@ import {
   MESOCYCLE_TEMPLATES,
   getActiveMesocycle, saveMesocycle, createDefaultMesocycle, createPeakingMesocycle, getAllMesocycles,
   createHypertrofiaMesocycle, createMaksimivoimaMesocycle, createEksenterinenMesocycle,
-  createDUPMesocycle, createSiirtymaMesocycle, createPalautuminenMesocycle,
+  createDUPMesocycle, createSiirtymaMesocycle, createPalautuminenMesocycle, createStreetlifting16WMesocycle,
   getSettings, saveSettings,
   exportFullBackup, importFullBackup,
   parseCSV, importHistoricalCSV,
@@ -403,7 +403,11 @@ async function computeReadiness() {
 
 async function computeRecommendation() {
   const settings = state.settings;
-  const primaryMov = state.movements.find(m => m.isPrimary);
+  let primaryMov = state.movements.find(m => m.isPrimary);
+  // Multi-lift mesocycles: primary movement changes each day
+  if (state.mesocycle?.type === "streetlifting_16w") {
+    primaryMov = getStreetliftingPrimaryMovement(state) || primaryMov;
+  }
   state.recommendation = await recommend({
     settings,
     bodyweightKg: state.latestBodyweight || settings.bodyweightKg || 91,
@@ -573,7 +577,7 @@ function dayTypeLabel(dt) { return DAY_TYPE_LABELS[dt] || dt; }
 const MESO_TYPE_LABELS = {
   default: "Perusjakso", hypertrofia: "Hypertrofiajakso", maksimivoima: "Maksimivoima-blokki",
   eksentrinen: "Eksentrinen blokki", dup: "DUP-jakso", siirtyma: "Siirtymäjakso",
-  palautuminen: "Palautumisjakso", peaking: "Peaking",
+  palautuminen: "Palautumisjakso", peaking: "Peaking", streetlifting_16w: "Streetlifting 16 vk 🏋️",
 };
 
 // Factory lookup for mesocycle creation
@@ -586,7 +590,31 @@ const MESO_FACTORIES = {
   siirtyma: createSiirtymaMesocycle,
   palautuminen: createPalautuminenMesocycle,
   peaking: createPeakingMesocycle,
+  streetlifting_16w: createStreetlifting16WMesocycle,
 };
+
+// Helper: find today's primary movement for multi-lift mesocycles (streetlifting_16w)
+function getStreetliftingPrimaryMovement(state) {
+  if (!state.mesocycle?.weekPlans || !state.mesocycle.startDateISO) return null;
+  const start = new Date(state.mesocycle.startDateISO);
+  const now = new Date();
+  const weekNum = Math.floor((now - start) / (7 * 24 * 3600 * 1000)) + 1;
+  if (weekNum < 1 || weekNum > 16) return null;
+  const weekPlan = state.mesocycle.weekPlans.find(wp => wp.week === weekNum);
+  if (!weekPlan) return null;
+  const dow = now.getDay() || 7;
+  const days = weekPlan.days || [];
+  const dayPlan = days.find(d => d.dayOfWeek === dow) ||
+    days.reduce((best, d) => {
+      const dist = Math.min(Math.abs(d.dayOfWeek - dow), 7 - Math.abs(d.dayOfWeek - dow));
+      const bestDist = best ? Math.min(Math.abs(best.dayOfWeek - dow), 7 - Math.abs(best.dayOfWeek - dow)) : Infinity;
+      return dist < bestDist ? d : best;
+    }, null);
+  if (!dayPlan) return null;
+  const primarySlot = dayPlan.slots?.find(s => s.role === "primary");
+  if (!primarySlot?.defaultMovementName) return null;
+  return state.movements.find(m => m.name === primarySlot.defaultMovementName) || null;
+}
 
 function formatDateShort(iso) {
   if (!iso) return "-";
@@ -1737,13 +1765,52 @@ function bind() {
       return;
     }
 
+    // Streetlifting 16 vk needs calibration dialog
+    if (template.id === "streetlifting_16w") {
+      const bw = state.settings?.bodyweightKg || 91;
+      const confirmIdx = await showListModal(
+        "🏋️ Streetlifting 16 vk — Kalibraatio",
+        [
+          { label: "Oletusarvoilla (suositeltu)", desc: `Leuka: +85 kg · Dippi: +75 kg · Kyykky: 160 kg · Paino: ${bw} kg`, icon: "✅" },
+          { label: "Syötä omat e1RM-arvot", desc: "Tarkempi — syötä jokainen erikseen", icon: "✏️" },
+          { label: "Peruuta", desc: "", icon: "↩" },
+        ]
+      );
+      if (confirmIdx === null || confirmIdx === 2) return;
+
+      let cal = { bwKg: bw, leukaExtKg: 85, dippiExtKg: 75, kyykkyExtKg: 160 };
+
+      if (confirmIdx === 1) {
+        const lStr = await showInputModal("Leuanveto e1RM (lisäpaino kg)", "esim. 85", "85", "number");
+        if (lStr === null) return;
+        const dStr = await showInputModal("Dippi e1RM (lisäpaino kg) — arvio ok", "esim. 75", "75", "number");
+        if (dStr === null) return;
+        const kStr = await showInputModal("Takakyykky 1RM (kg tanko)", "esim. 160", "160", "number");
+        if (kStr === null) return;
+        cal = {
+          bwKg: bw,
+          leukaExtKg: parseFloat(lStr) || 85,
+          dippiExtKg: parseFloat(dStr) || 75,
+          kyykkyExtKg: parseFloat(kStr) || 160,
+        };
+      }
+
+      const slMeso = createStreetlifting16WMesocycle(todayISO(), cal);
+      await saveMesocycle(slMeso);
+      state.mesocycle = slMeso;
+      await computeRecommendation();
+      showToast("🏋️ Streetlifting 16 vk aloitettu!", "ok", 4000);
+      render();
+      return;
+    }
+
     // All other templates
     const factory = MESO_FACTORIES[template.id];
     if (!factory) { showToast("Tuntematon malli", "bad"); return; }
 
     const meso = factory(todayISO());
-    // Assign variant rotation (except templates with hardcoded variants like eksentrinen/siirtyma)
-    if (!["eksentrinen", "siirtyma"].includes(template.id)) {
+    // Assign variant rotation (except templates with hardcoded variants like eksentrinen/siirtyma/streetlifting_16w)
+    if (!["eksentrinen", "siirtyma", "streetlifting_16w"].includes(template.id)) {
       assignVariantRotation(meso.weekPlans);
     }
     await saveMesocycle(meso);
