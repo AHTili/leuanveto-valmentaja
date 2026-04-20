@@ -974,9 +974,39 @@ function renderWorkoutSetup() {
   </div>`;
 }
 
+function renderWorkoutWarmupIntro() {
+  const w = state.workout;
+  const items = w.warmupProtocol || [];
+  return `<div class="fade-in">
+    <div class="flex-between mb">
+      <div class="muted">Yleislämmittely</div>
+      <button class="btn btn-sm btn-outline" id="btn-end-workout">🏁 Lopeta</button>
+    </div>
+    <div class="card">
+      <div class="card-title">🔥 Lämmittely ennen treeniä</div>
+      <div class="muted" style="font-size:12px;margin-bottom:10px">Suorita seuraavat liikkeet rauhassa. Tämä valmistaa kehon päivän treeniin.</div>
+      ${items.map((it, i) => `
+        <div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--border)">
+          <div style="font-weight:700;color:var(--acc);min-width:22px">${i + 1}.</div>
+          <div style="flex:1">
+            <div style="font-weight:600">${it.name}</div>
+            <div class="muted" style="font-size:12px">${it.desc || ""}</div>
+          </div>
+        </div>`).join("")}
+    </div>
+    <button class="btn btn-full btn-ok btn-big mt" id="btn-warmup-protocol-done">✓ Lämmittely tehty — aloita liikkeet</button>
+    <button class="btn btn-outline btn-full mt" id="btn-skip-warmup-protocol" style="font-size:13px">⏩ Ohita yleislämmittely</button>
+  </div>`;
+}
+
 function renderActiveWorkout() {
   const w = state.workout;
   if (!w) return "";
+
+  // Pre-workout: general warmup protocol screen
+  if (!w.warmupProtocolDone && w.warmupProtocol && w.warmupProtocol.length > 0) {
+    return renderWorkoutWarmupIntro();
+  }
 
   const totalExercises = w.exercises.length;
   const currentExIdx = w.currentExerciseIdx;
@@ -1021,11 +1051,11 @@ function renderActiveWorkout() {
     `<div class="muted" style="padding:2px 0;font-size:12px">✓ Sarja ${i + 1}: ${s.loadKg} kg × ${s.reps}${s.attemptedReps ? ` (yritetty ${s.attemptedReps})` : ""} V${s.actualVx ?? "?"} ${s.velocity ? `(${s.velocity} m/s)` : ""}</div>`
   ).join("");
 
-  // Exercise list sidebar
+  // Exercise list sidebar (clickable navigation)
   const exerciseListHTML = w.exercises.map((ex, i) => {
     const done = ex.sets.every(s => s.completed);
     const active = i === currentExIdx;
-    return `<span style="display:inline-block;padding:4px 8px;border-radius:6px;font-size:11px;margin:2px;${active ? 'background:var(--acc);color:#fff' : done ? 'background:var(--ok2);color:var(--ok)' : 'background:var(--card2);color:var(--muted)'}">${i + 1}. ${ex.name.split(" ")[0]}</span>`;
+    return `<button class="ex-jump" data-jump-idx="${i}" style="display:inline-block;padding:5px 10px;border:none;border-radius:6px;font-size:11px;margin:2px;cursor:pointer;${active ? 'background:var(--acc);color:#fff' : done ? 'background:var(--ok2);color:var(--ok)' : 'background:var(--card2);color:var(--muted)'}">${i + 1}. ${ex.name.split(" ")[0]}</button>`;
   }).join("");
 
   return `<div class="fade-in">
@@ -1063,13 +1093,12 @@ function renderActiveWorkout() {
           <div class="load-display" style="font-size:36px">${loadStr}</div>
           <div class="muted mt">${currentSet.targetReps} toistoa — kontrolloidusti</div>
           <div class="muted" style="font-size:11px;margin-top:4px">Työsarjat alkavat tämän jälkeen (${workSetCount} sarjaa)</div>
+          ${state.settings?.velocityEnabled && exercise.role === "primary" && warmupSetIdx === warmupCount ? `
+          <div style="margin-top:14px;text-align:left">
+            <label style="margin-top:0;font-size:12px;color:var(--acc)">📊 Velocity (max intent rep 1) — valinnainen</label>
+            <input type="number" inputmode="decimal" step="0.01" id="input-warmup-velocity" placeholder="esim. 0.53 m/s" value="${state.todayVelocity || ''}">
+          </div>` : ""}
         </div>
-        ${state.settings?.velocityEnabled && exercise.role === "primary" && warmupSetIdx === warmupCount ? `
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;margin:8px 0">
-          <label style="margin-top:0;font-size:12px">📊 Readiness-velocity (viimeinen lämppä, max intent)</label>
-          <input type="number" inputmode="decimal" step="0.01" id="input-warmup-velocity" placeholder="esim. 0.53 m/s" value="${state.todayVelocity || ''}">
-          <div class="muted" style="font-size:10px;margin-top:4px">Vapaaehtoinen — rep 1 mean velocity. Syötä vain jos sinulla on mittausväline.</div>
-        </div>` : ""}
         <button class="btn btn-full btn-ok mt" id="btn-warmup-done">✓ Valmis — seuraava</button>
         <button class="btn btn-outline btn-full mt" id="btn-skip-warmup" style="font-size:13px">⏩ Ohita lämmittely</button>
         ` : `
@@ -1303,71 +1332,81 @@ function renderMesocycle() {
 
   const currentWeek = getMesocycleWeek(meso, todayISO());
   const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
-  const futureWorkouts = getFutureWorkouts(meso, todayISO(), 28);
+  const futureWorkouts = getFutureWorkouts(meso, todayISO(), 14);
+  const isStreet16 = meso.type === "streetlifting_16w";
+  const blockName = (w) => w <= 4 ? "Hypertrofia" : w <= 8 ? "Voima" : w <= 12 ? "Intensifikaatio" : "Peak";
+  const blockColor = (w) => w <= 4 ? "#3a6b5c" : w <= 8 ? "#5a4e7a" : w <= 12 ? "#7a5a3e" : "#8a3e3e";
 
   return `<div class="fade-in">
     <div class="section-header">Mesosykli</div>
 
+    <!-- 1. NYKYHETKI — meta + viikko -->
     <div class="card">
       <div class="flex-between">
         <div>
           <div style="font-weight:600">${MESO_TYPE_LABELS[meso.type] || meso.type}</div>
-          <div class="muted">Aloitus: ${formatDateShort(meso.startDateISO)} · ${meso.weekCount} vk</div>
+          <div class="muted" style="font-size:12px">Aloitus: ${formatDateShort(meso.startDateISO)} · ${meso.weekCount} vk</div>
         </div>
-        <div style="display:flex;gap:4px;align-items:center">
-          ${meso.type === "peaking" ? '<span class="chip" style="color:var(--warn);border-color:var(--warn);font-size:11px">🏆 PEAKING</span>' : ''}
-          <div class="chip">${currentWeek ? `Viikko ${currentWeek}` : "Päättynyt"}</div>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+          <div class="chip" style="font-weight:700">${currentWeek ? `Viikko ${currentWeek}/${meso.weekCount}` : "Päättynyt"}</div>
+          ${isStreet16 && currentWeek ? `<span style="padding:2px 8px;border-radius:4px;background:${blockColor(currentWeek)};color:#fff;font-size:10px;font-weight:600">${blockName(currentWeek)}</span>` : ""}
         </div>
       </div>
-      ${(() => {
-        const suggested = SUGGESTED_NEXT_TEMPLATE[meso.type];
-        if (!suggested) return "";
-        const nextLabel = MESOCYCLE_TEMPLATES.find(t => t.id === suggested[0])?.label || suggested[0];
-        return `<div class="muted mt" style="font-size:11px">Suositeltu seuraava: ${nextLabel}</div>`;
-      })()}
     </div>
 
-    ${renderPerLiftAutoregStatus(meso)}
-    ${renderProgramOverviewTable(meso, currentWeek)}
-    ${renderVolumeDashboard(meso)}
-
-    ${meso.weekDefs.map(w => {
-      const isCurrent = w.week === currentWeek;
-      const isPast = currentWeek && w.week < currentWeek;
-      return `<div class="card" style="${isCurrent ? 'border-color:var(--acc)' : isPast ? 'opacity:0.6' : ''}">
+    <!-- 2. TÄMÄ VIIKKO — yksityiskohdat -->
+    ${currentWeek ? (() => {
+      const wdef = meso.weekDefs.find(w => w.week === currentWeek);
+      if (!wdef) return "";
+      return `<div class="card" style="border-color:var(--acc)">
         <div class="flex-between">
-          <div style="font-weight:600">Viikko ${w.week}: ${w.label}</div>
-          ${isCurrent ? '<span class="chip" style="font-size:11px">NYT</span>' : isPast ? '<span class="dim">✓</span>' : ""}
+          <div style="font-weight:700;color:var(--acc)">📍 Viikko ${currentWeek}: ${wdef.label}</div>
+          <span class="chip" style="font-size:11px">NYT</span>
         </div>
-        <div class="muted mt">
-          Delta: ${(w.deltaPctBase * 100).toFixed(1)}% |
-          Heavy: ${w.heavyReps} toistoa, V${w.heavyTargetVx}
-        </div>
-        ${renderWeekPlanDays(meso, w.week, dayNames)}
+        ${renderWeekPlanDays(meso, currentWeek, dayNames)}
       </div>`;
-    }).join("")}
+    })() : ""}
 
+    <!-- 3. TULEVAT — seuraavat 14 pv -->
     ${futureWorkouts.length > 0 ? `<div class="card">
-      <div class="card-title">📅 Tulevat treenit (${futureWorkouts.length} päivää)</div>
-      ${futureWorkouts.map(fw => `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div class="card-title">📅 Seuraavat 14 päivää</div>
+      ${futureWorkouts.map(fw => `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
         <div class="flex-between">
-          <span style="font-weight:600">${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5)}</span>
-          <span class="chip" style="font-size:11px">${dayTypeLabel(fw.dayType)}</span>
+          <span style="font-weight:600;font-size:13px">${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5)}</span>
+          <span class="chip" style="font-size:10px">${dayTypeLabel(fw.dayType)}</span>
         </div>
-        <div style="margin-top:6px">
-          ${fw.slots.map((s, i) => {
-            const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : ["warmup","opener","attempt2","attempt3"].includes(s.role) ? "🏆" : `${i + 1}.`;
-            const vTag = s.variantName ? ` <span style="color:var(--acc);font-size:10px">[${s.variantName.split("(")[0].trim().split(" ")[0]}]</span>` : "";
-            return `<div class="flex-between" style="padding:3px 0">
-            <span class="muted">${icon} ${s.defaultMovementName}${vTag}</span>
-            <span class="muted">${s.sets}×${s.reps}${s.targetVx !== null ? ` V${s.targetVx}` : ""}</span>
-          </div>`;
+        <div style="margin-top:4px">
+          ${fw.slots.filter(s => s.role === "primary" || s.role === "backoff" || ["warmup","opener","attempt2","attempt3"].includes(s.role)).map(s => {
+            const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "🏆";
+            return `<div class="flex-between" style="padding:2px 0;font-size:12px">
+              <span class="muted">${icon} ${s.defaultMovementName}</span>
+              <span class="muted">${s.sets}×${s.reps}${s.targetVx !== null ? ` V${s.targetVx}` : ""}</span>
+            </div>`;
           }).join("")}
         </div>
       </div>`).join("")}
     </div>` : ""}
 
-    <button class="btn btn-big btn-full mt" id="btn-new-meso" style="font-size:16px">📋 Vaihda ohjelma</button>
+    <!-- 4. KOKO OHJELMA — kompakti taulukko (collapsible) -->
+    <details class="card" style="padding:0">
+      <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">📋 Koko 16 vk — yleiskatsaus</summary>
+      <div style="padding:0 14px 14px">
+        ${renderProgramOverviewTable(meso, currentWeek).replace('<div class="card">', '<div>').replace(/<\/div>$/, '')}
+      </div>
+    </details>
+
+    <!-- 5. AUTOREG + VOLYYMI (collapsible) -->
+    <details class="card" style="padding:0">
+      <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">🎯 Per-liike autoregulaatio</summary>
+      <div style="padding:0 14px 14px">${renderPerLiftAutoregStatus(meso).replace('<div class="card">', '<div>').replace(/<\/div>$/, '')}</div>
+    </details>
+
+    <details class="card" style="padding:0">
+      <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">📊 Volyymi-dashboard</summary>
+      <div style="padding:0 14px 14px">${renderVolumeDashboard(meso).replace('<div class="card">', '<div>').replace(/<\/div>$/, '')}</div>
+    </details>
+
+    <button class="btn btn-outline btn-full mt" id="btn-new-meso">📋 Vaihda ohjelma</button>
   </div>`;
 }
 
@@ -2451,6 +2490,8 @@ async function startWorkout() {
     currentExerciseIdx: 0,
     currentSetIdx: 0,
     startedAt: new Date().toISOString(),
+    warmupProtocol: rec?.dayPlan?.warmup || [],
+    warmupProtocolDone: false,
   };
 
   render();
@@ -2732,6 +2773,33 @@ function bindWorkoutEvents() {
     w.currentSetIdx = 0;
     stopRestTimer();
     render();
+  });
+
+  // Warmup protocol done / skip
+  const wupDoneBtn = $("#btn-warmup-protocol-done");
+  if (wupDoneBtn) wupDoneBtn.addEventListener("click", () => {
+    w.warmupProtocolDone = true;
+    render();
+  });
+  const wupSkipBtn = $("#btn-skip-warmup-protocol");
+  if (wupSkipBtn) wupSkipBtn.addEventListener("click", () => {
+    w.warmupProtocolDone = true;
+    render();
+  });
+
+  // Jump to exercise via clickable chips
+  $$("[data-jump-idx]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.dataset.jumpIdx);
+      if (isNaN(idx) || idx < 0 || idx >= w.exercises.length) return;
+      w.currentExerciseIdx = idx;
+      // Go to first non-completed set, or first set if all done
+      const ex = w.exercises[idx];
+      const firstIncomplete = ex.sets.findIndex(s => !s.completed);
+      w.currentSetIdx = firstIncomplete >= 0 ? firstIncomplete : 0;
+      stopRestTimer();
+      render();
+    });
   });
 
   // Next exercise

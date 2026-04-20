@@ -2067,27 +2067,27 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   const weekPlans = [
     // ── BLOKKI 1: PERUSTA — Hypertrofia + MU tekniikka (vk 1-4) ──
     { week:1, days:[
-      maDay("MA — Leuka + Selkä",        4,6,3, 40,  null,  null),
+      maDay("MA — Leuka + Selkä",        4,6,3, 50,  null,  null),
       tiDay("TI — Kyykky + Alavartalo",  4,6,3, 120, null),
-      toDay("TO — Dippi + Työntö",       4,6,3, 30,  null,  null),
+      toDay("TO — Dippi + Työntö",       4,6,3, 38,  null,  null),
       laDay("LA — MU tekniikka",         0, 5, "Eksentriset 5×1-2 · transitiot 5×3 · räjähtävät leuat 4×3"),
     ]},
     { week:2, days:[
-      maDay("MA — Leuka",  4,6,3, 45,  null, null),
+      maDay("MA — Leuka",  4,6,3, 55,  null, null),
       tiDay("TI — Kyykky", 4,6,3, 130, null),
-      toDay("TO — Dippi",  4,6,3, 35,  null, null),
+      toDay("TO — Dippi",  4,6,3, 43,  null, null),
       laDay("LA — MU tekniikka", 0, 5, "Eksentriset + banded MU + transitiot — eteneminen tärkeä"),
     ]},
     { week:3, days:[
-      maDay("MA — Leuka (raskas)",  4,6,2, 50,  null, null),
+      maDay("MA — Leuka (raskas)",  4,6,2, 60,  null, null),
       tiDay("TI — Kyykky",         4,6,3, 140, null),
-      toDay("TO — Dippi (raskas)", 4,6,2, 40,  null, null),
+      toDay("TO — Dippi (raskas)", 4,6,2, 48,  null, null),
       laDay("LA — MU tavoite: ENSIMMÄINEN STRICT", 0, 5, "🎯 Tavoite: ensimmäinen puhdas strict muscle-up"),
     ]},
     { week:4, days:[
-      maDay("MA — Deload",  3,5,4, 35,  null, null),
+      maDay("MA — Deload",  3,5,4, 40,  null, null),
       tiDay("TI — Deload",  3,5,4, 110, null),
-      toDay("TO — Deload",  3,5,4, 25,  null, null),
+      toDay("TO — Deload",  3,5,4, 30,  null, null),
       laDay("LA — Deload + testaus", 0, 3, "Kevyt tekninen · 3RM testit (leuka/dippi/kyykky)"),
     ]},
 

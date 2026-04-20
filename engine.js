@@ -397,6 +397,36 @@ function varaTrendCorrection(recentTopSets, opts = {}) {
 }
 
 /**
+ * Gross-mismatch correction: when the prescribed load is FAR off from
+ * the athlete's true capacity (overshoot ≥ 1.5 reps consistently), the
+ * normal ±3.5% cap is too slow. This mechanism escalates to up to +8%
+ * per session when the mismatch is severe AND persistent (2+ sessions).
+ *
+ * Guard rails: requires 4+ recent top sets, mean overshoot ≤ -1.5
+ * (actualVx ≥ targetVx + 1.5 on average), and at least 2 sessions worth.
+ */
+function grossMismatchCorrection(recentTopSets) {
+  const withVara = recentTopSets.filter(
+    (s) => s.actualVx !== null && s.targetVx !== null
+  ).slice(-8);
+  if (withVara.length < 4) return 0;
+
+  const overshoots = withVara.map((s) => s.targetVx - s.actualVx);
+  const meanOvr = avg(overshoots);
+
+  // Require sustained large mismatch: mean overshoot ≥ 1.5 (target - actual ≤ -1.5)
+  if (meanOvr > -1.5) return 0;
+
+  // Require that ALL recent sets show ≥ 1 overshoot (no outliers)
+  const allOvershoot = withVara.every(s => (s.actualVx - s.targetVx) >= 1);
+  if (!allOvershoot) return 0;
+
+  // Scale: −1.5 → +5 %, −2.0 → +6.5 %, −2.5+ → +8 %
+  const magnitude = Math.abs(meanOvr);
+  return clamp((magnitude - 1.5) * 0.030 + 0.050, 0.050, 0.080);
+}
+
+/**
  * e1RM momentum bonus: if recent e1RM shows a PR trend,
  * add additional deltaPct to accelerate future sessions.
  *
@@ -804,6 +834,14 @@ async function recommend(options = {}) {
     trace("E1RM_MOMENTUM_BONUS", { deltaPct: oldDelta }, { deltaPct: deltaPctRawValue }, `PR-momentum +${(momentumBonus * 100).toFixed(2)}% (e1RM nousutrendi)`);
   }
 
+  // 7c. Gross-mismatch correction (ohjelma aivan väärin skaalattu → escalointi)
+  const grossCorr = grossMismatchCorrection(recentTopSets);
+  if (grossCorr > 0) {
+    const oldDelta = deltaPctRawValue;
+    deltaPctRawValue += grossCorr;
+    trace("GROSS_MISMATCH_CORRECTION", { deltaPct: oldDelta }, { deltaPct: deltaPctRawValue }, `Ohjelman skaalausvirhe havaittu — pikakorjaus +${(grossCorr * 100).toFixed(2)}%`);
+  }
+
   // 8. Break modifier
   if (breakInfo.modifier !== 0) {
     const oldDelta = deltaPctRawValue;
@@ -815,9 +853,13 @@ async function recommend(options = {}) {
   const maxDelta = settings.maxDelta || 0.25;
   let deltaPct = clamp(deltaPctRawValue, -maxDelta, maxDelta);
 
-  // 10. Apply readiness cap
+  // 10. Apply readiness cap + active load reduction
+  //     RED  → -5 % kuormaan (tai -8 % jos sekä velocity että Vara punaisia)
+  //     YELLOW → -2 % kuormaan
+  //     Samalla + targetVx +1 (kevennä varaa) jotta sarjat eivät mene failureen.
+  let readinessLoadReduction = 0;
+  let readinessVxBump = 0;
   if (capLevel === 2) {
-    // RED: no increase, heavy → volume
     const oldDelta = deltaPct;
     deltaPct = Math.min(deltaPct, 0);
     if (dayType === "heavy") {
@@ -825,12 +867,19 @@ async function recommend(options = {}) {
       dayType = "volume";
       trace("CAP_RED_DAYTYPE", { dayType: oldDayType }, { dayType: "volume" }, "RED readiness → heavy vaihdettu volume:ksi");
     }
-    trace("CAP_RED", { deltaPct: oldDelta }, { deltaPct }, "RED readiness → deltaPct capped to ≤ 0");
+    // Double-red (velocity + Vara molemmat RED) = syvä väsymys → isompi vähennys
+    const velRed = readiness.channels?.velocity?.class === "RED";
+    const varaRed = readiness.channels?.vara?.class === "RED";
+    readinessLoadReduction = (velRed && varaRed) ? -0.08 : -0.05;
+    readinessVxBump = 1;
+    deltaPct += readinessLoadReduction;
+    trace("CAP_RED", { deltaPct: oldDelta }, { deltaPct }, `RED readiness → kuorma ${(readinessLoadReduction * 100).toFixed(1)}% + targetVx +${readinessVxBump}${velRed && varaRed ? " (double-red: velocity + Vara)" : ""}`);
   } else if (capLevel === 1) {
-    // YELLOW: halve adjustment
     const oldDelta = deltaPct;
     deltaPct = deltaPct * 0.5;
-    trace("CAP_YELLOW", { deltaPct: oldDelta }, { deltaPct }, "YELLOW readiness → deltaPct puolitettu");
+    readinessLoadReduction = -0.02;
+    deltaPct += readinessLoadReduction;
+    trace("CAP_YELLOW", { deltaPct: oldDelta }, { deltaPct }, `YELLOW readiness → deltaPct puolitettu + kuorma ${(readinessLoadReduction * 100).toFixed(1)}%`);
   }
 
   // 11. Compute target load — use actual slot reps/Vx when available
@@ -846,6 +895,11 @@ async function recommend(options = {}) {
   } else {
     targetReps = 3;
     targetVx = 2;
+  }
+
+  // Apply readiness Vx bump (RED day → +1 Vx kaikkiin sarjoihin, turvapuskuri)
+  if (readinessVxBump > 0 && targetVx !== null) {
+    targetVx = targetVx + readinessVxBump;
   }
 
   let targetExternalLoad;
@@ -1709,6 +1763,7 @@ export {
   varaFeedback,
   varaTrendCorrection,
   e1rmMomentumBonus,
+  grossMismatchCorrection,
   // Break
   breakAnalysis,
   mesocycleBreakReset,
