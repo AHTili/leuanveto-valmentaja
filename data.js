@@ -147,7 +147,7 @@ const MOVEMENT_DESCRIPTIONS = {
 
   // ─── Streetlifting-spesifiset (v4.11) ───
   "Räjähtävä leuka": { howTo: "Leuanveto maksimaalisella kiihdytyksellä — yritä saada leuka reilusti tangon yli. Speed-strength-zone on ~30–60% 1RM: jos BW on yli 55% 1RM:stä (vahvat vetäjät), käytä kuminauha-assistia ylävaiheessa nopeuden säilyttämiseksi. Jos BW on alle 40% 1RM:stä, lisää kuormaa (vyö) 30–50% 1RM tasolle. 3 räjähtävää toistoa/sarja, 2 min palautus.", cue: "Nopeus > volyymi — keskeytä jos hidastuu" },
-  "Leuanveto chest-to-bar": { howTo: "Vastaote, vedä kunnes rinta koskettaa tangon. Rintaranka taakse, lapaluut kokoon. Kontrolloitu alas.", cue: "Rinta tankoon, ei leuka" },
+  "Leuanveto chest-to-bar": { howTo: "Myötäote (pronated) — streetlifting/CrossFit-standardi, vastaote tekee liikkeestä helpomman ja vähentää C2B-spesifisyyttä. Vedä kunnes rinta koskettaa tangon, rintaranka taakse, lapaluut kokoon. Kontrolloitu alas.", cue: "Rinta tankoon, ei leuka" },
   "False grip pull-up": { howTo: "Ranteet tangon yli (false grip), vedä chest-to-bar. Valmistaa muscle-upin transition-vaiheen — ranteiden täytyy olla tangon yläpuolella.", cue: "Rannekulma pysyy — ei pudota pohjalla" },
   "False grip row": { howTo: "Matala tanko, false grip, vedä rintaa tankoon. Kehonpaino-soutu — jalat maassa, vartalo suora.", cue: "Harjoittaa tranistionin voimaa ilman koko MU:n kuormaa" },
   "Archer pull-up": { howTo: "Leuanveto toiselle sivulle, toinen käsi suorana sivulle. Tee 3-5/sivu. Asymmetrinen veto rakentaa yksittäisen käden voimaa.", cue: "Vetävä käsi tekee työn, tukikäsi vain ohjaa" },
@@ -156,7 +156,7 @@ const MOVEMENT_DESCRIPTIONS = {
   "Pendlay row": { howTo: "Tanko maasta, selkä vaakatasossa, vedä tanko alarintaan, tanko PALAA maahan joka toistolla. Ei selän rullaamista.", cue: "Pysähdys maahan = nollasta starttaus joka toisto" },
   "Weighted inverted row": { howTo: "Matala tanko, vartalo suora, lisäpaino vyötäröllä/rinnassa. Vedä tanko rintaan.", cue: "Tanko rintaan, ei napaan" },
   "Ring dip": { howTo: "Dippi renkailla — epävakaus pakottaa olkapäät stabiloimaan. Aloita pienemmällä kuormalla kuin tankodipissä.", cue: "Renkaat pysyvät vartalon lähellä — ei levitä" },
-  "Close-grip dip": { howTo: "Kapea dippiote (harppuna lähes kohtaa), kyynärpäät taakse. Triceps-fokus, vähemmän rintaa.", cue: "Kyynärpäät aivan vartalon vieressä" },
+  "Close-grip dip": { howTo: "Kapea dippiote (kahvat lähes koskettavat toisiaan), kyynärpäät taakse. Triceps-fokus, vähemmän rintaa.", cue: "Kyynärpäät aivan vartalon vieressä" },
   "Straight bar dip": { howTo: "Dippi suoralla tangolla — spesifi kisa-asento MU:n lukitukseen. Tanko vartalon edessä, nojaa eteen.", cue: "Sama asento kuin MU:n huipulla" },
   "Russian dip": { howTo: "Dippi, laske kyynärvarret tangolle, nosta sieltä takaisin ylös täydeksi dipiksi. MU:n transition-loppuvaiheen spesifi.", cue: "Hallittu lasku kyynärvarsille — älä pudota" },
   "Close-grip bench": { howTo: "Penkkipunnerrus kapealla otteella (~hartiain leveys), kyynärpäät lähellä vartaloa. Tricepsin voimaliike.", cue: "Kyynärpäät 45° — ei sivulle" },
@@ -214,7 +214,7 @@ const ACCESSORY_SLOT_CATALOG = {
   // ─── PULL PATTERNS ───
   "pull-horizontal-heavy": {
     function: "Raskas horisontaaliveto, selän paksuus",
-    rationale: "Paksuntaa keskiselkää → suora tuki leuanvedolle ja MU-transitiolle. Hypertrofiassa chest-supported/seal (turvallinen volyymi), voimablokissa Pendlay (raskas ja eksplosiivinen).",
+    rationale: "Paksuntaa keskiselkää → suora tuki leuanvedolle ja MU-transitiolle. Hypertrofiassa chest-supported/seal pysäytyksellä (stretch-mediated volyymi), voimablokissa Pendlay (raskas ja eksplosiivinen).",
     phaseVariants: {
       foundation: ["Chest-supported row", "Seal row", "T-bar row"],
       strength:   ["Pendlay row", "T-bar row", "Chest-supported row"],
@@ -222,7 +222,7 @@ const ACCESSORY_SLOT_CATALOG = {
       peaking:    ["Chest-supported row"],
     },
     repScheme: {
-      foundation: { sets: 4, reps: 8, targetVx: null },
+      foundation: { sets: 4, reps: 8, targetVx: null, note: "1-2 s pysäytys alaosassa (venyneessä) — stretch-mediated hypertrofia, lisää selän paksuusärsykettä" },
       strength:   { sets: 4, reps: 6, targetVx: 3 },
       intensity:  { sets: 3, reps: 5, targetVx: 2 },
       peaking:    { sets: 2, reps: 6, targetVx: 4 },
@@ -262,9 +262,9 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "bicep-chain": {
     function: "Hauiskoukistajat, vetovoiman tuki",
-    rationale: "Kun selkä on vahva, leuanvedon rajoittava tekijä siirtyy usein hauiksiin. Hypertrofiablokissa volyymi (curls), voimablokissa raskaammat variantit (barbell curl).",
+    rationale: "Kun selkä on vahva, leuanvedon rajoittava tekijä siirtyy usein hauiksiin. Foundation-faasi priorisoi stretch-mediated hypertrofiaa (incline curl = hauis venytetty, Pedrosa 2022: ~1.5× enemmän kasvua vs pystyote). Voimablokissa raskaampi barbell curl.",
     phaseVariants: {
-      foundation: ["Hauiskääntö tanko", "Preacher curl", "Incline curl"],
+      foundation: ["Incline curl", "Preacher curl", "Hauiskääntö tanko"],
       strength:   ["Hauiskääntö tanko", "Hauiskääntö käsipainot", "Hammer curl"],
       intensity:  ["Hammer curl", "Hauiskääntö tanko"],
       peaking:    ["Hauiskääntö käsipainot"],
@@ -282,13 +282,13 @@ const ACCESSORY_SLOT_CATALOG = {
     function: "Kapean otteen rintapunnerrus, ojentajan veto",
     rationale: "Kapea ote = ojentajan voimaraja → suoraan kisadipin lukitus ja MU:n huippuasento. Raskas kompoundiliike ilman kisa-CNS-kuormaa.",
     phaseVariants: {
-      foundation: ["Penkkipunnerrus", "Close-grip bench", "Vinopenkkipunnerrus"],
+      foundation: ["Close-grip bench", "Penkkipunnerrus", "Vinopenkkipunnerrus"],
       strength:   ["Close-grip bench", "Penkkipunnerrus"],
       intensity:  ["Close-grip bench"],
       peaking:    ["Penkkipunnerrus"],
     },
     repScheme: {
-      foundation: { sets: 4, reps: 6, targetVx: 3, note: "kapea ote" },
+      foundation: { sets: 4, reps: 6, targetVx: 3, note: "kapea ote — ojentaja-spesifi" },
       strength:   { sets: 4, reps: 5, targetVx: 3 },
       intensity:  { sets: 3, reps: 4, targetVx: 2 },
       peaking:    { sets: 2, reps: 5, targetVx: 4 },
@@ -312,9 +312,9 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "tricep-lockout": {
     function: "Ojentajan lockout, dipin lukitusvoima",
-    rationale: "Dipin ja MU:n viimeiset 10 cm ovat puhdasta ojentajan voimaa. Skull crusher + close-grip bench kehittävät juuri lukitusta, ei lihasmassaa yleisesti.",
+    rationale: "Dipin ja MU:n viimeiset 10 cm ovat puhdasta ojentajan voimaa. Foundation-faasi rakentaa massaa overhead ext:llä (Maeo 2023: ~1.4× enemmän kasvua pitkäpäälle vs pushdown). Strength/intensity siirtyy skull crusheriin ja close-gripiin — lukituskulma-spesifi voima.",
     phaseVariants: {
-      foundation: ["Tricep pushdown", "Overhead tricep ext"],
+      foundation: ["Overhead tricep ext", "Tricep pushdown"],
       strength:   ["Skull crusher", "Close-grip bench"],
       intensity:  ["Skull crusher", "Tricep pushdown"],
       peaking:    ["Tricep pushdown"],
