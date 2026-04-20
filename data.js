@@ -41,6 +41,44 @@ const PULL_VOLUME_CATEGORIES = new Set([
   "hauisfleksio",
 ]);
 
+// MRV (Maximum Recoverable Volume) — hard sets per muscle/category per week.
+// Conservative Helms/Schoenfeld lower bound; user can override via settings.mrvOverrides.
+const MRV_SETS_PER_CATEGORY = {
+  vertikaaliveto:      22,
+  horisontaaliveto:    20,
+  vertikaalityöntö:    18,
+  horisontaalityöntö:  16,
+  hauisfleksio:        14,
+  ojentajaekstensio:   14,
+  alaraaja:            18,
+  core:                20,
+  muu:                 16,
+};
+
+const CATEGORY_LABELS_SHORT = {
+  vertikaaliveto:     "Vert. veto",
+  horisontaaliveto:   "Hor. veto",
+  vertikaalityöntö:   "Vert. työntö",
+  horisontaalityöntö: "Hor. työntö",
+  hauisfleksio:       "Hauis",
+  ojentajaekstensio:  "Ojentaja",
+  alaraaja:           "Alaraaja",
+  core:               "Core",
+  muu:                "Muu",
+};
+
+const CATEGORY_COLORS = {
+  vertikaaliveto:     "#4f8cff",
+  horisontaaliveto:   "#22c55e",
+  vertikaalityöntö:   "#06b6d4",
+  horisontaalityöntö: "#a855f7",
+  hauisfleksio:       "#84cc16",
+  ojentajaekstensio:  "#ec4899",
+  alaraaja:           "#f59e0b",
+  core:               "#8899bb",
+  muu:                "#5a6a8a",
+};
+
 // ── Preset movements (40+ across all categories) ──
 const PRESET_MOVEMENTS = [
   // ─── Primary ───
@@ -2673,6 +2711,9 @@ export {
   STORES,
   CATEGORIES,
   PULL_VOLUME_CATEGORIES,
+  MRV_SETS_PER_CATEGORY,
+  CATEGORY_LABELS_SHORT,
+  CATEGORY_COLORS,
   PRESET_MOVEMENTS,
   ACCESSORY_SLOT_CATALOG,
   MOVEMENT_DESCRIPTIONS,
