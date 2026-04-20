@@ -1989,6 +1989,11 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         sets:1, reps:1, targetVx:1, suggestedLoadKg:l(topSingle), note:"Top single RPE 8" });
     }
     return { dayOfWeek:1, dayType:"heavy", label:label || "MA — Leuka + Selkä",
+      warmup: [
+        { name: "Hyppynaru / Jumping Jacks", desc: "2–3 min yleislämmittely" },
+        { name: "Face pull", desc: "2×15, kevyt — hartiat ja lapaluut liikkeeseen" },
+        { name: "Scapular hang", desc: "3×10 s, lapa-aktivaatio ennen vetoja" },
+      ],
       slots:[...slots, ...pullAcc(sets >= 5 ? 3 : 4)] };
   }
 
@@ -2005,6 +2010,10 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         sets:1, reps:1, targetVx:1, suggestedLoadKg:k(topSingle), note:"Top single RPE 8", isBarbell:true });
     }
     return { dayOfWeek:2, dayType:"heavy", label:label || "TI — Kyykky + Alavartalo",
+      warmup: [
+        { name: "Hyppynaru / Jumping Jacks", desc: "2–3 min yleislämmittely" },
+        { name: "Heel Elevated Goblet Squat", desc: "2×10, 2s alas · 1s pohja · 2s ylös" },
+      ],
       slots:[...slots, ...lowerAcc()] };
   }
 
@@ -2022,6 +2031,11 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         sets:1, reps:1, targetVx:1, suggestedLoadKg:d(topSingle), note:"Top single RPE 8" });
     }
     return { dayOfWeek:4, dayType:"heavy", label:label || "TO — Dippi + Työntö",
+      warmup: [
+        { name: "Hyppynaru / Jumping Jacks", desc: "2–3 min yleislämmittely" },
+        { name: "Face pull", desc: "2×15, kevyt — hartiakapselit liikkeeseen" },
+        { name: "Band pull-apart", desc: "2×15, takaolka auki" },
+      ],
       slots:[...slots, ...pushAcc(sets >= 5 ? 3 : 4)] };
   }
 
@@ -2038,7 +2052,14 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         sets:3, reps:isSkill ? 8 : 5, targetVx:3, note:"Kevyt — prehab" },
       ...mixAcc(),
     ];
-    return { dayOfWeek:6, dayType:"volume", label:label || "LA — Muscle-up + Kevyt", slots };
+    return { dayOfWeek:6, dayType:"volume", label:label || "LA — Muscle-up + Kevyt",
+      warmup: [
+        { name: "Hyppynaru / Jumping Jacks", desc: "2–3 min yleislämmittely" },
+        { name: "Scapular pull-up", desc: "2×10, lapa-aktivaatio ennen MU:ta" },
+        { name: "False Grip hang", desc: "3×20 s, ranteiden asento kuntoon" },
+        { name: "Räjähtävä leuka", desc: "3×3 BW, maksimaalinen nopeus ylös" },
+      ],
+      slots };
   }
 
   // ─── 16-week plan ───

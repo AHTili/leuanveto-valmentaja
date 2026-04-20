@@ -686,6 +686,19 @@ function renderDashboard() {
   const readinessClass = r.combined === "GREEN" ? "chip-green" : r.combined === "YELLOW" ? "chip-yellow" : "chip-red";
   const readinessEmoji = r.combined === "GREEN" ? "🟢" : r.combined === "YELLOW" ? "🟡" : "🔴";
 
+  // Build warmup preview
+  let warmupHTML = "";
+  const warmupItems = rec?.dayPlan?.warmup;
+  if (warmupItems && warmupItems.length > 0) {
+    warmupHTML = `<div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--warn);letter-spacing:0.5px;margin-bottom:6px">🔥 LÄMMITTELY</div>
+      ${warmupItems.map(w => `<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:13px;font-weight:500;flex:0 0 auto">${w.name}</span>
+        <span style="font-size:12px;color:var(--muted);align-self:center">${w.desc}</span>
+      </div>`).join("")}
+    </div>`;
+  }
+
   // Build program preview — always shows full program with accessories
   let programHTML = "";
   if (rec && rec.dayPlan && rec.dayPlan.slots && rec.dayPlan.slots.length > 0) {
@@ -786,7 +799,7 @@ function renderDashboard() {
 
     <div class="card">
       <div class="card-title">Päivän ohjelma</div>
-      ${programHTML || '<div class="muted">Ei ohjelmaa — aloita mesosykli</div>'}
+      ${warmupHTML}${programHTML || '<div class="muted">Ei ohjelmaa — aloita mesosykli</div>'}
     </div>
 
     ${renderDecisionTracePreview(rec)}
