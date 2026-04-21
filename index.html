@@ -368,6 +368,41 @@
     .trace-row .rule { color: var(--acc); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 1px; }
     .trace-row .why { color: var(--muted); }
 
+    /* ── Missed prior session banner (v4.19) ─────────────────── */
+    .missed-banner {
+      display: flex; gap: 10px; align-items: center;
+      padding: 10px 12px;
+      background: linear-gradient(165deg, rgba(245,158,11,0.10) 0%, var(--card) 100%);
+      border: 1px solid rgba(245,158,11,0.35);
+      border-radius: var(--radius);
+      margin-bottom: 10px;
+    }
+    .missed-banner .missed-icon {
+      font-size: 20px; flex-shrink: 0; line-height: 1;
+    }
+    .missed-banner .missed-body { flex: 1; min-width: 0; }
+    .missed-banner .missed-title {
+      font-size: 13px; font-weight: 700; color: var(--warn); letter-spacing: -0.1px;
+    }
+    .missed-banner .missed-sub {
+      font-size: 11px; color: var(--muted); margin-top: 1px; line-height: 1.3;
+    }
+    .missed-banner .missed-sub b { color: var(--txt); font-weight: 600; }
+    .missed-banner .missed-actions {
+      display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;
+    }
+    .missed-banner .missed-actions .btn {
+      padding: 6px 10px; font-size: 11px; font-weight: 700; min-height: 30px;
+      border-radius: var(--radius-sm);
+    }
+    .missed-banner .missed-actions .btn-warn {
+      background: var(--warn); color: #1a1a1a; border: none;
+    }
+    .missed-banner .missed-actions .btn-warn:active { background: var(--warn2); color: #fff; }
+    .missed-banner .missed-actions .btn-outline {
+      font-size: 10px; min-height: 26px; padding: 4px 8px;
+    }
+
     /* ── Workout redesign v4.18 ──────────────────────────────── */
     .w-top-bar { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; margin-bottom: 10px; }
     .w-ex-progress { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.3px; }
@@ -561,6 +596,7 @@ import {
   varaFeedback,
   analyzeSessionAdaptation, applyAdaptations,
   getFutureWorkouts,
+  findMissedPriorSessions,
   eliteVolumeCheck,
   computeMovementE1RM, computeMovementE1RMHistory,
   REST_RECOMMENDATIONS,
@@ -693,17 +729,19 @@ async function computeReadiness() {
   state.readiness = combineReadiness(velR, hrvR, varaR);
 }
 
-async function computeRecommendation() {
+async function computeRecommendation(forDateISO = null) {
   const settings = state.settings;
+  const dateISO = forDateISO || todayISO();
   let primaryMov = state.movements.find(m => m.isPrimary);
-  // Multi-lift mesocycles: primary movement changes each day
+  // Multi-lift mesocycles: primary movement changes each day — käytä forDateISO:ta
+  // kun backfillataan mennyttä päivää, jotta saadaan oikea pv:n primary.
   if (state.mesocycle?.type === "streetlifting_16w") {
-    primaryMov = getStreetliftingPrimaryMovement(state) || primaryMov;
+    primaryMov = getStreetliftingPrimaryMovement(state, dateISO) || primaryMov;
   }
   state.recommendation = await recommend({
     settings,
     bodyweightKg: state.latestBodyweight || settings.bodyweightKg || 91,
-    dateISO: todayISO(),
+    dateISO,
     mesocycle: state.mesocycle,
     sessions: state.sessions,
     allSets: state.allSets,
@@ -936,11 +974,12 @@ const MESO_FACTORIES = {
   streetlifting_16w: createStreetlifting16WMesocycle,
 };
 
-// Helper: find today's primary movement for multi-lift mesocycles (streetlifting_16w)
-function getStreetliftingPrimaryMovement(state) {
+// Helper: find primary movement for multi-lift mesocycles (streetlifting_16w).
+// Optional forDateISO — default "now"; käytetään mennyt-päivän backfillissä.
+function getStreetliftingPrimaryMovement(state, forDateISO = null) {
   if (!state.mesocycle?.weekPlans || !state.mesocycle.startDateISO) return null;
   const start = new Date(state.mesocycle.startDateISO);
-  const now = new Date();
+  const now = forDateISO ? new Date(forDateISO) : new Date();
   const weekNum = Math.floor((now - start) / (7 * 24 * 3600 * 1000)) + 1;
   if (weekNum < 1 || weekNum > 16) return null;
   const weekPlan = state.mesocycle.weekPlans.find(wp => wp.week === weekNum);
@@ -1177,6 +1216,10 @@ function renderDashboard() {
       </div>`
     : "";
 
+  // Missed prior session banner — näytä uusin (eilinen) ensin
+  const missedSessions = meso ? findMissedPriorSessions(meso, state.sessions, today, 3) : [];
+  const missedBannerHTML = renderMissedBanner(missedSessions[0], missedSessions.length);
+
   const phaseTimelineHTML = buildPhaseTimelineHTML(meso, typeof weekNum === "number" ? weekNum : null, deloadMode);
 
   const ctaDurationPill = estDur ? `<span class="duration">~${estDur} min</span>` : "";
@@ -1196,6 +1239,7 @@ function renderDashboard() {
     </div>
 
     ${breakHTML}
+    ${missedBannerHTML}
 
     <div class="hero${deloadMode ? " deload" : ""}">
       <div class="hero-eyebrow">
@@ -1225,6 +1269,30 @@ function renderDashboard() {
     ${renderFutureCollapsible()}
 
     ${renderTraceCollapsible(rec)}
+  </div>`;
+}
+
+function renderMissedBanner(missed, totalCount) {
+  if (!missed) return "";
+  const dayNamesFull = { 1: "Maanantai", 2: "Tiistai", 3: "Keskiviikko", 4: "Torstai", 5: "Perjantai", 6: "Lauantai", 7: "Sunnuntai" };
+  const dayNameShort = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
+  const today = todayISO();
+  const iso = missed.dateISO;
+  const diffDays = Math.max(1, Math.round((new Date(today) - new Date(iso)) / (24 * 3600 * 1000)));
+  const titleTime = diffDays === 1 ? "Eilinen treeni tekemättä" : `${dayNamesFull[missed.dayOfWeek] || "Aiempi"} tekemättä`;
+  const moreHint = totalCount > 1 ? ` · +${totalCount - 1} muuta tekemättä` : "";
+  const subHead = missed.dayLabel || dayTypeLabel(missed.dayType);
+  const datePart = `${dayNameShort[missed.dayOfWeek] || ""} ${iso.slice(5).replace("-", ".")}`;
+  return `<div class="missed-banner">
+    <div class="missed-icon">🕑</div>
+    <div class="missed-body">
+      <div class="missed-title">${titleTime}${moreHint}</div>
+      <div class="missed-sub"><b>${datePart}</b> · ${subHead}</div>
+    </div>
+    <div class="missed-actions">
+      <button class="btn btn-warn" data-backfill="${iso}" title="Tee ${titleTime.toLowerCase()}">Tee nyt</button>
+      <button class="btn btn-outline" data-skip-day="${iso}" title="Merkitse väliinjätetyksi">Jätä väliin</button>
+    </div>
   </div>`;
 }
 
@@ -1701,12 +1769,18 @@ function renderActiveWorkout() {
     ${state.settings?.velocityEnabled ? `<button id="btn-velocity-toggle" title="Näytä velocity-syöttö">💎 Velocity</button>` : ""}
   </div>`;
 
+  // Backfill-indikaattori: kun treeni on mennyt-päivän backfill, näytä chip
+  const backfillChipHTML = w.isBackfill
+    ? `<div style="margin-bottom:8px"><span class="chip chip-yellow" style="font-size:10px">🕑 Backfill · ${formatDateShort(w.dateISO)}</span></div>`
+    : "";
+
   return `<div class="fade-in">
     <div class="w-top-bar">
       <div class="w-ex-progress">Liike <b>${currentExIdx + 1}/${totalExercises}</b> · Sarja <b>${isWarmupSet ? `${warmupSetIdx}/${warmupCount}` : `${currentWorkSetNum}/${workSetCount}`}</b></div>
       <button class="icon-btn" id="btn-skip-exercise" title="Ohita tämä liike">⏩</button>
       <button class="icon-btn danger" id="btn-end-workout" title="Lopeta treeni">⏹</button>
     </div>
+    ${backfillChipHTML}
     <div class="progress" style="margin-bottom:10px"><div class="progress-fill" style="width:${progressPct}%"></div></div>
 
     <div class="pill-ticker">${pillsHTML}</div>
@@ -1933,13 +2007,16 @@ function showEndWorkoutConfirm() {
     w.currentExerciseIdx = w.exercises.length;
     render();
   });
-  overlay.querySelector("#c-btn-discard").addEventListener("click", () => {
+  overlay.querySelector("#c-btn-discard").addEventListener("click", async () => {
     close();
     // Discard in-session state. Note: sets are only persisted at saveWorkoutToDb(),
     // so clearing state.workout drops them cleanly.
     stopRestTimer();
+    const wasBackfill = !!state.workout?.isBackfill;
     state.workout = null;
     state.view = "dashboard";
+    // Jos treeni oli mennyt-päivän backfill, palautetaan state.recommendation tänään
+    if (wasBackfill) await computeRecommendation();
     render();
   });
 }
@@ -2438,14 +2515,16 @@ function renderHistory() {
 
   return `<div class="fade-in">
     <div class="section-header">Historia</div>
+    <button class="btn btn-outline btn-full mb" id="btn-backfill-past" style="font-size:13px">+ Lisää mennyt treeni</button>
     ${recent.length === 0 ? '<div class="card"><div class="muted">Ei treenejä vielä</div></div>' : ""}
     ${recent.map(s => {
       const sets = state.allSets.filter(set => set.sessionId === s.sessionId);
       const dayType = s.plannedDayType || "-";
+      const backfillTag = s.isBackfill ? ' <span class="chip chip-yellow" style="font-size:10px;padding:1px 6px;margin-left:4px">backfill</span>' : "";
       return `<div class="card">
         <div class="flex-between">
           <div>
-            <div style="font-weight:600">${formatDateShort(s.dateISO)}</div>
+            <div style="font-weight:600">${formatDateShort(s.dateISO)}${backfillTag}</div>
             <div class="muted">${dayTypeLabel(dayType)} | ${sets.length} sarjaa</div>
           </div>
           <button class="btn btn-sm btn-outline" data-delete-session="${s.sessionId}">🗑</button>
@@ -2459,6 +2538,35 @@ function renderHistory() {
       </div>`;
     }).join("")}
   </div>`;
+}
+
+/**
+ * Kerää mesosyklin mennet suunnitelluet päivät joille EI löydy sessiota
+ * eikä skippedDays-merkintää. Käytetään history-näkymän "+ Lisää mennyt treeni" -polussa.
+ * @param {number} daysBack — oletus 28 (4 viikkoa)
+ */
+function collectAllMissedDays(daysBack = 28) {
+  if (!state.mesocycle) return [];
+  const sessionDates = new Set(state.sessions.map(s => s.dateISO));
+  const skipped = new Set(state.mesocycle.skippedDays || []);
+  const today = todayISO();
+  const base = new Date(today);
+  const out = [];
+  for (let d = 1; d <= daysBack; d++) {
+    const date = new Date(base);
+    date.setDate(date.getDate() - d);
+    const iso = date.toISOString().slice(0, 10);
+    if (sessionDates.has(iso)) continue;
+    if (skipped.has(iso)) continue;
+    const weekNum = getMesocycleWeek(state.mesocycle, iso);
+    if (weekNum === null) continue;
+    const dow = date.getDay() || 7;
+    const weekPlan = state.mesocycle.weekPlans?.find(w => w.week === weekNum);
+    const dayPlan = weekPlan?.days?.find(x => x.dayOfWeek === dow);
+    if (!dayPlan) continue;
+    out.push({ dateISO: iso, dayOfWeek: dow, weekNum, dayType: dayPlan.dayType, dayLabel: dayPlan.label || null });
+  }
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3472,6 +3580,74 @@ function bind() {
   const readinessBtn = $("#btn-readiness");
   if (readinessBtn) readinessBtn.addEventListener("click", () => { state.view = "readiness"; render(); });
 
+  // Missed-session banner: "Tee nyt" → käynnistä treeni mennyt-päivän planilla
+  $$("[data-backfill]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const iso = btn.dataset.backfill;
+      if (!iso) return;
+      if (state.workout) {
+        showToast("Keskeneräinen treeni — tallenna tai hylkää ensin", "warn");
+        return;
+      }
+      // Estä tupla-klikki
+      btn.disabled = true;
+      try {
+        await startWorkout(iso);
+        state.view = "workout";
+        render();
+      } catch (e) {
+        console.error("Backfill startWorkout failed:", e);
+        showToast("Virhe: treeniä ei voitu käynnistää", "bad");
+        btn.disabled = false;
+      }
+    });
+  });
+
+  // Missed-session banner: "Jätä väliin" → merkitse skipatuksi
+  $$("[data-skip-day]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const iso = btn.dataset.skipDay;
+      if (!iso || !state.mesocycle) return;
+      const skipped = new Set(state.mesocycle.skippedDays || []);
+      skipped.add(iso);
+      state.mesocycle.skippedDays = [...skipped].sort();
+      await saveMesocycle(state.mesocycle);
+      showToast("Päivä merkitty väliinjätetyksi", "ok");
+      render();
+    });
+  });
+
+  // History view: "+ Lisää mennyt treeni"
+  const backfillPastBtn = $("#btn-backfill-past");
+  if (backfillPastBtn) backfillPastBtn.addEventListener("click", async () => {
+    if (state.workout) {
+      showToast("Keskeneräinen treeni — tallenna tai hylkää ensin", "warn");
+      return;
+    }
+    const missed = collectAllMissedDays(28);
+    if (missed.length === 0) {
+      showToast("Ei tekemättömiä suunniteltuja päiviä (4 vk)", "");
+      return;
+    }
+    const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
+    const options = missed.map(m => ({
+      icon: "🕑",
+      label: `${dayNames[m.dayOfWeek]} ${m.dateISO.slice(5).replace("-", ".")} · ${m.dayLabel || dayTypeLabel(m.dayType)}`,
+      desc: `Vk ${m.weekNum}`,
+    }));
+    const idx = await showListModal("Lisää mennyt treeni", options);
+    if (idx === null || idx < 0 || idx >= missed.length) return;
+    const iso = missed[idx].dateISO;
+    try {
+      await startWorkout(iso);
+      state.view = "workout";
+      render();
+    } catch (e) {
+      console.error("Backfill past workout failed:", e);
+      showToast("Virhe: treeniä ei voitu käynnistää", "bad");
+    }
+  });
+
   const deloadBtn = $("#btn-insert-deload");
   if (deloadBtn) deloadBtn.addEventListener("click", async () => {
     const meso = state.mesocycle;
@@ -4085,7 +4261,12 @@ function bind() {
 // WORKOUT ENGINE
 // ═══════════════════════════════════════════════════════════════
 
-async function startWorkout() {
+async function startWorkout(backfillDateISO = null) {
+  // Kun backfillDateISO on annettu, recomputataan suositus tuon päivän planille
+  // ja session saa tuon päivämäärän. Normaali tänään-startissa pass-through.
+  if (backfillDateISO) {
+    await computeRecommendation(backfillDateISO);
+  }
   const rec = state.recommendation;
   const bw = state.settings?.bodyweightKg || 91;
   const exercises = [];
@@ -4227,6 +4408,8 @@ async function startWorkout() {
 
   state.workout = {
     sessionId: uid(),
+    dateISO: backfillDateISO || todayISO(),
+    isBackfill: !!backfillDateISO,
     dayType: rec?.dayType || "heavy",
     exercises,
     currentExerciseIdx: 0,
@@ -4586,10 +4769,12 @@ function bindWorkoutEvents() {
 
   // Discard workout
   const discardBtn = $("#btn-discard-workout");
-  if (discardBtn) discardBtn.addEventListener("click", () => {
+  if (discardBtn) discardBtn.addEventListener("click", async () => {
     if (!confirm("Hylätäänkö treeni?")) return;
+    const wasBackfill = !!state.workout?.isBackfill;
     state.workout = null;
     state.view = "dashboard";
+    if (wasBackfill) await computeRecommendation();
     render();
   });
 
@@ -4747,10 +4932,10 @@ async function saveWorkoutToDb(sessionNotes = "") {
   const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
   const rec = state.recommendation;
 
-  // Save session
+  // Save session — käytä backfill-päivämäärää jos asetettu, muuten tänään
   const session = {
     sessionId: w.sessionId,
-    dateISO: todayISO(),
+    dateISO: w.dateISO || todayISO(),
     plannedDayType: w.dayType,
     mesocycleWeek: rec?.weekNum || null,
     mesocycleId: state.mesocycle?.mesocycleId || null,
@@ -4758,6 +4943,7 @@ async function saveWorkoutToDb(sessionNotes = "") {
     sessionNotes: sessionNotes || "",
     readinessCapLevel: state.readiness.capLevel,
     readinessDetails: state.readiness,
+    isBackfill: !!w.isBackfill,
   };
   await saveSession(session);
 

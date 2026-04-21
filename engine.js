@@ -1599,6 +1599,54 @@ function getFutureWorkouts(mesocycle, currentDateISO, daysAhead = 14) {
   return results;
 }
 
+/**
+ * Etsii menneet, toteuttamatta jääneet treenipäivät mesosyklistä.
+ * Palauttaa taulukon suunnitelluista päivistä joille ei löydy sessiota eikä
+ * ole käyttäjän eksplisiittisesti ohittamia (mesocycle.skippedDays).
+ *
+ * @param {Object} mesocycle
+ * @param {Array} sessions — state.sessions
+ * @param {string} currentDateISO — "tänään"
+ * @param {number} daysBack — kuinka monta vuorokautta taakse tarkistetaan (oletus 3)
+ * @returns {Array<{dateISO, dayOfWeek, weekNum, weekLabel, dayType, dayLabel, slots}>}
+ */
+function findMissedPriorSessions(mesocycle, sessions, currentDateISO, daysBack = 3) {
+  if (!mesocycle || !mesocycle.weekPlans || !currentDateISO) return [];
+  const skipped = new Set(mesocycle.skippedDays || []);
+  const sessionDates = new Set((sessions || []).map(s => s.dateISO));
+  const results = [];
+  const base = new Date(currentDateISO);
+
+  for (let d = 1; d <= daysBack; d++) {
+    const date = new Date(base);
+    date.setDate(date.getDate() - d);
+    const iso = date.toISOString().slice(0, 10);
+    if (skipped.has(iso)) continue;
+    if (sessionDates.has(iso)) continue;
+
+    const weekNum = getMesocycleWeek(mesocycle, iso);
+    if (weekNum === null) continue; // ennen mesosykliä tai sen jälkeen
+
+    const dayOfWeek = date.getDay() || 7;
+    const weekPlan = mesocycle.weekPlans.find(w => w.week === weekNum);
+    const dayPlan = weekPlan?.days?.find(x => x.dayOfWeek === dayOfWeek);
+    if (!dayPlan) continue; // ei ollut suunniteltua sessiota
+
+    const weekDef = getWeekDef(mesocycle, weekNum);
+    results.push({
+      dateISO: iso,
+      dayOfWeek,
+      weekNum,
+      weekLabel: weekDef?.label || "",
+      dayType: dayPlan.dayType,
+      dayLabel: dayPlan.label || null,
+      slots: dayPlan.slots || [],
+    });
+  }
+  // Uusin ensin (= eilen ennen toissa päivää)
+  return results.sort((a, b) => b.dateISO.localeCompare(a.dateISO));
+}
+
 // ═══════════════════════════════════════════════════════════════
 // ELITE VOLUME/INTENSITY CHECK
 // ═══════════════════════════════════════════════════════════════
@@ -2105,6 +2153,8 @@ export {
   applyAdaptations,
   // Future workouts
   getFutureWorkouts,
+  // Missed prior sessions
+  findMissedPriorSessions,
   // Elite check
   eliteVolumeCheck,
   // Movement e1RM
