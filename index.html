@@ -367,6 +367,152 @@
     .trace-row:last-child { border-bottom: none; }
     .trace-row .rule { color: var(--acc); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 1px; }
     .trace-row .why { color: var(--muted); }
+
+    /* ── Workout redesign v4.18 ──────────────────────────────── */
+    .w-top-bar { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .w-ex-progress { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.3px; }
+    .w-ex-progress b { color: var(--txt); font-size: 13px; font-weight: 700; }
+    .icon-btn { width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--border2); background: var(--card2); color: var(--txt); font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+    .icon-btn:active { background: var(--border); }
+    .icon-btn.danger { color: var(--bad); border-color: var(--bad2); }
+    .icon-btn.danger:active { background: rgba(239,68,68,0.1); }
+
+    /* Pill ticker */
+    .pill-ticker { display: flex; gap: 3px; margin-bottom: 10px; flex-wrap: wrap; }
+    .pill-ticker .pill { flex: 1 1 0; min-width: 44px; height: 22px; border-radius: 11px; background: var(--card2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--muted); cursor: pointer; transition: all .15s; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pill-ticker .pill.done { background: transparent; border-color: var(--ok); color: var(--ok); }
+    .pill-ticker .pill.done::before { content: "✓ "; font-weight: 800; }
+    .pill-ticker .pill.active { background: var(--acc); border-color: var(--acc); color: #fff; flex: 2 1 0; }
+
+    /* Exercise head */
+    .ex-head { padding: 12px 14px 10px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; border-bottom: none; }
+    .ex-role { font-size: 10px; font-weight: 700; letter-spacing: 0.7px; color: var(--acc); text-transform: uppercase; margin-bottom: 2px; }
+    .ex-role.deload { color: var(--warn); }
+    .ex-role .text-ok { color: var(--ok); margin-left: 6px; }
+    .ex-role .text-warn { color: var(--warn); margin-left: 6px; }
+    .ex-name { font-size: 20px; font-weight: 800; letter-spacing: -0.4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .ex-name .info { color: var(--acc); font-size: 15px; cursor: pointer; }
+    .ex-name .lock { font-size: 14px; cursor: pointer; opacity: 0.8; }
+    .ex-name .swap { color: var(--muted); font-size: 14px; cursor: pointer; opacity: 0.6; }
+    .ex-name .swap:active { opacity: 1; }
+    .ex-sub { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+    .ex-sub .tempo { color: var(--warn); font-weight: 600; }
+    .ex-sub .slot-source { color: var(--acc); }
+
+    /* Hero load card */
+    .load-hero { background: linear-gradient(165deg, var(--card2) 0%, var(--card) 100%); border: 1px solid var(--border2); border-top: none; border-radius: 0 0 var(--radius) var(--radius); padding: 14px 16px 18px; position: relative; overflow: hidden; }
+    .load-hero::before { content: ''; position: absolute; top: -30px; right: -30px; width: 100px; height: 100px; border-radius: 999px; background: radial-gradient(circle, rgba(79,140,255,0.22) 0%, transparent 70%); pointer-events: none; }
+    .load-hero .set-line { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--muted); margin-bottom: 6px; position: relative; z-index: 1; }
+    .load-hero .set-line b { color: var(--txt); font-weight: 700; font-size: 12px; }
+    .load-hero .load-main { display: flex; align-items: baseline; gap: 8px; font-variant-numeric: tabular-nums; position: relative; z-index: 1; flex-wrap: wrap; }
+    .load-hero .load-main .val { font-size: 44px; font-weight: 800; letter-spacing: -1.5px; color: var(--txt); cursor: pointer; line-height: 1; }
+    .load-hero .load-main .val.load-up { color: var(--ok); }
+    .load-hero .load-main .unit { font-size: 14px; color: var(--muted); font-weight: 600; }
+    .load-hero .delta-chip { margin-left: auto; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: rgba(34,197,94,0.14); color: var(--ok); white-space: nowrap; }
+    .load-hero .delta-chip.down { background: rgba(239,68,68,0.14); color: var(--bad); }
+    .load-hero .load-edit-hint { font-size: 10px; color: var(--dim); margin-top: 6px; letter-spacing: 0.2px; position: relative; z-index: 1; }
+    .load-hero .load-edit-hint::before { content: "✎ "; }
+    .load-hero .prev-ghost { margin-top: 12px; padding: 8px 10px; border: 1px dashed var(--border2); border-radius: var(--radius-sm); background: rgba(13,21,40,0.5); display: flex; justify-content: space-between; align-items: center; font-size: 11px; position: relative; z-index: 1; gap: 8px; }
+    .load-hero .prev-ghost .label { color: var(--dim); letter-spacing: 0.3px; font-weight: 600; text-transform: uppercase; font-size: 9px; }
+    .load-hero .prev-ghost .vals { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; margin-top: 2px; }
+    .load-hero .prev-ghost .vals b { color: var(--txt); }
+    .load-hero .prev-ghost .mark { color: var(--ok); font-size: 14px; flex-shrink: 0; }
+    .load-hero .target-row { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-sm); background: rgba(79,140,255,0.08); border: 1px solid rgba(79,140,255,0.2); font-size: 12px; position: relative; z-index: 1; }
+    .load-hero .target-row .label { color: var(--acc); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px; }
+    .load-hero .target-row .vals { font-weight: 700; letter-spacing: -0.2px; font-variant-numeric: tabular-nums; }
+
+    /* Input section */
+    .input-section { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-top: 10px; }
+    .input-label { font-size: 10px; font-weight: 700; letter-spacing: 0.7px; color: var(--muted); text-transform: uppercase; margin-bottom: 7px; display: flex; align-items: center; justify-content: space-between; }
+    .input-label .hint { color: var(--dim); font-weight: 500; letter-spacing: 0.2px; text-transform: none; font-size: 10px; }
+    .reps-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .reps-row button { height: 56px; border-radius: var(--radius-sm); border: 2px solid var(--border2); background: var(--card2); color: var(--txt); font-size: 20px; font-weight: 800; cursor: pointer; font-variant-numeric: tabular-nums; position: relative; }
+    .reps-row button.selected { background: var(--acc); border-color: var(--acc); color: #fff; }
+    .reps-row button.target::after { content: '◆'; position: absolute; top: 3px; right: 4px; font-size: 8px; color: var(--acc); opacity: 0.6; }
+    .reps-row button.selected.target::after { color: #fff; opacity: 1; }
+    .vara-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 10px; }
+    .vara-row button { height: 48px; border-radius: var(--radius-sm); border: 2px solid var(--border2); background: var(--card2); color: var(--txt); font-size: 14px; font-weight: 700; cursor: pointer; position: relative; }
+    .vara-row button.selected { background: var(--acc); border-color: var(--acc); color: #fff; }
+    .vara-row button.target { border-color: rgba(79,140,255,0.5); }
+    .vara-row button.target::after { content: '◆'; position: absolute; top: 3px; right: 4px; font-size: 7px; color: var(--acc); opacity: 0.6; }
+    .vara-row button.selected.target::after { color: #fff; opacity: 1; }
+    @media (max-width: 360px) {
+      .reps-row { grid-template-columns: repeat(5, 1fr); }
+      .vara-row { grid-template-columns: repeat(6, 1fr); }
+    }
+
+    /* Submit button */
+    .submit-btn { width: 100%; margin-top: 12px; min-height: 56px; border-radius: var(--radius); background: var(--acc); border: none; color: #fff; font-size: 16px; font-weight: 800; letter-spacing: -0.2px; cursor: pointer; box-shadow: 0 6px 18px rgba(79,140,255,0.28); transition: background .15s, box-shadow .15s, transform .08s; }
+    .submit-btn:disabled { opacity: 0.4; box-shadow: none; cursor: not-allowed; background: var(--card2); color: var(--muted); }
+    .submit-btn.ready { background: var(--ok); box-shadow: 0 6px 18px rgba(34,197,94,0.28); }
+    .submit-btn.ready:active { transform: scale(0.99); }
+
+    /* Attempted-reps (failure) — inline */
+    #attempted-reps-container { margin-top: 10px; padding: 10px 12px; background: var(--card2); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+    #attempted-reps-container label { margin-top: 0; }
+
+    /* Completed list */
+    .completed-list { margin-top: 10px; padding: 8px 10px; background: var(--card2); border-radius: var(--radius-sm); font-size: 11px; line-height: 1.6; }
+    .completed-list .row { display: flex; gap: 8px; color: var(--muted); font-variant-numeric: tabular-nums; align-items: center; }
+    .completed-list .row + .row { margin-top: 3px; }
+    .completed-list .row b { color: var(--txt); font-weight: 700; }
+    .completed-list .row .done-mark { color: var(--ok); font-weight: 800; }
+    .completed-list .vel-mini { margin-top: 8px; }
+    .completed-list .vel-mini-label { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px; }
+
+    /* Velocity panel (collapsible) */
+    .vel-panel { margin-top: 10px; padding: 10px 12px; background: var(--card2); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+    .vel-panel label { margin-top: 0; font-size: 11px; }
+    .vel-panel input { margin-top: 4px; }
+
+    /* Utility row */
+    .util-row { display: flex; justify-content: space-between; gap: 4px; margin-top: 10px; padding: 0 4px; }
+    .util-row button { flex: 1; padding: 8px 4px; font-size: 10px; font-weight: 600; background: transparent; border: none; color: var(--muted); cursor: pointer; border-radius: var(--radius-sm); text-align: center; }
+    .util-row button:active { background: var(--card2); }
+    .util-row button.on { color: var(--acc); }
+
+    /* Rest timer — inline card */
+    .rest-inline { margin-top: 12px; padding: 14px 16px; background: linear-gradient(165deg, rgba(79,140,255,0.12), rgba(79,140,255,0.04)); border: 1px solid rgba(79,140,255,0.3); border-radius: var(--radius); position: relative; overflow: hidden; }
+    .rest-inline.overtime { background: linear-gradient(165deg, rgba(245,158,11,0.14), rgba(245,158,11,0.04)); border-color: rgba(245,158,11,0.35); }
+    .rest-inline::before { content: ''; position: absolute; bottom: 0; left: 0; height: 3px; background: var(--acc); border-radius: 0 3px 0 0; width: var(--rest-progress, 0%); transition: width 1s linear; }
+    .rest-inline.overtime::before { background: var(--warn); width: 100%; }
+    .rest-inline .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+    .rest-inline .label { font-size: 10px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase; color: var(--acc); }
+    .rest-inline.overtime .label { color: var(--warn); }
+    .rest-inline .status { font-size: 11px; color: var(--muted); }
+    .rest-inline .time-big { font-size: 42px; font-weight: 800; color: var(--txt); font-variant-numeric: tabular-nums; letter-spacing: -1.5px; line-height: 1; }
+    .rest-inline .time-big.overtime { color: var(--warn); }
+    .rest-inline .time-row { display: flex; align-items: baseline; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+    .rest-inline .suggest { font-size: 11px; color: var(--muted); }
+    .rest-inline .actions { display: flex; gap: 6px; margin-top: 10px; }
+    .rest-inline .actions button { flex: 1; padding: 10px 4px; background: var(--card2); border: 1px solid var(--border2); color: var(--txt); border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; cursor: pointer; min-height: 40px; }
+    .rest-inline .actions button.skip { color: var(--warn); border-color: var(--warn2); }
+    .rest-inline .actions button:active { background: var(--border); }
+
+    /* Rest timer — sticky dock (rendered at body level, visible across views) */
+    #rest-dock { position: fixed; top: 12px; left: 12px; right: 12px; z-index: 90; padding: 8px 14px; border-radius: 999px; background: linear-gradient(90deg, rgba(79,140,255,0.96), rgba(58,111,216,0.96)); backdrop-filter: blur(12px); display: flex; justify-content: space-between; align-items: center; color: #fff; font-weight: 700; font-size: 13px; box-shadow: 0 8px 20px rgba(79,140,255,0.4); opacity: 0; transform: translateY(-8px); pointer-events: none; transition: opacity .2s, transform .2s; cursor: pointer; max-width: 600px; margin: 0 auto; }
+    #rest-dock.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+    #rest-dock.overtime { background: linear-gradient(90deg, rgba(245,158,11,0.96), rgba(146,64,14,0.96)); box-shadow: 0 8px 20px rgba(245,158,11,0.4); }
+    #rest-dock .dock-left { display: flex; flex-direction: column; line-height: 1.15; }
+    #rest-dock .dock-label { font-size: 10px; opacity: 0.85; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase; }
+    #rest-dock .dock-time { font-size: 16px; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; font-weight: 800; }
+    #rest-dock .dock-dismiss { background: rgba(255,255,255,0.2); border: none; color: #fff; width: 28px; height: 28px; border-radius: 999px; font-size: 13px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; padding: 0; }
+    #rest-dock .dock-dismiss:active { background: rgba(255,255,255,0.35); }
+
+    /* Confirm overlay (Lopeta) */
+    .confirm-overlay { position: fixed; inset: 0; background: rgba(5,8,16,0.88); backdrop-filter: blur(8px); z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .confirm-card { background: var(--card); border: 1px solid var(--border2); border-radius: var(--radius); padding: 22px; width: 100%; max-width: 380px; text-align: center; }
+    .confirm-card .c-icon { font-size: 28px; margin-bottom: 8px; }
+    .confirm-card h3 { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+    .confirm-card p { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 16px; }
+    .confirm-card p b { color: var(--txt); font-weight: 700; }
+    .confirm-card .c-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .confirm-card .btn.c-save { background: var(--ok); }
+    .confirm-card .btn.c-save:active { background: var(--ok2); }
+    .confirm-card .btn.c-discard { background: var(--bad); }
+    .confirm-card .btn.c-discard:active { background: var(--bad2); }
+    .confirm-card .c-cancel { margin-top: 12px; background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer; padding: 6px 10px; }
+    .confirm-card .c-cancel:active { color: var(--txt); }
   </style>
 </head>
 <body>
@@ -848,6 +994,14 @@ function render() {
   }
   renderNav();
   bind();
+  // Rest-timer dock: re-attach observer to the (possibly freshly rendered) inline card
+  // and re-evaluate dock visibility for the current view.
+  if (state.restTimerInterval !== null) {
+    ensureRestDock();
+    updateRestTimerUI();
+    attachRestInlineObserver();
+    updateRestDockVisibility();
+  }
 }
 
 function renderNav() {
@@ -1264,6 +1418,38 @@ function renderWorkoutWarmupIntro() {
   </div>`;
 }
 
+// Compute the most recent prior-session set for this movement — used for delta chip + first-set ghost
+function computePriorSet(movementId, excludeSessionId) {
+  if (!movementId) return null;
+  const candidates = state.allSets
+    .filter(s => s.movementId === movementId && !s.isWarmup && s.completed)
+    .filter(s => {
+      const sess = state.sessions.find(x => x.sessionId === s.sessionId);
+      return sess && sess.sessionId !== excludeSessionId;
+    });
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => {
+    const sa = state.sessions.find(x => x.sessionId === a.sessionId);
+    const sb = state.sessions.find(x => x.sessionId === b.sessionId);
+    return (sb?.dateISO || "").localeCompare(sa?.dateISO || "");
+  });
+  return candidates[0];
+}
+
+function priorSetDaysAgoLabel(priorSet) {
+  if (!priorSet) return "";
+  const sess = state.sessions.find(x => x.sessionId === priorSet.sessionId);
+  if (!sess?.dateISO) return "";
+  const today = new Date();
+  const then = new Date(sess.dateISO);
+  const days = Math.max(0, Math.round((today - then) / (24 * 3600 * 1000)));
+  if (days === 0) return "tänään";
+  if (days === 1) return "eilen";
+  if (days < 14) return `${days} pv sitten`;
+  const weeks = Math.round(days / 7);
+  return `${weeks} vk sitten`;
+}
+
 function renderActiveWorkout() {
   const w = state.workout;
   if (!w) return "";
@@ -1294,9 +1480,12 @@ function renderActiveWorkout() {
   const warmupCount = exercise.sets.filter(s => s.isWarmup).length;
   const workSetCount = exercise.sets.filter(s => !s.isWarmup).length;
   const warmupSetIdx = isWarmupSet ? exercise.sets.filter((s, i) => s.isWarmup && i <= currentSetIdx).length : 0;
+  const currentWorkSetNum = currentSetIdx + 1 - warmupCount; // 1-indexed work set number
 
   // Load display
-  const loadStr = currentSet.loadKg !== null ? `${currentSet.loadKg === 0 ? "Kehonpaino" : currentSet.loadKg + " kg"}` : "–";
+  const loadKg = currentSet.loadKg;
+  const loadBig = loadKg !== null && loadKg !== undefined ? (loadKg === 0 ? "BW" : String(loadKg)) : "–";
+  const loadUnit = loadKg === 0 ? "kehonpaino" : "kg lisäpainoa";
   const isLoadIncrease = exercise.progressSuggestion === "increase";
 
   // Rest time recommendation
@@ -1304,113 +1493,247 @@ function renderActiveWorkout() {
     ? REST_RECOMMENDATIONS[state.workout.dayType] || REST_RECOMMENDATIONS.heavy
     : REST_RECOMMENDATIONS.accessory;
 
-  // Rest timer display — persistoitu: näytä myös overtime (negatiivinen) tilanne
-  const timerActive = state.restTimerInterval !== null;
-  const restTimerHTML = timerActive
-    ? `<div id="rest-timer-display" style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:${state.restTimerSeconds >= 0 ? 'var(--acc)' : 'var(--warn)'}">${state.restTimerSeconds >= 0 ? formatRestTime(state.restTimerSeconds) : '+' + formatRestTime(Math.abs(state.restTimerSeconds))}<div class="muted" style="font-size:11px;font-weight:400">Suositus: ${restRec.label}</div></div>`
-    : `<div id="rest-timer-display" style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:var(--acc);display:none"></div>`;
-
-  // Completed sets summary (work sets only, warmup omitted)
+  // Completed sets (work sets only, warmup omitted)
   const completedWorkSets = exercise.sets.filter(s => s.completed && !s.isWarmup);
-  const completedSetsHTML = completedWorkSets.map((s, i) =>
-    `<div class="muted" style="padding:2px 0;font-size:12px">✓ Sarja ${i + 1}: ${s.loadKg} kg × ${s.reps}${s.attemptedReps ? ` (yritetty ${s.attemptedReps})` : ""} V${s.actualVx ?? "?"} ${s.velocity ? `(${s.velocity} m/s)` : ""}</div>`
-  ).join("");
 
-  // Exercise list sidebar (clickable navigation)
-  const exerciseListHTML = w.exercises.map((ex, i) => {
+  // ── Pill ticker (replaces scroll-x exercise chips) ──
+  const pillsHTML = w.exercises.map((ex, i) => {
     const done = ex.sets.every(s => s.completed);
     const active = i === currentExIdx;
-    return `<button class="ex-jump" data-jump-idx="${i}" style="display:inline-block;padding:5px 10px;border:none;border-radius:6px;font-size:11px;margin:2px;cursor:pointer;${active ? 'background:var(--acc);color:#fff' : done ? 'background:var(--ok2);color:var(--ok)' : 'background:var(--card2);color:var(--muted)'}">${i + 1}. ${ex.name.split(" ")[0]}</button>`;
+    const cls = active ? "active" : done ? "done" : "";
+    const name = (ex.name || "").split(" ")[0] || ex.name || "?";
+    return `<div class="pill ${cls}" data-jump-idx="${i}" title="${ex.name || ""}">${name}</div>`;
   }).join("");
 
-  return `<div class="fade-in">
-    <div class="flex-between mb">
-      <div class="muted">${currentExIdx + 1}/${totalExercises} liikettä</div>
-      <div>
-        <button class="btn btn-sm btn-outline" id="btn-skip-exercise" style="margin-right:4px">⏩ Ohita</button>
-        <button class="btn btn-sm btn-outline" id="btn-end-workout">🏁 Lopeta</button>
-      </div>
-    </div>
-    <div class="progress"><div class="progress-fill" style="width:${progressPct}%"></div></div>
-    <div class="scroll-x" style="margin:8px 0">${exerciseListHTML}</div>
+  // ── Exercise head ──
+  const roleLabel = exercise.role === "primary" ? "⭐ Pääliike"
+    : exercise.role === "backoff" ? "↩ Back-off"
+    : exercise.role === "warmup" ? "🏆 Lämmittely"
+    : exercise.role === "opener" ? "🏆 1. yritys"
+    : exercise.role === "attempt2" ? "🏆 2. yritys"
+    : exercise.role === "attempt3" ? "🏆 3. yritys"
+    : exercise.role === "support" ? "🎯 Tukiliike"
+    : exercise.role === "accessory" ? "💪 Apuliike"
+    : (exercise.category || "");
+  const progressTag = isLoadIncrease ? '<span class="text-ok">· Progressio ↑</span>' : "";
+  const lockHTML = exercise.slotId
+    ? `<span class="lock" id="btn-lock-slot" title="Lukitse/vapauta tämä tukiliike">${(state.mesocycle?.accessorySlotOverrides?.[exercise.slotId]?.locked) ? "🔒" : "🔓"}</span>`
+    : "";
+  const canSwapVariant = (exercise.role === "primary" || exercise.role === "backoff") && exercise.category === "vertikaaliveto";
+  const swapHTML = `<span class="swap" id="btn-swap-exercise" title="Vaihda liike">🔄</span>`;
+  let subBits = [];
+  if (exercise.variantName) {
+    const tempo = exercise.tempoNote ? ` · <span class="tempo">${exercise.tempoNote}</span>` : "";
+    subBits.push(`🔀 ${exercise.variantName}${tempo}`);
+  }
+  if (exercise.slotFunction) {
+    const src = exercise.slotSource === "stagnation-swap" ? ' <span class="text-warn">· auto-swap</span>'
+      : exercise.slotSource === "user-locked" ? ' <span class="slot-source">· 🔒 lukittu</span>'
+      : exercise.slotSource === "user-override" ? ' <span class="slot-source">· valittu</span>'
+      : "";
+    subBits.push(`🎯 ${exercise.slotFunction}${src}`);
+  }
+  const exSubHTML = subBits.length ? `<div class="ex-sub">${subBits.join("<br>")}</div>` : "";
 
-    <div class="exercise-card">
-      <div class="flex-between">
+  // ── Hero load card (work-set only; warmup uses simpler variant below) ──
+  const priorSet = !isWarmupSet ? computePriorSet(exercise.movementId, w.sessionId) : null;
+  let deltaChipHTML = "";
+  if (priorSet && loadKg !== null && loadKg !== undefined && priorSet.loadKg !== null && priorSet.loadKg !== undefined) {
+    const d = loadKg - priorSet.loadKg;
+    if (Math.abs(d) >= 0.5) {
+      const sign = d > 0 ? "+" : "–";
+      const abs = Math.abs(d);
+      const absStr = Number.isInteger(abs) ? String(abs) : abs.toFixed(1);
+      const cls = d < 0 ? " down" : "";
+      deltaChipHTML = `<span class="delta-chip${cls}">${sign}${absStr} kg vs. ${priorSetDaysAgoLabel(priorSet)}</span>`;
+    }
+  }
+  // In-session previous set (for S2+, show last completed work set); for S1, show prior-session summary if available
+  let prevGhostHTML = "";
+  if (!isWarmupSet) {
+    const lastInSession = completedWorkSets[completedWorkSets.length - 1];
+    if (lastInSession) {
+      const vel = lastInSession.velocity ? ` · ${lastInSession.velocity.toFixed(2)} m/s` : "";
+      prevGhostHTML = `<div class="prev-ghost">
         <div>
-          <div class="exercise-name" id="btn-swap-exercise">🔄 ${exercise.name} <span id="btn-info-exercise" title="Tietoja liikkeestä" style="cursor:pointer;font-size:14px;margin-left:2px;color:var(--acc)">ⓘ</span>${exercise.slotId ? ` <span id="btn-lock-slot" title="Lukitse/vapauta tämä tukiliike" style="cursor:pointer;font-size:14px;margin-left:2px">${(state.mesocycle?.accessorySlotOverrides?.[exercise.slotId]?.locked) ? "🔒" : "🔓"}</span>` : ""}</div>
-          <div class="exercise-meta">
-            ${exercise.role === "primary" ? "⭐ Pääliike" : exercise.role === "backoff" ? "↩ Back-off" : ["warmup","opener","attempt2","attempt3"].includes(exercise.role) ? "🏆 " + (exercise.role === "warmup" ? "Lämmittely" : exercise.role === "opener" ? "1. yritys" : exercise.role === "attempt2" ? "2. yritys" : "3. yritys") : exercise.category}
-            ${isLoadIncrease ? ' <span class="text-ok">↑ Progressio</span>' : ""}
-          </div>
-          ${exercise.slotFunction ? `<div class="muted" style="font-size:11px;margin-top:2px">🎯 ${exercise.slotFunction}${exercise.slotSource === "stagnation-swap" ? ' <span class="text-warn">· auto-swap stagnaatiosta</span>' : exercise.slotSource === "user-locked" ? ' <span class="text-acc">· 🔒 lukittu</span>' : exercise.slotSource === "user-override" ? ' <span class="text-acc">· käyttäjän valinta</span>' : ""}</div>` : ""}
-          ${exercise.variantName ? `<div class="muted" style="font-size:11px;margin-top:2px">🔀 ${exercise.variantName}${exercise.tempoNote ? ` — <strong>${exercise.tempoNote}</strong>` : ""}</div>` : ""}
+          <div class="label">Edellinen sarja tänään</div>
+          <div class="vals"><b>${lastInSession.loadKg ?? "–"}kg × ${lastInSession.reps ?? "?"}</b> · V${lastInSession.actualVx ?? "?"}${vel}</div>
         </div>
-      </div>
-
-      ${completedWorkSets.length >= 2 ? renderVelocityTrendSVG(completedWorkSets) : ""}
-      ${completedSetsHTML ? `<div style="margin-top:8px;padding:8px;background:var(--card2);border-radius:var(--radius-sm)">${completedSetsHTML}</div>` : ""}
-
-      ${restTimerHTML}
-
-      <div style="margin-top:12px">
-        ${isWarmupSet ? `
-        <div style="text-align:center;padding:12px 0">
-          <div class="chip chip-yellow" style="margin-bottom:8px">🔥 Lämmittely ${warmupSetIdx}/${warmupCount}</div>
-          <div class="load-display" style="font-size:36px">${loadStr}</div>
-          <div class="muted mt">${currentSet.targetReps} toistoa — kontrolloidusti</div>
-          <div class="muted" style="font-size:11px;margin-top:4px">Työsarjat alkavat tämän jälkeen (${workSetCount} sarjaa)</div>
-          ${state.settings?.velocityEnabled && exercise.role === "primary" && warmupSetIdx === warmupCount ? `
-          <div style="margin-top:14px;text-align:left">
-            <label style="margin-top:0;font-size:12px;color:var(--acc)">📊 Velocity (max intent rep 1) — valinnainen</label>
-            <input type="number" inputmode="decimal" step="0.01" id="input-warmup-velocity" placeholder="esim. 0.53 m/s" value="${state.todayVelocity || ''}">
-          </div>` : ""}
+        <div class="mark">✓</div>
+      </div>`;
+    } else if (priorSet) {
+      const vel = priorSet.velocity ? ` · ${priorSet.velocity.toFixed(2)} m/s` : "";
+      prevGhostHTML = `<div class="prev-ghost">
+        <div>
+          <div class="label">Edellinen kerta · ${priorSetDaysAgoLabel(priorSet)}</div>
+          <div class="vals"><b>${priorSet.loadKg ?? "–"}kg × ${priorSet.reps ?? "?"}</b> · V${priorSet.actualVx ?? "?"}${vel}</div>
         </div>
-        <button class="btn btn-full btn-ok mt" id="btn-warmup-done">✓ Valmis — seuraava</button>
-        <button class="btn btn-outline btn-full mt" id="btn-skip-warmup" style="font-size:13px">⏩ Ohita lämmittely</button>
-        ` : `
-        <div class="flex-between">
-          <span class="muted">Sarja ${currentSetIdx + 1 - warmupCount}/${workSetCount}</span>
-          <span class="muted">Tavoite: ${currentSet.targetReps} × V${currentSet.targetVx ?? "?"}</span>
-        </div>
+      </div>`;
+    }
+  }
 
-        <div style="text-align:center;margin:16px 0">
-          <div id="btn-edit-load" class="load-display ${isLoadIncrease ? 'load-up' : ''}">${loadStr}</div>
-          <div class="muted mt">Napauta muokataksesi painoa</div>
-        </div>
+  const targetReps = currentSet.targetReps ?? "?";
+  const targetVx = currentSet.targetVx;
+  const targetVxStr = targetVx !== null && targetVx !== undefined ? `V${targetVx}` : "—";
 
-        <label>Toistot</label>
-        <div class="set-btns-row" id="reps-btns">
-          ${[1,2,3,4,5,6,7,8,9,10].map(n =>
-            `<button class="set-btn" data-reps="${n}">${n}</button>`
-          ).join("")}
-        </div>
+  // Work-set hero
+  const heroHTML = isWarmupSet ? "" : `<div class="load-hero">
+    <div class="set-line">
+      <span>TYÖSARJA <b>${currentWorkSetNum} / ${workSetCount}</b></span>
+      <span>Lepo ${restRec.label}</span>
+    </div>
+    <div class="load-main">
+      <span class="val${isLoadIncrease ? " load-up" : ""}" id="btn-edit-load">${loadBig}</span>
+      <span class="unit">${loadUnit}</span>
+      ${deltaChipHTML}
+    </div>
+    <div class="load-edit-hint">Napauta lukua muokataksesi painoa</div>
+    ${prevGhostHTML}
+    <div class="target-row">
+      <span class="label">🎯 Tavoite</span>
+      <span class="vals">${targetReps} toistoa · ${targetVxStr}</span>
+    </div>
+  </div>`;
 
-        <label style="margin-top:14px">Vara (etäisyys failureen)</label>
-        <div class="set-btns-row" id="vara-btns">
-          ${[0,1,2,3,4,5].map(n =>
-            `<button class="set-btn set-btn-vara" data-vara="${n}">V${n}</button>`
-          ).join("")}
-        </div>
+  // Warmup card (simpler — chip + load + hint)
+  const warmupHTML = !isWarmupSet ? "" : `<div class="load-hero">
+    <div class="set-line">
+      <span><span class="chip chip-yellow" style="font-size:10px;padding:2px 8px">🔥 LÄMMITTELY ${warmupSetIdx}/${warmupCount}</span></span>
+      <span class="muted">Työsarjat alkavat pian</span>
+    </div>
+    <div class="load-main">
+      <span class="val" id="btn-edit-load">${loadBig}</span>
+      <span class="unit">${loadUnit}</span>
+    </div>
+    <div class="load-edit-hint">Napauta lukua muokataksesi painoa</div>
+    <div class="target-row">
+      <span class="label">🎯 Tavoite</span>
+      <span class="vals">${targetReps} toistoa · kontrolloidusti</span>
+    </div>
+    ${state.settings?.velocityEnabled && exercise.role === "primary" && warmupSetIdx === warmupCount ? `
+    <div style="margin-top:12px">
+      <label style="margin-top:0;font-size:11px;color:var(--acc)">📊 Velocity (max intent rep 1) — valinnainen</label>
+      <input type="number" inputmode="decimal" step="0.01" id="input-warmup-velocity" placeholder="esim. 0.53 m/s" value="${state.todayVelocity || ''}">
+    </div>` : ""}
+  </div>`;
 
-        ${state.settings?.velocityEnabled ? `<label style="margin-top:14px">Velocity (valinnainen)</label>
-        <input type="number" inputmode="decimal" step="0.01" id="input-set-velocity" placeholder="Setin mean velocity m/s">` : `<input type="hidden" id="input-set-velocity" value="">`}
+  // ── Input section (work-set only) ──
+  const repsRow1 = [1,2,3,4,5].map(n => {
+    const isTarget = n === targetReps;
+    return `<button class="${isTarget ? "target" : ""}" data-reps="${n}">${n}</button>`;
+  }).join("");
+  const repsRow2 = [6,7,8,9,10].map(n => {
+    const isTarget = n === targetReps;
+    return `<button class="${isTarget ? "target" : ""}" data-reps="${n}">${n}</button>`;
+  }).join("");
+  const varaRow = [0,1,2,3,4,5].map(n => {
+    const isTarget = n === targetVx;
+    return `<button class="${isTarget ? "target" : ""}" data-vara="${n}">V${n}</button>`;
+  }).join("");
 
-        <div id="attempted-reps-container" class="hidden">
-          <label style="margin-top:14px">Yritetty toistoja (failure)</label>
-          <input type="number" inputmode="numeric" min="1" max="30" id="input-attempted-reps" value="${(currentSet.targetReps || 3) + 1}" placeholder="esim. 3">
-          <div class="muted" style="font-size:11px">Montako toistoa yritettiin? (epäonnistunut yritys mukaan)</div>
-        </div>
-        `}
-      </div>
+  const velocityPanelHTML = state.settings?.velocityEnabled
+    ? `<div class="vel-panel" id="vel-panel" style="display:none">
+        <label>📊 Velocity (m/s)</label>
+        <input type="number" inputmode="decimal" step="0.01" id="input-set-velocity" placeholder="Setin mean velocity m/s">
+      </div>`
+    : `<input type="hidden" id="input-set-velocity" value="">`;
 
-      ${!isWarmupSet ? `
-      <button class="btn btn-full mt" id="btn-next-set" disabled>→ Seuraava sarja</button>
-      <button class="btn btn-outline btn-full mt" id="btn-add-set" style="font-size:13px">+ Lisäsarja</button>
-      ` : ""}
+  const inputSectionHTML = isWarmupSet ? "" : `<div class="input-section">
+    <div class="input-label">Toistot <span class="hint">◆ = tavoite</span></div>
+    <div class="reps-row" id="reps-btns">${repsRow1}</div>
+    <div class="reps-row" style="margin-top:6px">${repsRow2}</div>
+
+    <div class="input-label" style="margin-top:14px">Vara <span class="hint">etäisyys failureen</span></div>
+    <div class="vara-row" id="vara-btns">${varaRow}</div>
+
+    <div id="attempted-reps-container" class="hidden">
+      <label style="margin-top:0">Yritetty toistoja (failure)</label>
+      <input type="number" inputmode="numeric" min="1" max="30" id="input-attempted-reps" value="${(currentSet.targetReps || 3) + 1}" placeholder="esim. 3">
+      <div class="muted" style="font-size:11px">Montako toistoa yritettiin? (epäonnistunut yritys mukaan)</div>
     </div>
 
-    ${(exercise.role === "primary" || exercise.role === "backoff") && exercise.category === "vertikaaliveto" ? '<button class="btn btn-outline btn-full mt" id="btn-swap-variant" style="font-size:13px">🔀 Vaihda variaatio</button>' : ""}
-    <button class="btn btn-outline btn-full mt" id="btn-add-exercise" style="font-size:14px">+ Lisää liike</button>
+    ${velocityPanelHTML}
+
+    <button class="submit-btn" id="btn-next-set" disabled>Valitse toistot ja vara</button>
+  </div>`;
+
+  // ── Completed list ──
+  const completedListHTML = completedWorkSets.length === 0 ? "" : `<div class="completed-list">
+    ${completedWorkSets.map((s, i) => {
+      const vel = s.velocity ? ` · ${s.velocity.toFixed(2)} m/s` : "";
+      const attempted = s.attemptedReps ? ` (yritetty ${s.attemptedReps})` : "";
+      return `<div class="row"><span class="done-mark">✓</span><b>S${i + 1}</b> · ${s.loadKg ?? "–"}kg × ${s.reps ?? "?"}${attempted} · V${s.actualVx ?? "?"}${vel}</div>`;
+    }).join("")}
+    ${completedWorkSets.length >= 2 ? `<div class="vel-mini"><div class="vel-mini-label">Velocity-trendi</div>${renderVelocityTrendSVG(completedWorkSets)}</div>` : ""}
+  </div>`;
+
+  // ── Rest inline card (always in DOM, hidden when timer inactive) ──
+  const timerActive = state.restTimerInterval !== null;
+  const restSec = state.restTimerSeconds;
+  const isOvertime = timerActive && restSec < 0;
+  const timeTxt = timerActive ? (restSec >= 0 ? formatRestTime(restSec) : `+${formatRestTime(Math.abs(restSec))}`) : "0:00";
+  const statusTxt = !timerActive ? "Suositus " + restRec.label
+    : isOvertime ? "Yliaikaa"
+    : restSec <= 15 ? "Melkein valmis"
+    : `Suositus ${restRec.label}`;
+  const progressPct2 = timerActive && !isOvertime ? Math.max(0, Math.min(100, ((restRec.minSec - restSec) / restRec.minSec) * 100)) : 0;
+  const restInlineHTML = `<div class="rest-inline${isOvertime ? " overtime" : ""}" id="rest-inline" style="display:${timerActive ? "block" : "none"};--rest-progress:${progressPct2}%">
+    <div class="head">
+      <span class="label">⏱ LEPO KÄYNNISSÄ</span>
+      <span class="status" id="rest-status">${statusTxt}</span>
+    </div>
+    <div class="time-row">
+      <span class="time-big${isOvertime ? " overtime" : ""}" id="rest-time-inline">${timeTxt}</span>
+      <span class="suggest">· jäljellä ennen seuraavaa sarjaa</span>
+    </div>
+    <div class="actions">
+      <button id="btn-rest-add30">+30s</button>
+      <button id="btn-rest-add60">+1 min</button>
+      <button class="skip" id="btn-rest-skip">⏭ Seuraava sarja</button>
+    </div>
+  </div>`;
+
+  // ── Utility row ──
+  const utilRowHTML = `<div class="util-row">
+    <button id="btn-add-set" title="Lisää sarja">+ Lisäsarja</button>
+    ${canSwapVariant ? `<button id="btn-swap-variant" title="Vaihda variaatio">🔀 Variaatio</button>` : ""}
+    <button id="btn-add-exercise" title="Lisää liike">+ Liike</button>
+    ${state.settings?.velocityEnabled ? `<button id="btn-velocity-toggle" title="Näytä velocity-syöttö">💎 Velocity</button>` : ""}
+  </div>`;
+
+  return `<div class="fade-in">
+    <div class="w-top-bar">
+      <div class="w-ex-progress">Liike <b>${currentExIdx + 1}/${totalExercises}</b> · Sarja <b>${isWarmupSet ? `${warmupSetIdx}/${warmupCount}` : `${currentWorkSetNum}/${workSetCount}`}</b></div>
+      <button class="icon-btn" id="btn-skip-exercise" title="Ohita tämä liike">⏩</button>
+      <button class="icon-btn danger" id="btn-end-workout" title="Lopeta treeni">⏹</button>
+    </div>
+    <div class="progress" style="margin-bottom:10px"><div class="progress-fill" style="width:${progressPct}%"></div></div>
+
+    <div class="pill-ticker">${pillsHTML}</div>
+
+    <div class="ex-head">
+      <div class="ex-role">${roleLabel} ${progressTag}</div>
+      <div class="ex-name">
+        ${exercise.name}
+        ${swapHTML}
+        <span class="info" id="btn-info-exercise" title="Tietoja liikkeestä">ⓘ</span>
+        ${lockHTML}
+      </div>
+      ${exSubHTML}
+    </div>
+
+    ${heroHTML}${warmupHTML}
+
+    ${isWarmupSet ? `
+      <button class="btn btn-full btn-ok mt" id="btn-warmup-done">✓ Valmis — seuraava</button>
+      <button class="btn btn-outline btn-full mt" id="btn-skip-warmup" style="font-size:13px">⏩ Ohita lämmittely</button>
+    ` : inputSectionHTML}
+
+    ${completedListHTML}
+
+    ${restInlineHTML}
+
+    ${!isWarmupSet ? utilRowHTML : ""}
   </div>`;
 }
 
@@ -1420,31 +1743,129 @@ function formatRestTime(seconds) {
   return `${m}:${s < 10 ? "0" : ""}${s}`;
 }
 
+// ── Rest timer lifecycle ─────────────────────────────────
+// Two DOM surfaces read the same state.restTimerSeconds:
+//  (A) .rest-inline — lives inside the workout template
+//  (B) #rest-dock — lives at body level (sibling of #app), visible across views
+// Dock visibility logic:
+//   timer running AND (view !== "workout" OR inline card scrolled out of viewport)
+let _restInlineObserver = null;
+let _restInlineVisibleInViewport = true; // observed via IntersectionObserver
+let _restRecCache = null; // cached { minSec, maxSec, label, exerciseLabel }
+
+function ensureRestDock() {
+  let dock = document.getElementById("rest-dock");
+  if (dock) return dock;
+  dock = document.createElement("div");
+  dock.id = "rest-dock";
+  dock.innerHTML = `
+    <div class="dock-left">
+      <span class="dock-label" id="rest-dock-label">LEPO</span>
+      <span class="dock-time" id="rest-dock-time">0:00</span>
+    </div>
+    <button class="dock-dismiss" id="rest-dock-dismiss" title="Sulje lepo">✕</button>`;
+  document.body.appendChild(dock);
+  // Click on dock body → jump back to workout view
+  dock.addEventListener("click", (e) => {
+    if (e.target.closest("#rest-dock-dismiss")) return;
+    if (state.view !== "workout" && state.workout) {
+      state.view = "workout";
+      render();
+    }
+  });
+  dock.querySelector("#rest-dock-dismiss").addEventListener("click", (e) => {
+    e.stopPropagation();
+    stopRestTimer();
+  });
+  return dock;
+}
+
+function updateRestTimerUI() {
+  const sec = state.restTimerSeconds;
+  const isOvertime = sec < 0;
+  const timeTxt = isOvertime ? `+${formatRestTime(Math.abs(sec))}` : formatRestTime(sec);
+  const statusTxt = isOvertime ? "Yliaikaa"
+    : sec <= 15 ? "Melkein valmis"
+    : `Suositus ${_restRecCache?.label || ""}`;
+
+  // Inline card
+  const inline = document.getElementById("rest-inline");
+  if (inline) {
+    const timeEl = inline.querySelector("#rest-time-inline");
+    const statusEl = inline.querySelector("#rest-status");
+    if (timeEl) {
+      timeEl.textContent = timeTxt;
+      timeEl.classList.toggle("overtime", isOvertime);
+    }
+    if (statusEl) statusEl.textContent = statusTxt;
+    inline.classList.toggle("overtime", isOvertime);
+    // Progress bar via CSS variable
+    if (!isOvertime && _restRecCache?.minSec) {
+      const pct = Math.max(0, Math.min(100, ((_restRecCache.minSec - sec) / _restRecCache.minSec) * 100));
+      inline.style.setProperty("--rest-progress", `${pct}%`);
+    }
+  }
+
+  // Dock
+  const dock = document.getElementById("rest-dock");
+  if (dock) {
+    const dTime = dock.querySelector("#rest-dock-time");
+    const dLabel = dock.querySelector("#rest-dock-label");
+    if (dTime) dTime.textContent = timeTxt;
+    if (dLabel) dLabel.textContent = isOvertime ? "YLIAIKAA" : (_restRecCache?.exerciseLabel || "LEPO");
+    dock.classList.toggle("overtime", isOvertime);
+  }
+}
+
+function updateRestDockVisibility() {
+  const dock = document.getElementById("rest-dock");
+  if (!dock) return;
+  const running = state.restTimerInterval !== null;
+  if (!running) { dock.classList.remove("visible"); return; }
+  const onWorkoutView = state.view === "workout" && state.workout;
+  // If not on workout view → show dock. If on workout view → show dock only when inline is off-screen.
+  const shouldShow = !onWorkoutView || !_restInlineVisibleInViewport;
+  dock.classList.toggle("visible", shouldShow);
+}
+
+function attachRestInlineObserver() {
+  if (_restInlineObserver) { _restInlineObserver.disconnect(); _restInlineObserver = null; }
+  const inline = document.getElementById("rest-inline");
+  if (!inline || !("IntersectionObserver" in window)) {
+    _restInlineVisibleInViewport = true;
+    return;
+  }
+  _restInlineObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      _restInlineVisibleInViewport = entry.isIntersecting;
+    }
+    updateRestDockVisibility();
+  }, { threshold: 0.1 });
+  _restInlineObserver.observe(inline);
+}
+
 function startRestTimer() {
   stopRestTimer();
-  // Get recommended rest time (countdown from min recommendation)
   const dayType = state.workout?.dayType || "heavy";
   const exercise = state.workout?.exercises[state.workout.currentExerciseIdx];
   const restRec = (exercise?.role === "primary" || exercise?.role === "backoff")
     ? REST_RECOMMENDATIONS[dayType] || REST_RECOMMENDATIONS.heavy
     : REST_RECOMMENDATIONS.accessory;
-  const targetSec = restRec.minSec || 120;
-  state.restTimerSeconds = targetSec;
+  const exLabel = exercise?.name ? `LEPO · ${(exercise.name.split(" ")[0] || exercise.name).toUpperCase()}` : "LEPO";
+  _restRecCache = { ...restRec, exerciseLabel: exLabel };
+  state.restTimerSeconds = restRec.minSec || 120;
+
+  ensureRestDock();
+  // Force show inline card (in case it was hidden at render)
+  const inline = document.getElementById("rest-inline");
+  if (inline) inline.style.display = "block";
+  updateRestTimerUI();
+  updateRestDockVisibility();
+  attachRestInlineObserver();
+
   state.restTimerInterval = setInterval(() => {
     state.restTimerSeconds--;
-    const el = document.getElementById('rest-timer-display');
-    if (el) {
-      if (state.restTimerSeconds >= 0) {
-        el.textContent = formatRestTime(state.restTimerSeconds);
-        el.style.display = '';
-        el.style.color = state.restTimerSeconds <= 10 ? 'var(--ok)' : 'var(--acc)';
-      } else {
-        // Overtime: count up past 0
-        el.textContent = `+${formatRestTime(Math.abs(state.restTimerSeconds))}`;
-        el.style.color = 'var(--warn)';
-      }
-    }
-    // Haptic/vibration alert at 0
+    updateRestTimerUI();
     if (state.restTimerSeconds === 0 && navigator.vibrate) {
       navigator.vibrate([200, 100, 200]);
     }
@@ -1457,6 +1878,70 @@ function stopRestTimer() {
     state.restTimerInterval = null;
   }
   state.restTimerSeconds = 0;
+  _restRecCache = null;
+  if (_restInlineObserver) { _restInlineObserver.disconnect(); _restInlineObserver = null; }
+  _restInlineVisibleInViewport = true;
+  const inline = document.getElementById("rest-inline");
+  if (inline) inline.style.display = "none";
+  const dock = document.getElementById("rest-dock");
+  if (dock) dock.classList.remove("visible");
+}
+
+function addRestSeconds(delta) {
+  if (state.restTimerInterval === null) return;
+  state.restTimerSeconds += delta;
+  updateRestTimerUI();
+}
+
+// ── End-workout confirmation overlay ─────────────────────
+function showEndWorkoutConfirm() {
+  const w = state.workout;
+  if (!w) return;
+  // Count work-set progress across all exercises
+  let doneSets = 0, totalSets = 0;
+  for (const ex of w.exercises) {
+    for (const s of ex.sets) {
+      if (s.isWarmup) continue;
+      totalSets++;
+      if (s.completed) doneSets++;
+    }
+  }
+  // Remove any existing overlay
+  document.getElementById("confirm-end-overlay")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "confirm-end-overlay";
+  overlay.className = "confirm-overlay";
+  overlay.innerHTML = `<div class="confirm-card">
+    <div class="c-icon">🏁</div>
+    <h3>Lopeta treeni?</h3>
+    <p>Olet tehnyt <b>${doneSets}/${totalSets} sarjaa</b>. Tallennetaanko tähänastinen treeni vai hylätäänkö kokonaan?</p>
+    <div class="c-actions">
+      <button class="btn c-discard" id="c-btn-discard">Hylkää</button>
+      <button class="btn c-save" id="c-btn-save">💾 Tallenna</button>
+    </div>
+    <button class="c-cancel" id="c-btn-cancel">Peruuta — jatka treeniä</button>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector("#c-btn-cancel").addEventListener("click", close);
+  overlay.querySelector("#c-btn-save").addEventListener("click", () => {
+    close();
+    // Existing "end early → summary" path: jump to summary screen where user confirms save
+    w.currentExerciseIdx = w.exercises.length;
+    render();
+  });
+  overlay.querySelector("#c-btn-discard").addEventListener("click", () => {
+    close();
+    // Discard in-session state. Note: sets are only persisted at saveWorkoutToDb(),
+    // so clearing state.workout drops them cleanly.
+    stopRestTimer();
+    state.workout = null;
+    state.view = "dashboard";
+    render();
+  });
 }
 
 /**
@@ -3794,7 +4279,19 @@ function bindWorkoutEvents() {
 
   function checkNextSetEnabled() {
     const nextBtn = $("#btn-next-set");
-    if (nextBtn) nextBtn.disabled = !(selectedReps !== null && selectedVara !== null);
+    if (!nextBtn) return;
+    const ready = selectedReps !== null && selectedVara !== null;
+    nextBtn.disabled = !ready;
+    nextBtn.classList.toggle("ready", ready);
+    if (ready) {
+      nextBtn.textContent = `✓ Tallenna sarja · ${selectedReps} × V${selectedVara}`;
+    } else if (selectedReps !== null) {
+      nextBtn.textContent = "Valitse vara";
+    } else if (selectedVara !== null) {
+      nextBtn.textContent = "Valitse toistot";
+    } else {
+      nextBtn.textContent = "Valitse toistot ja vara";
+    }
   }
 
   // Warmup done — advance to next warmup set (or first work set)
@@ -4096,12 +4593,30 @@ function bindWorkoutEvents() {
     render();
   });
 
-  // End workout early
+  // End workout early — open confirmation overlay
   const endBtn = $("#btn-end-workout");
-  if (endBtn) endBtn.addEventListener("click", () => {
-    // Jump to summary
-    w.currentExerciseIdx = w.exercises.length;
-    render();
+  if (endBtn) endBtn.addEventListener("click", () => showEndWorkoutConfirm());
+
+  // Rest timer action buttons (inline card)
+  const restAdd30 = $("#btn-rest-add30");
+  if (restAdd30) restAdd30.addEventListener("click", () => addRestSeconds(30));
+  const restAdd60 = $("#btn-rest-add60");
+  if (restAdd60) restAdd60.addEventListener("click", () => addRestSeconds(60));
+  const restSkip = $("#btn-rest-skip");
+  if (restSkip) restSkip.addEventListener("click", () => stopRestTimer());
+
+  // Velocity panel toggle
+  const velToggle = $("#btn-velocity-toggle");
+  if (velToggle) velToggle.addEventListener("click", () => {
+    const panel = $("#vel-panel");
+    if (!panel) return;
+    const isHidden = panel.style.display === "none" || !panel.style.display;
+    panel.style.display = isHidden ? "block" : "none";
+    velToggle.classList.toggle("on", isHidden);
+    if (isHidden) {
+      const inp = panel.querySelector("#input-set-velocity");
+      if (inp) inp.focus();
+    }
   });
 
   // Swap exercise (slot-aware in v4.11)
