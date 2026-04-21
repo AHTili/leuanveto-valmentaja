@@ -281,6 +281,92 @@
     .vol-filter::-webkit-scrollbar { display: none; }
     .vol-filter button { flex-shrink: 0; background: var(--card2); border: 1px solid var(--border2); color: var(--muted); padding: 5px 9px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
     .vol-filter button.active { background: var(--acc); border-color: var(--acc); color: #fff; }
+
+    /* ── Dashboard redesign v4.17 ─────────────────────────────── */
+    .dash-topline { display: flex; justify-content: space-between; align-items: flex-start; padding: 2px 2px 14px; gap: 10px; }
+    .dash-topline-left .date { font-size: 11px; color: var(--muted); letter-spacing: 0.3px; text-transform: uppercase; font-weight: 600; }
+    .dash-topline-left .hello { font-size: 18px; font-weight: 700; margin-top: 1px; line-height: 1.2; }
+    .dash-topline-right { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 55%; }
+    .dash-topline-right .chip { font-size: 11px; }
+
+    .hero { background: linear-gradient(165deg, var(--card2) 0%, var(--card) 100%); border: 1px solid var(--border2); border-radius: 20px; padding: 18px 18px 16px; margin-bottom: 14px; position: relative; overflow: hidden; }
+    .hero::before { content: ''; position: absolute; top: -40px; right: -40px; width: 140px; height: 140px; background: radial-gradient(circle, rgba(79,140,255,0.18) 0%, transparent 70%); pointer-events: none; }
+    .hero.deload { background: linear-gradient(165deg, rgba(245,158,11,0.12) 0%, var(--card) 100%); border-color: var(--warn2); }
+    .hero.deload::before { background: radial-gradient(circle, rgba(245,158,11,0.18) 0%, transparent 70%); }
+    .hero-eyebrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+    .hero-eyebrow .phase { font-size: 10px; font-weight: 700; color: var(--acc); letter-spacing: 0.7px; text-transform: uppercase; }
+    .hero.deload .hero-eyebrow .phase { color: var(--warn); }
+    .hero-title { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.1; margin-bottom: 4px; }
+    .hero-sub { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .hero-sub b { color: var(--txt); font-weight: 700; }
+
+    .slot-list { margin: 14px 0 16px; padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .warmup-line { display: flex; gap: 6px; align-items: baseline; font-size: 11px; color: var(--warn); font-weight: 600; letter-spacing: 0.3px; margin-bottom: 10px; flex-wrap: wrap; }
+    .warmup-line .dots { color: var(--dim); font-weight: 400; }
+
+    .slot-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; padding: 7px 0; align-items: center; }
+    .slot-row + .slot-row { border-top: 1px dashed #1e2a45; }
+    .slot-role { font-size: 13px; text-align: center; }
+    .slot-body { min-width: 0; }
+    .slot-name { font-size: 14px; font-weight: 700; line-height: 1.2; display: flex; gap: 4px; align-items: baseline; flex-wrap: wrap; }
+    .slot-name .info { color: var(--acc); font-size: 12px; font-weight: 400; cursor: pointer; }
+    .slot-variant { font-size: 11px; color: var(--muted); margin-top: 1px; font-weight: 500; line-height: 1.3; }
+    .slot-detail { text-align: right; font-variant-numeric: tabular-nums; }
+    .slot-sets { font-size: 11px; color: var(--muted); font-weight: 600; }
+    .slot-load { font-size: 14px; font-weight: 800; color: var(--acc); letter-spacing: -0.2px; }
+    .slot-load.backoff { color: var(--muted); }
+    .slot-load.opener { color: var(--ok); }
+    .slot-load.attempt2 { color: var(--warn); }
+    .slot-load.attempt3 { color: var(--bad); }
+    .slot-load.deload { color: var(--warn); }
+
+    .primary-cta { width: 100%; min-height: 64px; background: var(--acc); color: #fff; border: none; cursor: pointer; border-radius: 14px; font-size: 20px; font-weight: 800; letter-spacing: 0.2px; box-shadow: 0 10px 30px rgba(79,140,255,0.35); display: flex; align-items: center; justify-content: center; gap: 10px; transition: transform .1s, box-shadow .15s; }
+    .primary-cta:active { transform: scale(0.98); }
+    .primary-cta .duration { font-size: 11px; font-weight: 600; opacity: 0.75; padding-left: 10px; margin-left: 8px; border-left: 1px solid rgba(255,255,255,0.25); letter-spacing: 0.3px; }
+    .primary-cta.deload { background: var(--warn); box-shadow: 0 10px 30px rgba(245,158,11,0.35); }
+
+    .phase-timeline { display: flex; gap: 3px; align-items: center; padding: 12px 2px 0; }
+    .phase-dot { flex: 1; height: 4px; border-radius: 2px; background: var(--border); min-width: 6px; }
+    .phase-dot.done { background: var(--acc); opacity: 0.5; }
+    .phase-dot.active { background: var(--acc); height: 6px; border-radius: 3px; box-shadow: 0 0 8px rgba(79,140,255,0.6); }
+    .phase-dot.deload { background: var(--warn); opacity: 0.6; }
+    .phase-dot.deload.active { background: var(--warn); opacity: 1; box-shadow: 0 0 8px rgba(245,158,11,0.6); }
+    .phase-legend { display: flex; justify-content: space-between; font-size: 9px; color: var(--dim); padding: 4px 2px 0; letter-spacing: 0.3px; text-transform: uppercase; }
+    .phase-legend span.current { color: var(--acc); font-weight: 700; }
+    .phase-legend span.current.deload { color: var(--warn); }
+
+    .secondary-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px; }
+    .secondary-row .btn-outline { min-height: 40px; font-size: 12px; padding: 8px 10px; }
+
+    .stim-card { padding: 12px 14px; margin-bottom: 10px; }
+    .stim-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+    .stim-cell { text-align: center; padding: 6px 4px; }
+    .stim-cell .v { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.1; }
+    .stim-cell .v.ok { color: var(--ok); }
+    .stim-cell .v.warn { color: var(--warn); }
+    .stim-cell .l { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 3px; font-weight: 600; line-height: 1.2; }
+    .stim-warn-line { font-size: 11px; color: var(--warn); padding: 8px 0 0; margin-top: 6px; border-top: 1px dashed var(--border); line-height: 1.35; }
+
+    .dash-collapsible { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+    .dash-collapsible summary { padding: 12px 14px; cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; }
+    .dash-collapsible summary::-webkit-details-marker { display: none; }
+    .dash-collapsible summary .arrow { color: var(--muted); font-size: 12px; transition: transform .2s; }
+    .dash-collapsible[open] summary .arrow { transform: rotate(180deg); }
+    .dash-collapsible .body { padding: 10px 14px 14px; border-top: 1px solid var(--border); }
+
+    .future-row { display: grid; grid-template-columns: 46px 1fr auto; gap: 10px; align-items: center; padding: 7px 0; }
+    .future-row + .future-row { border-top: 1px dashed #1e2a45; }
+    .future-day { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; text-align: center; line-height: 1.1; }
+    .future-day b { display: block; font-size: 13px; color: var(--txt); font-weight: 800; }
+    .future-desc { font-size: 12px; line-height: 1.35; color: var(--muted); min-width: 0; }
+    .future-desc b { color: var(--txt); font-weight: 600; }
+    .future-tag { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: var(--card2); color: var(--muted); white-space: nowrap; }
+    .future-tag.deload { color: var(--warn); }
+
+    .trace-row { padding: 6px 0; font-size: 12px; line-height: 1.4; border-bottom: 1px dashed #1e2a45; }
+    .trace-row:last-child { border-bottom: none; }
+    .trace-row .rule { color: var(--acc); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 1px; }
+    .trace-row .why { color: var(--muted); }
   </style>
 </head>
 <body>
@@ -784,203 +870,211 @@ function renderNav() {
 // DASHBOARD VIEW
 // ═══════════════════════════════════════════════════════════════
 
+function estimateDurationMin(slots) {
+  if (!slots || !slots.length) return null;
+  const restByRole = {
+    primary: 180, backoff: 150, accessory: 75, support: 90,
+    warmup: 90, opener: 240, attempt2: 300, attempt3: 300,
+  };
+  const sec = slots.reduce((acc, s) => {
+    const setSec = (restByRole[s.role] ?? 90) + 25;
+    return acc + (s.sets || 1) * setSec;
+  }, 0);
+  return Math.max(15, Math.round((sec + 10 * 60) / 60));
+}
+
+function buildPhaseTimelineHTML(meso, currentWeek, isDeloadActive) {
+  if (!meso || !meso.weekCount || meso.weekCount < 2) return "";
+  const dots = [];
+  for (let w = 1; w <= meso.weekCount; w++) {
+    const def = meso.weekDefs?.find(wd => wd.week === w);
+    const isDeloadWeek = (def?.label || "").toLowerCase().includes("deload");
+    const classes = ["phase-dot"];
+    if (isDeloadWeek) classes.push("deload");
+    if (typeof currentWeek === "number") {
+      if (w < currentWeek) classes.push("done");
+      if (w === currentWeek) classes.push("active");
+    }
+    dots.push(`<div class="${classes.join(" ")}"></div>`);
+  }
+  let legendHTML = "";
+  if (meso.type === "streetlifting_16w" && meso.weekCount === 16) {
+    const phases = [
+      { name: "Hypertrofia", start: 1, end: 4 },
+      { name: "Voima", start: 5, end: 8 },
+      { name: "Intensifikaatio", start: 9, end: 12 },
+      { name: "Peak", start: 13, end: 16 },
+    ];
+    legendHTML = `<div class="phase-legend">${phases.map(p => {
+      const isCurrent = typeof currentWeek === "number" && currentWeek >= p.start && currentWeek <= p.end;
+      return `<span class="${isCurrent ? (isDeloadActive ? "current deload" : "current") : ""}">${p.name}${isCurrent ? " ▲" : ""}</span>`;
+    }).join("")}</div>`;
+  }
+  return `<div class="phase-timeline">${dots.join("")}</div>${legendHTML}`;
+}
+
 function renderDashboard() {
   const rec = state.recommendation;
   const r = state.readiness;
   const today = todayISO();
-  const weekNum = rec?.weekNum || "?";
+  const meso = state.mesocycle;
+  const weekNum = rec?.weekNum ?? null;
   const weekLabel = rec?.weekLabel || "";
   const dayType = rec?.dayType || "heavy";
-  const mesoNum = state.mesocycle ? (state.sessions.length > 0 ? Math.ceil(state.sessions.length / 12) : 1) : 1;
 
-  // Day type labels in Finnish
-  const isPeaking = rec?.mesocycleType === "peaking";
+  const isDeloadOverride = meso ? isDeloadOverrideWeek(meso, today) : false;
+  const isDeloadLabel = weekLabel.toLowerCase().includes("deload");
+  const deloadMode = isDeloadOverride || isDeloadLabel;
 
-  // Readiness badge
   const readinessClass = r.combined === "GREEN" ? "chip-green" : r.combined === "YELLOW" ? "chip-yellow" : "chip-red";
   const readinessEmoji = r.combined === "GREEN" ? "🟢" : r.combined === "YELLOW" ? "🟡" : "🔴";
 
-  // Build warmup preview
-  let warmupHTML = "";
-  const warmupItems = rec?.dayPlan?.warmup;
-  if (warmupItems && warmupItems.length > 0) {
-    warmupHTML = `<div style="margin-bottom:14px">
-      <div style="font-size:11px;font-weight:600;color:var(--warn);letter-spacing:0.5px;margin-bottom:6px">🔥 LÄMMITTELY</div>
-      ${warmupItems.map(w => `<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)">
-        <span style="font-size:13px;font-weight:500;flex:0 0 auto">${w.name}</span>
-        <span style="font-size:12px;color:var(--muted);align-self:center">${w.desc}</span>
-      </div>`).join("")}
-    </div>`;
-  }
+  const mt = meso?.type || null;
+  const tpl = mt ? MESOCYCLE_TEMPLATES.find(t => t.id === mt) : null;
+  const mesoChipClass = deloadMode ? "chip-yellow" : (mt === "peaking" ? "chip-yellow" : "chip-acc");
+  const mesoChipIcon = deloadMode ? "🌿" : (tpl?.icon || "⭐");
+  const mesoChipHTML = meso
+    ? `<span class="chip ${mesoChipClass}">${mesoChipIcon} Vk ${weekNum ?? "?"}/${meso.weekCount}</span>`
+    : "";
 
-  // Build program preview — always shows full program with accessories
-  let programHTML = "";
-  if (rec && rec.dayPlan && rec.dayPlan.slots && rec.dayPlan.slots.length > 0) {
-    programHTML = rec.dayPlan.slots.map((slot, i) => {
-      const movName = slot.defaultMovementName || slot.category;
+  const dayTypeFi = dayTypeLabel(dayType);
+  const phaseEyebrow = (() => {
+    if (deloadMode) return "Kevennys · palautuminen";
+    if (meso?.type === "streetlifting_16w" && typeof weekNum === "number") {
+      const block = weekNum <= 4 ? "Hypertrofia" : weekNum <= 8 ? "Voima" : weekNum <= 12 ? "Intensifikaatio" : "Peak";
+      return `${block} · ${dayTypeFi}`;
+    }
+    if (weekLabel) return `${weekLabel} · ${dayTypeFi}`;
+    return dayTypeFi;
+  })();
+
+  const heroTitle = rec?.dayPlan?.label || dayTypeFi;
+  const slots = rec?.dayPlan?.slots || [];
+  const workSlotCount = slots.filter(s => s.role !== "warmup").length || slots.length;
+  const estDur = estimateDurationMin(slots);
+  const heroSubParts = [];
+  if (workSlotCount > 0) heroSubParts.push(`<b>${workSlotCount} työliikettä</b>`);
+  if (estDur) heroSubParts.push(`arvioitu kesto <b>~${estDur} min</b>`);
+  if (deloadMode) heroSubParts.push("kuormat pienennetty");
+  const heroSub = heroSubParts.length ? heroSubParts.join(" · ") : "Ei ohjelmaa tänään";
+
+  const warmupItems = rec?.dayPlan?.warmup || [];
+  const warmupLineHTML = warmupItems.length > 0
+    ? `<div class="warmup-line">🔥 LÄMMITTELY <span class="dots">· ${warmupItems.slice(0, 3).map(w => w.desc ? `${w.name} ${w.desc}` : w.name).join(" · ")}${warmupItems.length > 3 ? ` · +${warmupItems.length - 3}` : ""}</span></div>`
+    : "";
+
+  let slotRowsHTML = "";
+  if (slots.length > 0) {
+    slotRowsHTML = slots.map((slot, i) => {
+      const movName = slot.defaultMovementName || slot.category || "?";
       const isPrimary = slot.role === "primary";
       const isBackoff = slot.role === "backoff";
       const isAttempt = ["warmup", "opener", "attempt2", "attempt3"].includes(slot.role);
+
+      let roleIcon = "•";
+      if (isPrimary) roleIcon = "⭐";
+      else if (isBackoff) roleIcon = "↩";
+      else if (slot.role === "support") roleIcon = "🎯";
+      else if (slot.role === "accessory") roleIcon = "💪";
+      else if (isAttempt) roleIcon = "🏆";
+
       let loadStr = "";
+      let loadCls = "";
       if (isAttempt && rec.attemptLoads) {
         const loads = rec.attemptLoads;
-        if (slot.role === "warmup") loadStr = `<span class="program-slot-load" style="color:var(--muted)">Lämmittely</span>`;
-        else if (slot.role === "opener") loadStr = `<span class="program-slot-load" style="color:var(--ok)">+${loads.opener} kg</span>`;
-        else if (slot.role === "attempt2") loadStr = `<span class="program-slot-load" style="color:var(--warn)">+${loads.second} kg</span>`;
-        else if (slot.role === "attempt3") loadStr = `<span class="program-slot-load" style="color:var(--bad)">+${loads.third} kg 🎯</span>`;
-      } else if (isPrimary && rec.targetExternalLoad !== null) {
-        loadStr = `<span class="program-slot-load">+${rec.targetExternalLoad} kg</span>`;
-      } else if (isBackoff && rec.targetExternalLoad !== null) {
-        loadStr = `<span class="program-slot-load" style="color:var(--muted)">+${roundToHalf(rec.targetExternalLoad * 0.85)} kg</span>`;
+        if (slot.role === "warmup") { loadStr = "Lämmittely"; loadCls = "backoff"; }
+        else if (slot.role === "opener") { loadStr = `+${loads.opener} kg`; loadCls = "opener"; }
+        else if (slot.role === "attempt2") { loadStr = `+${loads.second} kg`; loadCls = "attempt2"; }
+        else if (slot.role === "attempt3") { loadStr = `+${loads.third} kg 🎯`; loadCls = "attempt3"; }
+      } else if (isPrimary && rec?.targetExternalLoad !== null && rec?.targetExternalLoad !== undefined) {
+        loadStr = `+${rec.targetExternalLoad} kg`;
+        if (deloadMode) loadCls = "deload";
+      } else if (isBackoff && rec?.targetExternalLoad !== null && rec?.targetExternalLoad !== undefined) {
+        loadStr = `+${roundToHalf(rec.targetExternalLoad * 0.85)} kg`;
+        loadCls = deloadMode ? "deload" : "backoff";
       }
+
       const setsReps = `${slot.sets}×${slot.reps}`;
-      const vxStr = slot.targetVx !== null ? ` V${slot.targetVx}` : "";
-      const icon = isPrimary ? "⭐ " : isBackoff ? "↩ " : isAttempt ? "🏆 " : "";
-      const variantStr = slot.variantName && (isPrimary || isBackoff) ? `<div class="muted" style="font-size:11px">${slot.variantName}</div>` : "";
-      const infoBtn = (MOVEMENT_DESCRIPTIONS?.[movName] || slot.slotId)
-        ? ` <span class="preview-info-btn" data-preview-info-idx="${i}" title="Tietoja liikkeestä" style="cursor:pointer;color:var(--acc);font-size:13px;margin-left:2px">ⓘ</span>`
+      const vxStr = slot.targetVx !== null && slot.targetVx !== undefined ? ` · V${slot.targetVx}` : "";
+      const variantStr = slot.variantName && (isPrimary || isBackoff)
+        ? `<div class="slot-variant">${slot.variantName}</div>`
         : "";
-      return `<div class="program-slot">
-        <span class="program-slot-num">${i + 1}.</span>
-        <span class="program-slot-name">${icon}${movName}${infoBtn}${variantStr}</span>
-        <div class="program-slot-detail">
-          <span class="program-slot-sets">${setsReps}${vxStr}</span><br>
-          ${loadStr}
+      const infoBtn = (MOVEMENT_DESCRIPTIONS?.[movName] || slot.slotId)
+        ? ` <span class="preview-info-btn info" data-preview-info-idx="${i}" title="Tietoja liikkeestä">ⓘ</span>`
+        : "";
+
+      return `<div class="slot-row">
+        <div class="slot-role">${roleIcon}</div>
+        <div class="slot-body">
+          <div class="slot-name">${movName}${infoBtn}</div>
+          ${variantStr}
+        </div>
+        <div class="slot-detail">
+          <div class="slot-sets">${setsReps}${vxStr}</div>
+          <div class="slot-load ${loadCls}">${loadStr}</div>
         </div>
       </div>`;
     }).join("");
-  } else {
-    programHTML = '<div class="muted">Ei ohjelmaa — aloita mesosykli</div>';
   }
 
-  // Break warning
-  let breakHTML = "";
-  if (rec?.breakInfo) {
-    breakHTML = `<div class="card" style="border-color:var(--warn)">
-      <div class="text-warn" style="font-weight:600">${rec.breakInfo.message}</div>
-    </div>`;
-  }
+  const breakHTML = rec?.breakInfo
+    ? `<div class="card" style="border-color:var(--warn);margin-bottom:10px">
+        <div class="text-warn" style="font-weight:600">${rec.breakInfo.message}</div>
+      </div>`
+    : "";
 
-  // e1RM display
-  const e1rmExt = rec?.e1rmExternal !== null ? rec.e1rmExternal?.toFixed(1) : "-";
-  const e1rmSys = rec?.e1rmSystem !== null ? rec.e1rmSystem?.toFixed(1) : "-";
+  const phaseTimelineHTML = buildPhaseTimelineHTML(meso, typeof weekNum === "number" ? weekNum : null, deloadMode);
 
-  // Vara feedback
-  let varaHTML = "";
-  if (rec?.varaFeedback?.suggestion) {
-    const type = rec.varaFeedback.type === "too_easy" ? "text-ok" : "text-warn";
-    varaHTML = `<div class="muted mt ${type}">${rec.varaFeedback.suggestion}</div>`;
-  }
+  const ctaDurationPill = estDur ? `<span class="duration">~${estDur} min</span>` : "";
+  const ctaLabel = deloadMode ? "▶ ALOITA KEVENNYS" : "▶ ALOITA TREENI";
+  const deloadBtnLabel = isDeloadOverride ? "↩ Peru kevennys" : "🌿 Kevennys";
 
   return `<div class="fade-in">
-    <div class="flex-between mb">
-      <div>
-        <div style="font-size:13px;color:var(--muted)">${formatDate(today)}</div>
-        <div style="font-size:20px;font-weight:700">${dayTypeLabel(dayType)}</div>
-        <div class="muted">Viikko ${weekNum} / ${weekLabel}</div>
+    <div class="dash-topline">
+      <div class="dash-topline-left">
+        <div class="date">${formatDate(today)}</div>
+        <div class="hello">${deloadMode ? "🌿 Kevennysviikko" : (meso?.type === "streetlifting_16w" && typeof weekNum === "number" ? (weekNum <= 4 ? "📚 Hypertrofia" : weekNum <= 8 ? "💪 Voima" : weekNum <= 12 ? "📈 Intensifikaatio" : "🏆 Peak") : dayTypeFi)}</div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-        ${(() => {
-          const mt = state.mesocycle?.type || "default";
-          const tpl = MESOCYCLE_TEMPLATES.find(t => t.id === mt);
-          const chipStyle = mt === "peaking" ? 'color:var(--warn);border-color:var(--warn)' : 'color:var(--acc);border-color:var(--acc)';
-          return tpl ? `<div class="chip" style="${chipStyle};font-size:11px">${tpl.icon} ${MESO_TYPE_LABELS[mt] || mt}</div>` : '';
-        })()}
-        <div class="chip ${readinessClass}">${readinessEmoji} ${r.combined || "?"}</div>
+      <div class="dash-topline-right">
+        ${mesoChipHTML}
+        <span class="chip ${readinessClass}">${readinessEmoji} ${r.combined || "?"}</span>
       </div>
     </div>
 
     ${breakHTML}
 
-    <div class="card">
-      <div class="kpi-row">
-        <div class="kpi-box">
-          <div class="kpi">${e1rmExt}</div>
-          <div class="kpi-label">e1RM lisäpaino (kg)</div>
-        </div>
-        <div class="kpi-box">
-          <div class="kpi">${e1rmSys}</div>
-          <div class="kpi-label">e1RM system (kg)</div>
-        </div>
+    <div class="hero${deloadMode ? " deload" : ""}">
+      <div class="hero-eyebrow">
+        <span class="phase">${phaseEyebrow}</span>
       </div>
-      ${varaHTML}
+      <div class="hero-title">${heroTitle}</div>
+      <div class="hero-sub">${heroSub}</div>
+
+      ${slots.length > 0
+        ? `<div class="slot-list">${warmupLineHTML}${slotRowsHTML}</div>`
+        : '<div class="slot-list"><div class="muted" style="text-align:center;padding:8px 0">Ei ohjelmaa — aloita mesosykli</div></div>'}
+
+      <button class="primary-cta${deloadMode ? " deload" : ""}" id="btn-start-workout"${slots.length === 0 ? " disabled" : ""}>
+        ${ctaLabel}${ctaDurationPill}
+      </button>
+
+      ${phaseTimelineHTML}
     </div>
 
-    <button class="btn btn-big btn-full mb" id="btn-start-workout">
-      ▶ ALOITA TREENI
-    </button>
-
-    <button class="btn btn-outline btn-full mb" id="btn-readiness" style="font-size:14px">
-      📊 Syötä readiness (HRV / velocity)
-    </button>
-
-    ${state.mesocycle ? `<button class="btn btn-outline btn-full mb" id="btn-insert-deload" style="font-size:14px">
-      🌿 ${isDeloadOverrideWeek(state.mesocycle, today) ? "Kevennysviikko meneillään" : "Korvaa ensi viikko kevennyksellä"}
-    </button>` : ""}
-
-    <div class="card">
-      <div class="card-title">Päivän ohjelma${isDeloadOverrideWeek(state.mesocycle, today) ? ' <span class="chip chip-yellow" style="margin-left:6px;font-size:11px">🌿 KEVENNYS</span>' : ""}</div>
-      ${warmupHTML}${programHTML || '<div class="muted">Ei ohjelmaa — aloita mesosykli</div>'}
+    <div class="secondary-row">
+      <button class="btn btn-outline" id="btn-readiness">📊 Readiness</button>
+      ${meso ? `<button class="btn btn-outline" id="btn-insert-deload">${deloadBtnLabel}</button>` : ""}
     </div>
 
-    ${renderDecisionTracePreview(rec)}
+    ${renderStimCard(deloadMode)}
 
-    ${renderWeeklyOverview()}
+    ${renderFutureCollapsible()}
 
-    ${renderEliteWarnings()}
-
-    ${renderFutureWorkoutsPreview()}
+    ${renderTraceCollapsible(rec)}
   </div>`;
 }
 
-function renderDecisionTracePreview(rec) {
-  if (!rec || !rec.traces || !rec.traces.length) return "";
-  return `<div class="card">
-    <div class="accordion-header" data-toggle="trace-preview">
-      <span class="card-title" style="margin:0">Miksi tämä suositus?</span>
-      <span>▼</span>
-    </div>
-    <div class="accordion-body" id="trace-preview">
-      ${rec.traces.map(t => `<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
-        <span style="color:var(--acc)">${t.ruleId}</span>: ${t.why}
-      </div>`).join("")}
-    </div>
-  </div>`;
-}
-
-function renderWeeklyOverview() {
-  // Simplified weekly stimulus
-  const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
-  const weekStartISO = weekStart.toISOString().slice(0, 10);
-
-  const weekSets = state.allSets.filter(s => {
-    const session = state.sessions.find(ses => ses.sessionId === s.sessionId);
-    return session && session.dateISO >= weekStartISO;
-  });
-
-  const stimulus = weeklyStimulus(weekSets, state.movements);
-
-  return `<div class="card">
-    <div class="card-title">Viikon stimulus</div>
-    <div class="kpi-row">
-      <div class="kpi-box">
-        <div class="kpi">${stimulus.pullVolumeSets}</div>
-        <div class="kpi-label">Vetosarjat</div>
-      </div>
-      <div class="kpi-box">
-        <div class="kpi">${stimulus.heavyExposures}</div>
-        <div class="kpi-label">Heavy altistukset</div>
-      </div>
-      <div class="kpi-box">
-        <div class="kpi">${Math.round(stimulus.totalTonnageExternal)}</div>
-        <div class="kpi-label">Tonnage (kg)</div>
-      </div>
-    </div>
-  </div>`;
-}
-
-function renderEliteWarnings() {
+function renderStimCard(deloadMode) {
   const weekStart = new Date();
   weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
   const weekStartISO = weekStart.toISOString().slice(0, 10);
@@ -988,34 +1082,84 @@ function renderEliteWarnings() {
     const session = state.sessions.find(ses => ses.sessionId === s.sessionId);
     return session && session.dateISO >= weekStartISO;
   });
+  const stim = weeklyStimulus(weekSets, state.movements);
   const check = eliteVolumeCheck(weekSets, state.movements);
-  if (check.warnings.length === 0) return "";
-  return `<div class="card" style="border-color:var(--warn)">
-    <div class="card-title">⚡ Eliittitason huomiot</div>
-    ${check.warnings.map(w => `<div class="muted text-warn" style="padding:4px 0">⚠ ${w.message}</div>`).join("")}
+  const warn = check.warnings[0];
+  const warnLine = warn
+    ? `<div class="stim-warn-line">⚠ ${warn.message}${check.warnings.length > 1 ? ` · +${check.warnings.length - 1}` : ""}</div>`
+    : "";
+  const tonKg = Math.round(stim.totalTonnageExternal);
+  const tonStr = tonKg >= 1000 ? `${(tonKg / 1000).toFixed(1)}t` : `${tonKg}`;
+  const cardStyle = deloadMode ? ' style="border-color:var(--warn2)"' : "";
+  const titleLabel = deloadMode ? "Palautumistrendi" : "Viikon stimulus";
+  return `<div class="card stim-card"${cardStyle}>
+    <div class="card-title" style="margin-bottom:6px">${titleLabel}</div>
+    <div class="stim-row">
+      <div class="stim-cell"><div class="v">${stim.pullVolumeSets}</div><div class="l">Vetosarjat</div></div>
+      <div class="stim-cell"><div class="v${stim.heavyExposures > 4 ? " warn" : ""}">${stim.heavyExposures}</div><div class="l">Heavy alt.</div></div>
+      <div class="stim-cell"><div class="v">${tonStr}</div><div class="l">Tonnage</div></div>
+    </div>
+    ${warnLine}
   </div>`;
 }
 
-function renderFutureWorkoutsPreview() {
+function renderFutureCollapsible() {
   if (!state.mesocycle) return "";
   const futureWorkouts = getFutureWorkouts(state.mesocycle, todayISO(), 14);
   if (futureWorkouts.length === 0) return "";
-  const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
-  return `<div class="card">
-    <div class="card-title">📅 Tulevat treenit</div>
-    ${futureWorkouts.slice(0, 5).map(fw => `<div class="program-slot" style="flex-direction:column;align-items:stretch;gap:4px">
-      <div class="flex-between">
-        <span style="font-weight:600">${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5)}</span>
-        <span class="muted">${dayTypeLabel(fw.dayType)} — Vk ${fw.weekNum} ${fw.weekLabel}</span>
-      </div>
-      <div class="muted">${fw.slots.map(s => {
-        const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : ["warmup","opener","attempt2","attempt3"].includes(s.role) ? "🏆" : "•";
-        const vName = s.variantName ? ` (${s.variantName.split(" ")[0]})` : "";
-        return `${icon} ${s.defaultMovementName}${vName} ${s.sets}×${s.reps}`;
-      }).join(" | ")}</div>
-    </div>`).join("")}
-    <button class="btn btn-sm btn-outline btn-full mt" data-nav="mesocycle">Näytä kaikki →</button>
-  </div>`;
+  const dayNames = { 1: "MA", 2: "TI", 3: "KE", 4: "TO", 5: "PE", 6: "LA", 7: "SU" };
+  const open = localStorage.getItem("dash_future_open") !== "0";
+  const count = Math.min(5, futureWorkouts.length);
+  const rows = futureWorkouts.slice(0, 5).map(fw => {
+    const isDeload = (fw.weekLabel || "").toLowerCase().includes("deload");
+    const primaries = fw.slots.filter(s => s.role === "primary" || s.role === "backoff" || ["opener", "attempt2", "attempt3"].includes(s.role)).slice(0, 2);
+    const descBits = primaries.map(s => {
+      const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "🏆";
+      return `${icon} ${s.defaultMovementName} ${s.sets}×${s.reps}`;
+    });
+    const descHead = `<b>${dayTypeLabel(fw.dayType)}</b>`;
+    const desc = descBits.length ? `${descHead} · ${descBits.join(" · ")}` : descHead;
+    const tagCls = isDeload ? " deload" : "";
+    const tagLabel = isDeload ? "Deload"
+      : fw.dayType === "heavy" ? "Heavy"
+      : fw.dayType === "speed" ? "Speed"
+      : fw.dayType === "volume" ? "Volume"
+      : fw.dayType === "competition" ? "Kisa"
+      : "Prog";
+    const monthDay = fw.dateISO.slice(5).replace(/^0/, "").replace("-0", ".").replace("-", ".");
+    return `<div class="future-row">
+      <div class="future-day">${dayNames[fw.dayOfWeek] || ""}<b>${monthDay}</b></div>
+      <div class="future-desc">${desc}</div>
+      <div class="future-tag${tagCls}">${tagLabel}</div>
+    </div>`;
+  }).join("");
+  return `<details class="dash-collapsible" data-persist="dash_future_open"${open ? " open" : ""}>
+    <summary>
+      <span>📅 Tulevat treenit · ${count} seuraavaa</span>
+      <span class="arrow">▼</span>
+    </summary>
+    <div class="body">
+      ${rows}
+      <button class="btn btn-sm btn-outline btn-full" data-nav="mesocycle" style="margin-top:10px">Näytä kaikki →</button>
+    </div>
+  </details>`;
+}
+
+function renderTraceCollapsible(rec) {
+  if (!rec || !rec.traces || !rec.traces.length) return "";
+  const open = localStorage.getItem("dash_trace_open") === "1";
+  return `<details class="dash-collapsible" data-persist="dash_trace_open"${open ? " open" : ""}>
+    <summary>
+      <span>💡 Miksi tämä suositus?</span>
+      <span class="arrow">▼</span>
+    </summary>
+    <div class="body">
+      ${rec.traces.map(t => `<div class="trace-row">
+        <span class="rule">${t.ruleId}</span>
+        <span class="why">${t.why}</span>
+      </div>`).join("")}
+    </div>
+  </details>`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2812,6 +2956,13 @@ function bind() {
     btn.addEventListener("click", () => {
       const target = document.getElementById(btn.dataset.toggle);
       if (target) target.classList.toggle("open");
+    });
+  });
+
+  // Dashboard collapsibles — persist open/closed state
+  $$("details[data-persist]").forEach(det => {
+    det.addEventListener("toggle", () => {
+      localStorage.setItem(det.dataset.persist, det.open ? "1" : "0");
     });
   });
 
