@@ -1601,19 +1601,34 @@ function getFutureWorkouts(mesocycle, currentDateISO, daysAhead = 14) {
 
 /**
  * Etsii menneet, toteuttamatta jääneet treenipäivät mesosyklistä.
- * Palauttaa taulukon suunnitelluista päivistä joille ei löydy sessiota eikä
- * ole käyttäjän eksplisiittisesti ohittamia (mesocycle.skippedDays).
+ * "Toteutettu" = jokin sessio on seurannut tuon päivän planiä, ts. sen
+ * session.planSourceDateISO (tai vanhoissa sessioissa dateISO) osuu
+ * tähän päivään. Tämä tunnistaa oikein myös tilanteet joissa käyttäjä
+ * teki Ti:nä Ke:n planin — Ti:n oma plan on edelleen tekemättä.
  *
  * @param {Object} mesocycle
  * @param {Array} sessions — state.sessions
  * @param {string} currentDateISO — "tänään"
  * @param {number} daysBack — kuinka monta vuorokautta taakse tarkistetaan (oletus 3)
- * @returns {Array<{dateISO, dayOfWeek, weekNum, weekLabel, dayType, dayLabel, slots}>}
+ * @returns {Array<{dateISO, dayOfWeek, weekNum, weekLabel, dayType, dayLabel, slots, substitutedPlan}>}
+ *   substitutedPlan on { plannedDayType, dateISO } jos samalla kalenteripäivällä
+ *   oli eri plan-lähteen sessio (plan-override); muuten null.
  */
 function findMissedPriorSessions(mesocycle, sessions, currentDateISO, daysBack = 3) {
   if (!mesocycle || !mesocycle.weekPlans || !currentDateISO) return [];
   const skipped = new Set(mesocycle.skippedDays || []);
-  const sessionDates = new Set((sessions || []).map(s => s.dateISO));
+  // Päivät joiden plan on toteutettu (planSourceDateISO || dateISO backward-compat)
+  const executedPlans = new Set();
+  // Sessiot kalenteripäivittäin (jotta voidaan näyttää "teit X sijaan")
+  const sessionsByDate = new Map();
+  for (const s of (sessions || [])) {
+    const planISO = s.planSourceDateISO || s.dateISO;
+    if (planISO) executedPlans.add(planISO);
+    if (s.dateISO) {
+      if (!sessionsByDate.has(s.dateISO)) sessionsByDate.set(s.dateISO, []);
+      sessionsByDate.get(s.dateISO).push(s);
+    }
+  }
   const results = [];
   const base = new Date(currentDateISO);
 
@@ -1622,15 +1637,23 @@ function findMissedPriorSessions(mesocycle, sessions, currentDateISO, daysBack =
     date.setDate(date.getDate() - d);
     const iso = date.toISOString().slice(0, 10);
     if (skipped.has(iso)) continue;
-    if (sessionDates.has(iso)) continue;
+    if (executedPlans.has(iso)) continue; // plan on toteutettu jollain päivällä
 
     const weekNum = getMesocycleWeek(mesocycle, iso);
-    if (weekNum === null) continue; // ennen mesosykliä tai sen jälkeen
+    if (weekNum === null) continue;
 
     const dayOfWeek = date.getDay() || 7;
     const weekPlan = mesocycle.weekPlans.find(w => w.week === weekNum);
     const dayPlan = weekPlan?.days?.find(x => x.dayOfWeek === dayOfWeek);
-    if (!dayPlan) continue; // ei ollut suunniteltua sessiota
+    if (!dayPlan) continue;
+
+    // Jos samalla pv:llä on eri plan-lähteen sessio (override), merkitään korvaus
+    const sameDateSessions = sessionsByDate.get(iso) || [];
+    const substituted = sameDateSessions[sameDateSessions.length - 1] || null;
+    const substitutedPlan = substituted ? {
+      plannedDayType: substituted.plannedDayType,
+      planSourceDateISO: substituted.planSourceDateISO || substituted.dateISO,
+    } : null;
 
     const weekDef = getWeekDef(mesocycle, weekNum);
     results.push({
@@ -1641,9 +1664,10 @@ function findMissedPriorSessions(mesocycle, sessions, currentDateISO, daysBack =
       dayType: dayPlan.dayType,
       dayLabel: dayPlan.label || null,
       slots: dayPlan.slots || [],
+      substitutedPlan,
     });
   }
-  // Uusin ensin (= eilen ennen toissa päivää)
+  // Uusin ensin
   return results.sort((a, b) => b.dateISO.localeCompare(a.dateISO));
 }
 

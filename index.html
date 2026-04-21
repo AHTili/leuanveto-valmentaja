@@ -1383,18 +1383,24 @@ function renderMissedBanner(missed, totalCount) {
   const today = todayISO();
   const iso = missed.dateISO;
   const diffDays = Math.max(1, Math.round((new Date(today) - new Date(iso)) / (24 * 3600 * 1000)));
-  const titleTime = diffDays === 1 ? "Eilinen treeni tekemättä" : `${dayNamesFull[missed.dayOfWeek] || "Aiempi"} tekemättä`;
+  const subst = missed.substitutedPlan;
+  const titleTime = subst
+    ? (diffDays === 1 ? "Eilisen alkuperäinen plan tekemättä" : `${dayNamesFull[missed.dayOfWeek] || "Aiempi"} alkuperäinen plan tekemättä`)
+    : (diffDays === 1 ? "Eilinen treeni tekemättä" : `${dayNamesFull[missed.dayOfWeek] || "Aiempi"} tekemättä`);
   const moreHint = totalCount > 1 ? ` · +${totalCount - 1} muuta tekemättä` : "";
   const subHead = missed.dayLabel || dayTypeLabel(missed.dayType);
   const datePart = `${dayNameShort[missed.dayOfWeek] || ""} ${iso.slice(5).replace("-", ".")}`;
+  const substHint = subst
+    ? ` · <span style="color:var(--dim)">teit ${dayTypeLabel(subst.plannedDayType)}</span>`
+    : "";
   return `<div class="missed-banner">
     <div class="missed-icon">🕑</div>
     <div class="missed-body">
       <div class="missed-title">${titleTime}${moreHint}</div>
-      <div class="missed-sub"><b>${datePart}</b> · ${subHead}</div>
+      <div class="missed-sub"><b>${datePart}</b> · ${subHead}${substHint}</div>
     </div>
     <div class="missed-actions">
-      <button class="btn btn-warn" data-backfill="${iso}" title="Tee ${titleTime.toLowerCase()}">Tee nyt</button>
+      <button class="btn btn-warn" data-backfill="${iso}" title="Tee tekemätön plan nyt">Tee nyt</button>
       <button class="btn btn-outline" data-skip-day="${iso}" title="Merkitse väliinjätetyksi">Jätä väliin</button>
     </div>
   </div>`;
@@ -2651,22 +2657,28 @@ function renderHistory() {
 }
 
 /**
- * Kerää mesosyklin mennet suunnitelluet päivät joille EI löydy sessiota
- * eikä skippedDays-merkintää. Käytetään history-näkymän "+ Lisää mennyt treeni" -polussa.
+ * Kerää mesosyklin mennet suunnitellut päivät joiden plan on toteutumatta.
+ * Käyttää samaa logiikkaa kuin findMissedPriorSessions: "toteutettu" =
+ * session.planSourceDateISO osoittaa tähän päivään (tai vanhoilla
+ * sessioilla dateISO). Käytetään history-näkymän "+ Lisää mennyt treeni" -polussa.
  * @param {number} daysBack — oletus 28 (4 viikkoa)
  */
 function collectAllMissedDays(daysBack = 28) {
   if (!state.mesocycle) return [];
-  const sessionDates = new Set(state.sessions.map(s => s.dateISO));
+  const executedPlans = new Set();
+  for (const s of state.sessions) {
+    const planISO = s.planSourceDateISO || s.dateISO;
+    if (planISO) executedPlans.add(planISO);
+  }
   const skipped = new Set(state.mesocycle.skippedDays || []);
   const today = todayISO();
   const base = new Date(today);
   const out = [];
   for (let d = 1; d <= daysBack; d++) {
     const date = new Date(base);
-    date.setDate(date.getDate() - d);
+    date.setDate(date.getDate() + -d);
     const iso = date.toISOString().slice(0, 10);
-    if (sessionDates.has(iso)) continue;
+    if (executedPlans.has(iso)) continue;
     if (skipped.has(iso)) continue;
     const weekNum = getMesocycleWeek(state.mesocycle, iso);
     if (weekNum === null) continue;
