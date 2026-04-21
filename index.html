@@ -368,6 +368,30 @@
     .trace-row .rule { color: var(--acc); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 1px; }
     .trace-row .why { color: var(--muted); }
 
+    /* ── Plan override (v4.20) ───────────────────────────────── */
+    .hero-eyebrow { flex-wrap: wrap; gap: 6px 10px; }
+    .plan-override-link {
+      margin-left: auto; background: none; border: none; color: var(--muted);
+      font-size: 10px; font-weight: 600; letter-spacing: 0.3px;
+      cursor: pointer; padding: 2px 6px; border-radius: 6px;
+    }
+    .plan-override-link:active { background: var(--card2); color: var(--txt); }
+    .plan-override-chip {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--warn); background: rgba(245,158,11,0.14);
+      padding: 2px 8px; border-radius: 6px;
+    }
+    .plan-override-reset {
+      margin-left: auto; background: none; border: 1px solid var(--border2);
+      color: var(--warn); font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
+      cursor: pointer; padding: 3px 8px; border-radius: 6px;
+    }
+    .plan-override-reset:active { background: var(--card2); }
+    .hero.plan-override { border-color: rgba(245,158,11,0.45); }
+    .hero.plan-override::before {
+      background: radial-gradient(circle, rgba(245,158,11,0.18) 0%, transparent 70%);
+    }
+
     /* ── Missed prior session banner (v4.19) ─────────────────── */
     .missed-banner {
       display: flex; gap: 10px; align-items: center;
@@ -646,6 +670,9 @@ const state = {
   // Progress view UI state
   progressRange: "16",       // 4 | 8 | 16 | all
   progressVolFilter: "all",  // "all" or category id
+  // Transient plan-override (v4.20): kun käyttäjä haluaa tehdä tänään toisen
+  // viikon päivän planiä. Nollautuu refresh()-kutsussa ja startWorkout()-hetkellä.
+  planOverrideDateISO: null,
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -692,6 +719,8 @@ async function refresh() {
   state.prs = await getAllPRs();
   state.allMesocycles = await getAllMesocycles();
   state.mesocycle = await getActiveMesocycle();
+  // Plan-override on transient — refresh palauttaa aina normaalille tänään-päivälle
+  state.planOverrideDateISO = null;
   await computeReadiness();
   await computeRecommendation();
 }
@@ -844,6 +873,68 @@ function showInputModal(title, placeholder, defaultValue = "", inputType = "numb
     document.body.appendChild(overlay);
     setTimeout(() => inp.focus(), 50);
   });
+}
+
+/**
+ * Plan-override modal — listaa tämän viikon suunnitellut päivät ja palauttaa
+ * valitun päivän { dateISO, label, dayType } tai null jos peruutus.
+ * Käytetään "Vaihda päivä" -toiminnossa: käyttäjä valitsee minkä viikonpäivän
+ * planin haluaa tehdä tänään.
+ */
+async function showPlanOverrideModal() {
+  const meso = state.mesocycle;
+  if (!meso || !meso.weekPlans) {
+    showToast("Ei aktiivista mesosykliä", "warn");
+    return null;
+  }
+  const today = todayISO();
+  const todayDow = new Date(today).getDay() || 7;
+  const currentWeek = getMesocycleWeek(meso, today);
+  if (!currentWeek) {
+    showToast("Mesosykli ei ole aktiivinen tänään", "warn");
+    return null;
+  }
+  const weekPlan = meso.weekPlans.find(w => w.week === currentWeek);
+  if (!weekPlan?.days?.length) return null;
+
+  // Laske ISO-päivä kullekin viikon planille (Ma = tämän viikon Ma, Ke = Ke jne.)
+  // Todayn dayOfWeek käytetään ankkurina; siirto (targetDow - todayDow) päivää.
+  const base = new Date(today);
+  const dayNamesShort = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
+  const DAY_TYPE_LABELS_MAP = { heavy: "Maksimivoima", volume: "Perusvoima", speed: "Nopeusvoima", competition: "Kilpailu", rest: "Lepo" };
+  const options = [];
+  for (const d of weekPlan.days) {
+    const offset = d.dayOfWeek - todayDow;
+    const date = new Date(base);
+    date.setDate(date.getDate() + offset);
+    const iso = date.toISOString().slice(0, 10);
+    const dayLabel = d.label || DAY_TYPE_LABELS_MAP[d.dayType] || d.dayType || "?";
+    const isToday = d.dayOfWeek === todayDow;
+    const descBits = [];
+    if (isToday) descBits.push("alkuperäinen (tänään)");
+    if (offset < 0) descBits.push(`${Math.abs(offset)} pv sitten`);
+    else if (offset > 0) descBits.push(`${offset} pv eteenpäin`);
+    options.push({
+      icon: isToday ? "📍" : "📅",
+      label: `${dayNamesShort[d.dayOfWeek]} · ${dayLabel}`,
+      desc: descBits.join(" · "),
+      _dateISO: iso,
+      _dayOfWeek: d.dayOfWeek,
+      _dayType: d.dayType,
+      _isToday: isToday,
+    });
+  }
+  if (options.length === 0) return null;
+
+  const idx = await showListModal("Vaihda tämän päivän plani", options.map(o => ({ icon: o.icon, label: o.label, desc: o.desc })));
+  if (idx === null || idx < 0 || idx >= options.length) return null;
+  const chosen = options[idx];
+  if (chosen._isToday) {
+    // Käyttäjä valitsi oman päivänsä — ei tarvita overrideä, palauta null
+    showToast("Tämä on jo tämän päivän plani", "");
+    return null;
+  }
+  return { dateISO: chosen._dateISO, label: chosen.label, dayType: chosen._dayType };
 }
 
 /**
@@ -1141,6 +1232,15 @@ function renderDashboard() {
     return dayTypeFi;
   })();
 
+  // Plan-override: kun käyttäjä on valinnut toisen päivän planin tänään
+  const overrideISO = state.planOverrideDateISO;
+  const isPlanOverridden = !!overrideISO && overrideISO !== today;
+  const dayNamesShort = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
+  const overrideDow = isPlanOverridden ? (new Date(overrideISO).getDay() || 7) : null;
+  const overrideEyebrowHTML = isPlanOverridden
+    ? `<span class="plan-override-chip">🔀 Vaihdettu · ${dayNamesShort[overrideDow]}</span>`
+    : "";
+
   const heroTitle = rec?.dayPlan?.label || dayTypeFi;
   const slots = rec?.dayPlan?.slots || [];
   const workSlotCount = slots.filter(s => s.role !== "warmup").length || slots.length;
@@ -1241,9 +1341,13 @@ function renderDashboard() {
     ${breakHTML}
     ${missedBannerHTML}
 
-    <div class="hero${deloadMode ? " deload" : ""}">
+    <div class="hero${deloadMode ? " deload" : ""}${isPlanOverridden ? " plan-override" : ""}">
       <div class="hero-eyebrow">
         <span class="phase">${phaseEyebrow}</span>
+        ${overrideEyebrowHTML}
+        ${meso ? (isPlanOverridden
+            ? `<button class="plan-override-reset" id="btn-plan-override-reset" title="Palauta tämän päivän alkuperäinen plani">↩ Palauta</button>`
+            : `<button class="plan-override-link" id="btn-plan-override" title="Vaihda tänään toisen päivän plani">🔀 Vaihda päivä</button>`) : ""}
       </div>
       <div class="hero-title">${heroTitle}</div>
       <div class="hero-sub">${heroSub}</div>
@@ -1769,10 +1873,14 @@ function renderActiveWorkout() {
     ${state.settings?.velocityEnabled ? `<button id="btn-velocity-toggle" title="Näytä velocity-syöttö">💎 Velocity</button>` : ""}
   </div>`;
 
-  // Backfill-indikaattori: kun treeni on mennyt-päivän backfill, näytä chip
-  const backfillChipHTML = w.isBackfill
-    ? `<div style="margin-bottom:8px"><span class="chip chip-yellow" style="font-size:10px">🕑 Backfill · ${formatDateShort(w.dateISO)}</span></div>`
-    : "";
+  // Backfill- / plan-override -indikaattori
+  let workoutStatusChipHTML = "";
+  if (w.isBackfill) {
+    workoutStatusChipHTML = `<span class="chip chip-yellow" style="font-size:10px">🕑 Backfill · ${formatDateShort(w.dateISO)}</span>`;
+  } else if (w.isPlanOverride && w.planSourceDateISO) {
+    workoutStatusChipHTML = `<span class="chip chip-yellow" style="font-size:10px">🔀 Plan vaihdettu · ${formatDateShort(w.planSourceDateISO)}</span>`;
+  }
+  const backfillChipHTML = workoutStatusChipHTML ? `<div style="margin-bottom:8px">${workoutStatusChipHTML}</div>` : "";
 
   return `<div class="fade-in">
     <div class="w-top-bar">
@@ -2013,10 +2121,12 @@ function showEndWorkoutConfirm() {
     // so clearing state.workout drops them cleanly.
     stopRestTimer();
     const wasBackfill = !!state.workout?.isBackfill;
+    const wasPlanOverride = !!state.workout?.isPlanOverride;
     state.workout = null;
     state.view = "dashboard";
-    // Jos treeni oli mennyt-päivän backfill, palautetaan state.recommendation tänään
-    if (wasBackfill) await computeRecommendation();
+    // Jos treeni oli mennyt-päivän backfill tai plan-override, palautetaan
+    // state.recommendation tänään ennen dashboard-renderöintiä
+    if (wasBackfill || wasPlanOverride) await computeRecommendation();
     render();
   });
 }
@@ -3617,6 +3727,38 @@ function bind() {
     });
   });
 
+  // Plan override: "Vaihda päivä" → modaali viikon muista päivistä
+  const planOverrideBtn = $("#btn-plan-override");
+  if (planOverrideBtn) planOverrideBtn.addEventListener("click", async () => {
+    if (state.workout) {
+      showToast("Keskeneräinen treeni — tallenna tai hylkää ensin", "warn");
+      return;
+    }
+    const choice = await showPlanOverrideModal();
+    if (!choice) return;
+    try {
+      state.planOverrideDateISO = choice.dateISO;
+      await computeRecommendation(choice.dateISO);
+      render();
+      showToast(`Plani vaihdettu: ${choice.label}`, "ok");
+    } catch (e) {
+      console.error("Plan override failed:", e);
+      state.planOverrideDateISO = null;
+      await computeRecommendation();
+      showToast("Virhe: planiä ei voitu vaihtaa", "bad");
+      render();
+    }
+  });
+
+  // Plan override reset
+  const planOverrideResetBtn = $("#btn-plan-override-reset");
+  if (planOverrideResetBtn) planOverrideResetBtn.addEventListener("click", async () => {
+    state.planOverrideDateISO = null;
+    await computeRecommendation();
+    render();
+    showToast("Palautettu tämän päivän plani", "");
+  });
+
   // History view: "+ Lisää mennyt treeni"
   const backfillPastBtn = $("#btn-backfill-past");
   if (backfillPastBtn) backfillPastBtn.addEventListener("click", async () => {
@@ -4263,13 +4405,19 @@ function bind() {
 
 async function startWorkout(backfillDateISO = null) {
   // Kun backfillDateISO on annettu, recomputataan suositus tuon päivän planille
-  // ja session saa tuon päivämäärän. Normaali tänään-startissa pass-through.
+  // ja session saa tuon päivämäärän. Normaali tänään-startissa käytetään nykyistä
+  // state.recommendation'ia (joka voi olla planOverride-tilassa).
   if (backfillDateISO) {
     await computeRecommendation(backfillDateISO);
   }
   const rec = state.recommendation;
   const bw = state.settings?.bodyweightKg || 91;
   const exercises = [];
+
+  // Lukitaan mahdollinen plan-override workout-tilaan, sitten nollataan transient-kenttä
+  const planSourceISO = backfillDateISO || state.planOverrideDateISO || todayISO();
+  const usingPlanOverride = !backfillDateISO && !!state.planOverrideDateISO;
+  state.planOverrideDateISO = null;
 
   // Build warm-up sets for primary movement (prepended to primary exercise below)
   const isPeakingMeso = state.mesocycle?.type === "peaking";
@@ -4410,6 +4558,8 @@ async function startWorkout(backfillDateISO = null) {
     sessionId: uid(),
     dateISO: backfillDateISO || todayISO(),
     isBackfill: !!backfillDateISO,
+    planSourceDateISO: planSourceISO,
+    isPlanOverride: usingPlanOverride,
     dayType: rec?.dayType || "heavy",
     exercises,
     currentExerciseIdx: 0,
@@ -4772,9 +4922,10 @@ function bindWorkoutEvents() {
   if (discardBtn) discardBtn.addEventListener("click", async () => {
     if (!confirm("Hylätäänkö treeni?")) return;
     const wasBackfill = !!state.workout?.isBackfill;
+    const wasPlanOverride = !!state.workout?.isPlanOverride;
     state.workout = null;
     state.view = "dashboard";
-    if (wasBackfill) await computeRecommendation();
+    if (wasBackfill || wasPlanOverride) await computeRecommendation();
     render();
   });
 
@@ -4932,7 +5083,8 @@ async function saveWorkoutToDb(sessionNotes = "") {
   const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
   const rec = state.recommendation;
 
-  // Save session — käytä backfill-päivämäärää jos asetettu, muuten tänään
+  // Save session — käytä backfill-päivämäärää jos asetettu, muuten tänään.
+  // planSourceDateISO kertoo minkä päivän planiä seurattiin (audit, voi poiketa dateISO:sta)
   const session = {
     sessionId: w.sessionId,
     dateISO: w.dateISO || todayISO(),
@@ -4944,6 +5096,8 @@ async function saveWorkoutToDb(sessionNotes = "") {
     readinessCapLevel: state.readiness.capLevel,
     readinessDetails: state.readiness,
     isBackfill: !!w.isBackfill,
+    isPlanOverride: !!w.isPlanOverride,
+    planSourceDateISO: w.planSourceDateISO || w.dateISO || todayISO(),
   };
   await saveSession(session);
 
