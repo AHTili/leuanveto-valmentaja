@@ -368,6 +368,92 @@
     .trace-row .rule { color: var(--acc); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 1px; }
     .trace-row .why { color: var(--muted); }
 
+    /* ── Readiness primer (v4.21) ────────────────────────────── */
+    .primer-card {
+      background: linear-gradient(165deg, var(--card2) 0%, var(--card) 100%);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      padding: 18px 18px 16px;
+      margin-top: 10px;
+      position: relative;
+      overflow: hidden;
+    }
+    .primer-card::before {
+      content: '';
+      position: absolute; top: -40px; right: -40px;
+      width: 140px; height: 140px;
+      background: radial-gradient(circle, rgba(34,197,94,0.16) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .primer-instruction {
+      font-size: 14px; line-height: 1.45; color: var(--txt);
+      margin-bottom: 14px; text-align: center;
+      padding: 10px 12px;
+      background: rgba(34,197,94,0.08);
+      border: 1px solid rgba(34,197,94,0.25);
+      border-radius: var(--radius-sm);
+    }
+    .primer-instruction b { color: var(--ok); font-weight: 800; }
+    .primer-load {
+      text-align: center; margin-bottom: 16px;
+      font-variant-numeric: tabular-nums;
+      position: relative; z-index: 1;
+    }
+    .primer-load-val {
+      font-size: 44px; font-weight: 800; letter-spacing: -1.5px;
+      line-height: 1; color: var(--txt);
+    }
+    .primer-load-val .primer-load-unit {
+      font-size: 18px; color: var(--muted); font-weight: 600; letter-spacing: 0;
+    }
+    .primer-load-sub {
+      font-size: 11px; color: var(--muted); margin-top: 4px;
+      letter-spacing: 0.3px; text-transform: uppercase; font-weight: 600;
+    }
+    .primer-rep-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+      margin-bottom: 14px;
+    }
+    .primer-rep label {
+      display: block; font-size: 10px; font-weight: 700;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 4px; text-align: center;
+    }
+    .primer-rep input {
+      width: 100%; padding: 14px 8px; font-size: 18px; font-weight: 800;
+      text-align: center; font-variant-numeric: tabular-nums;
+      background: var(--card2); border: 2px solid var(--border2);
+      color: var(--txt); border-radius: var(--radius-sm);
+      min-height: 52px;
+    }
+    .primer-rep input:focus {
+      outline: none; border-color: var(--acc);
+      background: var(--card);
+    }
+    .primer-result {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 10px 12px;
+      margin-bottom: 14px; min-height: 56px;
+      font-size: 12px; line-height: 1.45;
+    }
+    .primer-result-placeholder { color: var(--muted); text-align: center; padding: 6px 0; }
+    .primer-best { font-size: 14px; color: var(--txt); }
+    .primer-best b { color: var(--ok); font-weight: 800; font-variant-numeric: tabular-nums; }
+    .primer-reps-list { margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .primer-rep-val {
+      font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
+      padding: 2px 6px; background: var(--card2); border-radius: 4px;
+    }
+    .primer-rep-val.best { color: var(--ok); font-weight: 700; background: rgba(34,197,94,0.12); }
+    .primer-class {
+      margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border);
+      font-size: 12px; font-weight: 700;
+    }
+    .primer-class.primer-ok { color: var(--ok); }
+    .primer-class.primer-warn { color: var(--warn); }
+    .primer-class.primer-bad { color: var(--bad); }
+    .primer-class.primer-muted { color: var(--dim); font-weight: 500; font-size: 11px; }
+
     /* ── Plan override (v4.20) ───────────────────────────────── */
     .hero-eyebrow { flex-wrap: wrap; gap: 6px 10px; }
     .plan-override-link {
@@ -1660,6 +1746,21 @@ function renderActiveWorkout() {
   const warmupSetIdx = isWarmupSet ? exercise.sets.filter((s, i) => s.isWarmup && i <= currentSetIdx).length : 0;
   const currentWorkSetNum = currentSetIdx + 1 - warmupCount; // 1-indexed work set number
 
+  // Readiness primer (v4.21): lämmittelyn jälkeen, ennen ensimmäistä työsarjaa,
+  // vain pääliikkeellä. Vaatii e1rmExternal:n ja primerEnabled-asetuksen.
+  const rec = state.recommendation;
+  const primerEnabled = state.settings?.readinessPrimerEnabled !== false;
+  const e1rmForPrimer = rec?.e1rmExternal;
+  const needsPrimer = !isWarmupSet &&
+    currentSetIdx === warmupCount &&     // juuri ennen ensimmäistä työsarjaa
+    exercise.role === "primary" &&
+    !w.primer &&                         // primer ei vielä tehty eikä ohitettu
+    primerEnabled &&
+    typeof e1rmForPrimer === "number" && e1rmForPrimer > 0;
+  if (needsPrimer) {
+    return renderReadinessPrimerScreen(exercise, rec);
+  }
+
   // Load display
   const loadKg = currentSet.loadKg;
   const loadBig = loadKg !== null && loadKg !== undefined ? (loadKg === 0 ? "BW" : String(loadKg)) : "–";
@@ -1788,12 +1889,10 @@ function renderActiveWorkout() {
       <span class="label">🎯 Tavoite</span>
       <span class="vals">${targetReps} toistoa · kontrolloidusti</span>
     </div>
-    ${state.settings?.velocityEnabled && exercise.role === "primary" && warmupSetIdx === warmupCount ? `
-    <div style="margin-top:12px">
-      <label style="margin-top:0;font-size:11px;color:var(--acc)">📊 Velocity (max intent rep 1) — valinnainen</label>
-      <input type="number" inputmode="decimal" step="0.01" id="input-warmup-velocity" placeholder="esim. 0.53 m/s" value="${state.todayVelocity || ''}">
-    </div>` : ""}
   </div>`;
+  // HUOM: aiempi velocity-input viimeisessä lämppäsarjassa poistettu v4.21:ssä.
+  // Readiness-mittaus on nyt omana primer-vaiheenaan warmupin ja ensimmäisen
+  // työsarjan välissä (renderReadinessPrimerScreen).
 
   // ── Input section (work-set only) ──
   const repsRow1 = [1,2,3,4,5].map(n => {
@@ -1929,6 +2028,128 @@ function formatRestTime(seconds) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s < 10 ? "0" : ""}${s}`;
+}
+
+// ── Readiness Primer (v4.21) ─────────────────────────────
+// Standardoitu z-score-testi ennen ensimmäistä työsarjaa: kiinteä kuorma
+// (% e1rmExternal), N toistoa max-intent, nopein rep tallentuu baseline-
+// laskuun. Tämä korvaa aiemman "viimeisessä lämppäsarjassa vapaasti annettu
+// velocity" -kaappauksen joka oli kuormaltaan epästandardi.
+
+function computePrimerLoadKg(e1rmExternal, pct) {
+  if (!e1rmExternal || !pct) return null;
+  // Pyöristetään 2.5 kg:n tarkkuuteen (käytännöllinen lisäpainolevytys)
+  return Math.round(e1rmExternal * pct / 2.5) * 2.5;
+}
+
+function renderReadinessPrimerScreen(exercise, rec) {
+  const settings = state.settings || {};
+  const pct = settings.readinessPrimerPct || 0.60;
+  const repCount = settings.readinessPrimerReps || 3;
+  const loadKg = computePrimerLoadKg(rec.e1rmExternal, pct);
+  const bw = state.latestBodyweight || settings.bodyweightKg || 91;
+  const pctLabel = Math.round(pct * 100);
+
+  // Baseline velocity readiness_test-seteistä (sama kanava kuin tuotannossa)
+  const baselineSets = state.allSets
+    .filter(s => s.setRole === "readiness_test" && s.velocityRep1 !== null && s.velocityRep1 !== undefined)
+    .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+  const baselineN = baselineSets.length;
+  const baselineValues = baselineSets.map(s => s.velocityRep1);
+
+  // Ote työosasta edellisiä velocityja jos primer ei vielä mennyt (null)
+  const repInputs = Array.from({ length: repCount }, (_, i) => `
+    <div class="primer-rep">
+      <label>Rep ${i + 1}</label>
+      <input type="number" inputmode="decimal" step="0.01" min="0.1" max="2.0"
+        data-primer-rep="${i}" placeholder="m/s" autocomplete="off">
+    </div>`).join("");
+
+  return `<div class="fade-in">
+    <div class="w-top-bar">
+      <div class="w-ex-progress">📊 <b>Readiness primer</b> · ennen ${exercise.name}</div>
+      <button class="icon-btn" id="btn-primer-skip" title="Ohita primer">⏭</button>
+      <button class="icon-btn danger" id="btn-end-workout" title="Lopeta treeni">⏹</button>
+    </div>
+
+    <div class="primer-card">
+      <div class="primer-instruction">
+        Tee <b>${repCount} toistoa MAKSIMIYRITYKSELLÄ</b>.<br>
+        Nopein rep kirjautuu readiness-baselineksi.
+      </div>
+
+      <div class="primer-load">
+        <div class="primer-load-val">${loadKg === 0 ? "BW" : "+" + loadKg}<span class="primer-load-unit">${loadKg === 0 ? "" : " kg"}</span></div>
+        <div class="primer-load-sub">${pctLabel} % e1RM · kehonpaino ${bw} kg</div>
+      </div>
+
+      <div class="primer-rep-grid" id="primer-rep-grid">${repInputs}</div>
+
+      <div class="primer-result" id="primer-result">
+        <div class="primer-result-placeholder">
+          ${baselineN > 0
+            ? `Baseline ${baselineN} sarjaa (ka ${(baselineValues.reduce((a,b)=>a+b,0)/baselineN).toFixed(2)} m/s) — syötä ensimmäinen rep`
+            : `Ensimmäiset 3–5 primeriä rakentavat baselinen. Syötä rep-arvot.`}
+        </div>
+      </div>
+
+      <button class="btn btn-full btn-ok btn-big" id="btn-primer-complete" disabled>
+        Valmis — jatka työsarjoihin
+      </button>
+      <button class="btn btn-outline btn-full mt" id="btn-primer-skip-inline" style="font-size:13px">
+        Ohita primer (readiness jää tämän osalta mittaamatta)
+      </button>
+    </div>
+  </div>`;
+}
+
+function updatePrimerResultUI() {
+  const grid = document.getElementById("primer-rep-grid");
+  if (!grid) return;
+  const inputs = [...grid.querySelectorAll("[data-primer-rep]")];
+  const vals = inputs.map(i => parseFloat(i.value)).filter(v => !isNaN(v) && v > 0.1 && v < 2.0);
+  const completeBtn = document.getElementById("btn-primer-complete");
+  const resultEl = document.getElementById("primer-result");
+  if (!resultEl) return;
+
+  if (vals.length === 0) {
+    if (completeBtn) completeBtn.disabled = true;
+    return;
+  }
+
+  const best = Math.max(...vals);
+
+  // Baseline + z-score (sama laskenta kuin computeReadiness)
+  const settings = state.settings || {};
+  const baselineSets = state.allSets
+    .filter(s => s.setRole === "readiness_test" && s.velocityRep1 !== null && s.velocityRep1 !== undefined)
+    .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+  const baselineValues = baselineSets.map(s => s.velocityRep1);
+  const velR = velocityReadiness(best, baselineValues, settings.readinessVelocityWindowN || 10);
+
+  let classHTML = "";
+  if (velR.class && velR.z !== null) {
+    const cls = velR.class === "GREEN" ? "ok" : velR.class === "YELLOW" ? "warn" : "bad";
+    const emoji = velR.class === "GREEN" ? "🟢" : velR.class === "YELLOW" ? "🟡" : "🔴";
+    const zStr = velR.z >= 0 ? `+${velR.z.toFixed(1)}` : velR.z.toFixed(1);
+    classHTML = `<div class="primer-class primer-${cls}">${emoji} ${velR.class} · z=${zStr}</div>`;
+  } else {
+    const n = baselineValues.length;
+    classHTML = `<div class="primer-class primer-muted">Baseline rakentuu (${n}/10 sarjaa) — luokittelu alkaa kun N≥3</div>`;
+  }
+
+  const repLabels = vals.map((v, i) => {
+    const isBest = v === best;
+    return `<span class="primer-rep-val${isBest ? " best" : ""}">${v.toFixed(2)}${isBest ? " ★" : ""}</span>`;
+  }).join(" ");
+
+  resultEl.innerHTML = `
+    <div class="primer-best">Nopein: <b>${best.toFixed(2)} m/s</b></div>
+    <div class="primer-reps-list">${repLabels}</div>
+    ${classHTML}
+  `;
+
+  if (completeBtn) completeBtn.disabled = false;
 }
 
 // ── Rest timer lifecycle ─────────────────────────────────
@@ -3567,7 +3788,24 @@ function renderSettingsView() {
           <input type="checkbox" id="set-velocity-enabled" ${s.velocityEnabled ? "checked" : ""} style="width:18px;height:18px">
           <span>Velocity-mittaus käytössä</span>
         </label>
-        <div class="muted" style="font-size:11px;margin-top:4px">Näyttää velocity-syötön viimeisessä lämppäsarjassa (readiness-testi). Poista käytöstä jos sinulla ei ole mittausvälinettä (Vitruve, Enode Pro, puhelinappi).</div>
+        <div class="muted" style="font-size:11px;margin-top:4px">Näyttää velocity-syötön sarjakohtaisesti (util-row "💎 Velocity"). Poista käytöstä jos sinulla ei ole mittausvälinettä (Vitruve, Enode, puhelinappi).</div>
+      </div>
+      <div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:6px">
+        <label style="margin-top:0;display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="set-primer-enabled" ${s.readinessPrimerEnabled !== false ? "checked" : ""} style="width:18px;height:18px">
+          <span>Readiness primer pääliikkeellä</span>
+        </label>
+        <div class="muted" style="font-size:11px;margin-top:4px">Lämmittelyn jälkeen, ennen ensimmäistä työsarjaa: 3 max-intent-toistoa kiinteällä kuormalla (% e1RM). Nopein rep kirjautuu baseline-z-scoreksi. Vaatii e1RM:n (syntyy 2–3 sessiossa).</div>
+        <div class="row" style="margin-top:8px">
+          <div>
+            <label style="font-size:11px">Primer-kuorma (% e1RM)</label>
+            <input type="number" inputmode="decimal" step="5" min="40" max="80" id="set-primer-pct" value="${Math.round((s.readinessPrimerPct || 0.60) * 100)}">
+          </div>
+          <div>
+            <label style="font-size:11px">Toistojen määrä</label>
+            <input type="number" inputmode="numeric" step="1" min="1" max="5" id="set-primer-reps" value="${s.readinessPrimerReps || 3}">
+          </div>
+        </div>
       </div>
     </div>
 
@@ -4274,6 +4512,16 @@ function bind() {
     state.settings.readinessVelocityWindowN = parseNumericInput($("#set-velwindow")?.value) || 10;
     state.settings.readinessHrvWindowN = parseNumericInput($("#set-hrvwindow")?.value) || 14;
     state.settings.velocityEnabled = !!$("#set-velocity-enabled")?.checked;
+    // Readiness primer (v4.21)
+    state.settings.readinessPrimerEnabled = !!$("#set-primer-enabled")?.checked;
+    const primerPctInput = parseNumericInput($("#set-primer-pct")?.value);
+    if (primerPctInput !== null && primerPctInput >= 40 && primerPctInput <= 80) {
+      state.settings.readinessPrimerPct = primerPctInput / 100;
+    }
+    const primerRepsInput = parseInt($("#set-primer-reps")?.value, 10);
+    if (!isNaN(primerRepsInput) && primerRepsInput >= 1 && primerRepsInput <= 5) {
+      state.settings.readinessPrimerReps = primerRepsInput;
+    }
     // Read variant load modifiers
     const variantModifiers = {};
     $$("[data-variant-mod]").forEach(inp => {
@@ -4579,6 +4827,11 @@ async function startWorkout(backfillDateISO = null) {
     startedAt: new Date().toISOString(),
     warmupProtocol: rec?.dayPlan?.warmup || [],
     warmupProtocolDone: false,
+    // Readiness primer (v4.21): ennen ensimmäistä työsarjaa pääliikkeellä
+    // Rakenne kun primer tehty: { done:true, skipped:false, velocities:[...],
+    //   best, loadKg, movementId, timestamp }
+    // Kun käyttäjä ohittaa: { done:false, skipped:true }
+    primer: null,
   };
 
   render();
@@ -4967,6 +5220,53 @@ function bindWorkoutEvents() {
     }
   });
 
+  // ── Readiness primer (v4.21) ─────────────────────────────
+  // Rep-inputit: live-päivitys tuloskorttiin ja complete-napin aktivointi
+  $$("[data-primer-rep]").forEach(inp => {
+    inp.addEventListener("input", () => updatePrimerResultUI());
+    inp.addEventListener("change", () => updatePrimerResultUI());
+  });
+
+  const primerCompleteBtn = $("#btn-primer-complete");
+  if (primerCompleteBtn) primerCompleteBtn.addEventListener("click", async () => {
+    const inputs = [...document.querySelectorAll("[data-primer-rep]")];
+    const vals = inputs.map(i => parseFloat(i.value)).filter(v => !isNaN(v) && v >= 0.1 && v <= 2.0);
+    if (vals.length === 0) {
+      showToast("Syötä vähintään yksi rep-arvo", "warn");
+      return;
+    }
+    const best = Math.max(...vals);
+    const exercise = w.exercises[w.currentExerciseIdx];
+    const rec = state.recommendation;
+    const pct = state.settings?.readinessPrimerPct || 0.60;
+    const loadKg = computePrimerLoadKg(rec?.e1rmExternal, pct);
+
+    w.primer = {
+      done: true,
+      skipped: false,
+      velocities: vals,
+      best,
+      loadKg,
+      pct,
+      movementId: exercise?.movementId || null,
+      timestamp: new Date().toISOString(),
+    };
+    state.todayVelocity = best;
+    await computeReadiness();
+    showToast(`Primer: parhain ${best.toFixed(2)} m/s`, "ok");
+    render();
+  });
+
+  const primerSkipHandler = async () => {
+    w.primer = { done: false, skipped: true, timestamp: new Date().toISOString() };
+    showToast("Primer ohitettu — readiness mitataan vara-signaalista", "");
+    render();
+  };
+  const primerSkipBtn = $("#btn-primer-skip");
+  if (primerSkipBtn) primerSkipBtn.addEventListener("click", primerSkipHandler);
+  const primerSkipInlineBtn = $("#btn-primer-skip-inline");
+  if (primerSkipInlineBtn) primerSkipInlineBtn.addEventListener("click", primerSkipHandler);
+
   // Swap exercise (slot-aware in v4.11)
   const swapBtn = $("#btn-swap-exercise");
   if (swapBtn) swapBtn.addEventListener("click", async () => {
@@ -5124,6 +5424,34 @@ async function saveWorkoutToDb(sessionNotes = "") {
 
   // Save sets (exclude warmup sets — they are not training data)
   const sets = [];
+
+  // Readiness primer -tulos tallennetaan erillisenä setinä (setRole="readiness_test")
+  // jotta baseline rakentuu (käytetään velocityReadiness()-baseline-arvona).
+  if (w.primer && w.primer.done && w.primer.best > 0 && w.primer.movementId) {
+    sets.push({
+      setId: uid(),
+      sessionId: w.sessionId,
+      movementId: w.primer.movementId,
+      variantId: null,
+      setRole: "readiness_test",
+      externalLoadKg: w.primer.loadKg,
+      reps: 1,                          // best-of-N tiivistelmä
+      targetReps: null,
+      targetVx: null,
+      actualVx: null,
+      velocityMean: w.primer.best,
+      velocityPeak: null,
+      velocityRep1: w.primer.best,      // käytetään velocityReadiness-baselinessa
+      velocityLossPercent: null,
+      tempo: null,
+      restSec: null,
+      attemptedReps: null,
+      deviceMeta: { primerReps: w.primer.velocities, pct: w.primer.pct },
+      manualOverride: null,
+      timestamp: w.primer.timestamp || new Date().toISOString(),
+    });
+  }
+
   for (const exercise of w.exercises) {
     for (const s of exercise.sets) {
       if (!s.completed || s.isWarmup) continue;

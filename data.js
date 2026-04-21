@@ -1141,7 +1141,7 @@ async function updateLastOpened() {
 // Settings (stored in appMeta store)
 async function getSettings() {
   const s = await dbGet(STORES.appMeta, "settings");
-  return s || {
+  const defaults = {
     key: "settings",
     bodyweightKg: 91,
     maxDelta: 0.25,
@@ -1153,7 +1153,14 @@ async function getSettings() {
     accessoryIncrementUpper: 2.5,
     accessoryIncrementLower: 5,
     stagnationThresholdWeeks: 3,
+    // Readiness primer (v4.21): ennen ensimmäistä työsarjaa pääliikkeellä
+    readinessPrimerEnabled: true,
+    readinessPrimerPct: 0.60,       // % e1rmExternal → primer-kuorma
+    readinessPrimerReps: 3,         // toistojen määrä (best-of-N)
   };
+  if (!s) return defaults;
+  // Täytä puuttuvat kentät oletuksilla (esim. päivitetylle käyttäjälle)
+  return { ...defaults, ...s };
 }
 
 async function saveSettings(settings) {
