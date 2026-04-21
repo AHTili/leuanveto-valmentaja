@@ -453,6 +453,17 @@
     .primer-class.primer-warn { color: var(--warn); }
     .primer-class.primer-bad { color: var(--bad); }
     .primer-class.primer-muted { color: var(--dim); font-weight: 500; font-size: 11px; }
+    .primer-ref-hint {
+      font-size: 10px; color: var(--dim); margin-top: 4px;
+      letter-spacing: 0.2px; font-weight: 500;
+    }
+    .primer-load-hint {
+      margin-top: 6px; padding: 6px 8px; border-radius: 6px;
+      font-size: 11px; font-weight: 600; line-height: 1.35;
+    }
+    .primer-load-hint.ok { color: var(--ok); background: rgba(34,197,94,0.10); border: 1px solid rgba(34,197,94,0.30); }
+    .primer-load-hint.info { color: var(--acc); background: rgba(79,140,255,0.10); border: 1px solid rgba(79,140,255,0.30); }
+    .primer-load-hint.warn { color: var(--warn); background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.30); }
 
     /* ── Plan override (v4.20) ───────────────────────────────── */
     .hero-eyebrow { flex-wrap: wrap; gap: 6px 10px; }
@@ -2036,6 +2047,39 @@ function formatRestTime(seconds) {
 // laskuun. Tämä korvaa aiemman "viimeisessä lämppäsarjassa vapaasti annettu
 // velocity" -kaappauksen joka oli kuormaltaan epästandardi.
 
+// Liikekohtaiset viitteelliset velocity-alueet primer-kuormalla (60-70% e1RM).
+// Jos best rep putoaa alueeseen → primer-kuorma on kalibroitu oikein.
+// Jos yli → kuorma liian kevyt (nosta primer-%). Jos alle → liian raskas.
+// Perustuu VBT-kirjallisuuteen (Jovanović 2014, González-Badillo 2014,
+// Hernández-Lougedo et al. 2021 lisäpainoliikkeille).
+const PRIMER_VELOCITY_REF = {
+  // Tarkka nimimatch
+  "Lisäpainoleuanveto": [0.70, 0.90],
+  "Leuanveto (kehonpaino)": [0.70, 0.90],
+  "Muscle-up": [0.75, 1.00],
+  "Lisäpainodippi": [0.65, 0.85],
+  "Dippi": [0.65, 0.85],
+  "Takakyykky": [0.60, 0.80],
+  "Etukyykky": [0.60, 0.80],
+  "Penkkipunnerrus": [0.50, 0.70],
+  "Maastaveto": [0.45, 0.65],
+  "Pystypunnerrus": [0.55, 0.75],
+  // Kategoriapohjainen fallback (_-prefix)
+  "_vertikaaliveto": [0.70, 0.90],
+  "_vertikaalityöntö": [0.55, 0.75],
+  "_horisontaaliveto": [0.55, 0.75],
+  "_horisontaalityöntö": [0.55, 0.75],
+  "_alaraaja": [0.55, 0.75],
+};
+
+function getPrimerRefRange(exercise) {
+  if (!exercise) return null;
+  const name = exercise.name || "";
+  if (PRIMER_VELOCITY_REF[name]) return PRIMER_VELOCITY_REF[name];
+  const cat = exercise.category || "";
+  return PRIMER_VELOCITY_REF[`_${cat}`] || null;
+}
+
 function computePrimerLoadKg(e1rmExternal, pct) {
   if (!e1rmExternal || !pct) return null;
   // Pyöristetään 2.5 kg:n tarkkuuteen (käytännöllinen lisäpainolevytys)
@@ -2081,6 +2125,10 @@ function renderReadinessPrimerScreen(exercise, rec) {
       <div class="primer-load">
         <div class="primer-load-val">${loadKg === 0 ? "BW" : "+" + loadKg}<span class="primer-load-unit">${loadKg === 0 ? "" : " kg"}</span></div>
         <div class="primer-load-sub">${pctLabel} % e1RM · kehonpaino ${bw} kg</div>
+        ${(() => {
+          const r = getPrimerRefRange(exercise);
+          return r ? `<div class="primer-ref-hint">Viite-alue ${r[0].toFixed(2)}–${r[1].toFixed(2)} m/s</div>` : "";
+        })()}
       </div>
 
       <div class="primer-rep-grid" id="primer-rep-grid">${repInputs}</div>
@@ -2143,9 +2191,25 @@ function updatePrimerResultUI() {
     return `<span class="primer-rep-val${isBest ? " best" : ""}">${v.toFixed(2)}${isBest ? " ★" : ""}</span>`;
   }).join(" ");
 
+  // Kuorma-kalibraatiohintti: onko best rep liikekohtaisessa viite-alueessa?
+  const exercise = state.workout?.exercises?.[state.workout?.currentExerciseIdx];
+  const refRange = getPrimerRefRange(exercise);
+  let loadHintHTML = "";
+  if (refRange) {
+    const [lo, hi] = refRange;
+    if (best < lo) {
+      loadHintHTML = `<div class="primer-load-hint warn">↓ Kuorma saattaa olla liian raskas · viite ${lo.toFixed(2)}–${hi.toFixed(2)} m/s · kokeile Asetuksissa pienempää primer-%:a</div>`;
+    } else if (best > hi) {
+      loadHintHTML = `<div class="primer-load-hint info">↑ Kuorma saattaa olla liian kevyt · viite ${lo.toFixed(2)}–${hi.toFixed(2)} m/s · kokeile Asetuksissa suurempaa primer-%:a</div>`;
+    } else {
+      loadHintHTML = `<div class="primer-load-hint ok">✓ Kuorma kalibroitu (viite ${lo.toFixed(2)}–${hi.toFixed(2)} m/s)</div>`;
+    }
+  }
+
   resultEl.innerHTML = `
     <div class="primer-best">Nopein: <b>${best.toFixed(2)} m/s</b></div>
     <div class="primer-reps-list">${repLabels}</div>
+    ${loadHintHTML}
     ${classHTML}
   `;
 
