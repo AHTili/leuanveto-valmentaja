@@ -5314,12 +5314,34 @@ function bindWorkoutEvents() {
       }
     }
 
-    // VL% calculation
+    // VL% calculation (prosenttipohjainen — laskee suhteessa 1. sarjan velocityyn)
     if (velocity && exercise.sets[0]?.velocity) {
       const vl = velocityLossPercent(exercise.sets[0].velocity, velocity);
       if (vl !== null && vl > (state.settings?.vlStopPercent || 20)) {
         showToast(`VL% = ${vl.toFixed(1)}% — yli rajan!`, "warn");
       }
+    }
+
+    // v4.23 P2.2: Absolute velocityStop per slot. Kun ohjelma-tekijä on
+    // asettanut slot.velocityStop:n (esim. 0.50 m/s peaking-setille), ja
+    // käyttäjä kirjaa sen ALITTAVAN velocityn, varoitetaan: seuraava sarja
+    // olisi tehokkaampi kevyemmällä kuormalla. Eri kuin VL% — tämä on
+    // absoluuttinen raja ohjelma-tekijän ennakoima "hyvä sarja" vs.
+    // "rasittaa liikaa".
+    const slotVelocityStop = (() => {
+      // Hae slot jolta exercise muodostettu — matchataan dayPlanissa
+      const rec = state.recommendation;
+      const slot = rec?.dayPlan?.slots?.find(s =>
+        s.role === exercise.role &&
+        (s.defaultMovementName === exercise.name || s.category === exercise.category)
+      );
+      return slot?.velocityStop;
+    })();
+    if (velocity && slotVelocityStop && velocity < slotVelocityStop) {
+      showToast(
+        `⚠ Velocity ${velocity.toFixed(2)} m/s alittaa tavoitteen ${slotVelocityStop.toFixed(2)} m/s — harkitse kuorman laskua tai sarjan lopettamista`,
+        "warn", 4500
+      );
     }
 
     // Start rest timer

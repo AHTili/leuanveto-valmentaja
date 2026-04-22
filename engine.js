@@ -1019,10 +1019,36 @@ async function recommend(options = {}) {
   }
 
   let targetExternalLoad;
-  if (currentE1RMSystem !== null) {
+
+  // v4.22 P2: Relative-loading -polku. Kun slot määrittelee loadPct (% nykyisestä
+  // ext e1RM:stä), engine kunnioittaa sitä suoraan. Tämä on ohjelma-tekijän
+  // eksplisiittinen ilmaus: "viikko 11 primary = 90 % current e1RM" — ei
+  // mitään deltaPct + effReps -taikuutta päälle. Mahdottomia >100 % 1RM
+  // kuormia ei voi syntyä ellei loadPct ole itsessään > 1.0.
+  //
+  // Käyttö: slot.loadPct = 0.90. Backward-compat: jos loadPct puuttuu, fallback
+  // alempaan deltaPct-pohjaiseen laskentaan (ylläpito vanhoille mesosykleille).
+  if (primarySlotMeta?.loadPct !== undefined && primarySlotMeta?.loadPct !== null) {
+    const pct = primarySlotMeta.loadPct;
+    if (currentE1RMExternal !== null && currentE1RMExternal > 0) {
+      // Lisäpainoliikkeet: kuorma = extE1RM × pct suoraan
+      // Tankoliikkeet (isBarbell): kuorma = extE1RM × pct suoraan
+      targetExternalLoad = roundToHalf(Math.max(0, currentE1RMExternal * pct));
+      trace("LOAD_PCT_RESOLVED", {}, { pct, currentE1RMExternal, targetExternalLoad },
+        `${(pct*100).toFixed(0)}% × current e1RM (${currentE1RMExternal} kg) = ${targetExternalLoad} kg`);
+    } else if (primarySlotMeta?.suggestedLoadKg) {
+      // Ei vielä e1RM-historiaa → käytä plan-seedattua kuormaa
+      targetExternalLoad = primarySlotMeta.suggestedLoadKg;
+      trace("LOAD_PCT_SEED", {}, { targetExternalLoad, pct },
+        `loadPct ${(pct*100).toFixed(0)}% mutta ei e1RM-historiaa → seed ${targetExternalLoad} kg`);
+    } else {
+      targetExternalLoad = null;
+    }
+  } else if (currentE1RMSystem !== null) {
+    // Legacy-polku: deltaPct-pohjainen laskenta (käytössä default-mesosyklissä
+    // ja vanhemmissa streetlifting_16w-sessioissa jotka eivät vielä tunne loadPct:tä)
     const effectiveReps = targetReps + targetVx;
     if (isBarbell) {
-      // Squat: e1RM is external-only, target = e1RM / (1 + eff/30) × (1 + deltaPct)
       targetExternalLoad = roundToHalf(Math.max(0,
         (currentE1RMSystem / (1 + effectiveReps / 30)) * (1 + deltaPct)));
     } else {
