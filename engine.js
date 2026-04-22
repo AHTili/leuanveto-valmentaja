@@ -259,7 +259,11 @@ function resolveMesocyclePosition(mesocycle, dateISO) {
   const start = new Date(mesocycle.startDateISO);
   const current = new Date(dateISO);
   const diffDays = Math.floor((current - start) / (1000 * 60 * 60 * 24));
-  if (diffDays < 0) return null;
+  // v4.22: erotellaan "ennen alkua" vs "lopun jälkeen" -tilanteet. Aiemmin
+  // molemmat palauttivat null, ja recommend() korvasi mesosyklin default:illa
+  // kun pääsy ennen startDateISO:a pyyttiin (esim. backfill-polku). Nyt
+  // palautetaan strukturoitu result jossa kutsuja näkee miksi.
+  if (diffDays < 0) return { programWeek: null, reason: "before-start", diffDays };
   const calendarWeek = Math.floor(diffDays / 7) + 1;
 
   const inserts = [...(mesocycle.insertedDeloads || [])]
@@ -268,7 +272,7 @@ function resolveMesocyclePosition(mesocycle, dateISO) {
     .sort((a, b) => a - b);
 
   const effectiveWeekCount = mesocycle.weekCount + inserts.length;
-  if (calendarWeek > effectiveWeekCount) return null;
+  if (calendarWeek > effectiveWeekCount) return { programWeek: null, reason: "after-end", diffDays, calendarWeek };
 
   let programWeek = 0;
   let insertIdx = 0;
@@ -282,7 +286,7 @@ function resolveMesocyclePosition(mesocycle, dateISO) {
       programWeek++;
     }
   }
-  return { programWeek: Math.max(programWeek, 1), isInsertedDeload: isDeload, calendarWeek };
+  return { programWeek: Math.max(programWeek, 1), isInsertedDeload: isDeload, calendarWeek, reason: "in-range" };
 }
 
 /**
@@ -292,17 +296,17 @@ function resolveMesocyclePosition(mesocycle, dateISO) {
  */
 function getMesocycleWeek(mesocycle, dateISO) {
   const pos = resolveMesocyclePosition(mesocycle, dateISO);
-  return pos ? pos.programWeek : null;
+  return pos && pos.programWeek ? pos.programWeek : null;
 }
 
 function isInsertedDeloadWeek(mesocycle, dateISO) {
   const pos = resolveMesocyclePosition(mesocycle, dateISO);
-  return pos ? pos.isInsertedDeload : false;
+  return pos && pos.programWeek ? pos.isInsertedDeload : false;
 }
 
 function isReplacedDeloadWeek(mesocycle, dateISO) {
   const pos = resolveMesocyclePosition(mesocycle, dateISO);
-  if (!pos || pos.isInsertedDeload) return false;
+  if (!pos || !pos.programWeek || pos.isInsertedDeload) return false;
   const replaced = (mesocycle?.replacedWithDeload || [])
     .map(r => (typeof r === "number" ? r : r.programWeek))
     .filter(Number.isInteger);
@@ -787,9 +791,33 @@ async function recommend(options = {}) {
   }
 
   // 2. Determine week and day
-  let weekNum = getMesocycleWeek(mesocycle, dateISO);
+  // v4.22: erottelu "ennen alkua" (pyyntö backfillille ennen mesosyklin
+  // startDateISO:a) ja "lopun jälkeen" (sykli päättynyt). Aiemmin molemmat
+  // johtivat default-mesosyklin hiljaiseen luomiseen → treeni-näkymä näytti
+  // eri dataa kuin sykli-näkymä kun käyttäjä yritti backfillata ennen alkua.
+  const pos = resolveMesocyclePosition(mesocycle, dateISO);
+  let weekNum = pos?.programWeek ?? null;
   if (weekNum === null) {
-    // Past end of mesocycle - start new one
+    if (pos?.reason === "before-start") {
+      // Ei luoda uutta mesosykliä — palautetaan selkeä virhe jotta kutsuja
+      // (UI) voi estää backfillin ennen mesosyklin alkua.
+      trace("MESOCYCLE_BEFORE_START", {}, { startDateISO: mesocycle.startDateISO, requestedDate: dateISO },
+        `Pyydetty päivämäärä ${dateISO} on ennen mesosyklin alkua (${mesocycle.startDateISO})`);
+      return {
+        dateISO,
+        error: "before-start",
+        errorMessage: `Mesosykli alkoi ${mesocycle.startDateISO} — ei voida laskea suositusta aiemmalle päivälle`,
+        traces,
+        dayPlan: null,
+        dayType: null,
+        weekNum: null,
+        weekLabel: null,
+        targetExternalLoad: null,
+        e1rmExternal: null,
+        e1rmSystem: null,
+      };
+    }
+    // after-end: mesosykli on päättynyt → aloitetaan uusi default
     mesocycle = createDefaultMesocycle(dateISO);
     if (!options.dryRun) await saveMesocycle(mesocycle);
     weekNum = 1;
@@ -1923,14 +1951,29 @@ async function recommendPeaking(options = {}) {
   }
 
   // Determine week
-  let weekNum = getMesocycleWeek(mesocycle, dateISO);
+  // v4.22: erottele before-start / after-end — peaking-mesosyklissä myös
+  // ennen alkua -pyynnöt eivät saa muuttaa käyttäjän valitsemaa mesosykliä
+  const pos = resolveMesocyclePosition(mesocycle, dateISO);
+  let weekNum = pos?.programWeek ?? null;
   if (weekNum === null) {
-    // Past end → create new default mesocycle with -5% deload start
+    if (pos?.reason === "before-start") {
+      return {
+        dateISO,
+        error: "before-start",
+        errorMessage: `Peaking-mesosykli alkoi ${mesocycle.startDateISO} — ei voida laskea suositusta aiemmalle päivälle`,
+        traces,
+        dayPlan: null,
+        dayType: null,
+        weekNum: null,
+        weekLabel: null,
+        targetExternalLoad: null,
+      };
+    }
+    // after-end → create new default mesocycle with -5% deload start
     const newMeso = createDefaultMesocycle(dateISO);
     newMeso.weekDefs[0].deltaPctBase = -0.05;
     if (!options.dryRun) await saveMesocycle(newMeso);
     trace("PEAKING_TRANSITION", {}, { type: "default" }, "Peaking päättynyt → normaali mesosykli (-5% start)");
-    // Return a rec for the new mesocycle
     return recommend({ ...options, mesocycle: newMeso });
   }
 

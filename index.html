@@ -613,6 +613,9 @@
     .completed-list .row + .row { margin-top: 3px; }
     .completed-list .row b { color: var(--txt); font-weight: 700; }
     .completed-list .row .done-mark { color: var(--ok); font-weight: 800; }
+    .completed-list .row.completed-row-editable { cursor: pointer; transition: background .15s; border-radius: 4px; padding: 2px 4px; margin-left: -4px; }
+    .completed-list .row.completed-row-editable:active { background: var(--card); }
+    .completed-list .completed-edit-hint { margin-left: auto; opacity: 0.4; font-size: 11px; }
     .completed-list .vel-mini { margin-top: 8px; }
     .completed-list .vel-mini-label { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px; }
 
@@ -1089,6 +1092,66 @@ function showInfoModal({ title, howTo, cue, slotFunction, slotRationale, slotPha
  * Show a two-field input modal (sets + reps).
  * Returns {sets, reps} or null.
  */
+/**
+ * Edit-set modal (v4.22 #9): muokkaa kirjattua sarjaa (reps, vx, velocity, load).
+ * Palauttaa { reps, actualVx, velocity, loadKg } tai null jos peruutus.
+ */
+function showEditSetModal(setData) {
+  return new Promise(resolve => {
+    closeModal();
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    const vel = setData.velocity != null ? setData.velocity : "";
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Muokkaa sarjaa</div>
+        <div style="padding: 0 4px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div>
+              <label style="margin-top:0">Toistot</label>
+              <input type="number" inputmode="numeric" min="1" max="50" id="edit-set-reps" value="${setData.reps ?? ""}">
+            </div>
+            <div>
+              <label style="margin-top:0">Vara (V)</label>
+              <input type="number" inputmode="numeric" min="0" max="5" id="edit-set-vx" value="${setData.actualVx ?? ""}">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div>
+              <label style="margin-top:0">Kuorma (kg)</label>
+              <input type="number" inputmode="decimal" step="0.5" min="0" id="edit-set-load" value="${setData.loadKg ?? ""}">
+            </div>
+            <div>
+              <label style="margin-top:0">Velocity (m/s, valinnainen)</label>
+              <input type="number" inputmode="decimal" step="0.01" min="0.1" max="2.0" id="edit-set-vel" value="${vel}">
+            </div>
+          </div>
+          <div class="muted" style="font-size:11px;margin-bottom:12px">Huom: muutokset vaikuttavat tähän sessioon ja readiness-/progression-laskentaan kun tallennat treenin.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <button class="btn btn-outline" data-modal-cancel>Peruuta</button>
+            <button class="btn btn-ok" data-modal-ok>Tallenna muutokset</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const submit = () => {
+      const repsVal = parseInt(overlay.querySelector("#edit-set-reps")?.value, 10);
+      const vxVal = parseInt(overlay.querySelector("#edit-set-vx")?.value, 10);
+      const loadVal = parseNumericInput(overlay.querySelector("#edit-set-load")?.value);
+      const velVal = parseNumericInput(overlay.querySelector("#edit-set-vel")?.value);
+      if (isNaN(repsVal) || repsVal < 0 || repsVal > 50) { showToast("Toistot pitää olla 1–50", "warn"); return; }
+      if (isNaN(vxVal) || vxVal < 0 || vxVal > 5) { showToast("Vara pitää olla 0–5", "warn"); return; }
+      if (velVal !== null && (velVal < 0.1 || velVal > 2.0)) { showToast("Velocity 0.1–2.0 m/s", "warn"); return; }
+      closeModal();
+      resolve({ reps: repsVal, actualVx: vxVal, loadKg: loadVal, velocity: velVal });
+    };
+    overlay.querySelector("[data-modal-ok]").addEventListener("click", submit);
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); resolve(null); });
+    overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
+  });
+}
+
 function showSetsRepsModal(title, defaultSets = 3, defaultReps = 10) {
   return new Promise(resolve => {
     closeModal();
@@ -1945,12 +2008,23 @@ function renderActiveWorkout() {
     <button class="submit-btn" id="btn-next-set" disabled>Valitse toistot ja vara</button>
   </div>`;
 
-  // ── Completed list ──
+  // ── Completed list (click to edit, v4.22 #9) ──
+  // Jokainen completed-row on nyt klikattava → avaa edit-modaalin. Käytetään
+  // exercise.sets[]:in alkuperäistä indeksiä (ei completedWorkSets-järjestystä)
+  // jotta dataa päivitetään oikealla paikalla.
+  const completedIndices = [];
+  exercise.sets.forEach((s, i) => {
+    if (s.completed && !s.isWarmup) completedIndices.push(i);
+  });
   const completedListHTML = completedWorkSets.length === 0 ? "" : `<div class="completed-list">
     ${completedWorkSets.map((s, i) => {
       const vel = s.velocity ? ` · ${s.velocity.toFixed(2)} m/s` : "";
       const attempted = s.attemptedReps ? ` (yritetty ${s.attemptedReps})` : "";
-      return `<div class="row"><span class="done-mark">✓</span><b>S${i + 1}</b> · ${s.loadKg ?? "–"}kg × ${s.reps ?? "?"}${attempted} · V${s.actualVx ?? "?"}${vel}</div>`;
+      const origIdx = completedIndices[i];
+      return `<div class="row completed-row-editable" data-edit-set-idx="${origIdx}" title="Napauta muokataksesi">
+        <span class="done-mark">✓</span><b>S${i + 1}</b> · ${s.loadKg ?? "–"}kg × ${s.reps ?? "?"}${attempted} · V${s.actualVx ?? "?"}${vel}
+        <span class="completed-edit-hint">✎</span>
+      </div>`;
     }).join("")}
     ${completedWorkSets.length >= 2 ? `<div class="vel-mini"><div class="vel-mini-label">Velocity-trendi</div>${renderVelocityTrendSVG(completedWorkSets)}</div>` : ""}
   </div>`;
@@ -2317,6 +2391,77 @@ function attachRestInlineObserver() {
   _restInlineObserver.observe(inline);
 }
 
+// v4.22: Wall-clock-pohjainen ajastin. Aiempi counter-pohjainen setInterval
+// throttlautuu iOS/Android-selaimissa kun sivu on taustalla (1 tikki / 30s)
+// → ajastin desynkkaa oikeasta kellonaikasta. Wall-clock laskee elapsed =
+// Date.now() - startMs, ja ajastin hyppää oikeaan arvoon kun palaat etualle.
+let _restStartMs = null;
+let _restTargetSec = 0;
+let _restLastVibrateMs = 0;
+
+// Web Audio -pohjainen beep — toimii taustalla ilman <audio>-elementtiä kun
+// AudioContext on alustettu käyttäjän interaktion jälkeen (workoutin aloitus).
+let _audioCtx = null;
+let _wakeLock = null;
+
+async function ensureWakeLock() {
+  if (_wakeLock) return;
+  if (!("wakeLock" in navigator)) return;
+  try {
+    _wakeLock = await navigator.wakeLock.request("screen");
+    _wakeLock.addEventListener("release", () => { _wakeLock = null; });
+  } catch (e) {
+    _wakeLock = null;
+  }
+}
+
+function releaseWakeLock() {
+  if (_wakeLock) {
+    _wakeLock.release().catch(() => {});
+    _wakeLock = null;
+  }
+}
+
+function ensureAudioCtx() {
+  if (_audioCtx) return _audioCtx;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    _audioCtx = new AC();
+  } catch (e) {
+    _audioCtx = null;
+  }
+  return _audioCtx;
+}
+
+function playRestCompleteBeep() {
+  const ctx = ensureAudioCtx();
+  if (!ctx) return;
+  // Kolmen lyhyen tikin sarja: 880Hz → 880Hz → 1320Hz
+  const now = ctx.currentTime;
+  const freqs = [880, 880, 1320];
+  freqs.forEach((f, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = f;
+    osc.type = "sine";
+    const start = now + i * 0.20;
+    const end = start + 0.12;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.25, start + 0.01);
+    gain.gain.linearRampToValueAtTime(0, end);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(start);
+    osc.stop(end + 0.02);
+  });
+}
+
+function computeRestSeconds() {
+  if (_restStartMs === null) return 0;
+  const elapsed = (Date.now() - _restStartMs) / 1000;
+  return Math.round(_restTargetSec - elapsed);
+}
+
 function startRestTimer() {
   stopRestTimer();
   const dayType = state.workout?.dayType || "heavy";
@@ -2326,10 +2471,16 @@ function startRestTimer() {
     : REST_RECOMMENDATIONS.accessory;
   const exLabel = exercise?.name ? `LEPO · ${(exercise.name.split(" ")[0] || exercise.name).toUpperCase()}` : "LEPO";
   _restRecCache = { ...restRec, exerciseLabel: exLabel };
-  state.restTimerSeconds = restRec.minSec || 120;
+  _restTargetSec = restRec.minSec || 120;
+  _restStartMs = Date.now();
+  state.restTimerSeconds = _restTargetSec;
+  _restLastVibrateMs = 0;
+
+  // Alusta AudioContext + Wake Lock ensimmäisellä kerralla
+  ensureAudioCtx();
+  ensureWakeLock();
 
   ensureRestDock();
-  // Force show inline card (in case it was hidden at render)
   const inline = document.getElementById("rest-inline");
   if (inline) inline.style.display = "block";
   updateRestTimerUI();
@@ -2337,10 +2488,16 @@ function startRestTimer() {
   attachRestInlineObserver();
 
   state.restTimerInterval = setInterval(() => {
-    state.restTimerSeconds--;
+    const prevSec = state.restTimerSeconds;
+    state.restTimerSeconds = computeRestSeconds();
     updateRestTimerUI();
-    if (state.restTimerSeconds === 0 && navigator.vibrate) {
-      navigator.vibrate([200, 100, 200]);
+    // Hälytykset: piippaus + värinä kun laskuri ylittää 0:n. Käytetään prev→cur
+    // -transitiota eikä ===0:aa, koska wall-clock-tick voi hypätä taustapaluun
+    // jälkeen useita sekunteja kerrallaan yli nollan.
+    if (prevSec > 0 && state.restTimerSeconds <= 0 && Date.now() - _restLastVibrateMs > 2000) {
+      _restLastVibrateMs = Date.now();
+      playRestCompleteBeep();
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
     }
   }, 1000);
 }
@@ -2351,6 +2508,8 @@ function stopRestTimer() {
     state.restTimerInterval = null;
   }
   state.restTimerSeconds = 0;
+  _restStartMs = null;
+  _restTargetSec = 0;
   _restRecCache = null;
   if (_restInlineObserver) { _restInlineObserver.disconnect(); _restInlineObserver = null; }
   _restInlineVisibleInViewport = true;
@@ -2362,8 +2521,23 @@ function stopRestTimer() {
 
 function addRestSeconds(delta) {
   if (state.restTimerInterval === null) return;
-  state.restTimerSeconds += delta;
+  _restTargetSec += delta;
+  state.restTimerSeconds = computeRestSeconds();
   updateRestTimerUI();
+}
+
+// Visibility change: kun selain palaa etualle, Wake Lock saatetaan joutua
+// hankkimaan uudelleen (release järjestelmän toimesta tapahtuu tyypillisesti
+// kun sivu menee taustalle).
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && state.workout && state.restTimerInterval !== null) {
+      ensureWakeLock();
+      // Sync UI immediately
+      state.restTimerSeconds = computeRestSeconds();
+      updateRestTimerUI();
+    }
+  });
 }
 
 // ── End-workout confirmation overlay ─────────────────────
@@ -2417,6 +2591,7 @@ function showEndWorkoutConfirm() {
     state.view = "dashboard";
     // Jos treeni oli mennyt-päivän backfill tai plan-override, palautetaan
     // state.recommendation tänään ennen dashboard-renderöintiä
+    releaseWakeLock();
     if (wasBackfill || wasPlanOverride) await computeRecommendation();
     render();
   });
@@ -4733,6 +4908,14 @@ async function startWorkout(backfillDateISO = null) {
   // state.recommendation'ia (joka voi olla planOverride-tilassa).
   if (backfillDateISO) {
     await computeRecommendation(backfillDateISO);
+    // v4.22: jos backfill-päivä on ennen mesosyklin alkua, recommend() palauttaa
+    // error-objektin. Estä workoutin luonti väärällä datalla ja palautu tänään.
+    if (state.recommendation?.error === "before-start") {
+      const msg = state.recommendation.errorMessage || "Päivämäärä on ennen mesosyklin alkua";
+      showToast(msg, "bad", 5000);
+      await computeRecommendation(); // palauta tänään
+      throw new Error(`startWorkout: ${msg}`);
+    }
   }
   const rec = state.recommendation;
   const bw = state.settings?.bodyweightKg || 91;
@@ -4746,20 +4929,49 @@ async function startWorkout(backfillDateISO = null) {
   // Build warm-up sets for primary movement (prepended to primary exercise below)
   const isPeakingMeso = state.mesocycle?.type === "peaking";
   let warmupSets = [];
-  if (!isPeakingMeso && rec?.targetExternalLoad && rec.targetExternalLoad >= 20) {
-    const wuLoad = rec.targetExternalLoad;
-    const warmupPcts = wuLoad >= 60 ? [0, 0.30, 0.55, 0.75, 0.90] : wuLoad >= 30 ? [0, 0.50, 0.80] : [0, 0.60];
-    warmupSets = warmupPcts.map((pct, i) => ({
-      idx: i,
-      targetReps: pct === 0 ? 5 : pct < 0.7 ? 3 : 2,
-      targetVx: null,
-      loadKg: roundToHalf(wuLoad * pct),
-      reps: null,
-      actualVx: null,
-      velocity: null,
-      completed: false,
-      isWarmup: true,
-    }));
+  if (!isPeakingMeso) {
+    const wuLoad = rec?.targetExternalLoad;
+    const warmupPcts = wuLoad && wuLoad >= 60
+      ? [0, 0.30, 0.55, 0.75, 0.90]
+      : wuLoad && wuLoad >= 30
+        ? [0, 0.50, 0.80]
+        : wuLoad && wuLoad >= 20
+          ? [0, 0.60]
+          : null;
+    if (warmupPcts) {
+      warmupSets = warmupPcts.map((pct, i) => ({
+        idx: i,
+        targetReps: pct === 0 ? 5 : pct < 0.7 ? 3 : 2,
+        targetVx: null,
+        loadKg: roundToHalf(wuLoad * pct),
+        reps: null,
+        actualVx: null,
+        velocity: null,
+        completed: false,
+        isWarmup: true,
+      }));
+    } else {
+      // v4.22: Fallback — ensimmäisessä sessiossa rec.targetExternalLoad on
+      // tyypillisesti null koska e1RM-historiaa ei ole. Generoi silti yleinen
+      // kehonpaino-pohjainen ramp-up jotta käyttäjä ei heti hyppää työsarjoihin
+      // kylmänä. Käytetään liikkeen primary-slotin defaultMovementNamea
+      // tunnistamaan onko kyseessä lisäpainoliike (BW-based) vai tangolla
+      // tehtävä (vanity rep warmup).
+      const primarySlot = rec?.dayPlan?.slots?.find(s => s.role === "primary");
+      const isBodyweightAdded = primarySlot && (
+        primarySlot.category === "vertikaaliveto" ||
+        primarySlot.category === "horisontaalityöntö" && primarySlot.defaultMovementName?.toLowerCase().includes("dippi")
+      );
+      warmupSets = isBodyweightAdded
+        ? [
+            { idx: 0, targetReps: 5, targetVx: null, loadKg: 0, reps: null, actualVx: null, velocity: null, completed: false, isWarmup: true, note: "Kehonpaino × 5" },
+            { idx: 1, targetReps: 3, targetVx: null, loadKg: 0, reps: null, actualVx: null, velocity: null, completed: false, isWarmup: true, note: "Kehonpaino × 3 räjähtävästi" },
+          ]
+        : [
+            { idx: 0, targetReps: 8, targetVx: null, loadKg: 0, reps: null, actualVx: null, velocity: null, completed: false, isWarmup: true, note: "Tyhjä tanko × 8" },
+            { idx: 1, targetReps: 5, targetVx: null, loadKg: 0, reps: null, actualVx: null, velocity: null, completed: false, isWarmup: true, note: "Tee liike rauhassa, tunnustele" },
+          ];
+    }
   }
 
   // Build exercises from day plan
@@ -4897,6 +5109,12 @@ async function startWorkout(backfillDateISO = null) {
     // Kun käyttäjä ohittaa: { done:false, skipped:true }
     primer: null,
   };
+
+  // v4.22: hanki Wake Lock koko treenin ajaksi (näyttö pysyy auki).
+  // AudioContext alustetaan käyttäjäinteraktion (tämä nappi) jälkeen jotta
+  // rest-timer-beep voi soida ilman autoplay-blokkausta.
+  ensureAudioCtx();
+  ensureWakeLock();
 
   render();
 }
@@ -5061,6 +5279,39 @@ function bindWorkoutEvents() {
           s.targetReps = reaction.nextSetReps;
         }
       });
+    } else if (currentSet.targetVx !== null && currentSet.targetVx !== undefined &&
+               selectedVara <= currentSet.targetVx - 2) {
+      // v4.22: Near-failure in-session varoitus. Jos todellinen Vx on 2+
+      // luokkaa tavoitetta alempi (esim. tavoite V3 → todellinen V1),
+      // kuorma on liian raskas. Kysy käyttäjältä: laskenko 5 % seuraavalle?
+      const deltaVx = currentSet.targetVx - selectedVara;
+      const isPrimary = exercise.role === "primary" || exercise.role === "backoff";
+      // Vain primary/backoff skaalautuu — accessory-liikkeet eivät ole niin
+      // kriittisiä ja saattavat olla tarkoituksella "lähellä failurea"
+      if (isPrimary) {
+        const suggestedDrop = deltaVx >= 3 ? 0.90 : 0.95;
+        const remainingSets = exercise.sets.slice(w.currentSetIdx + 1).filter(s => !s.completed);
+        const affectedCount = remainingSets.length;
+        if (affectedCount > 0) {
+          const newLoad = roundToHalf((currentSet.loadKg || 0) * suggestedDrop);
+          const dropPct = Math.round((1 - suggestedDrop) * 100);
+          const ok = confirm(
+            `Tämä sarja meni V${selectedVara} (tavoite V${currentSet.targetVx}) — ${deltaVx} luokkaa liian lähellä failurea.\n\n` +
+            `Laske kuorma ${dropPct} % seuraavissa ${affectedCount} sarjassa?\n` +
+            `${currentSet.loadKg} kg → ${newLoad} kg`
+          );
+          if (ok) {
+            exercise.sets.forEach((s, i) => {
+              if (i > w.currentSetIdx && !s.completed) s.loadKg = newLoad;
+            });
+            showToast(`Kuorma laskettu ${newLoad} kg seuraaviin sarjoihin`, "ok");
+          } else {
+            showToast(`Pidätetty — V${selectedVara} kirjattu sellaisenaan`, "warn");
+          }
+        } else {
+          showToast(`V${selectedVara} (tavoite V${currentSet.targetVx}) — paina paremmin seuraavana sessiona`, "warn");
+        }
+      }
     }
 
     // VL% calculation
@@ -5241,6 +5492,7 @@ function bindWorkoutEvents() {
     await saveWorkoutToDb(sessionNotes);
     showToast("Treeni tallennettu!", "ok");
     state.workout = null;
+    releaseWakeLock();
     await refresh();
     state.view = "dashboard";
     render();
@@ -5254,6 +5506,7 @@ function bindWorkoutEvents() {
     const wasPlanOverride = !!state.workout?.isPlanOverride;
     state.workout = null;
     state.view = "dashboard";
+    releaseWakeLock();
     if (wasBackfill || wasPlanOverride) await computeRecommendation();
     render();
   });
@@ -5330,6 +5583,28 @@ function bindWorkoutEvents() {
   if (primerSkipBtn) primerSkipBtn.addEventListener("click", primerSkipHandler);
   const primerSkipInlineBtn = $("#btn-primer-skip-inline");
   if (primerSkipInlineBtn) primerSkipInlineBtn.addEventListener("click", primerSkipHandler);
+
+  // v4.22 #9: Click-to-edit completed set
+  $$("[data-edit-set-idx]").forEach(row => {
+    row.addEventListener("click", async () => {
+      const idx = parseInt(row.dataset.editSetIdx, 10);
+      const exercise = w.exercises[w.currentExerciseIdx];
+      if (!exercise) return;
+      const setData = exercise.sets[idx];
+      if (!setData) return;
+      const edit = await showEditSetModal(setData);
+      if (!edit) return;
+      // Päivitä set in-place
+      setData.reps = edit.reps;
+      setData.actualVx = edit.actualVx;
+      setData.loadKg = edit.loadKg;
+      setData.velocity = edit.velocity;
+      // Jos kyseessä V0 → attemptedReps ei ole enää relevantti (ellei käyttäjä
+      // itse päivittänyt): jätetään vanha arvo kunnes käyttäjä syöttää uuden
+      showToast(`Sarja ${idx + 1 - exercise.sets.filter(s => s.isWarmup).length} päivitetty`, "ok");
+      render();
+    });
+  });
 
   // Swap exercise (slot-aware in v4.11)
   const swapBtn = $("#btn-swap-exercise");
