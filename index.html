@@ -368,6 +368,51 @@
     .trace-row .rule { color: var(--acc); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 1px; }
     .trace-row .why { color: var(--muted); }
 
+    /* ── Density selector in Settings ────────────────────────── */
+    .btn-group [data-density] { padding: 8px 6px; font-size: 12px; min-height: 36px; }
+    .btn-group [data-density].active { background: var(--acc); color: #fff; border-color: var(--acc); }
+
+    /* ── Focus / Compact density modes (v4.23 P4.2) ──────────── */
+    /* Focus: salikäyttö — isommat targetit, vähemmän kohinaa. */
+    body.density-focus .pill-ticker,
+    body.density-focus .completed-list .vel-mini,
+    body.density-focus .util-row,
+    body.density-focus .ex-sub { display: none; }
+    body.density-focus .load-hero .load-main .val { font-size: 56px; }
+    body.density-focus .reps-row button { height: 68px; font-size: 24px; }
+    body.density-focus .vara-row button { height: 56px; font-size: 17px; }
+    body.density-focus .submit-btn { min-height: 64px; font-size: 18px; }
+
+    /* Compact: pieni viewport (iPad split view) — tiukempi. */
+    body.density-compact .load-hero .load-main .val { font-size: 36px; }
+    body.density-compact .hero-title { font-size: 20px; }
+    body.density-compact .reps-row button { height: 48px; font-size: 17px; }
+    body.density-compact .vara-row button { height: 40px; font-size: 12px; }
+    body.density-compact .submit-btn { min-height: 48px; font-size: 14px; }
+    body.density-compact .ex-head,
+    body.density-compact .load-hero,
+    body.density-compact .input-section { padding: 10px 12px; }
+    body.density-compact .slot-row { padding: 5px 0; }
+
+    /* ── sRPE scale (v4.23 P3.2) ─────────────────────────────── */
+    .srpe-scale { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; margin-top: 6px; }
+    .srpe-scale .srpe-btn {
+      height: 44px; border-radius: 6px; border: 2px solid var(--border2);
+      background: var(--card2); color: var(--txt); font-size: 14px; font-weight: 800;
+      cursor: pointer; font-variant-numeric: tabular-nums;
+    }
+    .srpe-scale .srpe-btn.selected {
+      background: var(--acc); border-color: var(--acc); color: #fff;
+    }
+    .srpe-scale .srpe-btn[data-srpe="1"].selected,
+    .srpe-scale .srpe-btn[data-srpe="2"].selected,
+    .srpe-scale .srpe-btn[data-srpe="3"].selected,
+    .srpe-scale .srpe-btn[data-srpe="4"].selected { background: var(--ok); border-color: var(--ok); }
+    .srpe-scale .srpe-btn[data-srpe="7"].selected,
+    .srpe-scale .srpe-btn[data-srpe="8"].selected { background: var(--warn); border-color: var(--warn); color: #1a1a1a; }
+    .srpe-scale .srpe-btn[data-srpe="9"].selected,
+    .srpe-scale .srpe-btn[data-srpe="10"].selected { background: var(--bad); border-color: var(--bad); }
+
     /* ── Readiness primer (v4.21) ────────────────────────────── */
     .primer-card {
       background: linear-gradient(165deg, var(--card2) 0%, var(--card) 100%);
@@ -807,7 +852,17 @@ async function init() {
   }
   await computeReadiness();
   await computeRecommendation();
+  applyDensityClass();
   render();
+}
+
+// v4.23 P4.2: apply density class to body. Kutsutaan settings-tallennuksessa
+// ja init-vaiheessa.
+function applyDensityClass() {
+  const mode = state.settings?.workoutDensity;
+  document.body.classList.remove("density-focus", "density-compact");
+  if (mode === "focus") document.body.classList.add("density-focus");
+  else if (mode === "compact") document.body.classList.add("density-compact");
 }
 
 async function refresh() {
@@ -972,6 +1027,80 @@ function showInputModal(title, placeholder, defaultValue = "", inputType = "numb
     overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
     document.body.appendChild(overlay);
     setTimeout(() => inp.focus(), 50);
+  });
+}
+
+/**
+ * Calibration modal (v4.23 P4.3) — yksi-näkymäinen onboarding-wizard
+ * streetlifting_16w:n aloitukselle. Käyttäjä syöttää kaikki 1RM-arviot
+ * yhdellä kertaa (vs. aiemmat 3 peräkkäistä showInputModal:ia), näkee
+ * miksi luvut tarvitaan ja mihin ne vaikuttavat, ja voi halutessaan
+ * valita "testaa ensin" -polun (joka käyttää konservatiivisia seed-arvoja).
+ *
+ * Palauttaa: { bwKg, leukaExtKg, dippiExtKg, kyykkyExtKg } tai null jos peruutus.
+ */
+function showCalibrationModal(defaultBw = 91) {
+  return new Promise(resolve => {
+    closeModal();
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal-sheet" style="max-width:480px">
+        <div class="modal-handle"></div>
+        <div class="modal-title">🏋️ Streetlifting 16 vk — Kalibrointi</div>
+        <div style="padding:0 4px">
+          <div class="muted" style="font-size:12px;margin-bottom:14px;line-height:1.55">
+            Ohjelma käyttää näitä 1RM-arvioita laskemaan <b>jokaisen viikon kuormat % nykyisestä 1RM:stä</b>. Epätarkkuus ei ole kohtalokasta — järjestelmä kalibroi itsensä automaattisesti kun treenidataa kertyy. Mutta <b>selvästi yläarvioitu 1RM</b> johtaa liian raskaisiin alkuviikkoihin.
+          </div>
+
+          <label style="margin-top:0;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">Kehonpaino (kg)</label>
+          <input type="number" inputmode="decimal" id="cal-bw" value="${defaultBw}" step="0.5" min="30" max="200">
+
+          <label style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">Lisäpainoleuka 1RM (+kg)</label>
+          <input type="number" inputmode="decimal" id="cal-leuka" value="" placeholder="esim. 85 — paras kolmen viime kk leuka" step="0.5" min="0" max="300">
+
+          <label style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">Lisäpainodippi 1RM (+kg)</label>
+          <input type="number" inputmode="decimal" id="cal-dippi" value="" placeholder="esim. 75 — arvio ok jos et ole testannut" step="0.5" min="0" max="300">
+
+          <label style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">Takakyykky 1RM (kg tanko)</label>
+          <input type="number" inputmode="decimal" id="cal-kyykky" value="" placeholder="esim. 160 — todellinen 1RM tai 3RM × 1.1" step="2.5" min="0" max="400">
+
+          <div class="muted" style="font-size:11px;margin:12px 0;padding:10px;background:rgba(79,140,255,0.08);border-radius:6px;line-height:1.5">
+            💡 <b>Suositus:</b> jos et ole testannut 1RM:ää viimeiseen 3 kk, anna konservatiivinen arvio (-2.5–5 kg). Viikko 4:n deload + 3RM-testi kalibroi tarkkaan. Viikko 8:n välitesti ja viikko 12:n RPE9-testi päivittävät 1RM:n uudelleen.
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
+            <button class="btn btn-outline" data-modal-cancel>Peruuta</button>
+            <button class="btn" data-modal-ok>Aloita ohjelma</button>
+          </div>
+          <button class="btn-sm" id="cal-use-defaults" style="background:none;border:none;color:var(--muted);font-size:11px;margin-top:10px;width:100%;cursor:pointer;padding:6px">Käytä oletusarvoja (85 / 75 / 160) — testaan ensi viikolla</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const submit = (useDefaults = false) => {
+      const bwVal = parseFloat(overlay.querySelector("#cal-bw")?.value) || defaultBw;
+      const leukaVal = useDefaults ? 85 : parseFloat(overlay.querySelector("#cal-leuka")?.value);
+      const dippiVal = useDefaults ? 75 : parseFloat(overlay.querySelector("#cal-dippi")?.value);
+      const kyykkyVal = useDefaults ? 160 : parseFloat(overlay.querySelector("#cal-kyykky")?.value);
+      if (!useDefaults) {
+        if (!leukaVal || leukaVal < 0 || leukaVal > 300) { showToast("Leuka 1RM puuttuu tai epärealistinen", "warn"); return; }
+        if (!dippiVal || dippiVal < 0 || dippiVal > 300) { showToast("Dippi 1RM puuttuu tai epärealistinen", "warn"); return; }
+        if (!kyykkyVal || kyykkyVal < 0 || kyykkyVal > 400) { showToast("Kyykky 1RM puuttuu tai epärealistinen", "warn"); return; }
+      }
+      closeModal();
+      resolve({
+        bwKg: bwVal,
+        leukaExtKg: leukaVal || 85,
+        dippiExtKg: dippiVal || 75,
+        kyykkyExtKg: kyykkyVal || 160,
+      });
+    };
+    overlay.querySelector("[data-modal-ok]").addEventListener("click", () => submit(false));
+    overlay.querySelector("#cal-use-defaults").addEventListener("click", () => submit(true));
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); resolve(null); });
+    overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
+    // Autofocus first input
+    setTimeout(() => overlay.querySelector("#cal-leuka")?.focus(), 50);
   });
 }
 
@@ -1267,23 +1396,61 @@ function dayOfWeekFi(iso) {
 // RENDER
 // ═══════════════════════════════════════════════════════════════
 
+// v4.23 P3.3: Error boundary. Render-virheet (template-literaali rikki,
+// puuttuva state-kenttä, engine-kaatuminen) eivät saa tuottaa tyhjää sivua
+// vaan diagnostiikkaruudun josta käyttäjä voi toipua. Tunnettu rajoitus:
+// vain top-level render-virheet napataan — if-statement-haaran sisällä
+// kaatuva expression tulee näkyviin normaalisti, minkä jälkeen tämä polku
+// ei ehdi toimia.
+function renderErrorBoundary(err, viewName) {
+  const app = document.getElementById("app");
+  const errMsg = (err && err.message) || String(err || "Tuntematon virhe");
+  const errStack = (err && err.stack) ? err.stack.toString().slice(0, 800) : "";
+  app.innerHTML = `<div class="fade-in">
+    <div class="card" style="border-color:var(--bad)">
+      <div class="card-title" style="color:var(--bad)">⚠ Renderöintivirhe — ${viewName}</div>
+      <div style="font-family:monospace;font-size:12px;margin-bottom:12px;color:var(--warn);word-wrap:break-word">${errMsg}</div>
+      ${errStack ? `<details style="margin-bottom:12px"><summary class="muted" style="font-size:11px;cursor:pointer">Tekninen stack trace</summary><pre style="font-size:10px;overflow-x:auto;color:var(--dim);white-space:pre-wrap;margin-top:8px">${errStack}</pre></details>` : ""}
+      <div class="muted" style="font-size:12px;margin-bottom:10px">
+        Tämä on vakava virhe. Data IndexedDB:ssä on yhä tallessa — pelkkä näkymän renderöinti epäonnistui. Voit yrittää:
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-sm" onclick="state.view='dashboard'; render();">🏠 Etusivu</button>
+        <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 Uudelleenlataus</button>
+        <button class="btn btn-sm btn-outline" onclick="state.view='settings'; render();">⚙ Asetukset (backup)</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function render() {
   const app = document.getElementById("app");
-  switch (state.view) {
-    case "dashboard": app.innerHTML = renderDashboard(); break;
-    case "workout": app.innerHTML = renderWorkout(); break;
-    case "readiness": app.innerHTML = renderReadiness(); break;
-    case "mesocycle": app.innerHTML = renderMesocycle(); break;
-    case "movements": app.innerHTML = renderMovements(); break;
-    case "history": app.innerHTML = renderHistory(); break;
-    case "prs": app.innerHTML = renderPRs(); break;
-    case "trends": app.innerHTML = renderTrends(); break;
-    case "progress": app.innerHTML = renderProgress(); break;
-    case "settings": app.innerHTML = renderSettingsView(); break;
-    default: app.innerHTML = renderDashboard();
+  const viewName = state.view || "dashboard";
+  try {
+    switch (viewName) {
+      case "dashboard": app.innerHTML = renderDashboard(); break;
+      case "workout": app.innerHTML = renderWorkout(); break;
+      case "readiness": app.innerHTML = renderReadiness(); break;
+      case "mesocycle": app.innerHTML = renderMesocycle(); break;
+      case "movements": app.innerHTML = renderMovements(); break;
+      case "history": app.innerHTML = renderHistory(); break;
+      case "prs": app.innerHTML = renderPRs(); break;
+      case "trends": app.innerHTML = renderTrends(); break;
+      case "progress": app.innerHTML = renderProgress(); break;
+      case "settings": app.innerHTML = renderSettingsView(); break;
+      default: app.innerHTML = renderDashboard();
+    }
+  } catch (err) {
+    console.error(`[render:${viewName}] crashed:`, err);
+    renderErrorBoundary(err, viewName);
   }
-  renderNav();
-  bind();
+  try {
+    renderNav();
+    bind();
+  } catch (err) {
+    console.error(`[render:${viewName}] bind failed:`, err);
+    showToast(`Bindausvirhe — tarkista konsoli`, "bad", 5000);
+  }
   // Rest-timer dock: re-attach observer to the (possibly freshly rendered) inline card
   // and re-evaluate dock visibility for the current view.
   if (state.restTimerInterval !== null) {
@@ -2677,17 +2844,62 @@ function renderWorkoutSummary() {
     }
   }
 
+  // v4.23 P4.1: PR-tunnistus session sisällä.
+  // Per-movement: vertaa tämän session best-e1RM historiallisesti.
+  const prBadges = [];
+  for (const ex of w.exercises) {
+    if (!ex.movementId) continue;
+    const completedSets = ex.sets.filter(s => s.completed && !s.isWarmup);
+    if (completedSets.length === 0) continue;
+    const isPri = ex.role === "primary" || ex.role === "backoff";
+    // Rakenna historia ENNEN tätä sessiota
+    const priorSets = state.allSets.filter(s =>
+      s.movementId === ex.movementId && s.sessionId !== w.sessionId
+    );
+    const priorHistory = computeMovementE1RMHistory(priorSets, state.sessions, isPri, bw);
+    const priorBest = priorHistory.length > 0 ? Math.max(...priorHistory.map(h => h.e1rm)) : 0;
+    // Tämän session set-e1RM:t
+    const nowE1RMs = completedSets.map(s => {
+      const vx = s.actualVx ?? s.targetVx ?? 1;
+      if (isPri) return e1rmSystem(bw, s.loadKg || 0, s.reps || 1, vx);
+      return e1rmAccessory(s.loadKg || 0, s.reps || 1, vx);
+    }).filter(v => v !== null && v > 0);
+    const nowBest = nowE1RMs.length ? Math.max(...nowE1RMs) : 0;
+    if (priorBest > 0 && nowBest > priorBest + 0.5) {
+      const gain = nowBest - priorBest;
+      prBadges.push({ name: ex.name, priorBest, nowBest, gain, pct: (gain / priorBest) * 100 });
+    }
+  }
+
+  // Kesto startedAt:sta nyt
+  let durationMin = null;
+  if (w.startedAt) {
+    durationMin = Math.round((Date.now() - new Date(w.startedAt).getTime()) / 60000);
+  }
+
+  const prHTML = prBadges.length === 0 ? "" : `<div class="card" style="border-color:var(--ok);background:linear-gradient(165deg, rgba(34,197,94,0.12) 0%, var(--card) 100%)">
+    <div class="card-title" style="color:var(--ok)">🏆 UUSI PR!</div>
+    ${prBadges.map(pr => `<div style="padding:4px 0;font-size:13px">
+      <b style="color:var(--ok)">${pr.name}</b> · e1RM <b>${pr.nowBest.toFixed(1)} kg</b>
+      <span style="color:var(--muted);font-size:11px"> (+${pr.gain.toFixed(1)} kg / +${pr.pct.toFixed(1)} %)</span>
+    </div>`).join("")}
+  </div>`;
+
   return `<div class="fade-in">
-    <div class="card text-center">
-      <div style="font-size:48px;margin-bottom:12px">💪</div>
-      <div style="font-size:20px;font-weight:700">Treeni valmis!</div>
-      <div class="kpi-row mt">
+    <div class="card text-center" style="background:linear-gradient(165deg, var(--card2) 0%, var(--card) 100%);border-color:var(--border2);position:relative;overflow:hidden">
+      <div style="position:absolute;top:-30px;right:-30px;width:120px;height:120px;background:radial-gradient(circle, rgba(79,140,255,0.20) 0%, transparent 70%);pointer-events:none"></div>
+      <div style="font-size:48px;margin-bottom:8px;position:relative">💪</div>
+      <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;position:relative">Treeni valmis!</div>
+      ${durationMin !== null ? `<div class="muted" style="font-size:12px;margin-top:2px;position:relative">${durationMin} min · ${totalSets} työsarjaa${warmupSets > 0 ? ` + ${warmupSets} lämmittely` : ""}</div>` : ""}
+      <div class="kpi-row mt" style="position:relative">
         <div class="kpi-box"><div class="kpi">${totalSets}</div><div class="kpi-label">Työsarjat</div></div>
         <div class="kpi-box"><div class="kpi">${Math.round(totalTonnageSys)}</div><div class="kpi-label">Tonnage sys</div></div>
         <div class="kpi-box"><div class="kpi">${Math.round(totalTonnageExt)}</div><div class="kpi-label">Tonnage lisäp.</div></div>
       </div>
-      ${warmupSets > 0 ? `<div class="muted" style="font-size:11px;margin-top:6px">+ ${warmupSets} lämmittelysarjaa (ei laskettu mukaan)</div>` : ""}
+      ${(w.isBackfill || w.isPlanOverride) ? `<div style="margin-top:8px;position:relative"><span class="chip chip-yellow" style="font-size:10px">${w.isBackfill ? "🕑 Backfill · " + formatDateShort(w.dateISO) : "🔀 Plan vaihdettu · " + formatDateShort(w.planSourceDateISO)}</span></div>` : ""}
     </div>
+
+    ${prHTML}
 
     ${w.exercises.map(ex => {
       const completedSets = ex.sets.filter(s => s.completed);
@@ -2714,6 +2926,16 @@ function renderWorkoutSummary() {
     }).join("")}
 
     ${adaptationPreview}
+
+    <div class="card">
+      <div class="card-title">Session sRPE (1–10) <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400;font-size:11px">· kuinka raskasta tämä sessio oli kokonaisuudessaan?</span></div>
+      <div class="srpe-scale" id="srpe-scale">
+        ${[1,2,3,4,5,6,7,8,9,10].map(n => `<button class="srpe-btn" data-srpe="${n}">${n}</button>`).join("")}
+      </div>
+      <div class="muted" style="font-size:10px;margin-top:4px;line-height:1.5">
+        1–2 = todella kevyt · 3–4 = lämppä · 5–6 = keskiraskas · 7–8 = raskas · 9 = erittäin raskas · 10 = maksimi (hätätila)
+      </div>
+    </div>
 
     <div class="card">
       <label style="margin-top:0">Muistiinpanot (valinnainen)</label>
@@ -4030,6 +4252,16 @@ function renderSettingsView() {
         <div class="muted" style="font-size:11px;margin-top:4px">Näyttää velocity-syötön sarjakohtaisesti (util-row "💎 Velocity"). Poista käytöstä jos sinulla ei ole mittausvälinettä (Vitruve, Enode, puhelinappi).</div>
       </div>
       <div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:6px">
+        <label style="margin-top:0;font-size:13px;font-weight:600">Treenin tiheys (density)</label>
+        <div class="muted" style="font-size:11px;margin-bottom:8px">Focus = salikäyttö (isommat targetit, vähemmän kohinaa). Compact = pieni viewport (iPad split). Default = mobile-perusasetukset.</div>
+        <div class="btn-group" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+          <button class="btn btn-sm btn-outline ${(!s.workoutDensity || s.workoutDensity === 'default') ? 'active' : ''}" data-density="default">Default</button>
+          <button class="btn btn-sm btn-outline ${s.workoutDensity === 'focus' ? 'active' : ''}" data-density="focus">🎯 Focus</button>
+          <button class="btn btn-sm btn-outline ${s.workoutDensity === 'compact' ? 'active' : ''}" data-density="compact">📱 Compact</button>
+        </div>
+      </div>
+
+      <div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:6px">
         <label style="margin-top:0;display:flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="set-primer-enabled" ${s.readinessPrimerEnabled !== false ? "checked" : ""} style="width:18px;height:18px">
           <span>Readiness primer pääliikkeellä</span>
@@ -4045,6 +4277,29 @@ function renderSettingsView() {
             <input type="number" inputmode="numeric" step="1" min="1" max="5" id="set-primer-reps" value="${s.readinessPrimerReps || 3}">
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Kisaliikkeiden 1RM (kalibrointi)</div>
+      <div class="muted" style="font-size:12px;margin-bottom:10px">Nykyinen 1RM kullekin kisaliikkeelle. Käytetään streetlifting_16w-mesosyklin kuormalaskentaan (kaikki loadingsit ovat % tästä luvusta). Päivitä aina kun 1RM muuttuu — seuraava sessio käyttää uutta arvoa automaattisesti.</div>
+      ${(() => {
+        const meso = state.mesocycle;
+        const cal = meso?.streetliftingConfig?.calibration || {};
+        const rows = [
+          { id: "set-cal-leuka",  label: "⭐ Lisäpainoleuka (+kg)",   key: "leukaExtKg",  value: cal.leukaExtKg  ?? 85,  step: 0.5 },
+          { id: "set-cal-dippi",  label: "⭐ Lisäpainodippi (+kg)",   key: "dippiExtKg",  value: cal.dippiExtKg  ?? 75,  step: 0.5 },
+          { id: "set-cal-kyykky", label: "⭐ Takakyykky (tangon kg)", key: "kyykkyExtKg", value: cal.kyykkyExtKg ?? 160, step: 2.5 },
+        ];
+        return rows.map(r => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="flex:1;font-size:13px">${r.label}</span>
+          <input type="number" inputmode="decimal" id="${r.id}" data-cal-key="${r.key}" value="${r.value}"
+                 style="width:90px;text-align:center;min-height:38px;font-size:14px" min="0" step="${r.step}">
+          <span style="font-size:12px;color:var(--muted)">kg</span>
+        </div>`).join("");
+      })()}
+      <div class="muted" style="font-size:11px;margin-top:8px">
+        💡 Ensimmäinen sessio ilman e1RM-historiaa käyttää näitä lähtöarvoja. Tämän jälkeen järjestelmä käyttää automaattisesti treenidatasta laskettua nykyistä e1RM:ää.
       </div>
     </div>
 
@@ -4464,39 +4719,19 @@ function bind() {
       return;
     }
 
-    // Streetlifting 16 vk needs calibration dialog
+    // v4.23 P4.3: Streetlifting 16 vk onboarding — yhden näkymän kalibrointi
     if (template.id === "streetlifting_16w") {
       const bw = state.settings?.bodyweightKg || 91;
-      const confirmIdx = await showListModal(
-        "🏋️ Streetlifting 16 vk — Kalibraatio",
-        [
-          { label: "Oletusarvoilla (suositeltu)", desc: `Leuka: +85 kg · Dippi: +75 kg · Kyykky: 160 kg · Paino: ${bw} kg`, icon: "✅" },
-          { label: "Syötä omat e1RM-arvot", desc: "Tarkempi — syötä jokainen erikseen", icon: "✏️" },
-          { label: "Peruuta", desc: "", icon: "↩" },
-        ]
-      );
-      if (confirmIdx === null || confirmIdx === 2) return;
-
-      let cal = { bwKg: bw, leukaExtKg: 85, dippiExtKg: 75, kyykkyExtKg: 160 };
-
-      if (confirmIdx === 1) {
-        const lStr = await showInputModal("Leuanveto e1RM (lisäpaino kg)", "esim. 85", "85", "number");
-        if (lStr === null) return;
-        const dStr = await showInputModal("Dippi e1RM (lisäpaino kg) — arvio ok", "esim. 75", "75", "number");
-        if (dStr === null) return;
-        const kStr = await showInputModal("Takakyykky 1RM (kg tanko)", "esim. 160", "160", "number");
-        if (kStr === null) return;
-        cal = {
-          bwKg: bw,
-          leukaExtKg: parseFloat(lStr) || 85,
-          dippiExtKg: parseFloat(dStr) || 75,
-          kyykkyExtKg: parseFloat(kStr) || 160,
-        };
-      }
-
+      const cal = await showCalibrationModal(bw);
+      if (!cal) return;
       const slMeso = createStreetlifting16WMesocycle(todayISO(), cal);
       await saveMesocycle(slMeso);
       state.mesocycle = slMeso;
+      // Päivitä myös settings.bodyweightKg mikäli käyttäjä muutti sitä kalibroinnissa
+      if (cal.bwKg && cal.bwKg !== state.settings.bodyweightKg) {
+        state.settings.bodyweightKg = cal.bwKg;
+        await saveSettings(state.settings);
+      }
       await computeRecommendation();
       showToast("🏋️ Streetlifting 16 vk aloitettu!", "ok", 4000);
       render();
@@ -4751,6 +4986,8 @@ function bind() {
     state.settings.readinessVelocityWindowN = parseNumericInput($("#set-velwindow")?.value) || 10;
     state.settings.readinessHrvWindowN = parseNumericInput($("#set-hrvwindow")?.value) || 14;
     state.settings.velocityEnabled = !!$("#set-velocity-enabled")?.checked;
+    // Density mode read from button-pressed state (updated by click handler)
+    // value already stored in state.settings.workoutDensity by handler below
     // Readiness primer (v4.21)
     state.settings.readinessPrimerEnabled = !!$("#set-primer-enabled")?.checked;
     const primerPctInput = parseNumericInput($("#set-primer-pct")?.value);
@@ -4761,6 +4998,28 @@ function bind() {
     if (!isNaN(primerRepsInput) && primerRepsInput >= 1 && primerRepsInput <= 5) {
       state.settings.readinessPrimerReps = primerRepsInput;
     }
+    // v4.23 P3.1: Päivitä kisaliikkeiden 1RM-kalibrointi streetlifting-mesosyklin
+    // streetliftingConfig.calibration:iin. Seuraava computeRecommendation()
+    // näkee uudet arvot ja slot.suggestedLoadKg-seed päivittyy niiden pohjalta.
+    if (state.mesocycle?.type === "streetlifting_16w") {
+      const cal = state.mesocycle.streetliftingConfig?.calibration || {};
+      const calInputs = document.querySelectorAll("[data-cal-key]");
+      let calChanged = false;
+      calInputs.forEach(inp => {
+        const key = inp.dataset.calKey;
+        const val = parseNumericInput(inp.value);
+        if (val !== null && val > 0 && val !== cal[key]) {
+          cal[key] = val;
+          calChanged = true;
+        }
+      });
+      if (calChanged) {
+        if (!state.mesocycle.streetliftingConfig) state.mesocycle.streetliftingConfig = {};
+        state.mesocycle.streetliftingConfig.calibration = cal;
+        await saveMesocycle(state.mesocycle);
+      }
+    }
+
     // Read variant load modifiers
     const variantModifiers = {};
     $$("[data-variant-mod]").forEach(inp => {
@@ -4770,9 +5029,20 @@ function bind() {
     });
     state.settings.variantModifiers = variantModifiers;
     await saveSettings(state.settings);
+    applyDensityClass();
     await computeRecommendation();
     showToast("Asetukset tallennettu", "ok");
     render();
+  });
+
+  // v4.23 P4.2: Density-mode selection (Default / Focus / Compact)
+  $$("[data-density]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.density;
+      state.settings.workoutDensity = mode === "default" ? null : mode;
+      $$("[data-density]").forEach(b => b.classList.toggle("active", b.dataset.density === mode));
+      applyDensityClass();
+    });
   });
 
   // Export scope — näytä/piilota alueet
@@ -5507,6 +5777,18 @@ function bindWorkoutEvents() {
     notesInput.addEventListener("input", () => { notesCount.textContent = notesInput.value.length; });
   }
 
+  // v4.23 P3.2: sRPE (session-level 1–10) — klikattava asteikko.
+  // Tallennetaan state.workout.sRPE:hen josta saveWorkoutToDb() lukee.
+  $$("#srpe-scale .srpe-btn").forEach(btn => {
+    const val = parseInt(btn.dataset.srpe, 10);
+    if (state.workout?.sRPE === val) btn.classList.add("selected");
+    btn.addEventListener("click", () => {
+      $$("#srpe-scale .srpe-btn").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      if (state.workout) state.workout.sRPE = val;
+    });
+  });
+
   // Save workout
   const saveBtn = $("#btn-save-workout");
   if (saveBtn) saveBtn.addEventListener("click", async () => {
@@ -5758,6 +6040,7 @@ async function saveWorkoutToDb(sessionNotes = "") {
 
   // Save session — käytä backfill-päivämäärää jos asetettu, muuten tänään.
   // planSourceDateISO kertoo minkä päivän planiä seurattiin (audit, voi poiketa dateISO:sta)
+  // sRPE (v4.23 P3.2): session-level Borg CR10 1–10, käytetään fatiikkatrendiin
   const session = {
     sessionId: w.sessionId,
     dateISO: w.dateISO || todayISO(),
@@ -5771,6 +6054,7 @@ async function saveWorkoutToDb(sessionNotes = "") {
     isBackfill: !!w.isBackfill,
     isPlanOverride: !!w.isPlanOverride,
     planSourceDateISO: w.planSourceDateISO || w.dateISO || todayISO(),
+    sRPE: w.sRPE ?? null,
   };
   await saveSession(session);
 
