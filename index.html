@@ -1987,19 +1987,36 @@ function renderActiveWorkout() {
   const warmupSetIdx = isWarmupSet ? exercise.sets.filter((s, i) => s.isWarmup && i <= currentSetIdx).length : 0;
   const currentWorkSetNum = currentSetIdx + 1 - warmupCount; // 1-indexed work set number
 
-  // Readiness primer (v4.21): lämmittelyn jälkeen, ennen ensimmäistä työsarjaa,
-  // vain pääliikkeellä. Vaatii e1rmExternal:n ja primerEnabled-asetuksen.
+  // Readiness primer (v4.21 + v4.24 fix): lämmittelyn jälkeen, ennen
+  // ensimmäistä työsarjaa, vain pääliikkeellä.
+  // v4.24: korjattu "primer ei triggeröidy ensimmäisessä sessiossa" -bugi.
+  // Nyt: jos e1RM-historia puuttuu, käytetään seed-kalibrointia
+  // (streetliftingConfig.calibration) primer-kuormalaskentaan. Tämä
+  // varmistaa että primer toimii sessio 1:stä alkaen — baseline-
+  // velocity alkaa kertyä ensimmäisestä rep:stä.
   const rec = state.recommendation;
   const primerEnabled = state.settings?.readinessPrimerEnabled !== false;
-  const e1rmForPrimer = rec?.e1rmExternal;
+  const primerE1rm = (() => {
+    const fromHistory = rec?.e1rmExternal;
+    if (typeof fromHistory === "number" && fromHistory > 0) return fromHistory;
+    // Fallback streetlifting-kalibrointiin
+    const cal = state.mesocycle?.streetliftingConfig?.calibration;
+    if (!cal || !exercise?.name) return null;
+    if (exercise.name === "Lisäpainoleuanveto") return cal.leukaExtKg;
+    if (exercise.name === "Lisäpainodippi") return cal.dippiExtKg;
+    if (exercise.name === "Takakyykky") return cal.kyykkyExtKg;
+    if (exercise.name === "Muscle-up") return null; // MU ei e1RM-pohjainen
+    return null;
+  })();
   const needsPrimer = !isWarmupSet &&
     currentSetIdx === warmupCount &&     // juuri ennen ensimmäistä työsarjaa
     exercise.role === "primary" &&
     !w.primer &&                         // primer ei vielä tehty eikä ohitettu
     primerEnabled &&
-    typeof e1rmForPrimer === "number" && e1rmForPrimer > 0;
+    typeof primerE1rm === "number" && primerE1rm > 0;
   if (needsPrimer) {
-    return renderReadinessPrimerScreen(exercise, rec);
+    // Välitä effektiivinen e1RM (joko historia-pohjainen tai seed) primer-näkymälle
+    return renderReadinessPrimerScreen(exercise, { ...rec, _effectiveE1rmExternal: primerE1rm });
   }
 
   // Load display
@@ -2331,9 +2348,13 @@ function renderReadinessPrimerScreen(exercise, rec) {
   const settings = state.settings || {};
   const pct = settings.readinessPrimerPct || 0.60;
   const repCount = settings.readinessPrimerReps || 3;
-  const loadKg = computePrimerLoadKg(rec.e1rmExternal, pct);
+  // v4.24 fix: käytä ensisijaisesti rec._effectiveE1rmExternal (sisältää
+  // fallback:in seed-kalibrointiin) ja vasta sen jälkeen rec.e1rmExternal.
+  const e1rmForPrimer = rec?._effectiveE1rmExternal ?? rec?.e1rmExternal;
+  const loadKg = computePrimerLoadKg(e1rmForPrimer, pct);
   const bw = state.latestBodyweight || settings.bodyweightKg || 91;
   const pctLabel = Math.round(pct * 100);
+  const usingSeed = !rec?.e1rmExternal && e1rmForPrimer;
 
   // Baseline velocity readiness_test-seteistä (sama kanava kuin tuotannossa)
   const baselineSets = state.allSets
@@ -2365,7 +2386,7 @@ function renderReadinessPrimerScreen(exercise, rec) {
 
       <div class="primer-load">
         <div class="primer-load-val">${loadKg === 0 ? "BW" : "+" + loadKg}<span class="primer-load-unit">${loadKg === 0 ? "" : " kg"}</span></div>
-        <div class="primer-load-sub">${pctLabel} % e1RM · kehonpaino ${bw} kg</div>
+        <div class="primer-load-sub">${pctLabel} % ${usingSeed ? "seed-1RM (ei vielä historiaa)" : "nykyinen e1RM"} · kehonpaino ${bw} kg</div>
         ${(() => {
           const r = getPrimerRefRange(exercise);
           return r ? `<div class="primer-ref-hint">Viite-alue ${r[0].toFixed(2)}–${r[1].toFixed(2)} m/s</div>` : "";
