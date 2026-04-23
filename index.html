@@ -740,6 +740,7 @@ import {
   getActiveMesocycle, saveMesocycle, createDefaultMesocycle, createPeakingMesocycle, getAllMesocycles,
   createHypertrofiaMesocycle, createMaksimivoimaMesocycle, createEksenterinenMesocycle,
   createDUPMesocycle, createSiirtymaMesocycle, createPalautuminenMesocycle, createStreetlifting16WMesocycle,
+  generateCustomMesocycle,
   getSettings, saveSettings,
   exportFullBackup, importFullBackup,
   getBackupStatus, getAllBackupSnapshots, createBackupSnapshot, restoreFromSnapshot,
@@ -1106,6 +1107,222 @@ function showCalibrationModal(defaultBw = 91) {
     overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
     // Autofocus first input
     setTimeout(() => overlay.querySelector("#cal-leuka")?.focus(), 50);
+  });
+}
+
+/**
+ * Program wizard modal (v4.27) — käyttäjän räätälöidyn mesosyklin rakennuskysely.
+ *
+ * 5 kysymystä yhdellä ruudulla:
+ *  1. Tavoite (hypertrofia / maksimivoima / yhdistelma / undulating)
+ *  2. Päälikkeet (1-3, chip-valinnat kategorioittain)
+ *  3. Päivät / viikko (2, 3, 4)
+ *  4. Viikkomäärä (4, 8, 12)
+ *  5. Palautumiskyky (hyva / keski / heikko)
+ *
+ * Palauttaa: { goal, primaries, daysPerWeek, weekCount, recoveryCapacity } tai null.
+ *
+ * UX: yksinkertainen inline-validointi, reilu muistutus että oletukset on hyviä,
+ * yhteenveto päivittyy reaaliajassa alalaidassa.
+ */
+const WIZARD_PRIMARY_OPTIONS = [
+  { name: "Lisäpainoleuanveto",  category: "vertikaaliveto",     icon: "🏋️", shortLabel: "Leuanveto" },
+  { name: "Penkkipunnerrus",     category: "horisontaalityöntö", icon: "💪", shortLabel: "Penkki" },
+  { name: "Takakyykky",          category: "alaraaja",           icon: "🦵", shortLabel: "Kyykky" },
+  { name: "Maastaveto",          category: "alaraaja",           icon: "🏗️", shortLabel: "Mave" },
+  { name: "Pystypunnerrus",      category: "vertikaalityöntö",   icon: "⬆️", shortLabel: "Pystypunnerrus" },
+  { name: "Penkkiveto",          category: "horisontaaliveto",   icon: "↔️", shortLabel: "Penkkiveto" },
+  { name: "Dippi",               category: "horisontaalityöntö", icon: "🔽", shortLabel: "Dippi" },
+  { name: "Hauiskääntö tanko",   category: "hauisfleksio",       icon: "💪", shortLabel: "Hauiskääntö" },
+];
+
+function showProgramWizardModal() {
+  return new Promise(resolve => {
+    closeModal();
+    // Default state (järkevät oletukset; käyttäjän ei tarvitse koskea mihinkään saadakseen hyvän ohjelman)
+    const st = {
+      goal: "yhdistelma",
+      selectedPrimaryNames: ["Lisäpainoleuanveto"],
+      daysPerWeek: 3,
+      weekCount: 4,
+      recoveryCapacity: "keski",
+    };
+
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal-sheet" style="max-width:520px;max-height:90vh;overflow-y:auto">
+        <div class="modal-handle"></div>
+        <div class="modal-title">🎯 Räätälöity ohjelma</div>
+
+        <div class="muted" style="font-size:12px;margin-bottom:14px;line-height:1.5;padding:0 4px">
+          Vastaa kysymyksiin → sovellus rakentaa optimaalisen mesosyklin preseettien pohjalta, substituoi päälikkeet ja accessoryt funktionaalisten roolien kautta (antagonist/synergist-mappaus). Oletukset ovat hyviä — voit hyväksyä ne sellaisenaan.
+        </div>
+
+        <!-- Q1: Goal -->
+        <div style="margin-bottom:16px">
+          <label style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin:0 0 6px 0;display:block">1. Tavoite</label>
+          <div id="wiz-goals" class="wiz-chips"></div>
+          <div class="muted" id="wiz-goal-desc" style="font-size:11px;margin-top:4px;font-style:italic"></div>
+        </div>
+
+        <!-- Q2: Primaries -->
+        <div style="margin-bottom:16px">
+          <label style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin:0 0 6px 0;display:block">2. Päälikkeet (valitse 1–3)</label>
+          <div id="wiz-primaries" class="wiz-chips"></div>
+          <div class="muted" style="font-size:11px;margin-top:4px;font-style:italic">Usean päälikkeen valinta rotatoi liikkeet eri päiville (1. päivä = 1. päälike, 2. päivä = 2. jne.).</div>
+        </div>
+
+        <!-- Q3: Days per week -->
+        <div style="margin-bottom:16px">
+          <label style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin:0 0 6px 0;display:block">3. Treenipäivät / viikko</label>
+          <div id="wiz-days" class="wiz-chips"></div>
+        </div>
+
+        <!-- Q4: Week count -->
+        <div style="margin-bottom:16px">
+          <label style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin:0 0 6px 0;display:block">4. Mesosyklin pituus</label>
+          <div id="wiz-weeks" class="wiz-chips"></div>
+          <div class="muted" id="wiz-weeks-desc" style="font-size:11px;margin-top:4px;font-style:italic"></div>
+        </div>
+
+        <!-- Q5: Recovery -->
+        <div style="margin-bottom:14px">
+          <label style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin:0 0 6px 0;display:block">5. Palautumiskyky</label>
+          <div id="wiz-recovery" class="wiz-chips"></div>
+          <div class="muted" id="wiz-recovery-desc" style="font-size:11px;margin-top:4px;font-style:italic"></div>
+        </div>
+
+        <!-- Summary -->
+        <div id="wiz-summary" style="background:rgba(79,140,255,0.08);border-left:3px solid #4f8cff;padding:10px 12px;border-radius:4px;font-size:12px;line-height:1.55;margin-bottom:14px"></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button class="btn btn-outline" data-modal-cancel>Peruuta</button>
+          <button class="btn" data-modal-ok>Luo ohjelma</button>
+        </div>
+      </div>
+      <style>
+        .wiz-chips { display:flex; flex-wrap:wrap; gap:6px; }
+        .wiz-chip { padding:8px 12px; border-radius:20px; border:1px solid var(--border, #33405a); background:rgba(255,255,255,0.03); cursor:pointer; font-size:12px; user-select:none; transition:all 0.15s; }
+        .wiz-chip:hover { background:rgba(79,140,255,0.12); }
+        .wiz-chip.selected { background:#4f8cff; color:#fff; border-color:#4f8cff; font-weight:600; }
+        .wiz-chip.disabled { opacity:0.4; cursor:not-allowed; }
+      </style>`;
+    document.body.appendChild(overlay);
+
+    const GOAL_META = {
+      yhdistelma:    { label: "Yhdistelmä",     icon: "⚡", desc: "Maksimivoima + perusvoima + nopeusvoima samassa viikossa. Soveltuu useimmille." },
+      hypertrofia:   { label: "Hypertrofia",    icon: "💪", desc: "Korkea volyymi, 6-8 toistoa. Lihasmassan kasvatus ensisijaisena." },
+      maksimivoima:  { label: "Maksimivoima",   icon: "🏋️", desc: "1-3 toistoa maksimikuormilla, hermostollinen. Vaatii hyvää palautumista." },
+      undulating:    { label: "DUP (undulating)", icon: "🔄", desc: "Intensiteetti vaihtuu joka päivä (raskas/volyymi/nopeus kierto)." },
+    };
+    const DAYS_META = { 2: "2×/vk — kevyt/kiireinen", 3: "3×/vk — vakio", 4: "4×/vk — runsas" };
+    const WEEKS_META = {
+      4:  "4 vk — klassinen mesosykli (vk 1-3 kuorma nousee, vk 4 deload)",
+      8:  "8 vk — kaksi 4 vk blokkia, toinen +2% raskaampi",
+      12: "12 vk — kolme blokkia (pohja → lataus → peak), blokkiperiodisaatio (Issurin 2010)",
+    };
+    const REC_META = {
+      hyva:    { label: "Hyvä",    desc: "Nukut 8h, ei stressiä työssä, alle 35v → accessory 100%" },
+      keski:   { label: "Keski",   desc: "Normaali arki, jonkin verran stressiä → accessory 85% (oletus)" },
+      heikko:  { label: "Heikko",  desc: "Iäkkäämpi, korkea työstressi, uni heikko → accessory 70%" },
+    };
+
+    const buildChips = (containerId, items, isSelected, onClick, disabledFn = null) => {
+      const cont = overlay.querySelector("#" + containerId);
+      cont.innerHTML = "";
+      for (const item of items) {
+        const chip = document.createElement("div");
+        const disabled = disabledFn ? disabledFn(item) : false;
+        chip.className = "wiz-chip" + (isSelected(item) ? " selected" : "") + (disabled ? " disabled" : "");
+        chip.innerHTML = item.html || item.label;
+        if (!disabled) chip.addEventListener("click", () => onClick(item));
+        cont.appendChild(chip);
+      }
+    };
+
+    const render = () => {
+      // Goals
+      buildChips("wiz-goals",
+        Object.entries(GOAL_META).map(([key, m]) => ({ key, html: `${m.icon} ${m.label}` })),
+        (it) => it.key === st.goal,
+        (it) => { st.goal = it.key; render(); }
+      );
+      overlay.querySelector("#wiz-goal-desc").textContent = GOAL_META[st.goal].desc;
+
+      // Primaries (multi-select, max 3)
+      buildChips("wiz-primaries",
+        WIZARD_PRIMARY_OPTIONS.map(p => ({ key: p.name, html: `${p.icon} ${p.shortLabel}`, ref: p })),
+        (it) => st.selectedPrimaryNames.includes(it.key),
+        (it) => {
+          const idx = st.selectedPrimaryNames.indexOf(it.key);
+          if (idx >= 0) {
+            if (st.selectedPrimaryNames.length <= 1) return; // pidä vähintään 1
+            st.selectedPrimaryNames.splice(idx, 1);
+          } else {
+            if (st.selectedPrimaryNames.length >= 3) return; // max 3
+            st.selectedPrimaryNames.push(it.key);
+          }
+          render();
+        },
+        (it) => !st.selectedPrimaryNames.includes(it.key) && st.selectedPrimaryNames.length >= 3
+      );
+
+      // Days/week
+      buildChips("wiz-days",
+        [2, 3, 4].map(d => ({ key: d, html: `${d}× <span style="font-size:10px;opacity:0.7">${DAYS_META[d].split('—')[1]?.trim() || ''}</span>` })),
+        (it) => it.key === st.daysPerWeek,
+        (it) => { st.daysPerWeek = it.key; render(); }
+      );
+
+      // Week count
+      buildChips("wiz-weeks",
+        [4, 8, 12].map(w => ({ key: w, html: `${w} vk` })),
+        (it) => it.key === st.weekCount,
+        (it) => { st.weekCount = it.key; render(); }
+      );
+      overlay.querySelector("#wiz-weeks-desc").textContent = WEEKS_META[st.weekCount];
+
+      // Recovery
+      buildChips("wiz-recovery",
+        Object.entries(REC_META).map(([key, m]) => ({ key, html: m.label })),
+        (it) => it.key === st.recoveryCapacity,
+        (it) => { st.recoveryCapacity = it.key; render(); }
+      );
+      overlay.querySelector("#wiz-recovery-desc").textContent = REC_META[st.recoveryCapacity].desc;
+
+      // Summary
+      const primariesLabel = st.selectedPrimaryNames.join(" + ");
+      const goalLabel = GOAL_META[st.goal].label.toLowerCase();
+      const rotation = st.selectedPrimaryNames.length > 1
+        ? ` Päälikkeet rotatoidaan ${st.daysPerWeek} päivälle (päivä 1 = ${st.selectedPrimaryNames[0]}, päivä 2 = ${st.selectedPrimaryNames[1] || "—"}${st.selectedPrimaryNames[2] ? ", päivä 3 = " + st.selectedPrimaryNames[2] : ""}).`
+        : ` Sama päälike kaikilla ${st.daysPerWeek} treenipäivällä (eri accessoryt/toistot).`;
+      overlay.querySelector("#wiz-summary").innerHTML = `
+        <b>Yhteenveto:</b> ${st.weekCount} vk ${goalLabel}-mesosykli, ${st.daysPerWeek}×/vk, päälikkeet: <b>${primariesLabel}</b>.${rotation} Accessory-volyymi ${st.recoveryCapacity === "hyva" ? "100%" : st.recoveryCapacity === "keski" ? "85%" : "70%"} palautumiskyvyn mukaan.
+      `;
+    };
+    render();
+
+    overlay.querySelector("[data-modal-ok]").addEventListener("click", () => {
+      if (st.selectedPrimaryNames.length === 0) {
+        showToast("Valitse vähintään 1 päälike", "warn");
+        return;
+      }
+      const primaries = st.selectedPrimaryNames.map(name => {
+        const opt = WIZARD_PRIMARY_OPTIONS.find(p => p.name === name);
+        return { name: opt.name, category: opt.category };
+      });
+      closeModal();
+      resolve({
+        goal: st.goal,
+        primaries,
+        daysPerWeek: st.daysPerWeek,
+        weekCount: st.weekCount,
+        recoveryCapacity: st.recoveryCapacity,
+      });
+    });
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); resolve(null); });
+    overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
   });
 }
 
@@ -5150,6 +5367,27 @@ function bind() {
       await computeRecommendation();
       showToast("🏋️ Streetlifting 16 vk aloitettu!", "ok", 4000);
       render();
+      return;
+    }
+
+    // v4.27 Räätälöity ohjelma — wizard-pohjainen generaattori
+    if (template.id === "custom") {
+      const answers = await showProgramWizardModal();
+      if (!answers) return;
+      try {
+        const customMeso = generateCustomMesocycle(answers, todayISO());
+        // Nimeä liikeotsikko yhdistelmäksi (rotaatiossa) — preset ei tiedä päälikkeitä etukäteen
+        assignVariantRotation(customMeso.weekPlans);
+        await saveMesocycle(customMeso);
+        state.mesocycle = customMeso;
+        await computeRecommendation();
+        const primaries = answers.primaries.map(p => p.name).join(" + ");
+        showToast(`🎯 Räätälöity ohjelma aloitettu (${primaries})!`, "ok", 4500);
+        render();
+      } catch (err) {
+        console.error("generateCustomMesocycle failed:", err);
+        showToast("Ohjelman luonti epäonnistui: " + err.message, "bad", 5000);
+      }
       return;
     }
 

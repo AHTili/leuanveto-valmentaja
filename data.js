@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.26.3 — Schema version 4 (adds backupSnapshots store + pre-migration safety)
+// LeVe Coach v4.27.0 — Program Wizard + custom mesocycle generator
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -1844,6 +1844,8 @@ const MESOCYCLE_TEMPLATES = [
     about: "Kilpajakson erityistapaus: 4 vk taper + kisapäivä jolloin suoritetaan opener/2. yritys/3. yritys järjestyksessä (oletuksena 92%/97%/102% e1RM:stä). Readiness-capit poistettu — luotat omaan säätelyysi. Vaatii: ajantasainen e1RM (pyytää sen aloituksessa). Käytä kun: kisa 4 vk päästä. Kisa-päivän automatiikka hoitaa opener- ja attempt-kuormalaskennan." },
   { id: "streetlifting_16w", label: "Streetlifting 16 vk 🏋️",       icon: "🏋️", desc: "16 viikkoa — 4 kisaliikettä (MU/Leuka/Dippi/Kyykky), Hybrid Block-DUP, kisa-elokuu 2026", weeks: 16, factory: "createStreetlifting16WMesocycle",
     about: "Akken referenssi-ohjelma: 16 vk jaettu 4 blokkiin (vk 1-4 Hypertrofia, 5-8 Voima, 9-12 Intensifikaatio, 13-16 Realization/Peak) Issurin 2010 -metodologialla. 4 kisaliikettä: Muscle-up, Leuka, Dippi, Kyykky. Kuormat loadPct-skaalattuja käyttäjän e1RM:ään — vaatii kalibroinnin aloituksessa. Accessory-volyymi taperoituu automaattisesti loppua kohti. Käytä kun: treenaat streetlifting-kisoihin nimenomaan näillä 4 liikkeellä." },
+  { id: "custom",            label: "🎯 Räätälöity ohjelma (kysely)", icon: "🎯", desc: "Vastaa kysymyksiin → sovellus rakentaa optimaalisen ohjelman tavoitteesi + liikkeidesi pohjalta", weeks: null, factory: "generateCustomMesocycle",
+    about: "Ohjelmageneraattori rakentaa sinulle mesosyklin vastauksiesi pohjalta (tavoite, päälikkeet, päivät/vk, viikkomäärä, palautumiskyky). Käyttää olemassaolevia preseettejä pohjana ja substituoi päälikkeet + accessoryt funktionaalisten roolien kautta (antagonist/synergist-mappaus). Laatu = preseettien laatu, mutta sovitettuna sinun valintoihisi. Käytä kun: haluat treenata muita päälikkeitä kuin leuanveto (esim. penkki + mave), tai viikkomäärä/päivämäärä eivät sovi vakio-preseetteihin." },
 ];
 
 // ── Hypertrofiajakso (4 viikkoa, 3×/vk) ──
@@ -2516,6 +2518,400 @@ function createPalautuminenMesocycle(startDateISO) {
         ],
       },
     ],
+    postCycleAnalysis: null,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PROGRAM GENERATOR / WIZARD (v4.27)
+// ═══════════════════════════════════════════════════════════════
+//
+// Tavoite: käyttäjän vastauksista optimaalinen mesosykli.
+//
+// Lähestymistapa: "Skeleton + Role-pohjainen accessory-remapping".
+// 1. Käyttäjän tavoite (hypertrofia/maksimivoima/yhdistelmä/undulating)
+//    valitsee POHJAPRESEETIN. Sen weekPlans on asiantuntijan käsintehty ja
+//    sisältää optimaalit rep/Vx/sets/deltaPct-skeemat per viikko.
+// 2. Kaikki primary + backoff -slottien liikkeet vaihdetaan käyttäjän
+//    valitsemiksi päälikkeiksi (useita → rotatoidaan eri päiville).
+// 3. Accessory-slottien alkuperäinen kategoria mapataan FUNKTIONAALISEEN
+//    ROOLIIN (COMPLEMENT/SECONDARY/BALANCE/ARM_SYN/ARM_ANT/CORE) — tämä
+//    on rooli jonka slot täyttää suhteessa leuka-primaryyn skeletissa.
+//    Sitten rooli kartoitetaan UUDEN primaryn kontekstiin: "mikä kategoria
+//    ja mikä liike täyttäisi tämän saman roolin kun primary on penkki/kyykky/jne?"
+// 4. weekCount ja daysPerWeek skaalautuvat: 4→8→12 vk toistamalla
+//    blokkirakennetta; 3→4 pv lisäämällä upper/lower-split-päivä.
+// 5. Palautumiskyky kertoo accessory-sarjat (hyva 1.0, keski 0.85, heikko 0.70).
+//
+// EVIDENSSI: liikevalinnat louhittu preseeteistä (Akken ja kirjallisuus-
+// pohjaiset valinnat), ei generoitu algoritmisesti. ROLE-mappaus perustuu
+// voima-harjoittelun antagonisti/synergisti-teoriaan (Schoenfeld, Helms).
+
+// ── PRIMARY CATEGORY PROFILES ──
+// Jokaiselle mahdolliselle primary-kategorialle: mikä liike/kategoria
+// täyttää kunkin roolin. "top"-listan järjestys = preferenssijärjestys.
+const PRIMARY_CATEGORY_PROFILES = {
+  vertikaaliveto: {
+    label: "Vertikaaliveto (leuka, pull-up)",
+    COMPLEMENT:  { category: "vertikaaliveto",    top: ["Ylätalja", "Lat pulldown", "Ylätalja neutraaliote", "Pullover kone"] },
+    SECONDARY:   { category: "horisontaaliveto",  top: ["Penkkiveto", "Alatalja", "Seated row", "Chest-supported row", "T-bar row"] },
+    BALANCE_1:   { category: "horisontaalityöntö", top: ["Penkkipunnerrus", "Dippi", "Vinopenkkipunnerrus", "Chest press"] },
+    BALANCE_2:   { category: "vertikaalityöntö",   top: ["Pystypunnerrus", "Pystypunnerrus käsipainot", "Shoulder press laite"] },
+    ARM_SYN:     { category: "hauisfleksio",      top: ["Hauiskääntö tanko", "Hammer curl", "Hauiskääntö käsipainot", "Preacher curl"] },
+    ARM_ANT:     { category: "ojentajaekstensio", top: ["Tricep pushdown", "Overhead tricep ext", "Skull crusher"] },
+    CORE:        { category: "core",              top: ["Hanging leg raise", "Cable crunch", "Ab wheel rollout", "Pallof press"] },
+  },
+  horisontaalityöntö: {
+    label: "Horisontaalityöntö (penkkipunnerrus, dippi)",
+    COMPLEMENT:  { category: "horisontaalityöntö", top: ["Vinopenkkipunnerrus", "Chest press", "Close-grip bench"] },
+    SECONDARY:   { category: "vertikaalityöntö",   top: ["Pystypunnerrus käsipainot", "Shoulder press laite"] },
+    BALANCE_1:   { category: "vertikaaliveto",    top: ["Ylätalja", "Lat pulldown", "Pullover kone"] },
+    BALANCE_2:   { category: "horisontaaliveto",  top: ["Seated row", "Chest-supported row", "T-bar row"] },
+    ARM_SYN:     { category: "ojentajaekstensio", top: ["Tricep pushdown", "Skull crusher", "Overhead tricep ext", "French press"] },
+    ARM_ANT:     { category: "hauisfleksio",      top: ["Hauiskääntö tanko", "Hammer curl"] },
+    CORE:        { category: "core",              top: ["Hanging leg raise", "Cable crunch", "Ab wheel rollout"] },
+  },
+  alaraaja: {
+    label: "Alaraaja (kyykky, maave)",
+    COMPLEMENT:  { category: "alaraaja",          top: ["Hip thrust", "Bulgarian split squat", "Paused squat", "Front squat"] },
+    SECONDARY:   { category: "alaraaja",          top: ["Jalkaprässi", "Leg extension", "Front-foot elevated split squat", "Leg curl"] },
+    BALANCE_1:   { category: "horisontaaliveto",  top: ["Seated row", "Chest-supported row"] },
+    BALANCE_2:   { category: "horisontaalityöntö", top: ["Vinopenkkipunnerrus", "Chest press"] },
+    ARM_SYN:     { category: "alaraaja",          top: ["Pohjenosto", "Leg curl"] },
+    ARM_ANT:     { category: "hauisfleksio",      top: ["Hauiskääntö tanko", "Hammer curl"] },
+    CORE:        { category: "core",              top: ["Hanging leg raise", "Ab wheel rollout", "Pallof press", "Cable crunch"] },
+  },
+  vertikaalityöntö: {
+    label: "Vertikaalityöntö (pystypunnerrus)",
+    COMPLEMENT:  { category: "vertikaalityöntö",   top: ["Pystypunnerrus käsipainot", "Shoulder press laite", "Sivunosto"] },
+    SECONDARY:   { category: "horisontaalityöntö", top: ["Vinopenkkipunnerrus", "Close-grip bench", "Chest press"] },
+    BALANCE_1:   { category: "vertikaaliveto",    top: ["Ylätalja", "Lat pulldown", "Pullover kone"] },
+    BALANCE_2:   { category: "horisontaaliveto",  top: ["Seated row", "Chest-supported row"] },
+    ARM_SYN:     { category: "ojentajaekstensio", top: ["Tricep pushdown", "Overhead tricep ext", "Skull crusher"] },
+    ARM_ANT:     { category: "hauisfleksio",      top: ["Hauiskääntö tanko", "Hammer curl"] },
+    CORE:        { category: "core",              top: ["Hanging leg raise", "Cable crunch"] },
+  },
+  horisontaaliveto: {
+    label: "Horisontaaliveto (soutuliikkeet)",
+    COMPLEMENT:  { category: "horisontaaliveto",  top: ["Seal row", "T-bar row", "Cable row", "Chest-supported row"] },
+    SECONDARY:   { category: "vertikaaliveto",    top: ["Ylätalja", "Lat pulldown", "Pullover kone"] },
+    BALANCE_1:   { category: "horisontaalityöntö", top: ["Vinopenkkipunnerrus", "Chest press"] },
+    BALANCE_2:   { category: "vertikaalityöntö",   top: ["Pystypunnerrus käsipainot", "Shoulder press laite"] },
+    ARM_SYN:     { category: "hauisfleksio",      top: ["Hauiskääntö tanko", "Hammer curl"] },
+    ARM_ANT:     { category: "ojentajaekstensio", top: ["Tricep pushdown"] },
+    CORE:        { category: "core",              top: ["Hanging leg raise", "Cable crunch"] },
+  },
+  hauisfleksio: {
+    label: "Hauisfleksio (hauiskääntö primaryna — epätavallinen)",
+    COMPLEMENT:  { category: "hauisfleksio",      top: ["Hammer curl", "Preacher curl", "Incline curl", "Spider curl", "Cable curl"] },
+    SECONDARY:   { category: "vertikaaliveto",    top: ["Ylätalja neutraaliote", "Ylätalja", "Lat pulldown"] },
+    BALANCE_1:   { category: "ojentajaekstensio", top: ["Tricep pushdown", "Skull crusher"] },
+    BALANCE_2:   { category: "horisontaalityöntö", top: ["Vinopenkkipunnerrus"] },
+    ARM_SYN:     { category: "horisontaaliveto",  top: ["Seated row", "Cable row"] },
+    ARM_ANT:     { category: "vertikaalityöntö",   top: ["Pystypunnerrus käsipainot"] },
+    CORE:        { category: "core",              top: ["Hanging leg raise"] },
+  },
+  ojentajaekstensio: {
+    label: "Ojentajaekstensio (primaryna — epätavallinen)",
+    COMPLEMENT:  { category: "ojentajaekstensio", top: ["Overhead tricep ext", "Skull crusher", "French press", "Kickback"] },
+    SECONDARY:   { category: "horisontaalityöntö", top: ["Close-grip bench", "Vinopenkkipunnerrus", "Chest press"] },
+    BALANCE_1:   { category: "hauisfleksio",      top: ["Hauiskääntö tanko", "Hammer curl"] },
+    BALANCE_2:   { category: "vertikaaliveto",    top: ["Ylätalja", "Lat pulldown"] },
+    ARM_SYN:     { category: "vertikaalityöntö",   top: ["Pystypunnerrus käsipainot"] },
+    ARM_ANT:     { category: "horisontaaliveto",  top: ["Seated row"] },
+    CORE:        { category: "core",              top: ["Hanging leg raise"] },
+  },
+};
+
+// Skelettien (leuka-primary-preseettien) kategoria → funktionaalinen rooli.
+// Käytetään kun clooni-preseetistä haetaan uuden primaryn vastaavaa slotia.
+const SKELETON_CATEGORY_TO_ROLE = {
+  vertikaaliveto:     "COMPLEMENT",    // Ylätalja = saman pattern variaatio
+  horisontaaliveto:   "SECONDARY",     // Penkkiveto/Alatalja = toisen pull-akselin liike
+  horisontaalityöntö: "BALANCE_1",     // Penkkipunnerrus = antagonist push (horizontal)
+  vertikaalityöntö:   "BALANCE_2",     // Pystypunnerrus = antagonist push (vertical)
+  hauisfleksio:       "ARM_SYN",       // Hauiskääntö = pull-synergist
+  ojentajaekstensio:  "ARM_ANT",       // Tricep = push-antagonist (tasapainotus)
+  core:               "CORE",          // Core stays core
+  alaraaja:           "SECONDARY",     // fallback (leuka-presetit eivät käytä)
+  muu:                "CORE",          // grip/other → core-ekvivalentti
+};
+
+// Goal → skeleton preset factory name
+const GOAL_SKELETONS = {
+  hypertrofia:  "createHypertrofiaMesocycle",
+  maksimivoima: "createMaksimivoimaMesocycle",
+  yhdistelma:   "createDefaultMesocycle",
+  undulating:   "createDUPMesocycle",
+};
+
+// ── Generator helpers ──
+
+// Saa uuden accessory-slotin rooli-pohjaisesti.
+// orig = alkuperäinen accessory-slot leuka-skeletissä.
+// userPrimaryCategory = käyttäjän valitseman päälikkeen kategoria.
+function remapAccessorySlot(orig, userPrimaryCategory, dayIndex, slotIndex) {
+  const role = SKELETON_CATEGORY_TO_ROLE[orig.category] || "CORE";
+  const profile = PRIMARY_CATEGORY_PROFILES[userPrimaryCategory] || PRIMARY_CATEGORY_PROFILES.vertikaaliveto;
+  const target = profile[role] || profile.CORE;
+  const movements = target.top;
+
+  // IDENTITY PRESERVATION: jos alkuperäinen liike löytyy uuden profiilin top-listasta,
+  // pidä se. Tämä takaa että jos käyttäjä valitsee SAMAN päälikekategorian kuin preset,
+  // accessoryt pysyvät identtisinä. Preset-author on jo tehnyt valintansa huolella.
+  if (movements.includes(orig.defaultMovementName) && orig.category === target.category) {
+    return { ...orig, variantName: null };
+  }
+
+  // Eri kategoria tai liikettä ei ole top-listassa → valitse rotation-idx:llä.
+  const movementIdx = (dayIndex + slotIndex) % movements.length;
+  return {
+    ...orig,
+    category: target.category,
+    defaultMovementName: movements[movementIdx],
+    // Älä siirrä variantName:ä — se on leuka-spesifinen
+    variantName: null,
+  };
+}
+
+// Substituoi primary/backoff-slotin uudeksi päälikkeeksi.
+function substitutePrimarySlot(orig, primaryName, primaryCategory) {
+  return {
+    ...orig,
+    category: primaryCategory,
+    defaultMovementName: primaryName,
+    variantName: null, // leuka-variantit ("Kilpaveto", "Korokeveto") eivät siirry muille primaryille
+  };
+}
+
+// Kloonaa päivä uudella päälikkeellä + remapatuilla accessoryilla.
+function cloneDayWithPrimary(origDay, primaryName, primaryCategory, dayIndex) {
+  const newSlots = [];
+  let slotIdx = 0;
+  for (const s of origDay.slots) {
+    if (s.role === "primary" || s.role === "backoff") {
+      newSlots.push(substitutePrimarySlot(s, primaryName, primaryCategory));
+    } else if (s.role === "accessory") {
+      newSlots.push(remapAccessorySlot(s, primaryCategory, dayIndex, slotIdx));
+    } else {
+      // warmup/opener/attempt — kopioi sellaisenaan (eivät esiinny perusskelete-presseteissä)
+      newSlots.push({ ...s });
+    }
+    slotIdx++;
+  }
+  return {
+    ...origDay,
+    slots: newSlots,
+  };
+}
+
+// Skaalaa accessoryjen set-määrät palautumiskyvyn mukaan.
+// scalar < 1 vähentää sarjamäärää (floor min 1).
+function applyRecoveryScalar(weekPlans, scalar) {
+  if (scalar >= 0.99) return weekPlans;
+  return weekPlans.map(wp => ({
+    ...wp,
+    days: wp.days.map(d => ({
+      ...d,
+      slots: d.slots.map(s => {
+        if (s.role !== "accessory") return s;
+        return { ...s, sets: Math.max(1, Math.round((s.sets || 0) * scalar)) };
+      }),
+    })),
+  }));
+}
+
+// Jaa päälikkeet eri päiville. Jos 1 primary → kaikki päivät käyttävät sitä.
+// Jos 2+ → rotatoidaan.
+function distributePrimariesToDays(weekPlans, primaries) {
+  // primaries = [{ name, category }]
+  if (primaries.length === 0) return weekPlans;
+  if (primaries.length === 1) {
+    // Kaikki päivät saavat saman päälikkeen
+    return weekPlans.map(wp => ({
+      ...wp,
+      days: wp.days.map((d, dIdx) => cloneDayWithPrimary(d, primaries[0].name, primaries[0].category, dIdx)),
+    }));
+  }
+  // Useita päälikkeitä: rotaatio päivien yli
+  return weekPlans.map(wp => ({
+    ...wp,
+    days: wp.days.map((d, dIdx) => {
+      const primary = primaries[dIdx % primaries.length];
+      return cloneDayWithPrimary(d, primary.name, primary.category, dIdx);
+    }),
+  }));
+}
+
+// Skaalaa daysPerWeek: 3 → 4 tai 3 → 2.
+// 4 pv: lisää ylimääräinen "volume"-tyyppinen päivä edellisen volume-päivän kopiona
+// 2 pv: pudota viimeinen päivä
+function adjustDaysPerWeek(weekPlans, targetDaysPerWeek) {
+  return weekPlans.map(wp => {
+    const currentDays = wp.days.length;
+    if (currentDays === targetDaysPerWeek) return wp;
+
+    if (targetDaysPerWeek > currentDays) {
+      // Lisää päivä: kloonaa volume-päivä, siirrä eri dayOfWeek:lle
+      const volumeDay = wp.days.find(d => d.dayType === "volume") || wp.days[wp.days.length - 1];
+      const usedDows = new Set(wp.days.map(d => d.dayOfWeek));
+      const candidateDows = [1, 2, 3, 4, 5, 6, 7].filter(d => !usedDows.has(d));
+      const newDow = candidateDows[0] || 6;
+      const newDay = {
+        ...volumeDay,
+        dayOfWeek: newDow,
+        label: (volumeDay.label || "Perusvoima") + " (lisä)",
+      };
+      return { ...wp, days: [...wp.days, newDay].sort((a, b) => a.dayOfWeek - b.dayOfWeek) };
+    }
+    // targetDaysPerWeek < currentDays: pudota viimeiset
+    return { ...wp, days: wp.days.slice(0, targetDaysPerWeek) };
+  });
+}
+
+// Skaalaa weekCount: 4 → 8 tai 4 → 12.
+// 8 vk: toista 4 vk skeleton kahdesti, toinen iteraatio hieman haastavampi (+0.02 deltaPctBase loadingissa)
+// 12 vk: toista 3 kertaa, progressio Hyp → Voima → Peak -tyylinen
+function scaleWeekCount(weekPlans, weekDefs, targetWeekCount, goal) {
+  const origCount = weekPlans.length;
+  if (origCount === targetWeekCount) return { weekPlans, weekDefs };
+
+  if (targetWeekCount === 4) return { weekPlans: weekPlans.slice(0, 4), weekDefs: weekDefs.slice(0, 4) };
+
+  if (targetWeekCount === 8 && origCount === 4) {
+    // Tee kopio blokista 2 vk 5-8, nosta intensiteettiä
+    const block2Plans = weekPlans.map(wp => ({
+      ...wp,
+      week: wp.week + 4,
+      days: wp.days.map(d => ({
+        ...d,
+        // Labeloi bloki 2 esim. "Perusvoima A (blokki 2)"
+        label: d.label ? d.label + " (blokki 2)" : d.label,
+      })),
+    }));
+    const block2Defs = weekDefs.map(wd => ({
+      ...wd,
+      week: wd.week + 4,
+      // Blokki 2: jos wd.deltaPctBase > 0, nosta +0.02; deload-viikkoon älä koske
+      deltaPctBase: wd.week === 4 ? wd.deltaPctBase : (wd.deltaPctBase + 0.02),
+      label: wd.label + " (blokki 2)",
+    }));
+    return {
+      weekPlans: [...weekPlans, ...block2Plans],
+      weekDefs: [...weekDefs, ...block2Defs],
+    };
+  }
+
+  if (targetWeekCount === 12 && origCount === 4) {
+    // 3 blokkia: vk 1-4 (pohja), 5-8 (lataus +2%), 9-12 (peak +4%)
+    const block2Plans = weekPlans.map(wp => ({ ...wp, week: wp.week + 4, days: wp.days.map(d => ({ ...d, label: d.label ? d.label + " (B2)" : d.label })) }));
+    const block3Plans = weekPlans.map(wp => ({ ...wp, week: wp.week + 8, days: wp.days.map(d => ({ ...d, label: d.label ? d.label + " (B3)" : d.label })) }));
+    const block2Defs = weekDefs.map(wd => ({ ...wd, week: wd.week + 4, deltaPctBase: wd.week === 4 ? wd.deltaPctBase : (wd.deltaPctBase + 0.02), label: wd.label + " (B2)" }));
+    const block3Defs = weekDefs.map(wd => ({ ...wd, week: wd.week + 8, deltaPctBase: wd.week === 4 ? wd.deltaPctBase : (wd.deltaPctBase + 0.04), label: wd.label + " (B3)" }));
+    return {
+      weekPlans: [...weekPlans, ...block2Plans, ...block3Plans],
+      weekDefs: [...weekDefs, ...block2Defs, ...block3Defs],
+    };
+  }
+
+  // Tuntematon yhdistelmä — palauta sellaisenaan
+  return { weekPlans, weekDefs };
+}
+
+// Korjaa viikonpäivät käyttäjän preferenssin mukaan (esim. Ma/Ti/To).
+function applyDayOfWeekPreference(weekPlans, preferredDows) {
+  if (!preferredDows || preferredDows.length === 0) return weekPlans;
+  return weekPlans.map(wp => ({
+    ...wp,
+    days: wp.days.map((d, idx) => ({
+      ...d,
+      dayOfWeek: preferredDows[idx % preferredDows.length] || d.dayOfWeek,
+    })),
+  }));
+}
+
+// Päägeneraattorifunktio.
+// answers = {
+//   goal: "hypertrofia" | "maksimivoima" | "yhdistelma" | "undulating",
+//   primaries: [{ name: "Lisäpainoleuanveto", category: "vertikaaliveto" }, ...],
+//   daysPerWeek: 2 | 3 | 4,
+//   weekCount: 4 | 8 | 12,
+//   recoveryCapacity: "hyva" | "keski" | "heikko",
+//   preferredDaysOfWeek: [1, 3, 5] (optional),
+//   startDateISO: "2026-04-23",
+//   customLabel: "Oma ohjelma" (optional)
+// }
+function generateCustomMesocycle(answers, startDateISOArg) {
+  const {
+    goal = "yhdistelma",
+    primaries = [{ name: "Lisäpainoleuanveto", category: "vertikaaliveto" }],
+    daysPerWeek = 3,
+    weekCount = 4,
+    recoveryCapacity = "keski",
+    preferredDaysOfWeek = null,
+    customLabel = null,
+  } = answers;
+  const startDateISO = startDateISOArg || answers.startDateISO || todayISO();
+
+  // 1. Hae skeleton
+  const skeletonFactoryName = GOAL_SKELETONS[goal] || GOAL_SKELETONS.yhdistelma;
+  const skeletonFactories = {
+    createHypertrofiaMesocycle,
+    createMaksimivoimaMesocycle,
+    createDefaultMesocycle,
+    createDUPMesocycle,
+  };
+  const factory = skeletonFactories[skeletonFactoryName];
+  if (!factory) {
+    throw new Error("generateCustomMesocycle: tuntematon goal " + goal);
+  }
+  const skeleton = factory(startDateISO);
+
+  // 2. Substituoi päälikkeet + accessoryt
+  let weekPlans = distributePrimariesToDays(skeleton.weekPlans, primaries);
+
+  // 3. Skaalaa daysPerWeek (jos poikkeaa skeletin 3:sta)
+  if (daysPerWeek !== 3) {
+    weekPlans = adjustDaysPerWeek(weekPlans, daysPerWeek);
+  }
+
+  // 4. Skaalaa weekCount
+  let weekDefs = skeleton.weekDefs;
+  const scaled = scaleWeekCount(weekPlans, weekDefs, weekCount, goal);
+  weekPlans = scaled.weekPlans;
+  weekDefs = scaled.weekDefs;
+
+  // 5. Applikoi palautumisskaala accessoryihin
+  const recoveryScalars = { hyva: 1.0, keski: 0.85, heikko: 0.70 };
+  weekPlans = applyRecoveryScalar(weekPlans, recoveryScalars[recoveryCapacity] ?? 0.85);
+
+  // 6. Käyttäjän viikonpäivä-preferenssi
+  if (preferredDaysOfWeek) {
+    weekPlans = applyDayOfWeekPreference(weekPlans, preferredDaysOfWeek);
+  }
+
+  // 7. Kokoa mesosykli
+  const primaryLabel = primaries.map(p => p.name).join(" + ");
+  const label = customLabel || `Räätälöity: ${primaryLabel} (${goal}, ${weekCount}vk)`;
+
+  return {
+    mesocycleId: uid(),
+    type: "custom",
+    customConfig: {
+      goal,
+      primaries,
+      daysPerWeek,
+      weekCount,
+      recoveryCapacity,
+      preferredDaysOfWeek,
+      label,
+      skeletonFactoryName,
+      generatedAt: nowISO(),
+    },
+    startDateISO,
+    weekCount,
+    weekDefs,
+    weekPlans,
     postCycleAnalysis: null,
   };
 }
@@ -3260,6 +3656,10 @@ export {
   createSiirtymaMesocycle,
   createPalautuminenMesocycle,
   createStreetlifting16WMesocycle,
+  // Custom program generator (v4.27)
+  generateCustomMesocycle,
+  PRIMARY_CATEGORY_PROFILES,
+  GOAL_SKELETONS,
   // Baselines
   getBaseline,
   saveBaseline,
