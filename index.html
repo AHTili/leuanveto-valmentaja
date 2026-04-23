@@ -3280,26 +3280,96 @@ function renderMesocycle() {
       </div>`).join("")}
     </div>` : ""}
 
-    <!-- 4. KOKO OHJELMA — kompakti taulukko (collapsible) -->
+    <!-- 4. KOKO OHJELMA — dynaaminen per mesosyklityyppi (v4.26.1 fix) -->
     <details class="card" style="padding:0">
-      <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">📋 Koko 16 vk — yleiskatsaus</summary>
+      <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">📋 Koko ${meso.weekCount} vk — yleiskatsaus</summary>
       <div style="padding:0 14px 14px">
-        ${renderProgramOverviewTable(meso, currentWeek).replace('<div class="card">', '<div>').replace(/<\/div>$/, '')}
+        ${(isStreet16
+          ? renderProgramOverviewTable(meso, currentWeek)
+          : renderGenericProgramOverview(meso, currentWeek))
+            .replace('<div class="card">', '<div>')
+            .replace(/<div class="card-title">[\s\S]*?<\/div>/, '')
+            .replace(/<\/div>$/, '')}
       </div>
     </details>
 
-    <!-- 5. AUTOREG + VOLYYMI (collapsible) -->
-    <details class="card" style="padding:0">
-      <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">🎯 Per-liike autoregulaatio</summary>
-      <div style="padding:0 14px 14px">${renderPerLiftAutoregStatus(meso).replace('<div class="card">', '<div>').replace(/<\/div>$/, '')}</div>
-    </details>
+    <!-- 5. AUTOREG + VOLYYMI — näkyvät vain streetlifting_16w:ssä -->
+    ${isStreet16 ? `
+      <details class="card" style="padding:0">
+        <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">🎯 Per-liike autoregulaatio</summary>
+        <div style="padding:0 14px 14px">${renderPerLiftAutoregStatus(meso).replace('<div class="card">', '<div>').replace(/<div class="card-title">[\s\S]*?<\/div>/, '').replace(/<\/div>$/, '')}</div>
+      </details>
 
-    <details class="card" style="padding:0">
-      <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">📊 Volyymi-dashboard</summary>
-      <div style="padding:0 14px 14px">${renderVolumeDashboard(meso).replace('<div class="card">', '<div>').replace(/<\/div>$/, '')}</div>
-    </details>
+      <details class="card" style="padding:0">
+        <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">📊 Volyymi-dashboard</summary>
+        <div style="padding:0 14px 14px">${renderVolumeDashboard(meso).replace('<div class="card">', '<div>').replace(/<div class="card-title">[\s\S]*?<\/div>/, '').replace(/<\/div>$/, '')}</div>
+      </details>
+    ` : ""}
 
     <button class="btn btn-outline btn-full mt" id="btn-new-meso">📋 Vaihda ohjelma</button>
+  </div>`;
+}
+
+// v4.26.1: yleinen program overview muille mesosyklityypeille (ei streetlifting_16w).
+// Käyttää meso.weekCount-arvoa dynaamisesti, ei 16 viikon blokkilogiikkaa.
+function renderGenericProgramOverview(meso, currentWeek) {
+  const days = [1, 2, 3, 4, 5, 6, 7];
+  const dayHeaders = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
+  // Tunnista mitkä päivät on käytössä tässä mesosyklissä — näytä vain ne
+  const usedDays = new Set();
+  (meso.weekPlans || []).forEach(wp => {
+    (wp.days || []).forEach(d => {
+      if (d?.slots?.length) usedDays.add(d.dayOfWeek);
+    });
+  });
+  const activeDays = days.filter(d => usedDays.has(d));
+  if (activeDays.length === 0) {
+    return `<div class="card"><div class="muted">Ohjelmassa ei ole viikkosuunnitelmia</div></div>`;
+  }
+
+  const summarizeDay = (day) => {
+    if (!day?.slots?.length) return "—";
+    const p = day.slots.find(s => s.role === "primary");
+    if (p) return `${p.sets}×${p.reps}${p.targetVx != null ? ` V${p.targetVx}` : ""}`;
+    // Jos ei primaryä, näytä ensimmäisen slotin tiivistelmä
+    const first = day.slots.find(s => s.role !== "warmup");
+    if (first) return `${first.sets}×${first.reps}`;
+    return "—";
+  };
+
+  return `<div class="card">
+    <div class="card-title">📋 Ohjelman yleiskatsaus (${meso.weekCount} vk)</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border)">
+            <th style="text-align:left;padding:6px 4px;font-weight:600">Vk</th>
+            ${activeDays.map(d => `<th style="text-align:center;padding:6px 4px;font-weight:600">${dayHeaders[d]}</th>`).join("")}
+            <th style="text-align:right;padding:6px 4px;font-weight:600">Δ%</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(meso.weekPlans || []).map(wp => {
+            const wdef = (meso.weekDefs || []).find(w => w.week === wp.week);
+            const isCurrent = wp.week === currentWeek;
+            const isPast = currentWeek && wp.week < currentWeek;
+            const deltaPct = wdef?.deltaPctBase;
+            const deltaStr = deltaPct != null
+              ? `${deltaPct > 0 ? "+" : ""}${Math.round(deltaPct * 100)}%`
+              : "—";
+            return `<tr style="border-bottom:1px solid var(--border);${isCurrent ? 'background:rgba(100,180,255,0.08)' : isPast ? 'opacity:0.55' : ''}">
+              <td style="padding:5px 4px;font-weight:${isCurrent ? '700' : '500'}">${wp.week}${isCurrent ? ' ←' : ''}</td>
+              ${activeDays.map(d => {
+                const day = (wp.days || []).find(x => x.dayOfWeek === d);
+                return `<td style="text-align:center;padding:5px 4px;color:var(--muted)">${summarizeDay(day)}</td>`;
+              }).join("")}
+              <td style="text-align:right;padding:5px 4px;color:var(--muted)">${deltaStr}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="muted mt" style="font-size:10px">Solu: primary-sarjat × toistot · V-tavoite</div>
   </div>`;
 }
 
