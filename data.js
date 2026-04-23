@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.3 — Bugikorjaukset: mesosykli ei vaihdu hiljaisesti loppuessaan, tukiliikkeiden lepoajat kalibroitu compound/isolation-jaon mukaan, rep-napit 1–15 + manuaalisyöttö
+// LeVe Coach v4.27.4 — Dippi-prehab-paketti foundation-blokissa: tempo pause dippi + pullover + face pull pec-insertion-kestävyyden rakennukseen ennen voima-blokkia
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -200,6 +200,13 @@ const PRESET_MOVEMENTS = [
   { name: "Push press",        category: "vertikaalityöntö", isPrimary: false, isPreset: true },
   { name: "Seated OHP",        category: "vertikaalityöntö", isPrimary: false, isPreset: true },
   { name: "Z-press",           category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  // ─── Dippi-prehab-variantit (v4.27.4) — sternum/pec-insertion-kestävyys
+  //     ROM-kapasiteetti + stretch-hypertrofia. Käytetään foundation-blokissa (vk 1–4)
+  //     dippi-päivän pushAccPrehab-tukiliikepaketissa kuormituksen nosto ennen voima-blokkia.
+  { name: "Tempo pause dippi",      category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Incline dumbbell press", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Dumbbell pullover",      category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Incline deficit pushup", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
 ];
 
 // ─── Movement descriptions (v4.12) ───────────────────────────────
@@ -287,6 +294,16 @@ const MOVEMENT_DESCRIPTIONS = {
   "Push press": { howTo: "Pystypunnerrus jaloilla autetulla starttikäynnistyksellä: dip 5–10 cm polvista, räjähtävä ylös. Suurempi kuorma kuin strict press — rakentaa lockoutia ja hermostollista kapasiteettia.", cue: "Dip pysty — ei eteen — ja räjähtävä ylös" },
   "Seated OHP": { howTo: "Pystypunnerrus istuen tuetulla selällä. Eliminoi lantion kompensaation ja pakottaa puhtaan hartia + tricep -työn.", cue: "Selkä tiukkana selkänojaa vasten — ei kaareudu" },
   "Z-press": { howTo: "Pystypunnerrus istuen lattialla jalat suorina edessä. Pakottaa täydellisen core-hallinnan + pystyn ryhdin. Ei mitään tukea selälle.", cue: "Jalat lukossa, rintakehä ylös — korjaa ryhtivirheet" },
+
+  // ─── Dippi-prehab-variantit (v4.27.4) ───
+  // Sternum/pec-insertion-kestävyyden rakennus foundation-blokissa (vk 1–4).
+  // Fokus: ROM-ääripään kudoskapasiteetti (stretch-mediated hypertrophy) +
+  // posterior shoulder balance. Evidence: Warneke 2022–2024 stretch-hypertrofia,
+  // Green & Comfort 2007 pec-tear-riski dipissä, Durall 2001 pec-major-insertion.
+  "Tempo pause dippi": { howTo: "Lisäpainodippi 3 s:n kontrolloidulla eksentrisellä ja 1–2 s pysähdyksellä alapositiossa (olkapää kyynärpään alla, ei ylemmäs kuin mitä liikkuvuus sallii kivuttomasti). Nouse sujuvasti. Kuorma ~60–70 % normaalista dipistä — tämä on kudoskapasiteettia, ei voimaa.", cue: "Laskeudu kolme sekuntia, pysähdy alhaalla — ÄLÄ pomppaa" },
+  "Incline dumbbell press": { howTo: "Vinopenkki 30–45°, käsipainot rinnan sivuilla, työnnä ylös. Ylärinta + etudelta ja kevyempi GH-nivelen stressi kuin tasopenkissä. Täysi ROM, kontrolloitu eksentri.", cue: "Käsipainot koskettavat melkein yläpisteessä — älä lukitse kyynärpäitä täysin" },
+  "Dumbbell pullover": { howTo: "Vaakapenkillä makuulla, yksi käsipaino molemmin käsin pidellen, lantio alempana kuin hartiat. Laske paino pään taakse suorin/melkein suorin kyynärvarsin täyteen pec+lats-venytykseen, palauta rintakehän päälle. Stretch-hypertrofian priimusliike pecille.", cue: "Kyynärpäät pehmeässä kulmassa koko ajan — jos kipeää rintalastassa, lyhennä ROMia" },
+  "Incline deficit pushup": { howTo: "Punnerrus kahvoilla tai käsipainoilla korokkeena, kädet korokkeilla niin että rintakehä laskeutuu käsien alapuolelle. Täysi ROM alhaalla, taukopysähdys 1 s, ylös kontrolloidusti. Korkea reps (15–35) matalalla kuormalla = kudoksen verenkierto + ROM-kapasiteetti.", cue: "Alas kunnes olkapäät ovat kyynärpäiden alapuolella — nosta itsesi korkealla volyymilla, ei intensiteetillä" },
 
   // ─── Core ───
   "Ab wheel rollout": { howTo: "Polvillaan, työnnä rulla eteen mahdollisimman kauas, palaa aktiivisesti. Hollow body asento koko ajan.", cue: "Alaselkä ei saa notkahdella" },
@@ -532,6 +549,37 @@ const ACCESSORY_SLOT_CATALOG = {
       strength:   { sets: 3, reps: 5, targetVx: 3 },
       intensity:  { sets: 2, reps: 4, targetVx: 3 },
       peaking:    { sets: 2, reps: 5, targetVx: 4 },
+    },
+  },
+
+  // ─── Dippi-prehab-slotit (v4.27.4) ───
+  // Käytössä VAIN foundation-blokissa (vk 1–4) pushAccPrehab-paketissa. Strength+
+  // intensity+peaking-vaiheissa ei variantteja → slot pudotetaan ("dropped-for-phase"),
+  // jolloin pushAcc ottaa tilalle samat toiminnot voima-fokuksella.
+  "dip-tempo-rom": {
+    function: "Dippi-ROM + eksentrinen kapasiteetti",
+    rationale: "Sternum/pec-insertion-kestävyyden rakennus foundation-blokissa. Tempo pause + täysi ROM matalalla kuormalla (~60–70 % normaalista dipistä) = stretch-mediated hypertrophy pec-insertioon ennen kuin voima-blokki kuormittaa raskailla dipeillä. Close-grip dip on vaihtoehto raskaamman tempo-harjoittelun korvaajaksi jos kudos ärsyyntyy.",
+    phaseVariants: {
+      foundation: ["Tempo pause dippi", "Close-grip dip"],
+      strength:   [],
+      intensity:  [],
+      peaking:    [],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 8, targetVx: 3, note: "Tempo 3 s alas + 1–2 s pysähdys" },
+    },
+  },
+  "pec-stretch": {
+    function: "Pec/rintakehän stretch-hypertrofia",
+    rationale: "Pec-majorin pitkäradan kapasiteetti = pec-tear-riskin pienennin (Warneke 2022–2024). Dumbbell pullover täydessä ROM:ssa lataa pec:in ja lats:in venytyksessä — uniikki stimulus jota pushAcc-peruspaketissa ei ole. Incline DB press on vaihtoehto jos pullover on liikkuvuuden kannalta hankala.",
+    phaseVariants: {
+      foundation: ["Dumbbell pullover", "Incline dumbbell press"],
+      strength:   [],
+      intensity:  [],
+      peaking:    [],
+    },
+    repScheme: {
+      foundation: { sets: 2, reps: 12, targetVx: 4, note: "Stretch-fokus — ei maksimikuorma" },
     },
   },
 
@@ -3166,6 +3214,28 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     slotAccessory("tricep-lockout",      "ojentajaekstensio",  "Tricep pushdown",    { sets:3, reps:12 }),
     slotAccessory("shoulder-isolation",  "vertikaalityöntö",   "Sivunosto",          { sets:3, reps:15 }),
   ];
+
+  // ─── Dippi-prehab-accessory-paketti (v4.27.4) ───
+  // Foundation-blokissa (vk 1–4) käytetään pushAcc:n sijaan tätä pakettia. Tavoite:
+  // pec-insertion + sternoclavicular-alueen kudoskapasiteetti, scapular balance
+  // (face pull posterior-puolelle) ja ROM-ääripään stretch-hypertrofia ennen kuin
+  // voima-blokki (vk 5–8) kuormittaa raskailla dipeillä ja kapea-otepenkillä.
+  //
+  // Volyymi hieman kevyempi kuin pushAcc:ssä (11 sarjaa vs 13), koska tempo+stretch-
+  // liikkeet ovat per-sarja metabolisesti kuormittavampia. Liikkeet:
+  //   1) Tempo pause dippi — ROM+eccentric; korvaa kapea-otepenkin ajatuksen
+  //      siirtämällä stimulus dippispesifiseen liikemalliin turvallisella kuormalla.
+  //   2) Pystypunnerrus — säilyy; vertikaali-työnnön balanssi dippi-primary vastaan.
+  //   3) Dumbbell pullover — pec+lats stretch-hypertrofia; uniikki ROM jota mikään
+  //      nykyisen pushAcc:n liike ei kata.
+  //   4) Face pull — posterior scapular + rotator cuff; kriittinen dippi/penkki-
+  //      volyymin tasapainottaja. Puuttuu nykyisestä pushAcc:sta kokonaan.
+  const pushAccPrehab = () => [
+    slotAccessory("dip-tempo-rom",       "horisontaalityöntö", "Tempo pause dippi",      { sets:3, reps:8,  targetVx:3, note:"Tempo 3 s alas + 1–2 s pysähdys — ROM-kapasiteetti, ei voima" }),
+    slotAccessory("shoulder-vertical",   "vertikaalityöntö",   "Pystypunnerrus",         { sets:3, reps:8,  targetVx:3 }),
+    slotAccessory("pec-stretch",         "horisontaalityöntö", "Dumbbell pullover",      { sets:2, reps:12, targetVx:4, note:"Täysi venytys — pec+lats stretch-hypertrofia" }),
+    slotAccessory("scapular-control",    "horisontaaliveto",   "Face pull",              { sets:3, reps:15, targetVx:4, note:"Posterior shoulder balance — kriittinen dippi-volyymille" }),
+  ];
   const mixAcc = () => [
     slotAccessory("core-hollow",     "core",             "Ab wheel rollout",   { sets:3, reps:10 }),
     slotAccessory("scapular-control","horisontaaliveto", "Face pull",          { sets:2, reps:15 }),
@@ -3457,19 +3527,21 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     { week:1, days:[
       maDay("MA — Leuka 4×6 @65%",        4,6,3, 0.65, null, null),
       tiDay("TI — Kyykky 4×6 @65%",       4,6,3, 0.65, null),
-      toDay("TO — Dippi 4×6 @65%",        4,6,3, 0.65, null, null),
+      // v4.27.4: Foundation-blokissa dippi-päivälle pushAccPrehab (tempo+stretch+face pull)
+      //          — pec-insertion- ja sternum-alueen kudoskapasiteetti ennen voima-blokkia.
+      toDay("TO — Dippi 4×6 @65%",        4,6,3, 0.65, null, null, pushAccPrehab()),
       laDay("LA — MU tekniikka + etukyykky", 0, 5, "Eksentriset 5×1-2 · transitiot 5×3 · räjähtävät leuat 4×3", null, FS.w1),
     ]},
     { week:2, days:[
       maDay("MA — Leuka 5×6 @68%",        5,6,3, 0.68, null, null),
       tiDay("TI — Kyykky 5×6 @68%",       5,6,3, 0.68, null),
-      toDay("TO — Dippi 5×6 @68%",        5,6,3, 0.68, null, null),
+      toDay("TO — Dippi 5×6 @68%",        5,6,3, 0.68, null, null, pushAccPrehab()),
       laDay("LA — MU tekniikka + etukyykky", 0, 5, "Eksentriset + banded MU + transitiot — eteneminen tärkeä", null, FS.w2),
     ]},
     { week:3, days:[
       maDay("MA — Leuka 5×6 @72%",        5,6,2, 0.72, null, null),
       tiDay("TI — Kyykky 5×6 @72%",       5,6,2, 0.72, null),
-      toDay("TO — Dippi 5×6 @72%",        5,6,2, 0.72, null, null),
+      toDay("TO — Dippi 5×6 @72%",        5,6,2, 0.72, null, null, pushAccPrehab()),
       laDay("LA — MU: ENSIMMÄINEN STRICT 🎯 + etukyykky", 0, 5, "🎯 Tavoite: ensimmäinen puhdas strict muscle-up", null, FS.w3),
     ]},
     { week:4, days:[
