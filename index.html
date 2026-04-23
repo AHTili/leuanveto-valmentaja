@@ -943,6 +943,25 @@ async function computeRecommendation(forDateISO = null) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// LABEL HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Strip redundant weekday prefix from a day label (v4.27.5).
+ *
+ * Osa streetlifting_16w- ja muista ohjelma-factoryista tallentaa labeleihin
+ * päiväprefiksin ("MA — Leuka 4×6 @65%"), mutta näkymät prependoivat oman
+ * `dayNames[d.dayOfWeek]`-prefiksin → lopputulos on "Ma — MA — Leuka 4×6 @65%".
+ * Tämä apuri poistaa labelin alusta redundantin "MA — ", "TI — ", … prefiksin
+ * ennen renderointia. Toimii myös jo IDB:hen tallennetuille mesosykleille
+ * ilman migraatiota.
+ */
+function stripRedundantDayPrefix(label) {
+  if (!label || typeof label !== "string") return label;
+  return label.replace(/^(MA|TI|KE|TO|PE|LA|SU)\s*[—–-]\s*/, "");
+}
+
+// ═══════════════════════════════════════════════════════════════
 // TOAST NOTIFICATIONS
 // ═══════════════════════════════════════════════════════════════
 
@@ -1439,7 +1458,7 @@ async function showPlanOverrideModal() {
     const date = new Date(base);
     date.setDate(date.getDate() + offset);
     const iso = date.toISOString().slice(0, 10);
-    const dayLabel = d.label || DAY_TYPE_LABELS_MAP[d.dayType] || d.dayType || "?";
+    const dayLabel = stripRedundantDayPrefix(d.label) || DAY_TYPE_LABELS_MAP[d.dayType] || d.dayType || "?";
     const isToday = d.dayOfWeek === todayDow;
     const descBits = [];
     if (isToday) descBits.push("alkuperäinen (tänään)");
@@ -1891,7 +1910,7 @@ function renderDashboard() {
     ? `<span class="plan-override-chip">🔀 Vaihdettu · ${dayNamesShort[overrideDow]}</span>`
     : "";
 
-  const heroTitle = rec?.dayPlan?.label || dayTypeFi;
+  const heroTitle = stripRedundantDayPrefix(rec?.dayPlan?.label) || dayTypeFi;
   const slots = rec?.dayPlan?.slots || [];
   const workSlotCount = slots.filter(s => s.role !== "warmup").length || slots.length;
   const estDur = estimateDurationMin(slots);
@@ -2147,7 +2166,7 @@ function renderMissedBanner(missed, totalCount) {
     ? (diffDays === 1 ? "Eilisen alkuperäinen plan tekemättä" : `${dayNamesFull[missed.dayOfWeek] || "Aiempi"} alkuperäinen plan tekemättä`)
     : (diffDays === 1 ? "Eilinen treeni tekemättä" : `${dayNamesFull[missed.dayOfWeek] || "Aiempi"} tekemättä`);
   const moreHint = totalCount > 1 ? ` · +${totalCount - 1} muuta tekemättä` : "";
-  const subHead = missed.dayLabel || dayTypeLabel(missed.dayType);
+  const subHead = stripRedundantDayPrefix(missed.dayLabel) || dayTypeLabel(missed.dayType);
   const datePart = `${dayNameShort[missed.dayOfWeek] || ""} ${iso.slice(5).replace("-", ".")}`;
   const substHint = subst
     ? ` · <span style="color:var(--dim)">teit ${dayTypeLabel(subst.plannedDayType)}</span>`
@@ -3706,7 +3725,7 @@ function renderWeekPlanDays(meso, weekNum, dayNames) {
   return `<div style="margin-top:8px">
     ${weekPlan.days.map(d => `<div style="padding:6px 0;border-top:1px solid var(--border)">
       <div class="flex-between">
-        <span style="font-size:13px;font-weight:600">${dayNames[d.dayOfWeek]} — ${d.label || dayTypeLabel(d.dayType)}</span>
+        <span style="font-size:13px;font-weight:600">${dayNames[d.dayOfWeek]} — ${stripRedundantDayPrefix(d.label) || dayTypeLabel(d.dayType)}</span>
         <button class="btn btn-sm btn-outline" data-edit-day="${weekNum}-${d.dayOfWeek}" style="font-size:11px;padding:4px 8px;min-height:28px">✏️</button>
       </div>
       <div class="muted" style="font-size:12px">${d.slots.map(s => {
@@ -5234,7 +5253,7 @@ function bind() {
     const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
     const options = missed.map(m => ({
       icon: "🕑",
-      label: `${dayNames[m.dayOfWeek]} ${m.dateISO.slice(5).replace("-", ".")} · ${m.dayLabel || dayTypeLabel(m.dayType)}`,
+      label: `${dayNames[m.dayOfWeek]} ${m.dateISO.slice(5).replace("-", ".")} · ${stripRedundantDayPrefix(m.dayLabel) || dayTypeLabel(m.dayType)}`,
       desc: `Vk ${m.weekNum}`,
     }));
     const idx = await showListModal("Lisää mennyt treeni", options);
@@ -5524,7 +5543,7 @@ function bind() {
 
       // Step 1: Choose action
       const action = await showListModal(
-        `${dayNames[dayOfWeek]} — ${day.label || dayTypeLabel(day.dayType)}`,
+        `${dayNames[dayOfWeek]} — ${stripRedundantDayPrefix(day.label) || dayTypeLabel(day.dayType)}`,
         [
           { icon: "🔄", label: "Vaihda liike", desc: "Korvaa olemassa oleva liike toisella" },
           { icon: "➕", label: "Lisää liike", desc: "Lisää uusi liike päivään" },

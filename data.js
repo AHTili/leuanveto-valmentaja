@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.4 — Dippi-prehab-paketti foundation-blokissa: tempo pause dippi + pullover + face pull pec-insertion-kestävyyden rakennukseen ennen voima-blokkia
+// LeVe Coach v4.27.5 — UI: redundantti päiväprefiksi ("Ma — MA — Leuka") poistettu näyttötasolta stripRedundantDayPrefix-helperillä
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
