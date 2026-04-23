@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.5 — UI: redundantti päiväprefiksi ("Ma — MA — Leuka") poistettu näyttötasolta stripRedundantDayPrefix-helperillä
+// LeVe Coach v4.27.6 — Historia-välilehti: suodattimet (liike/päivätyyppi/meso/päivämäärä), rikastettu korttinäkymä (readiness/sRPE/PR/backfill chipit), session detail -modal (setit ryhmiteltynä liikkeen mukaan, inline-editointi + poisto), pagination 30+30
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;

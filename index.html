@@ -823,6 +823,17 @@ const state = {
   planOverrideDateISO: null,
   // v4.26.0: backup-status (hasBackup, daysSince, status: "fresh"|"stale"|"overdue"|"missing")
   backupStatus: null,
+  // v4.27.6: Historia-välilehden suodatin ja pagination
+  historyFilter: {
+    movementId: null,   // liikesuodatin (movementId) tai null = kaikki
+    dayType: null,      // "heavy"|"volume"|"speed"|"competition"|null
+    mesocycleId: null,  // vain tämän mesosyklin sessiot
+    dateFrom: null,     // ISO
+    dateTo: null,       // ISO
+    limit: 30,          // kuinka monta sessiota näytetään — "Lataa lisää" kasvattaa
+  },
+  // Avoimen detail-modalin sessionId tai null
+  historyDetailSessionId: null,
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -4033,34 +4044,412 @@ function renderMovements() {
 // HISTORY VIEW
 // ═══════════════════════════════════════════════════════════════
 
+// ─── Historia-apufunktiot (v4.27.6) ────────────────────────────────
+
+/**
+ * Readiness chip session-tasolla (samat säännöt kuin dashboardilla).
+ * Palauttaa { label, cls } tai null jos dataa ei ole.
+ */
+function readinessChipForSession(sess) {
+  if (!sess) return null;
+  const lvl = sess.readinessCapLevel;
+  if (lvl === 2) return { label: "RED", cls: "chip-red" };
+  if (lvl === 1) return { label: "YELLOW", cls: "chip-yellow" };
+  if (lvl === 0) return { label: "GREEN", cls: "chip-green" };
+  return null;
+}
+
+/**
+ * Kuinka monta työsettiä sessio sisälsi (ilman lämmittelyjä ja
+ * readiness_test-primeriä). setRole:lla: "top"|"backoff"|"accessory" on
+ * työsetti; "readiness_test"/"warmup" eivät.
+ */
+function workSetCountForSession(sessionId) {
+  return state.allSets.filter(s =>
+    s.sessionId === sessionId &&
+    s.setRole !== "readiness_test" &&
+    s.setRole !== "warmup"
+  ).length;
+}
+
+/**
+ * Palauttaa listan movementId:stä joille tämä sessio teki uuden
+ * raaka-PR:n (loadKg × reps — ensimmäinen session/PR-set joka ylitti
+ * kaikki aiemmat). Heuristiikka: per movement, session e1RM ylittää
+ * kaikkien aiempien sessioiden korkeimman e1RM:n. Palauttaa
+ * movementName-arrayn.
+ */
+function findPRsForSession(sessionId) {
+  const sess = state.sessions.find(s => s.sessionId === sessionId);
+  if (!sess) return [];
+  const sessDate = sess.dateISO;
+  const sessSets = state.allSets.filter(s => s.sessionId === sessionId && s.setRole !== "readiness_test" && s.setRole !== "warmup");
+  if (sessSets.length === 0) return [];
+  const byMovement = new Map();
+  for (const s of sessSets) {
+    if (!s.movementId) continue;
+    const load = s.externalLoadKg || 0;
+    const reps = s.reps || 0;
+    if (load <= 0 || reps <= 0) continue;
+    const vx = s.actualVx ?? 0;
+    // Epley + Vara: load × (1 + (reps + Vx)/30)
+    const e1 = load * (1 + (reps + vx) / 30);
+    const cur = byMovement.get(s.movementId);
+    if (!cur || e1 > cur) byMovement.set(s.movementId, e1);
+  }
+  const prs = [];
+  for (const [movId, e1] of byMovement) {
+    // Hae aiemmat e1RM:t tälle liikkeelle
+    const earlier = state.allSets.filter(s =>
+      s.movementId === movId &&
+      s.sessionId !== sessionId &&
+      s.setRole !== "readiness_test" &&
+      s.setRole !== "warmup" &&
+      (s.externalLoadKg || 0) > 0 &&
+      (s.reps || 0) > 0
+    );
+    const earlierSessions = earlier.map(s => {
+      const ses = state.sessions.find(x => x.sessionId === s.sessionId);
+      return { dateISO: ses?.dateISO || "", e1: (s.externalLoadKg || 0) * (1 + ((s.reps || 0) + (s.actualVx ?? 0)) / 30) };
+    }).filter(x => x.dateISO && x.dateISO < sessDate);
+    if (earlierSessions.length === 0) continue; // ei vertailudataa → ei laskea PR:ksi
+    const maxBefore = Math.max(...earlierSessions.map(x => x.e1));
+    if (e1 > maxBefore + 0.1) {
+      const mov = state.movements.find(m => m.movementId === movId);
+      if (mov) prs.push(mov.name);
+    }
+  }
+  return prs;
+}
+
+/**
+ * Palauttaa true jos sessio vastaa nykyistä historyFilter-suodatinta.
+ */
+function matchesHistoryFilter(sess) {
+  const f = state.historyFilter;
+  if (!f) return true;
+  if (f.dayType && sess.plannedDayType !== f.dayType) return false;
+  if (f.mesocycleId && sess.mesocycleId !== f.mesocycleId) return false;
+  if (f.dateFrom && (sess.dateISO || "") < f.dateFrom) return false;
+  if (f.dateTo && (sess.dateISO || "") > f.dateTo) return false;
+  if (f.movementId) {
+    const has = state.allSets.some(s => s.sessionId === sess.sessionId && s.movementId === f.movementId);
+    if (!has) return false;
+  }
+  return true;
+}
+
+/** Ryhmittele setit movementId:n mukaan, säilyttää järjestyksen. */
+function groupSetsByMovement(sets) {
+  const map = new Map();
+  for (const s of sets) {
+    const key = s.movementId || "__unknown__";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(s);
+  }
+  return map;
+}
+
+function setRoleLabel(role) {
+  switch (role) {
+    case "top": return "Top";
+    case "backoff": return "Back-off";
+    case "accessory": return "Apuliike";
+    case "readiness_test": return "Primer";
+    case "warmup": return "Lämmittely";
+    default: return role || "-";
+  }
+}
+
 function renderHistory() {
-  const recent = [...state.sessions].reverse().slice(0, 20);
+  const f = state.historyFilter;
+  const allSessions = [...state.sessions].sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""));
+  const filtered = allSessions.filter(matchesHistoryFilter);
+  const shown = filtered.slice(0, f.limit);
+  const hasMore = filtered.length > shown.length;
+
+  // Liikkeet joita esiintyy sessioissa (suodatin-dropdown)
+  const movementsWithSets = new Set();
+  for (const s of state.allSets) if (s.movementId) movementsWithSets.add(s.movementId);
+  const filterableMovements = state.movements
+    .filter(m => movementsWithSets.has(m.movementId))
+    .sort((a, b) => a.name.localeCompare(b.name, "fi"));
+
+  const dayTypeOptions = ["heavy", "volume", "speed", "competition"];
+
+  const mesocycleOptions = (state.allMesocycles || []).sort((a, b) =>
+    (b.startDateISO || "").localeCompare(a.startDateISO || "")
+  );
+
+  const activeFilterCount =
+    (f.movementId ? 1 : 0) + (f.dayType ? 1 : 0) + (f.mesocycleId ? 1 : 0) +
+    (f.dateFrom ? 1 : 0) + (f.dateTo ? 1 : 0);
+
+  const filterBarHTML = `
+    <div class="card" style="margin-bottom:10px;padding:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-weight:600;font-size:13px">🔎 Suodatin${activeFilterCount > 0 ? ` <span class="chip chip-acc" style="font-size:10px;padding:1px 6px;margin-left:6px">${activeFilterCount}</span>` : ""}</div>
+        ${activeFilterCount > 0 ? `<button class="btn btn-sm btn-outline" id="btn-hist-clear-filters" style="font-size:11px;padding:3px 8px;min-height:26px">Nollaa</button>` : ""}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+        <div>
+          <label style="margin-top:0">Liike</label>
+          <select id="hist-filter-movement">
+            <option value="">Kaikki liikkeet</option>
+            ${filterableMovements.map(m => `<option value="${m.movementId}" ${f.movementId === m.movementId ? "selected" : ""}>${m.name}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label style="margin-top:0">Päivätyyppi</label>
+          <select id="hist-filter-daytype">
+            <option value="">Kaikki</option>
+            ${dayTypeOptions.map(dt => `<option value="${dt}" ${f.dayType === dt ? "selected" : ""}>${dayTypeLabel(dt)}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label style="margin-top:0">Mesosykli</label>
+          <select id="hist-filter-meso">
+            <option value="">Kaikki</option>
+            ${mesocycleOptions.map(m => `<option value="${m.mesocycleId}" ${f.mesocycleId === m.mesocycleId ? "selected" : ""}>${(MESO_TYPE_LABELS[m.type] || m.type)} · ${(m.startDateISO || "").slice(0, 10)}</option>`).join("")}
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div>
+            <label style="margin-top:0">Alk.</label>
+            <input type="date" id="hist-filter-from" value="${f.dateFrom || ""}">
+          </div>
+          <div>
+            <label style="margin-top:0">Loppu</label>
+            <input type="date" id="hist-filter-to" value="${f.dateTo || ""}">
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const countLineHTML = filtered.length === 0
+    ? `<div class="muted" style="font-size:12px;margin-bottom:8px">Ei treenejä tällä suodattimella.</div>`
+    : `<div class="muted" style="font-size:12px;margin-bottom:8px">Näytetään ${shown.length}/${filtered.length} sessiota ${activeFilterCount > 0 ? "(suodatettu)" : ""}</div>`;
+
+  const cardsHTML = shown.map(s => {
+    const sets = state.allSets.filter(set => set.sessionId === s.sessionId);
+    const workSets = sets.filter(x => x.setRole !== "readiness_test" && x.setRole !== "warmup");
+    const dayType = s.plannedDayType || "-";
+    const rChip = readinessChipForSession(s);
+    const prs = findPRsForSession(s.sessionId);
+    const chips = [];
+    if (rChip) chips.push(`<span class="chip ${rChip.cls}" style="font-size:10px;padding:1px 7px">${rChip.label}</span>`);
+    if (s.sRPE != null) chips.push(`<span class="chip chip-acc" style="font-size:10px;padding:1px 7px">sRPE ${s.sRPE}</span>`);
+    if (s.mesocycleWeek) chips.push(`<span class="chip chip-acc" style="font-size:10px;padding:1px 7px">Vk ${s.mesocycleWeek}</span>`);
+    if (prs.length > 0) chips.push(`<span class="chip chip-green" style="font-size:10px;padding:1px 7px" title="${prs.join(", ")}">🏆 PR × ${prs.length}</span>`);
+    if (s.isBackfill) chips.push(`<span class="chip chip-yellow" style="font-size:10px;padding:1px 7px">🕑 Backfill</span>`);
+    if (s.isPlanOverride) chips.push(`<span class="chip chip-yellow" style="font-size:10px;padding:1px 7px">🔀 Plan vaihdettu</span>`);
+
+    // Preview: top + backoff ensimmäiset 4 settiä
+    const previewSets = workSets.slice(0, 4);
+    const remaining = workSets.length - previewSets.length;
+
+    const bwText = s.bodyweightKg ? `· ${s.bodyweightKg} kg` : "";
+    const planSrcText = (s.planSourceDateISO && s.planSourceDateISO !== s.dateISO)
+      ? ` · plan ${formatDateShort(s.planSourceDateISO)}`
+      : "";
+
+    return `<div class="card" style="cursor:pointer" data-open-session="${s.sessionId}">
+      <div class="flex-between" style="align-items:flex-start">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600">${formatDateShort(s.dateISO)}${planSrcText}</div>
+          <div class="muted" style="font-size:12px;margin-top:2px">${dayTypeLabel(dayType)} · ${workSets.length} työsarjaa ${bwText}</div>
+          ${chips.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${chips.join("")}</div>` : ""}
+        </div>
+        <button class="btn btn-sm btn-outline" data-delete-session="${s.sessionId}" title="Poista" style="font-size:11px;padding:4px 8px;min-height:28px">🗑</button>
+      </div>
+      ${previewSets.length > 0 ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+        ${previewSets.map(set => {
+          const mov = state.movements.find(m => m.movementId === set.movementId);
+          const vxTxt = set.actualVx != null ? `V${set.actualVx}` : "V?";
+          const vTxt = set.velocityMean != null ? ` · ${Number(set.velocityMean).toFixed(2)} m/s` : "";
+          const roleTxt = set.setRole === "top" ? "⭐ " : "";
+          return `<div class="muted" style="font-size:11px;padding:2px 0">${roleTxt}${mov?.name || "?"}: ${set.externalLoadKg || 0} kg × ${set.reps || 0} ${vxTxt}${vTxt}</div>`;
+        }).join("")}
+        ${remaining > 0 ? `<div class="muted" style="font-size:11px;margin-top:2px">…ja ${remaining} sarjaa lisää — avaa katsoaksesi</div>` : ""}
+      </div>` : ""}
+      ${s.sessionNotes ? `<div style="margin-top:8px;padding:6px 8px;background:var(--card2);border-radius:var(--radius-sm);font-size:12px;color:var(--muted)">📝 ${s.sessionNotes}</div>` : ""}
+    </div>`;
+  }).join("");
+
+  const paginationHTML = hasMore
+    ? `<button class="btn btn-outline btn-full" id="btn-hist-load-more" style="font-size:13px;margin-top:4px">Lataa lisää (${filtered.length - shown.length} sessiota)</button>`
+    : "";
 
   return `<div class="fade-in">
     <div class="section-header">Historia</div>
     <button class="btn btn-outline btn-full mb" id="btn-backfill-past" style="font-size:13px">+ Lisää mennyt treeni</button>
-    ${recent.length === 0 ? '<div class="card"><div class="muted">Ei treenejä vielä</div></div>' : ""}
-    ${recent.map(s => {
-      const sets = state.allSets.filter(set => set.sessionId === s.sessionId);
-      const dayType = s.plannedDayType || "-";
-      const backfillTag = s.isBackfill ? ' <span class="chip chip-yellow" style="font-size:10px;padding:1px 6px;margin-left:4px">backfill</span>' : "";
-      return `<div class="card">
-        <div class="flex-between">
-          <div>
-            <div style="font-weight:600">${formatDateShort(s.dateISO)}${backfillTag}</div>
-            <div class="muted">${dayTypeLabel(dayType)} | ${sets.length} sarjaa</div>
-          </div>
-          <button class="btn btn-sm btn-outline" data-delete-session="${s.sessionId}">🗑</button>
-        </div>
-        ${sets.slice(0, 5).map(set => {
-          const mov = state.movements.find(m => m.movementId === set.movementId);
-          return `<div class="muted" style="padding:2px 0">${mov?.name || "?"}: ${set.externalLoadKg || 0} kg × ${set.reps || 0} V${set.actualVx ?? "?"}</div>`;
-        }).join("")}
-        ${sets.length > 5 ? `<div class="muted">...ja ${sets.length - 5} sarjaa lisää</div>` : ""}
-        ${s.sessionNotes ? `<div style="margin-top:6px;padding:6px 8px;background:var(--card2);border-radius:var(--radius-sm);font-size:12px;color:var(--muted)">📝 ${s.sessionNotes}</div>` : ""}
-      </div>`;
-    }).join("")}
+    ${filterBarHTML}
+    ${countLineHTML}
+    ${filtered.length === 0 && state.sessions.length === 0 ? '<div class="card"><div class="muted">Ei treenejä vielä</div></div>' : ""}
+    ${cardsHTML}
+    ${paginationHTML}
   </div>`;
+}
+
+/**
+ * Session detail modal: kaikki setit ryhmiteltynä liikkeen mukaan,
+ * tavoite vs toteuma, velocity, tempo, restSec. Inline-editointi
+ * setille showEditSetModal:n kautta.
+ */
+async function openSessionDetail(sessionId) {
+  const sess = state.sessions.find(s => s.sessionId === sessionId);
+  if (!sess) { showToast("Sessiota ei löydy", "bad"); return; }
+  const sets = state.allSets
+    .filter(s => s.sessionId === sessionId)
+    .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+
+  closeModal();
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+
+  const rChip = readinessChipForSession(sess);
+  const prs = findPRsForSession(sessionId);
+  const workSets = sets.filter(s => s.setRole !== "readiness_test" && s.setRole !== "warmup");
+  const primerSets = sets.filter(s => s.setRole === "readiness_test");
+
+  // Ryhmittele työsetit liikkeen mukaan
+  const grouped = groupSetsByMovement(workSets);
+
+  const headerChips = [];
+  if (rChip) headerChips.push(`<span class="chip ${rChip.cls}" style="font-size:10px;padding:1px 7px">${rChip.label}</span>`);
+  if (sess.sRPE != null) headerChips.push(`<span class="chip chip-acc" style="font-size:10px;padding:1px 7px">sRPE ${sess.sRPE}</span>`);
+  if (sess.mesocycleWeek) headerChips.push(`<span class="chip chip-acc" style="font-size:10px;padding:1px 7px">Vk ${sess.mesocycleWeek}</span>`);
+  if (prs.length > 0) headerChips.push(`<span class="chip chip-green" style="font-size:10px;padding:1px 7px">🏆 PR · ${prs.join(", ")}</span>`);
+  if (sess.isBackfill) headerChips.push(`<span class="chip chip-yellow" style="font-size:10px;padding:1px 7px">🕑 Backfill</span>`);
+  if (sess.isPlanOverride) headerChips.push(`<span class="chip chip-yellow" style="font-size:10px;padding:1px 7px">🔀 Plan vaihdettu</span>`);
+
+  const readinessDetailsHTML = (() => {
+    const r = sess.readinessDetails;
+    if (!r) return "";
+    const parts = [];
+    if (r.channels?.velocity) parts.push(`Velocity: ${r.channels.velocity}`);
+    if (r.channels?.hrv) parts.push(`HRV: ${r.channels.hrv}`);
+    if (r.channels?.vx) parts.push(`Vx: ${r.channels.vx}`);
+    if (parts.length === 0) return "";
+    return `<div class="muted" style="font-size:11px;margin-top:4px">${parts.join(" · ")}</div>`;
+  })();
+
+  let bodyHTML = "";
+  if (grouped.size === 0) {
+    bodyHTML = `<div class="muted" style="padding:12px;text-align:center">Ei sarjoja tallennettu</div>`;
+  } else {
+    for (const [movId, movSets] of grouped) {
+      const mov = state.movements.find(m => m.movementId === movId);
+      const movName = mov?.name || "Tuntematon liike";
+      // Summary: Σreps × kg, max e1RM
+      let maxE1 = 0;
+      for (const s of movSets) {
+        const load = s.externalLoadKg || 0;
+        const reps = s.reps || 0;
+        const vx = s.actualVx ?? 0;
+        if (load > 0 && reps > 0) {
+          const e1 = load * (1 + (reps + vx) / 30);
+          if (e1 > maxE1) maxE1 = e1;
+        }
+      }
+      bodyHTML += `<div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <div style="font-weight:600;font-size:14px">${movName}</div>
+          ${maxE1 > 0 ? `<div class="muted" style="font-size:11px">e1RM: <b style="color:var(--txt)">${maxE1.toFixed(1)} kg</b></div>` : ""}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          ${movSets.map((s, i) => {
+            const vxTxt = s.actualVx != null ? `V${s.actualVx}` : "V?";
+            const tgtTxt = s.targetReps != null || s.targetVx != null
+              ? `<span class="muted" style="font-size:10px">tgt ${s.targetReps ?? "?"}×V${s.targetVx ?? "?"}</span>`
+              : "";
+            const vTxt = s.velocityMean != null ? `<span class="muted" style="font-size:10px">${Number(s.velocityMean).toFixed(2)} m/s</span>` : "";
+            const tempoTxt = s.tempo ? `<span class="muted" style="font-size:10px">tempo ${s.tempo}</span>` : "";
+            const restTxt = s.restSec ? `<span class="muted" style="font-size:10px">lepo ${s.restSec}s</span>` : "";
+            const roleTxt = s.setRole === "top" ? "⭐" : s.setRole === "backoff" ? "•" : "·";
+            return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--card2);border-radius:var(--radius-sm);font-size:12px">
+              <span style="color:var(--muted);min-width:16px">${roleTxt}</span>
+              <span style="font-weight:600;min-width:110px">${s.externalLoadKg ?? 0} kg × ${s.reps ?? 0} ${vxTxt}</span>
+              <span style="flex:1;display:flex;gap:8px;flex-wrap:wrap">${tgtTxt} ${vTxt} ${tempoTxt} ${restTxt}</span>
+              <button class="btn btn-sm btn-outline" data-edit-hist-set="${s.setId}" style="font-size:10px;padding:2px 6px;min-height:24px">✏️</button>
+              <button class="btn btn-sm btn-outline" data-delete-hist-set="${s.setId}" style="font-size:10px;padding:2px 6px;min-height:24px">🗑</button>
+            </div>`;
+          }).join("")}
+        </div>
+      </div>`;
+    }
+  }
+
+  // Primer-sarja (jos olemassa)
+  const primerHTML = primerSets.length > 0 ? `<div style="margin-bottom:14px;padding:8px;background:var(--card2);border-radius:var(--radius-sm)">
+    <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">PRIMER (readiness-testi)</div>
+    ${primerSets.map(p => {
+      const mov = state.movements.find(m => m.movementId === p.movementId);
+      const v = p.velocityRep1 != null ? `${Number(p.velocityRep1).toFixed(2)} m/s` : "?";
+      return `<div style="font-size:12px">${mov?.name || "?"}: ${p.externalLoadKg ?? 0} kg · best ${v}</div>`;
+    }).join("")}
+  </div>` : "";
+
+  overlay.innerHTML = `
+    <div class="modal-sheet" style="max-height:90vh;overflow-y:auto">
+      <div class="modal-handle"></div>
+      <div class="modal-title">${formatDate(sess.dateISO)}</div>
+      <div style="padding:0 4px">
+        <div style="margin-bottom:8px">
+          <div class="muted" style="font-size:12px">${dayTypeLabel(sess.plannedDayType || "-")}${sess.bodyweightKg ? ` · ${sess.bodyweightKg} kg` : ""}${sess.planSourceDateISO && sess.planSourceDateISO !== sess.dateISO ? ` · plan ${formatDateShort(sess.planSourceDateISO)}` : ""}</div>
+          ${headerChips.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${headerChips.join("")}</div>` : ""}
+          ${readinessDetailsHTML}
+        </div>
+        ${sess.sessionNotes ? `<div style="margin-bottom:10px;padding:8px;background:var(--card2);border-radius:var(--radius-sm);font-size:12px">📝 ${sess.sessionNotes}</div>` : ""}
+        ${primerHTML}
+        <div style="margin-bottom:6px;font-size:11px;font-weight:600;color:var(--muted)">TYÖSARJAT (${workSets.length})</div>
+        ${bodyHTML}
+        <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px">
+          <button class="btn btn-outline" data-modal-cancel>Sulje</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); state.historyDetailSessionId = null; });
+  overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); state.historyDetailSessionId = null; } });
+
+  // Per-set edit
+  overlay.querySelectorAll("[data-edit-hist-set]").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const setId = btn.dataset.editHistSet;
+      const s = state.allSets.find(x => x.setId === setId);
+      if (!s) return;
+      const edited = await showEditSetModal({
+        reps: s.reps,
+        actualVx: s.actualVx,
+        loadKg: s.externalLoadKg,
+        velocity: s.velocityMean,
+      });
+      if (!edited) { openSessionDetail(sessionId); return; }
+      const updated = { ...s, reps: edited.reps, actualVx: edited.actualVx, externalLoadKg: edited.loadKg, velocityMean: edited.velocity };
+      await saveSet(updated);
+      state.allSets = await getAllSets();
+      showToast("Sarja päivitetty ✓", "ok");
+      openSessionDetail(sessionId);
+    });
+  });
+
+  // Per-set delete
+  overlay.querySelectorAll("[data-delete-hist-set]").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm("Poistetaanko sarja?")) return;
+      const setId = btn.dataset.deleteHistSet;
+      await deleteSet(setId);
+      state.allSets = await getAllSets();
+      showToast("Sarja poistettu ✓", "ok");
+      openSessionDetail(sessionId);
+    });
+  });
 }
 
 /**
@@ -5690,12 +6079,66 @@ function bind() {
 
   // History
   $$("[data-delete-session]").forEach(btn => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation(); // ei avaa card-detailiä
       if (!confirm("Poistetaanko treeni?")) return;
       await deleteSession(btn.dataset.deleteSession);
       await refresh();
       render();
     });
+  });
+
+  // History: avaa detail-modal klikkaamalla korttia
+  $$("[data-open-session]").forEach(card => {
+    card.addEventListener("click", (e) => {
+      // Älä triggeröi roskis-napista
+      if (e.target.closest("[data-delete-session]")) return;
+      const sid = card.dataset.openSession;
+      state.historyDetailSessionId = sid;
+      openSessionDetail(sid);
+    });
+  });
+
+  // History: suodattimet
+  const histMovSel = $("#hist-filter-movement");
+  if (histMovSel) histMovSel.addEventListener("change", () => {
+    state.historyFilter.movementId = histMovSel.value || null;
+    state.historyFilter.limit = 30;
+    render();
+  });
+  const histDtSel = $("#hist-filter-daytype");
+  if (histDtSel) histDtSel.addEventListener("change", () => {
+    state.historyFilter.dayType = histDtSel.value || null;
+    state.historyFilter.limit = 30;
+    render();
+  });
+  const histMesoSel = $("#hist-filter-meso");
+  if (histMesoSel) histMesoSel.addEventListener("change", () => {
+    state.historyFilter.mesocycleId = histMesoSel.value || null;
+    state.historyFilter.limit = 30;
+    render();
+  });
+  const histFromInp = $("#hist-filter-from");
+  if (histFromInp) histFromInp.addEventListener("change", () => {
+    state.historyFilter.dateFrom = histFromInp.value || null;
+    state.historyFilter.limit = 30;
+    render();
+  });
+  const histToInp = $("#hist-filter-to");
+  if (histToInp) histToInp.addEventListener("change", () => {
+    state.historyFilter.dateTo = histToInp.value || null;
+    state.historyFilter.limit = 30;
+    render();
+  });
+  const histClearBtn = $("#btn-hist-clear-filters");
+  if (histClearBtn) histClearBtn.addEventListener("click", () => {
+    state.historyFilter = { movementId: null, dayType: null, mesocycleId: null, dateFrom: null, dateTo: null, limit: 30 };
+    render();
+  });
+  const histMoreBtn = $("#btn-hist-load-more");
+  if (histMoreBtn) histMoreBtn.addEventListener("click", () => {
+    state.historyFilter.limit = (state.historyFilter.limit || 30) + 30;
+    render();
   });
 
   // PRs — näytä lomake
