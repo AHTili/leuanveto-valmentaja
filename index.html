@@ -742,6 +742,7 @@ import {
   createDUPMesocycle, createSiirtymaMesocycle, createPalautuminenMesocycle, createStreetlifting16WMesocycle,
   getSettings, saveSettings,
   exportFullBackup, importFullBackup,
+  getBackupStatus, getAllBackupSnapshots, createBackupSnapshot, restoreFromSnapshot,
   parseCSV, importHistoricalCSV,
   getMovementProgress, getAllMovementProgress, saveMovementProgress,
   getTracesForRec,
@@ -818,6 +819,8 @@ const state = {
   // Transient plan-override (v4.20): kun käyttäjä haluaa tehdä tänään toisen
   // viikon päivän planiä. Nollautuu refresh()-kutsussa ja startWorkout()-hetkellä.
   planOverrideDateISO: null,
+  // v4.26.0: backup-status (hasBackup, daysSince, status: "fresh"|"stale"|"overdue"|"missing")
+  backupStatus: null,
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -826,6 +829,8 @@ const state = {
 
 async function init() {
   await initDB();
+  // v4.26.0: backup-status dashboard-indikaattoria varten
+  state.backupStatus = await getBackupStatus();
   state.settings = await getSettings();
   state.movements = await getAllMovements();
   state.sessions = await getAllSessions();
@@ -1697,9 +1702,118 @@ function renderDashboard() {
 
     ${renderStimCard(deloadMode)}
 
+    ${renderBackupStatusCard()}
+
     ${renderFutureCollapsible()}
 
     ${renderTraceCollapsible(rec)}
+  </div>`;
+}
+
+// v4.26.0: renderöi snapshot-lista asetus-sivulle
+async function renderBackupSnapshotsList() {
+  const container = document.getElementById("backup-snapshots-list");
+  if (!container) return;
+  try {
+    const snaps = await getAllBackupSnapshots();
+    if (!snaps.length) {
+      container.innerHTML = `<div style="color:var(--muted)">Ei snapshoteja vielä.</div>`;
+      return;
+    }
+    const rowsHTML = snaps.map(s => {
+      const d = new Date(s.createdAtISO);
+      const dateStr = d.toLocaleString("fi-FI", { dateStyle: "short", timeStyle: "short" });
+      const sizeKB = Math.round((s.sizeBytes || 0) / 1024);
+      const reasonLabels = {
+        "weekly-auto": "🗓 Auto",
+        "manual": "👆 Käsin",
+        "pre-import": "🛡 Ennen tuontia",
+        "pre-restore": "🛡 Ennen restorea",
+      };
+      const reason = reasonLabels[s.triggerReason] || s.triggerReason || "?";
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);gap:6px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px">${dateStr}</div>
+          <div style="font-size:10px;color:var(--muted)">${reason} · ${sizeKB} KB</div>
+        </div>
+        <button class="btn btn-sm btn-outline" data-restore-snapshot="${s.snapshotId}" title="Palauta tästä snapshotista">↻</button>
+        <button class="btn btn-sm btn-outline" data-download-snapshot="${s.snapshotId}" title="Lataa snapshot JSONina">⬇</button>
+      </div>`;
+    }).join("");
+    container.innerHTML = rowsHTML;
+
+    // Wire restore & download buttons
+    container.querySelectorAll("[data-restore-snapshot]").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        const sid = e.currentTarget.getAttribute("data-restore-snapshot");
+        if (!confirm("Palauta tästä snapshotista? Nykyisestä datasta luodaan automaattisesti varmuussnapshot ennen palautusta.")) return;
+        try {
+          await restoreFromSnapshot(sid);
+          await refresh();
+          state.backupStatus = await getBackupStatus();
+          showToast("Snapshot palautettu ✓", "ok");
+          render();
+        } catch (err) {
+          showToast("Palautus epäonnistui: " + err.message, "bad");
+        }
+      });
+    });
+    container.querySelectorAll("[data-download-snapshot]").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        const sid = e.currentTarget.getAttribute("data-download-snapshot");
+        const snap = snaps.find(x => x.snapshotId === sid);
+        if (!snap) return;
+        const blob = new Blob([JSON.stringify(snap.data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const iso = snap.createdAtISO.slice(0, 10);
+        a.href = url; a.download = `leve-coach-snapshot-${iso}.json`;
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+        showToast("Snapshot ladattu", "ok");
+      });
+    });
+  } catch (e) {
+    container.innerHTML = `<div style="color:var(--bad)">Virhe ladatessa snapshoteja</div>`;
+  }
+}
+
+// v4.26.0: backup-status-kortti — näkyy vain jos status ei ole "fresh"
+function renderBackupStatusCard() {
+  const bs = state.backupStatus;
+  if (!bs) return "";
+  if (bs.status === "fresh") return ""; // hiljaa OK-tilassa
+
+  let icon = "📦";
+  let color = "var(--warn)";
+  let title = "";
+  let body = "";
+
+  if (bs.status === "missing") {
+    icon = "⚠️";
+    color = "var(--warn)";
+    title = "Backupia ei ole vielä luotu";
+    body = "Viikottainen auto-backup käynnistyy seuraavalla sovelluksen avauksella. Voit myös luoda sen nyt käsin asetuksista.";
+  } else if (bs.status === "stale") {
+    icon = "📦";
+    color = "var(--warn)";
+    title = `Viimeisestä backupista ${bs.daysSince} päivää`;
+    body = "Suositeltu: vähintään 1 backup per viikko. Auto-backup yrittää luoda uuden seuraavalla sovelluksen avauksella.";
+  } else if (bs.status === "overdue") {
+    icon = "⚠️";
+    color = "var(--warn)";
+    title = `Viimeisestä backupista ${bs.daysSince} päivää — myöhässä`;
+    body = "Auto-backup ei ole onnistunut. Tarkista asetuksista ja luo käsin tarvittaessa.";
+  }
+
+  return `<div class="card" style="border-color:${color};margin-top:10px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="font-size:18px">${icon}</div>
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:13px">${title}</div>
+        <div class="muted" style="font-size:11px;margin-top:2px">${body}</div>
+      </div>
+      <button class="btn btn-sm btn-outline" id="btn-create-backup-now" title="Luo backup nyt">Luo nyt</button>
+    </div>
   </div>`;
 }
 
@@ -2079,6 +2193,9 @@ function renderActiveWorkout() {
   }
   const exSubHTML = subBits.length ? `<div class="ex-sub">${subBits.join("<br>")}</div>` : "";
 
+  // v4.26.0: "💡 Miksi tämä liike?" -kortti — tekee näkyväksi mitä ohjelma on päättänyt
+  const whyThisMovementHTML = isWarmupSet ? "" : buildWhyThisMovementHTML(exercise, state.mesocycle, state.recommendation);
+
   // ── Hero load card (work-set only; warmup uses simpler variant below) ──
   const priorSet = !isWarmupSet ? computePriorSet(exercise.movementId, w.sessionId) : null;
   let deltaChipHTML = "";
@@ -2298,6 +2415,8 @@ function renderActiveWorkout() {
       ${exSubHTML}
     </div>
 
+    ${whyThisMovementHTML}
+
     ${heroHTML}${warmupHTML}
 
     ${isWarmupSet ? `
@@ -2317,6 +2436,113 @@ function formatRestTime(seconds) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s < 10 ? "0" : ""}${s}`;
+}
+
+// v4.26.0: "💡 Miksi tämä liike?" — selitä miksi tämä liike tässä vaiheessa,
+// mistä blokista se tulee, mitä rooli palvelee. Ei uutta logiikkaa, vaan tekee
+// olemassaolevat ohjelma-päätökset näkyviksi. Vastaus käyttäjän epäilykseen
+// "tuleeko liikkeitä optimaalisesti" (interview Q4).
+function buildWhyThisMovementHTML(exercise, mesocycle, rec) {
+  if (!exercise || !mesocycle) return "";
+
+  const weekNum = rec?.weekNum;
+  const mesoType = mesocycle.type;
+  const role = exercise.role;
+
+  // 1. Blokin tunnistus
+  let blockName = "";
+  let blockRationale = "";
+  if (mesoType === "streetlifting_16w" && typeof weekNum === "number") {
+    if (weekNum <= 4) {
+      blockName = "Hypertrofia-blokki (vk 1–4)";
+      blockRationale = "Volyymipohjainen akkumulaatiojakso — MEV→MAV (minimum effective → maximum adaptive volume). Tavoitteena lihasmassan kasvu ja perusvoima seuraaville blokeille. Kuormat matalampia (70–80 %), toistot ja sarjat korkeampia. (Israetel 2017 — Scientific Principles of Hypertrophy)";
+    } else if (weekNum <= 8) {
+      blockName = "Voima-blokki (vk 5–8)";
+      blockRationale = "Siirtymä volyymistä intensiteettiin — hypertrofian päälle rakennetaan maksimivoimaa. Kuormat 80–90 %, toistot 3–6, volyymi laskee. Vk 8 on deload + välitesti. (Issurin 2010 — block periodization: siirtymä residual → realization)";
+    } else if (weekNum <= 12) {
+      blockName = "Intensifikaatio-blokki (vk 9–12)";
+      blockRationale = "Lähestytään MRV:tä (maximum recoverable volume). Kuormat 85–92 %, toistot 2–4. Vk 12 on RPE9-testi — kalibroi peaking-kuormat. Velocity-signaali tärkein ylikuormitus-indikaattori.";
+    } else {
+      blockName = "Peak-blokki (vk 13–16)";
+      blockRationale = "Realization phase — voiman ilmeneminen kilpailusuorituksena. Volyymi laskee jyrkästi (−50–70 %), intensiteetti huipussaan. Vk 16 = kisaviikko. Ankkuripisteet ovat näiden viikkojen luotettavin signaali. (Issurin 2010, Pritchard et al. 2015 taper)";
+    }
+  } else if (mesoType === "peaking") {
+    blockName = "Kilpailujakso";
+    blockRationale = "Peaking-mesosykli — kisaan tähtäävä taperointi. Volyymi minimissä, spesifisyys maksimissa. Kisapäivän 1./2./3. yritys lasketaan attempt-logiikalla (e1RM + pragmatic conservatism).";
+  } else if (mesoType === "hypertrofia") {
+    blockName = "Hypertrofiajakso";
+    blockRationale = "4-viikkoinen akkumulaatiojakso. Volyymi nousee kohti MAV:iä, deltaPctBase kevyt (+0–5 %).";
+  } else if (mesoType === "maksimivoima") {
+    blockName = "Maksimivoimajakso";
+    blockRationale = "Intensiteetti korkea, toistot matalat. Volyymi hallittu — tavoite: hermoston adaptaatio.";
+  } else if (mesoType === "eksentrinen") {
+    blockName = "Eksentrinen jakso";
+    blockRationale = "Hitaat eksentriikat (3–5s) — vahvistaa jänteitä ja tendonikalsifikaatiota, parantaa vipuvarsi-voimaa negatiivisessa vaiheessa.";
+  } else if (mesoType === "siirtyma" || mesoType === "palautuminen") {
+    blockName = "Siirtymä / palautuminen";
+    blockRationale = "Volyymi ja intensiteetti matalia — edellisen jakson kuormituksen residuaalit purkautuvat. Ei uutta adaptaatiota tavoitella.";
+  } else {
+    blockName = "Perusjakso";
+    blockRationale = "4-viikkoinen default-mesosykli — deltaPctBase [0, +2.5 %, +5 %, −25 %].";
+  }
+
+  // 2. Liikkeen rooli — miksi tämä rooli tässä
+  let roleRationale = "";
+  if (role === "primary") {
+    roleRationale = "**Pääliike** — päivän kovin kuormitus, e1RM-kalibroi, syöte peaking-logiikkaan. Aina ensimmäinen ennen apuliikkeitä, jotta hermostollinen kapasiteetti on täysi.";
+  } else if (role === "backoff") {
+    roleRationale = "**Back-off** — pääliikkeen jälkeen 85 % kuormalla. Lisää volyymiä ilman intensiteetin pudotusta; konsolidoi päivän tekniikkakuvion.";
+  } else if (role === "support") {
+    roleRationale = "**Tukiliike** — spesifinen jatke pääliikkeelle. Sama liikerata, kevennetty kuorma, mahdollinen variantti-variaatio heikkouksien paikkauksen takia.";
+  } else if (role === "accessory") {
+    roleRationale = "**Apuliike** — volyymi + heikkojen lihasryhmien kehitys. Valitaan slot-pohjaisesti (esim. `pull-vertical-explosive`) ja variantti vaihtuu automaattisesti joka 3. viikko estagnaation ehkäisemiseksi.";
+  } else if (role === "opener" || role === "attempt2" || role === "attempt3") {
+    roleRationale = "**Kilpailuyritys** — lasketaan `computeAttemptLoads()`-funktiolla e1RM:n ja konservatiivisuuskerrointen perusteella. Opener = varma onnistuminen, 3. = PR-tavoite.";
+  } else if (role === "warmup") {
+    roleRationale = "**Lämmittely** — valmistaa hermoston ja niveltystävällisen liikeradan päivän kovaan kuormitukseen.";
+  }
+
+  // 3. Variantti-info: miksi juuri tämä variantti
+  let variantRationale = "";
+  if (exercise.variantName) {
+    const swapSource = exercise.slotSource;
+    if (swapSource === "stagnation-swap") {
+      variantRationale = `Variantti "${exercise.variantName}" vaihdettu automaattisesti: järjestelmä havaitsi 3+ viikkoa plateau-trendin → variaatio hypertrofian ylläpitämiseksi (Israetel: progressive overload + variety).`;
+    } else if (swapSource === "user-locked") {
+      variantRationale = `Variantti "${exercise.variantName}" — käyttäjä on lukinnut tämän manuaalisesti (auto-swap pois käytöstä).`;
+    } else if (swapSource === "user-override") {
+      variantRationale = `Variantti "${exercise.variantName}" — käyttäjän valitsema.`;
+    } else {
+      variantRationale = `Variantti "${exercise.variantName}" — oletusrotaatio mesosyklin sisällä.`;
+    }
+  }
+
+  // 4. Velocity-ankkuripiste-perustelu
+  let velocityRationale = "";
+  if (exercise.allowVelocityInput && exercise.velocityStop) {
+    velocityRationale = "Tämä on **velocity-ankkuripiste** — standardoitu max-effort-sarja (opener / peaking-single), jonka MCV-data on luotettava (ei grind-kontaminaatiota). Kerää LV-profiilia.";
+  }
+
+  // Render — collapsible, default closed
+  const parts = [];
+  parts.push(`<div style="font-weight:600;font-size:13px;margin-bottom:4px">📚 ${blockName}</div>`);
+  parts.push(`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.5">${blockRationale}</div>`);
+  if (roleRationale) {
+    parts.push(`<div style="font-size:12px;margin-bottom:8px;line-height:1.5">${roleRationale.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')}</div>`);
+  }
+  if (variantRationale) {
+    parts.push(`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.5">🔀 ${variantRationale}</div>`);
+  }
+  if (velocityRationale) {
+    parts.push(`<div style="font-size:12px;color:var(--acc);margin-bottom:0;line-height:1.5">💎 ${velocityRationale.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')}</div>`);
+  }
+
+  return `<details class="why-movement-card" style="margin:6px 0 10px;padding:10px 12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;font-size:12px">
+    <summary style="cursor:pointer;user-select:none;font-weight:600;font-size:12px;color:var(--acc)">💡 Miksi tämä liike?</summary>
+    <div style="margin-top:10px">
+      ${parts.join("")}
+    </div>
+  </details>`;
 }
 
 // ── Readiness Primer (v4.21) ─────────────────────────────
@@ -4373,6 +4599,16 @@ function renderSettingsView() {
         <button class="btn btn-sm btn-outline" id="btn-import-csv">📄 Import CSV</button>
         <input type="file" id="file-csv" accept=".csv" class="hidden">
       </div>
+      <div id="auto-backup-section" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">📦 Auto-backup (viikottainen)</div>
+        <div class="muted" style="font-size:11px;margin-bottom:8px">
+          Sovellus luo automaattisen snapshotin kerran viikossa (rolling 4 viimeisintä). Pre-migration-backup tallennetaan myös localStorageen joka kerta kun tietokannan skeema päivittyy.
+        </div>
+        <div id="backup-snapshots-list" class="muted" style="font-size:11px">Ladataan…</div>
+        <div class="btn-group mt">
+          <button class="btn btn-sm btn-outline" id="btn-manual-snapshot">📦 Luo snapshot nyt</button>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -4625,6 +4861,24 @@ function bind() {
     await computeRecommendation();
     showToast(`Vk ${targetWeek} korvattu kevennyksellä 🌿`, "ok");
     render();
+  });
+
+  // v4.26.0: Luo backup nyt (dashboard-statuskortin nappi)
+  const createBackupBtn = $("#btn-create-backup-now");
+  if (createBackupBtn) createBackupBtn.addEventListener("click", async () => {
+    createBackupBtn.disabled = true;
+    createBackupBtn.textContent = "Luodaan…";
+    try {
+      await createBackupSnapshot("manual");
+      state.backupStatus = await getBackupStatus();
+      showToast("Backup luotu ✓", "ok");
+      render();
+    } catch (e) {
+      console.error("Manual backup failed:", e);
+      showToast("Backupin luonti epäonnistui", "bad");
+      createBackupBtn.disabled = false;
+      createBackupBtn.textContent = "Luo nyt";
+    }
   });
 
   document.querySelectorAll(".preview-info-btn").forEach(btn => {
@@ -5158,8 +5412,23 @@ function bind() {
     try {
       const text = await file.text();
       const data = JSON.parse(text);
+      // v4.26.0: pre-import safety — nykyisestä datasta snapshot ensin, jotta
+      // käyttäjä voi palauttaa jos tuotu backup onkin väärä.
+      const confirmed = confirm(
+        "Tuo backup — tämä korvaa KAIKEN nykyisen datasi.\n\n" +
+        "Turvaksi luodaan automaattinen snapshot nykyisestä tilasta ennen tuontia. " +
+        "Löydät sen asetusten 'Auto-backup'-osiosta, josta voit palauttaa sen takaisin tarvittaessa.\n\n" +
+        "Jatketaanko?"
+      );
+      if (!confirmed) return;
+      try {
+        await createBackupSnapshot("pre-import");
+      } catch (backupErr) {
+        console.warn("Pre-import backup failed:", backupErr);
+      }
       await importFullBackup(data);
       await refresh();
+      state.backupStatus = await getBackupStatus();
       showToast("Restore valmis", "ok");
       render();
     } catch (err) {
@@ -5198,6 +5467,26 @@ function bind() {
     await refresh();
     showToast("Data poistettu", "ok");
     render();
+  });
+
+  // v4.26.0: Auto-backup -osio asetuksissa (snapshot-lista + manuaalinen luonti)
+  renderBackupSnapshotsList();
+  const manualSnapBtn = $("#btn-manual-snapshot");
+  if (manualSnapBtn) manualSnapBtn.addEventListener("click", async () => {
+    manualSnapBtn.disabled = true;
+    manualSnapBtn.textContent = "Luodaan…";
+    try {
+      await createBackupSnapshot("manual");
+      state.backupStatus = await getBackupStatus();
+      showToast("Snapshot luotu ✓", "ok");
+      renderBackupSnapshotsList();
+      manualSnapBtn.disabled = false;
+      manualSnapBtn.textContent = "📦 Luo snapshot nyt";
+    } catch (err) {
+      showToast("Snapshotin luonti epäonnistui", "bad");
+      manualSnapBtn.disabled = false;
+      manualSnapBtn.textContent = "📦 Luo snapshot nyt";
+    }
   });
 
   // Tests

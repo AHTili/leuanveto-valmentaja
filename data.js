@@ -1,8 +1,8 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v3.0.0 — Schema version 3
+// LeVe Coach v4.26.0 — Schema version 4 (adds backupSnapshots store + pre-migration safety)
 
 const APP_VERSION = "3.2.0";
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const DB_NAME = "LeVeCoachDB";
 const TIMEZONE = "Europe/Helsinki";
 
@@ -20,6 +20,8 @@ const STORES = {
   recommendations: "recommendations",
   decisionTraces: "decisionTraces",
   movementProgress: "movementProgress",
+  // v4.26.0: viikottaiset auto-backup-snapshotit (rolling 4 viimeisintä)
+  backupSnapshots: "backupSnapshots",
 };
 
 // ── Movement categories ──
@@ -610,6 +612,94 @@ function isVelocityTypo(value, baselineMedian, threshold = 0.4) {
 // ── IndexedDB ──
 let _db = null;
 
+// ── Pre-migration backup (v4.26.0) ──
+// Jokainen IDB-skeeman bumppaus (esim. v3 → v4) on mahdollinen riski että data
+// korruptoituu migraation aikana. Tämä funktio ajetaan ENNEN openDB:tä ja
+// tarkistaa onko tietokannan nykyinen versio pienempi kuin SCHEMA_VERSION.
+// Jos on, se dumppaa KAIKKI olemassaolevat storet JSONiksi localStorageen
+// avaimella kuten "leve-coach-backup-premigration-v3-to-v4". Näin käyttäjä
+// voi palauttaa datansa manuaalisesti, jos migraatio hajoaa.
+// Idempotentti: jos backup samalle siirtymälle on jo olemassa, ei tehdä mitään.
+async function createPreMigrationBackupIfNeeded() {
+  if (!("indexedDB" in self)) return;
+  if (typeof localStorage === "undefined") return;
+
+  // Avaa olemassaoleva DB ilman versiota → saa nykyisen version
+  let currentVersion;
+  let storeNames;
+  try {
+    const db = await new Promise((resolve) => {
+      const req = indexedDB.open(DB_NAME);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    });
+    if (!db) return;
+    currentVersion = db.version;
+    storeNames = Array.from(db.objectStoreNames);
+    db.close();
+  } catch (e) {
+    console.warn("[data.js] Pre-migration check failed:", e);
+    return;
+  }
+
+  // Ensiasennus (versio 1 ja tyhjä) tai jo oikeassa versiossa → ei tarvetta
+  if (currentVersion >= SCHEMA_VERSION) return;
+  if (storeNames.length === 0) return;
+
+  const backupKey = `leve-coach-backup-premigration-v${currentVersion}-to-v${SCHEMA_VERSION}`;
+  if (localStorage.getItem(backupKey)) {
+    console.log(`[data.js] Pre-migration backup already exists: ${backupKey}`);
+    return;
+  }
+
+  // Dumppaa kaikki olemassaolevat storet
+  const dump = {};
+  try {
+    const db = await new Promise((resolve) => {
+      const req = indexedDB.open(DB_NAME, currentVersion);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+    if (!db) return;
+
+    for (const storeName of storeNames) {
+      dump[storeName] = await new Promise((resolve) => {
+        try {
+          const tx = db.transaction(storeName, "readonly");
+          const req = tx.objectStore(storeName).getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => resolve([]);
+        } catch (e) {
+          resolve([]);
+        }
+      });
+    }
+    db.close();
+  } catch (e) {
+    console.error("[data.js] Pre-migration dump failed:", e);
+    return;
+  }
+
+  // Tallenna localStorageen
+  try {
+    const payload = {
+      backupType: "pre-migration",
+      fromVersion: currentVersion,
+      toVersion: SCHEMA_VERSION,
+      createdAtISO: new Date().toISOString(),
+      data: dump,
+    };
+    const serialized = JSON.stringify(payload);
+    localStorage.setItem(backupKey, serialized);
+    const sizeKB = Math.round(serialized.length / 1024);
+    console.log(`[data.js] ✓ Pre-migration backup created: ${backupKey} (${sizeKB} KB)`);
+  } catch (e) {
+    // QuotaExceededError — localStorage täynnä. Ei blokata migraatiota.
+    console.error("[data.js] ⚠️ Pre-migration backup failed (quota?):", e);
+  }
+}
+
 function openDB() {
   return new Promise((resolve, reject) => {
     if (!("indexedDB" in self)) {
@@ -671,6 +761,11 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains(STORES.movementProgress)) {
         db.createObjectStore(STORES.movementProgress, { keyPath: "movementId" });
+      }
+      // v4.26.0: backupSnapshots-store (viikottaiset auto-backupit, rolling 4)
+      if (!db.objectStoreNames.contains(STORES.backupSnapshots)) {
+        const store = db.createObjectStore(STORES.backupSnapshots, { keyPath: "snapshotId" });
+        store.createIndex("createdAtISO", "createdAtISO", { unique: false });
       }
     };
 
@@ -1169,9 +1264,15 @@ async function saveSettings(settings) {
 }
 
 // ── Backup / Restore ──
+// v4.26.0: backupSnapshots-store EI sisälly full exportiin (rekursio-suoja).
+// Snapshot-data koostuu kaikista MUISTA storeista — snapshotit ovat itsenäinen
+// kerros jota ei dumpata takaisin snapshottiin.
+const BACKUP_EXCLUDED_STORES = new Set(["backupSnapshots"]);
+
 async function exportFullBackup() {
   const data = {};
   for (const storeName of Object.values(STORES)) {
+    if (BACKUP_EXCLUDED_STORES.has(storeName)) continue;
     data[storeName] = await dbGetAll(storeName);
   }
   data._meta = {
@@ -1187,13 +1288,15 @@ async function importFullBackup(data) {
     throw new Error("Virheellinen backup-tiedosto");
   }
 
-  // Clear all stores
+  // Clear all stores (paitsi backupSnapshots — ne säilyvät restoren yli)
   for (const storeName of Object.values(STORES)) {
+    if (BACKUP_EXCLUDED_STORES.has(storeName)) continue;
     await dbClear(storeName);
   }
 
-  // Import each store
+  // Import each store (paitsi excluded)
   for (const storeName of Object.values(STORES)) {
+    if (BACKUP_EXCLUDED_STORES.has(storeName)) continue;
     if (Array.isArray(data[storeName]) && data[storeName].length > 0) {
       await dbPutBulk(storeName, data[storeName]);
     }
@@ -1204,6 +1307,87 @@ async function importFullBackup(data) {
   if (movements.length === 0) {
     await seedPresets();
   }
+}
+
+// ── Auto-Backup (v4.26.0) ──
+// Viikottainen snapshot IDB:hen backupSnapshots-storeen. Rolling 4 viimeisintä.
+// Suojaa sen kohdilta jotka import/export ei tavoita: käyttäjä ei muista vientiä.
+
+const MAX_SNAPSHOTS = 4;              // rolling buffer
+const BACKUP_INTERVAL_DAYS = 7;
+
+async function getLatestBackupSnapshot() {
+  const all = await dbGetAll(STORES.backupSnapshots);
+  if (!all.length) return null;
+  all.sort((a, b) => (b.createdAtISO || "").localeCompare(a.createdAtISO || ""));
+  return all[0];
+}
+
+async function getBackupStatus() {
+  const latest = await getLatestBackupSnapshot();
+  if (!latest) {
+    return { hasBackup: false, daysSince: null, status: "missing" };
+  }
+  const ms = Date.now() - new Date(latest.createdAtISO).getTime();
+  const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+  let status = "fresh"; // vihreä
+  if (days >= BACKUP_INTERVAL_DAYS) status = "stale"; // keltainen
+  if (days >= BACKUP_INTERVAL_DAYS * 2) status = "overdue"; // oranssi
+  return { hasBackup: true, daysSince: days, status, snapshotId: latest.snapshotId };
+}
+
+async function createBackupSnapshot(triggerReason = "manual") {
+  const data = await exportFullBackup();
+  const snapshot = {
+    snapshotId: uid(),
+    createdAtISO: nowISO(),
+    triggerReason, // "weekly-auto" | "manual" | "pre-import"
+    sizeBytes: JSON.stringify(data).length,
+    data, // täysi dump
+  };
+  await dbPut(STORES.backupSnapshots, snapshot);
+  // Rolling: poista vanhimmat jos > MAX_SNAPSHOTS
+  const all = await dbGetAll(STORES.backupSnapshots);
+  if (all.length > MAX_SNAPSHOTS) {
+    all.sort((a, b) => (a.createdAtISO || "").localeCompare(b.createdAtISO || ""));
+    const toDelete = all.slice(0, all.length - MAX_SNAPSHOTS);
+    for (const old of toDelete) {
+      await dbDelete(STORES.backupSnapshots, old.snapshotId);
+    }
+  }
+  return snapshot;
+}
+
+async function maybeCreateWeeklyBackup() {
+  const status = await getBackupStatus();
+  if (!status.hasBackup || status.daysSince >= BACKUP_INTERVAL_DAYS) {
+    try {
+      const snap = await createBackupSnapshot("weekly-auto");
+      console.log(`[data.js] ✓ Weekly auto-backup created (${Math.round(snap.sizeBytes/1024)} KB)`);
+      return snap;
+    } catch (e) {
+      console.error("[data.js] Weekly auto-backup failed:", e);
+      return null;
+    }
+  }
+  return null;
+}
+
+async function getAllBackupSnapshots() {
+  const all = await dbGetAll(STORES.backupSnapshots);
+  all.sort((a, b) => (b.createdAtISO || "").localeCompare(a.createdAtISO || ""));
+  return all;
+}
+
+async function restoreFromSnapshot(snapshotId) {
+  const snap = await dbGet(STORES.backupSnapshots, snapshotId);
+  if (!snap || !snap.data) {
+    throw new Error("Snapshotia ei löydy tai se on rikki");
+  }
+  // Pre-restore safety: luo nykyisestä tilasta snapshot ensin
+  await createBackupSnapshot("pre-restore");
+  // Restore
+  await importFullBackup(snap.data);
 }
 
 // ── CSV Import (historical data) ──
@@ -2368,11 +2552,17 @@ async function getAllVariants() {
 
 // ── Initialize database ──
 async function initDB() {
+  // v4.26.0: tarkista ja luo pre-migration-backup ENNEN openDB:tä
+  // (openDB triggaa onupgradeneeded jos versio on bumpattu)
+  await createPreMigrationBackupIfNeeded();
+
   await openDB();
   if (_db) {
     await seedPresets();
     await ensureAllVariantsSeeded();
     await updateLastOpened();
+    // v4.26.0: viikottainen auto-backup (tarkistaa onko 7+ pv edellisestä)
+    await maybeCreateWeeklyBackup();
   }
   return _db;
 }
@@ -3081,6 +3271,13 @@ export {
   // Backup / Restore
   exportFullBackup,
   importFullBackup,
+  // Auto-backup (v4.26.0)
+  getBackupStatus,
+  getLatestBackupSnapshot,
+  getAllBackupSnapshots,
+  createBackupSnapshot,
+  maybeCreateWeeklyBackup,
+  restoreFromSnapshot,
   // CSV
   parseCSV,
   importHistoricalCSV,
