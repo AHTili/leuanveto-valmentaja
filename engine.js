@@ -708,6 +708,87 @@ function initialWeightFrom1RM(oneRepMax) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// BLOCK RESOLUTION & ACCESSORY SCALAR (v4.25 P1-10)
+// ═══════════════════════════════════════════════════════════════
+//
+// Periodisointiteoria (Issurin 2010, Israetel 2017):
+// Accessory-volyymin tulisi laskea kun primary-intensiteetti nousee.
+// Blokki 1 (hypertrofia) = full volume; blokki 4 (realization) = minimal.
+// Tämä estää kumulatiivisen väsymyksen ennen kisaa ja pitää
+// primary-liikkeiden palautumisen priorisoituna loppukaudella.
+//
+// Skaalarit (soveltuvat vain streetlifting_16w-mesosykleihin):
+//   Vk 1-4  → 1.00 (hypertrofia: full accessory volume)
+//   Vk 5-8  → 0.85 (voima: -15% accessory)
+//   Vk 9-12 → 0.70 (intensifikaatio: -30% accessory)
+//   Vk 13-16 → 0.50 (realization/taper: -50% accessory)
+
+function getBlockForWeek(weekNum) {
+  if (weekNum <= 4) return 1;
+  if (weekNum <= 8) return 2;
+  if (weekNum <= 12) return 3;
+  return 4;
+}
+
+const ACCESSORY_BLOCK_SCALARS = { 1: 1.00, 2: 0.85, 3: 0.70, 4: 0.50 };
+
+function getAccessoryBlockScalar(weekNum) {
+  return ACCESSORY_BLOCK_SCALARS[getBlockForWeek(weekNum)] ?? 1.0;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MU LOAD AUTOREGULATION (v4.25 P1-9)
+// ═══════════════════════════════════════════════════════════════
+//
+// MU on teknis-voimahybridi: e1RM ei ole luotettava (bimodaalinen
+// success/fail), joten progressio tapahtuu absoluuttisina kg-askelina
+// edellisen session Vx-havainnoista:
+//
+//   Kaikki sarjat Vx ≥ 3  → +2.5 kg (helppo, nosta)
+//   Keskimäärin Vx 2-3    → +0 kg (optimaalinen kuormitus, pidä)
+//   Keskimäärin Vx 1-2    → -2.5 kg (liian raskas, pudota)
+//   Yksikin sarja Vx 0    → -5 kg (failure, reset)
+//
+// Returns: { suggestedDeltaKg, reason, avgVx }
+
+function adjustMULoad(recentMUSets) {
+  if (!recentMUSets || recentMUSets.length === 0) {
+    return { suggestedDeltaKg: 0, reason: "no-history", avgVx: null };
+  }
+  const lastSession = recentMUSets.slice(-3); // viim. 3 sarjaa ~= viim. sessio
+  const varas = lastSession.map(s => s.actualVx).filter(v => v !== null && v !== undefined);
+  if (varas.length === 0) {
+    return { suggestedDeltaKg: 0, reason: "no-vx-data", avgVx: null };
+  }
+  const minVx = Math.min(...varas);
+  const avgVx = varas.reduce((a, b) => a + b, 0) / varas.length;
+
+  if (minVx === 0) return { suggestedDeltaKg: -5, reason: "failure-reset", avgVx };
+  if (avgVx >= 3) return { suggestedDeltaKg: 2.5, reason: "all-easy-progress", avgVx };
+  if (avgVx >= 2) return { suggestedDeltaKg: 0, reason: "optimal-hold", avgVx };
+  return { suggestedDeltaKg: -2.5, reason: "too-hard-backoff", avgVx };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FAILURE LOCKOUT (v4.25 P2-16)
+// ═══════════════════════════════════════════════════════════════
+//
+// Jos edellisen primary-session jokin sarja päättyi Vx 0 (failure), seuraava
+// sessio ei saa nostaa kuormaa. Tämä estää kumulatiivista ylikuormaa atleetin
+// tunnetun grinding-taipumuksen alla (user_athlete_profile.md: "aliarvioi Vx").
+//
+// Returns: true if last session had Vx=0, false otherwise.
+
+function hadFailureLastSession(recentTopSets) {
+  if (!recentTopSets || recentTopSets.length === 0) return false;
+  // Group by sessionId to find the most recent session
+  const lastSessionId = recentTopSets[recentTopSets.length - 1].sessionId;
+  if (!lastSessionId) return false;
+  const lastSessionSets = recentTopSets.filter(s => s.sessionId === lastSessionId);
+  return lastSessionSets.some(s => s.actualVx === 0);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // DEFAULT DAY PLAN GENERATOR
 // ═══════════════════════════════════════════════════════════════
 
@@ -965,6 +1046,15 @@ async function recommend(options = {}) {
     trace("BREAK_MODIFIER", { deltaPct: oldDelta }, { deltaPct: deltaPctRawValue }, `Tauko-modifikaattori: ${breakInfo.modifier * 100}%`);
   }
 
+  // 8b. Failure lockout (v4.25 P2-16): jos edellinen sessio meni failureen
+  // (Vx 0), ei nosteta kuormaa. Suojaa atleetin grinding-taipumukselta.
+  if (hadFailureLastSession(recentTopSets) && deltaPctRawValue > 0) {
+    const oldDelta = deltaPctRawValue;
+    deltaPctRawValue = Math.min(deltaPctRawValue, 0);
+    trace("FAILURE_LOCKOUT", { deltaPct: oldDelta }, { deltaPct: deltaPctRawValue },
+      "Edellinen sessio Vx 0 → kuormaa ei nosteta (failure-lockout)");
+  }
+
   // 9. Clamp
   const maxDelta = settings.maxDelta || 0.25;
   let deltaPct = clamp(deltaPctRawValue, -maxDelta, maxDelta);
@@ -1119,6 +1209,59 @@ async function recommend(options = {}) {
       }
       return s;
     })};
+  }
+
+  // v4.25 P1-10: Block-based accessory volume scaling.
+  // Vain streetlifting_16w. Skaalaa accessory-sarjojen määrää alaspäin
+  // myöhemmissä blokeissa (hypertrofia → voima → intensifikaatio → realization).
+  // Ei vaikuta primary/secondary/backoff-sarjoihin — vain accessory.
+  if (mesocycle.type === "streetlifting_16w" && dayPlan && dayPlan.slots) {
+    const blockScalar = getAccessoryBlockScalar(weekNum);
+    if (blockScalar < 1.0) {
+      const blockNum = getBlockForWeek(weekNum);
+      dayPlan = { ...dayPlan, slots: dayPlan.slots.map(s => {
+        if (s.role === "accessory" && s.sets > 1) {
+          const scaledSets = Math.max(1, Math.round(s.sets * blockScalar));
+          return { ...s, sets: scaledSets, _blockScaled: true };
+        }
+        return s;
+      })};
+      trace("ACCESSORY_BLOCK_SCALAR", {}, { block: blockNum, scalar: blockScalar, weekNum },
+        `Blokki ${blockNum} (vk ${weekNum}) → accessory-volyymi × ${blockScalar} (Issurin 2010)`);
+    }
+  }
+
+  // v4.25 P1-9: MU load autoregulation.
+  // Jos primary-slot on Muscle-up (tai slot.muAutoRegulate=true), säädä
+  // suggestedLoadKg edellisen MU-session Vx-havaintojen perusteella.
+  // Vaikuttaa vain MU-slotteihin joilla on muAutoRegulate=true (laDay:ssa
+  // asetettu skillwork-polulle false, kuormitetuille true).
+  if (dayPlan && dayPlan.slots) {
+    const muSlot = dayPlan.slots.find(s =>
+      s.muAutoRegulate === true &&
+      (s.defaultMovementName === "Muscle-up" || s.defaultMovementName === "Muscle up")
+    );
+    if (muSlot && typeof muSlot.suggestedLoadKg === "number") {
+      // Hae viim. MU-setit
+      const allMovs = options.allMovements || await getAllMovements();
+      const muMov = allMovs.find(m => m.name === "Muscle-up" || m.name === "Muscle up");
+      if (muMov) {
+        const muSets = allSets
+          .filter(s => s.movementId === muMov.movementId && (s.setRole === "top" || !s.setRole))
+          .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""))
+          .slice(-6);
+        const adj = adjustMULoad(muSets);
+        if (adj.suggestedDeltaKg !== 0) {
+          const newKg = Math.max(0, muSlot.suggestedLoadKg + adj.suggestedDeltaKg);
+          dayPlan = { ...dayPlan, slots: dayPlan.slots.map(s =>
+            s === muSlot ? { ...s, suggestedLoadKg: newKg, _muAdjusted: adj } : s
+          )};
+          trace("MU_AUTO_REGULATE", { loadKg: muSlot.suggestedLoadKg },
+            { loadKg: newKg, reason: adj.reason, avgVx: adj.avgVx?.toFixed(1) },
+            `MU kuorma ${adj.suggestedDeltaKg > 0 ? "+" : ""}${adj.suggestedDeltaKg} kg (${adj.reason}, edell. Vx ka. ${adj.avgVx?.toFixed(1) ?? "–"})`);
+        }
+      }
+    }
   }
 
   // 15b. Resolve accessory slots (slotId → phase-appropriate movement, honoring overrides + stagnation)
@@ -2235,6 +2378,13 @@ export {
   suggestAccessorySwaps,
   // Default plan
   generateDefaultDayPlan,
+  // Block periodization (v4.25 P1-10)
+  getBlockForWeek,
+  getAccessoryBlockScalar,
+  // MU autoregulation (v4.25 P1-9)
+  adjustMULoad,
+  // Failure lockout (v4.25 P2-16)
+  hadFailureLastSession,
   // Readiness test
   readinessTestLoad,
   // Speed

@@ -87,6 +87,30 @@ suositus?" -collapsible-kortissa.
 **Toiminta**: accessory-sarjat -30 % volyymi.
 **Tarkoitus**: CNS-suojelu todella huonoina päivinä.
 
+### `ACCESSORY_BLOCK_SCALAR` (v4.25)
+**Laukaisu**: streetlifting_16w-mesosykli JA weekNum > 4.
+**Laskenta**: blokkipohjainen accessory-kerroin:
+- Vk 1-4 (hypertrofia) → 1.00
+- Vk 5-8 (voima) → 0.85
+- Vk 9-12 (intensifikaatio) → 0.70
+- Vk 13-16 (realization/taper) → 0.50
+**Toiminta**: kertoo accessory-slottien sets-määrän blokki-kertoimella (min 1).
+**Evidenssi**: Issurin 2010 (block periodization), Israetel 2017 (MEV/MAV/MRV taper).
+
+### `FAILURE_LOCKOUT` (v4.25)
+**Laukaisu**: edellisen primary-session jokin sarja actualVx === 0.
+**Toiminta**: deltaPctRaw clampataan ≤ 0 — ei nosteta kuormaa.
+**Tarkoitus**: atleetin tunnettu grinding-taipumus (aliarvioi Vx) → suoja.
+
+### `MU_AUTO_REGULATE` (v4.25)
+**Laukaisu**: dayPlan sisältää Muscle-up-slotin jolla muAutoRegulate=true.
+**Laskenta**: edellisen MU-session Vx-havainnoista (viim. 3 sarjaa):
+- Kaikki Vx ≥ 3 → +2.5 kg
+- Ka. Vx 2-3 → 0 kg (pidä)
+- Ka. Vx 1-2 → -2.5 kg
+- Min Vx === 0 → -5 kg (failure reset)
+**Evidenssi**: MU:n bimodaalinen onnistuminen tekee e1RM:stä epäluotettavan; Vx-absoluuttikorjaus on luotettavampi. Helms RPE-based load adjustment adaptoituna skill-lift-kontekstiin.
+
 ---
 
 ## Accessory slot resolution
