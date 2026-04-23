@@ -771,6 +771,7 @@ import {
   eliteVolumeCheck,
   computeMovementE1RM, computeMovementE1RMHistory,
   REST_RECOMMENDATIONS,
+  pickRestForExercise,
   DEFAULT_VARIANT_MODIFIERS,
   SUGGESTED_NEXT_TEMPLATE,
   readinessTestLoad,
@@ -1830,6 +1831,27 @@ function renderDashboard() {
   const r = state.readiness;
   const today = todayISO();
   const meso = state.mesocycle;
+
+  // v4.27.3: Mesosykli on päättynyt → näytä ilmoitus käyttäjälle eikä anna
+  // sovelluksen hiljaisesti vaihtaa oletukseen. Käyttäjä valitsee seuraavan
+  // ohjelman Mesosykli-näkymästä.
+  if (rec?.error === "mesocycle-ended") {
+    const prevType = rec.prevMesocycleType || "edellinen";
+    const prevTpl = MESOCYCLE_TEMPLATES.find(t => t.id === prevType);
+    const prevLabel = prevTpl?.label || prevType;
+    return `<div class="card" style="padding:20px;margin:16px;background:linear-gradient(135deg,rgba(139,92,246,0.12),rgba(59,130,246,0.08));border:1px solid rgba(139,92,246,0.3)">
+      <div style="font-size:28px;margin-bottom:8px">🏁</div>
+      <h2 style="margin:0 0 8px 0;font-size:20px">Mesosykli on päättynyt</h2>
+      <p style="margin:0 0 16px 0;line-height:1.5;color:var(--muted)">
+        Edellinen ohjelmasi <b>${prevLabel}</b> on suoritettu loppuun. Valitse seuraava jakso itse — emme vaihda ohjelmaa puolestasi.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn-primary" data-nav="mesocycle" style="padding:12px">📋 Valitse uusi ohjelma</button>
+        <div style="font-size:12px;color:var(--muted);text-align:center;margin-top:4px">Aiemmat tuloksesi + e1RM säilyvät.</div>
+      </div>
+    </div>`;
+  }
+
   const weekNum = rec?.weekNum ?? null;
   const weekLabel = rec?.weekLabel || "";
   const dayType = rec?.dayType || "heavy";
@@ -2435,10 +2457,8 @@ function renderActiveWorkout() {
   const loadUnit = loadKg === 0 ? "kehonpaino" : "kg lisäpainoa";
   const isLoadIncrease = exercise.progressSuggestion === "increase";
 
-  // Rest time recommendation
-  const restRec = exercise.role === "primary" || exercise.role === "backoff"
-    ? REST_RECOMMENDATIONS[state.workout.dayType] || REST_RECOMMENDATIONS.heavy
-    : REST_RECOMMENDATIONS.accessory;
+  // Rest time recommendation (compound accessories get longer rest than isolation)
+  const restRec = pickRestForExercise(exercise, state.workout.dayType);
 
   // Completed sets (work sets only, warmup omitted)
   const completedWorkSets = exercise.sets.filter(s => s.completed && !s.isWarmup);
@@ -2581,6 +2601,10 @@ function renderActiveWorkout() {
     const isTarget = n === targetReps;
     return `<button class="${isTarget ? "target" : ""}" data-reps="${n}">${n}</button>`;
   }).join("");
+  const repsRow3 = [11,12,13,14,15].map(n => {
+    const isTarget = n === targetReps;
+    return `<button class="${isTarget ? "target" : ""}" data-reps="${n}">${n}</button>`;
+  }).join("");
   const varaRow = [0,1,2,3,4,5].map(n => {
     const isTarget = n === targetVx;
     return `<button class="${isTarget ? "target" : ""}" data-vara="${n}">V${n}</button>`;
@@ -2607,9 +2631,10 @@ function renderActiveWorkout() {
     : `<input type="hidden" id="input-set-velocity" value="">`;
 
   const inputSectionHTML = isWarmupSet ? "" : `<div class="input-section">
-    <div class="input-label">Toistot <span class="hint">◆ = tavoite</span></div>
+    <div class="input-label">Toistot <span class="hint">◆ = tavoite · 15+ → pidä painettuna</span></div>
     <div class="reps-row" id="reps-btns">${repsRow1}</div>
     <div class="reps-row" style="margin-top:6px">${repsRow2}</div>
+    <div class="reps-row" style="margin-top:6px">${repsRow3}<button id="btn-reps-more" data-reps-more="1" title="Syötä itse">…</button></div>
 
     <div class="input-label" style="margin-top:14px">Vara <span class="hint">etäisyys failureen</span></div>
     <div class="vara-row" id="vara-btns">${varaRow}</div>
@@ -3196,9 +3221,7 @@ function startRestTimer() {
   stopRestTimer();
   const dayType = state.workout?.dayType || "heavy";
   const exercise = state.workout?.exercises[state.workout.currentExerciseIdx];
-  const restRec = (exercise?.role === "primary" || exercise?.role === "backoff")
-    ? REST_RECOMMENDATIONS[dayType] || REST_RECOMMENDATIONS.heavy
-    : REST_RECOMMENDATIONS.accessory;
+  const restRec = pickRestForExercise(exercise, dayType);
   const exLabel = exercise?.name ? `LEPO · ${(exercise.name.split(" ")[0] || exercise.name).toUpperCase()}` : "LEPO";
   _restRecCache = { ...restRec, exerciseLabel: exLabel };
   _restTargetSec = restRec.minSec || 120;
@@ -6172,8 +6195,28 @@ function bindWorkoutEvents() {
   $$("[data-reps]").forEach(btn => {
     btn.addEventListener("click", () => {
       $$("[data-reps]").forEach(b => b.classList.remove("selected"));
+      $$("[data-reps-more]").forEach(b => b.classList.remove("selected"));
       btn.classList.add("selected");
       selectedReps = parseInt(btn.dataset.reps);
+      checkNextSetEnabled();
+    });
+  });
+
+  // "…" manual-reps button: prompt for arbitrary integer (supports AMRAP / 15+)
+  $$("[data-reps-more]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const input = window.prompt("Syötä toistomäärä (1–50):", selectedReps ? String(selectedReps) : "");
+      if (input === null) return;
+      const n = parseInt(input, 10);
+      if (!Number.isFinite(n) || n < 1 || n > 50) {
+        alert("Anna kokonaisluku välillä 1–50.");
+        return;
+      }
+      $$("[data-reps]").forEach(b => b.classList.remove("selected"));
+      $$("[data-reps-more]").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      btn.textContent = String(n);
+      selectedReps = n;
       checkNextSetEnabled();
     });
   });

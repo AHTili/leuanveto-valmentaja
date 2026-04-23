@@ -39,8 +39,50 @@ const REST_RECOMMENDATIONS = {
   volume: { minSec: 120, maxSec: 180, label: "2–3 min" },
   speed: { minSec: 90, maxSec: 120, label: "1.5–2 min" },
   competition: { minSec: 300, maxSec: 600, label: "5–10 min" },
-  accessory: { minSec: 60, maxSec: 120, label: "1–2 min" },
+  accessory: { minSec: 90, maxSec: 150, label: "1.5–2.5 min" },
+  accessoryCompound: { minSec: 120, maxSec: 180, label: "2–3 min" },
+  accessoryIsolation: { minSec: 60, maxSec: 90, label: "1–1.5 min" },
 };
+
+/**
+ * Pick the appropriate rest recommendation for an exercise based on its role,
+ * category, and target Vx. Compound accessories with loaded targetVx need more
+ * rest to avoid grinding; isolation work (curls, delt raises) can stay short.
+ *
+ * @param {object} exercise - { role, category, targetVx, reps }
+ * @param {string} dayType - "heavy" | "volume" | "speed" | "competition"
+ * @returns {{ minSec: number, maxSec: number, label: string }}
+ */
+function pickRestForExercise(exercise, dayType) {
+  if (!exercise) return REST_RECOMMENDATIONS.heavy;
+
+  // Primary & back-off follow the day type
+  if (exercise.role === "primary" || exercise.role === "backoff") {
+    return REST_RECOMMENDATIONS[dayType] || REST_RECOMMENDATIONS.heavy;
+  }
+  // Competition attempts always get long rest
+  if (exercise.role === "opener" || exercise.role === "attempt2" || exercise.role === "attempt3") {
+    return REST_RECOMMENDATIONS.competition;
+  }
+
+  // Accessory / support: differentiate compound vs isolation
+  const compoundCategories = new Set([
+    "vertikaaliveto", "vertikaalityöntö",
+    "horisontaaliveto", "horisontaalityöntö",
+    "polvidominantti", "lonkkadominantti",
+  ]);
+  const isCompoundCategory = compoundCategories.has(exercise.category);
+  const hasLoadedTarget = exercise.targetVx !== null && exercise.targetVx !== undefined && exercise.targetVx <= 3;
+  const isLowRep = typeof exercise.reps === "number" && exercise.reps <= 8;
+
+  if (isCompoundCategory && (hasLoadedTarget || isLowRep)) {
+    return REST_RECOMMENDATIONS.accessoryCompound;
+  }
+  if (!hasLoadedTarget && (typeof exercise.reps !== "number" || exercise.reps >= 10)) {
+    return REST_RECOMMENDATIONS.accessoryIsolation;
+  }
+  return REST_RECOMMENDATIONS.accessory;
+}
 
 const READINESS_CLASSES = { GREEN: 0, YELLOW: 1, RED: 2 };
 
@@ -1000,11 +1042,35 @@ async function recommend(options = {}) {
         e1rmSystem: null,
       };
     }
-    // after-end: mesosykli on päättynyt → aloitetaan uusi default
-    mesocycle = createDefaultMesocycle(dateISO);
-    if (!options.dryRun) await saveMesocycle(mesocycle);
-    weekNum = 1;
-    trace("MESOCYCLE_NEW_CYCLE", {}, { weekNum: 1 }, "Edellinen mesosykli päättyi → uusi aloitettu");
+    // after-end: mesosykli on päättynyt → EI luoda hiljaisesti uutta.
+    // v4.27.3 korjaus: aiempi versio loi automaattisesti createDefaultMesocycle:n
+    // (leuka-focus) vaikka käyttäjä olisi ollut esim. streetlifting_16w-ohjelmassa.
+    // Tämä tarkoitti että treeni-sessionin tallennuksen jälkeen sovellus saattoi
+    // "vaihtaa ohjelman" ilman käyttäjän lupaa, koska getActiveMesocycle() palautti
+    // tuoreimman mesosyklin = uuden defaultin.
+    //
+    // Nyt palautetaan sama pattern kuin MESOCYCLE_BEFORE_START: virhe jonka UI
+    // käsittelee näyttämällä "Aloita uusi sykli" -painikkeen käyttäjälle.
+    trace("MESOCYCLE_ENDED", {}, {
+      prevType: mesocycle.type,
+      prevStartDateISO: mesocycle.startDateISO,
+      requestedDate: dateISO,
+    }, `Edellinen mesosykli (${mesocycle.type}) on päättynyt — käyttäjän tulee valita seuraava`);
+    return {
+      dateISO,
+      error: "mesocycle-ended",
+      errorMessage: `Edellinen mesosykli (${mesocycle.type}) on päättynyt — aloita uusi sykli Mesosykli-näkymästä`,
+      prevMesocycleType: mesocycle.type,
+      prevMesocycleId: mesocycle.mesocycleId,
+      traces,
+      dayPlan: null,
+      dayType: null,
+      weekNum: null,
+      weekLabel: null,
+      targetExternalLoad: null,
+      e1rmExternal: null,
+      e1rmSystem: null,
+    };
   }
 
   let weekDef = getWeekDef(mesocycle, weekNum);
@@ -2445,6 +2511,7 @@ export {
   DAY_TYPE_MULTIPLIERS,
   DAY_TYPE_SET_RECIPES,
   REST_RECOMMENDATIONS,
+  pickRestForExercise,
   READINESS_CLASSES,
   SUGGESTED_NEXT_TEMPLATE,
   // Math

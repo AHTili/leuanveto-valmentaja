@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.2 — Lift-spesifit variantit kaikille primaryille (DL/bench/kyykky/OHP nostettu eliittitasolle, leuka-identity säilyy)
+// LeVe Coach v4.27.3 — Bugikorjaukset: mesosykli ei vaihdu hiljaisesti loppuessaan, tukiliikkeiden lepoajat kalibroitu compound/isolation-jaon mukaan, rep-napit 1–15 + manuaalisyöttö
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
