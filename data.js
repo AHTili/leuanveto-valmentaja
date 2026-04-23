@@ -2481,11 +2481,16 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   // [] → vain core.
   // [...slots] → erikoislistaus (esim. finisherAcc taper-viikoille).
   function maDay(label, sets, reps, vx, primaryPct, backoffPct, topPct, accessoryList) {
+    // v4.25.1 (Enode): allowVelocityInput merkitsee ankkuripisteet joissa
+    // per-sarja-velocity on puhdas signaali (ei grind-kontaminaatiota).
+    // Primary: vain jos reps===1 JA loadPct ≥ 0.85 (top single/peaking).
+    // Top single -slot: aina.
+    const primaryIsAnchor = reps === 1 && primaryPct >= 0.85;
     const slots = [
       { role:"primary", category:"vertikaaliveto", defaultMovementName:"Lisäpainoleuanveto",
         sets, reps, targetVx:vx, loadPct:primaryPct, suggestedLoadKg:seedL(primaryPct),
         competitionLift:true, velocityStop: vx <= 1 ? 0.45 : vx <= 2 ? 0.50 : 0.60,
-        warmupSets: RAMP_DEFAULT },
+        warmupSets: RAMP_DEFAULT, allowVelocityInput: primaryIsAnchor },
     ];
     if (backoffPct) {
       slots.push({ role:"backoff", category:"vertikaaliveto", defaultMovementName:"Lisäpainoleuanveto",
@@ -2497,7 +2502,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       const rpeLabel = topPct >= 0.97 ? "RPE 9.5" : topPct >= 0.95 ? "RPE 9" : topPct >= 0.92 ? "RPE 8–8.5" : "RPE 8";
       slots.push({ role:"secondary", category:"vertikaaliveto", defaultMovementName:"Lisäpainoleuanveto",
         sets:1, reps:1, targetVx:1, loadPct:topPct, suggestedLoadKg:seedL(topPct),
-        note:`Top single ${rpeLabel}`, velocityStop: 0.40 });
+        note:`Top single ${rpeLabel}`, velocityStop: 0.40, allowVelocityInput: true });
     }
     // v4.25 P2-17: Core-slot MA/TI/TO-päiviin lisätään accessoryna
     const accessories = accessoryList === undefined ? pullAcc() : accessoryList;
@@ -2517,12 +2522,14 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
 
   function tiDay(label, sets, reps, vx, primaryPct, topPct, accessoryList) {
     const backoffPct = Math.round(primaryPct * 0.80 * 100) / 100;  // 80 % primary-intensiteetistä (pause squat)
+    const primaryIsAnchor = reps === 1 && primaryPct >= 0.85;
     const slots = [
       { role:"primary", category:"alaraaja", defaultMovementName:"Takakyykky",
         sets, reps, targetVx:vx, loadPct:primaryPct, suggestedLoadKg:seedK(primaryPct),
         competitionLift:true, isBarbell:true,
         velocityStop: vx <= 1 ? 0.35 : vx <= 2 ? 0.40 : 0.50,
-        warmupSets: RAMP_BARBELL.slice(0, topPct ? 5 : 4) },
+        warmupSets: RAMP_BARBELL.slice(0, topPct ? 5 : 4),
+        allowVelocityInput: primaryIsAnchor },
       { role:"backoff", category:"alaraaja", defaultMovementName:"Takakyykky",
         sets:3, reps:reps, targetVx:vx+1, loadPct:backoffPct, suggestedLoadKg:seedK(backoffPct),
         note:"Pause squat 2s", isBarbell:true, velocityStop: 0.45 },
@@ -2531,7 +2538,8 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       const rpeLabel = topPct >= 0.97 ? "RPE 9.5" : topPct >= 0.95 ? "RPE 9" : topPct >= 0.92 ? "RPE 8–8.5" : "RPE 8";
       slots.push({ role:"secondary", category:"alaraaja", defaultMovementName:"Takakyykky",
         sets:1, reps:1, targetVx:1, loadPct:topPct, suggestedLoadKg:seedK(topPct),
-        note:`Top single ${rpeLabel}`, isBarbell:true, velocityStop: 0.30 });
+        note:`Top single ${rpeLabel}`, isBarbell:true, velocityStop: 0.30,
+        allowVelocityInput: true });
     }
     const accessories = accessoryList === undefined ? lowerAcc() : accessoryList;
     const coreSlot = slotAccessory("core-hollow", "core", "Ab wheel rollout", { sets:2, reps:10, targetVx:3 });
@@ -2548,12 +2556,14 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   }
 
   function toDay(label, sets, reps, vx, primaryPct, backoffPct, topPct, accessoryList) {
+    const primaryIsAnchor = reps === 1 && primaryPct >= 0.85;
     const slots = [
       { role:"primary", category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
         sets, reps, targetVx:vx, loadPct:primaryPct, suggestedLoadKg:seedD(primaryPct),
         competitionLift:true,
         velocityStop: vx <= 1 ? 0.45 : vx <= 2 ? 0.50 : 0.60,
         warmupSets: RAMP_DEFAULT,
+        allowVelocityInput: primaryIsAnchor,
         techniqueNote: "Kontrolloitu alakohta — ei bouncea. Olkapää noin 90° tai hieman yli. Pec-tear-riski korkea bounce-variaatiossa raskailla kuormilla." },
     ];
     if (backoffPct) {
@@ -2565,7 +2575,8 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       const rpeLabel = topPct >= 0.97 ? "RPE 9.5" : topPct >= 0.95 ? "RPE 9" : topPct >= 0.92 ? "RPE 8–8.5" : "RPE 8";
       slots.push({ role:"secondary", category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
         sets:1, reps:1, targetVx:1, loadPct:topPct, suggestedLoadKg:seedD(topPct),
-        note:`Top single ${rpeLabel}`, velocityStop: 0.40 });
+        note:`Top single ${rpeLabel}`, velocityStop: 0.40,
+        allowVelocityInput: true });
     }
     // v4.25 P1-2: Kattava olkapäälämmittely dippi-päivälle — atleetilla rajallinen
     // kokemus raskaasta dipistä, olka-pehmytkudokset vaativat kattavan prepin.
@@ -2849,23 +2860,23 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       // scapular/rotator cuff aktivointi = parempaa kisavalmistautumista.
       { dayOfWeek:1, dayType:"heavy", label:"MA — Taper opener-harjoitus", slots:[
         { role:"primary",   category:"vertikaaliveto", defaultMovementName:"Lisäpainoleuanveto",
-          sets:1, reps:1, targetVx:3, loadPct:0.82, suggestedLoadKg:seedL(0.82), note:"@82% = lämmittely", velocityStop:0.55 },
+          sets:1, reps:1, targetVx:3, loadPct:0.82, suggestedLoadKg:seedL(0.82), note:"@82% = lämmittely", velocityStop:0.55, allowVelocityInput:true },
         { role:"secondary", category:"vertikaaliveto", defaultMovementName:"Lisäpainoleuanveto",
-          sets:1, reps:1, targetVx:3, loadPct:0.88, suggestedLoadKg:seedL(0.88), note:"Opener @88%", competitionLift:true, velocityStop:0.50 },
+          sets:1, reps:1, targetVx:3, loadPct:0.88, suggestedLoadKg:seedL(0.88), note:"Opener @88%", competitionLift:true, velocityStop:0.50, allowVelocityInput:true },
         ...finisherMinimal("taper-aktivointi"),
       ]},
       { dayOfWeek:2, dayType:"heavy", label:"TI — Taper kyykky", slots:[
         { role:"primary",   category:"alaraaja", defaultMovementName:"Takakyykky",
-          sets:1, reps:1, targetVx:3, loadPct:0.85, suggestedLoadKg:seedK(0.85), note:"@85%", isBarbell:true, velocityStop:0.45 },
+          sets:1, reps:1, targetVx:3, loadPct:0.85, suggestedLoadKg:seedK(0.85), note:"@85%", isBarbell:true, velocityStop:0.45, allowVelocityInput:true },
         { role:"secondary", category:"alaraaja", defaultMovementName:"Takakyykky",
-          sets:1, reps:1, targetVx:3, loadPct:0.90, suggestedLoadKg:seedK(0.90), note:"Opener @90%", isBarbell:true, competitionLift:true, velocityStop:0.40 },
+          sets:1, reps:1, targetVx:3, loadPct:0.90, suggestedLoadKg:seedK(0.90), note:"Opener @90%", isBarbell:true, competitionLift:true, velocityStop:0.40, allowVelocityInput:true },
         ...finisherMinimal("taper-aktivointi"),
       ]},
       { dayOfWeek:4, dayType:"heavy", label:"TO — Taper dippi", slots:[
         { role:"primary",   category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
-          sets:1, reps:1, targetVx:3, loadPct:0.82, suggestedLoadKg:seedD(0.82), note:"@82%", velocityStop:0.55 },
+          sets:1, reps:1, targetVx:3, loadPct:0.82, suggestedLoadKg:seedD(0.82), note:"@82%", velocityStop:0.55, allowVelocityInput:true },
         { role:"secondary", category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
-          sets:1, reps:1, targetVx:3, loadPct:0.88, suggestedLoadKg:seedD(0.88), note:"Opener @88%", competitionLift:true, velocityStop:0.50 },
+          sets:1, reps:1, targetVx:3, loadPct:0.88, suggestedLoadKg:seedD(0.88), note:"Opener @88%", competitionLift:true, velocityStop:0.50, allowVelocityInput:true },
         ...finisherMinimal("taper-aktivointi"),
       ]},
       { dayOfWeek:6, dayType:"volume", label:"LA — MU opener", slots:[
@@ -2876,13 +2887,13 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     { week:16, days:[
       { dayOfWeek:1, dayType:"heavy", label:"MA T-6 — Kevyt aktivointi", slots:[
         { role:"primary",   category:"vertikaaliveto",   defaultMovementName:"Lisäpainoleuanveto",
-          sets:2, reps:1, targetVx:4, loadPct:0.75, suggestedLoadKg:seedL(0.75), note:"75 % openerista — RPE 6", velocityStop:0.65 },
+          sets:2, reps:1, targetVx:4, loadPct:0.75, suggestedLoadKg:seedL(0.75), note:"75 % openerista — RPE 6", velocityStop:0.65, allowVelocityInput:true },
         { role:"accessory", category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
-          sets:2, reps:1, targetVx:4, loadPct:0.75, suggestedLoadKg:seedD(0.75), note:"75 % openerista", velocityStop:0.65 },
+          sets:2, reps:1, targetVx:4, loadPct:0.75, suggestedLoadKg:seedD(0.75), note:"75 % openerista", velocityStop:0.65, allowVelocityInput:true },
       ]},
       { dayOfWeek:2, dayType:"heavy", label:"TI T-5 — Kevyt kyykky", slots:[
         { role:"primary", category:"alaraaja", defaultMovementName:"Takakyykky",
-          sets:2, reps:1, targetVx:4, loadPct:0.78, suggestedLoadKg:seedK(0.78), isBarbell:true, note:"78 % openerista", velocityStop:0.55 },
+          sets:2, reps:1, targetVx:4, loadPct:0.78, suggestedLoadKg:seedK(0.78), isBarbell:true, note:"78 % openerista", velocityStop:0.55, allowVelocityInput:true },
       ]},
       // v4.25 P1-6 (user-agreed): TO T-3 -sessio oli 5–10 % liian kuormittava 72 h
       // ennen kisaa. 88 % → 85 %, MU 3×1 → 2×1. Zourdos 2016 tapering:
@@ -2890,11 +2901,11 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       // "herättely"-efektiin mutta jättää CNS-varastot täyteen kisapäivään.
       { dayOfWeek:4, dayType:"heavy", label:"TO T-3 — Herättely + opener-rehearsal", slots:[
         { role:"primary",   category:"vertikaaliveto", defaultMovementName:"Lisäpainoleuanveto",
-          sets:1, reps:1, targetVx:3, loadPct:0.80, suggestedLoadKg:seedL(0.80), note:"@80% lämmittely", velocityStop:0.55 },
+          sets:1, reps:1, targetVx:3, loadPct:0.80, suggestedLoadKg:seedL(0.80), note:"@80% lämmittely", velocityStop:0.55, allowVelocityInput:true },
         { role:"secondary", category:"vertikaaliveto", defaultMovementName:"Lisäpainoleuanveto",
-          sets:1, reps:1, targetVx:3, loadPct:0.85, suggestedLoadKg:seedL(0.85), note:"Opener rehearsal @85% (EI openeri — liian lähellä kisaa)", competitionLift:true, velocityStop:0.50 },
+          sets:1, reps:1, targetVx:3, loadPct:0.85, suggestedLoadKg:seedL(0.85), note:"Opener rehearsal @85% (EI openeri — liian lähellä kisaa)", competitionLift:true, velocityStop:0.50, allowVelocityInput:true },
         { role:"accessory", category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
-          sets:1, reps:1, targetVx:3, loadPct:0.85, suggestedLoadKg:seedD(0.85), note:"Opener rehearsal @85%", velocityStop:0.50 },
+          sets:1, reps:1, targetVx:3, loadPct:0.85, suggestedLoadKg:seedD(0.85), note:"Opener rehearsal @85%", velocityStop:0.50, allowVelocityInput:true },
         { role:"accessory", category:"vertikaaliveto", defaultMovementName:"Muscle-up",
           sets:2, reps:1, targetVx:null, suggestedLoadKg:5, note:"Opener practice (2 sarjaa, ei 3 — CNS-säästö)" },
       ]},
@@ -2907,15 +2918,15 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         { role:"secondary", category:"vertikaaliveto",   defaultMovementName:"Lisäpainoleuanveto",
           sets:3, reps:1, targetVx:null, loadPct:0.88, suggestedLoadKg:seedL(0.88),
           note:"2. Leuanveto — Opener 88% · 2nd 96% · 3rd 102% (laskettuna vk 12 RPE9-testissä)",
-          competitionLift:true, attemptsPct:[0.88, 0.96, 1.02] },
+          competitionLift:true, attemptsPct:[0.88, 0.96, 1.02], allowVelocityInput:true },
         { role:"backoff",   category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
           sets:3, reps:1, targetVx:null, loadPct:0.88, suggestedLoadKg:seedD(0.88),
           note:"3. Dippi — Opener 88% · 2nd 96% · 3rd 102%",
-          competitionLift:true, attemptsPct:[0.88, 0.96, 1.02] },
+          competitionLift:true, attemptsPct:[0.88, 0.96, 1.02], allowVelocityInput:true },
         { role:"accessory", category:"alaraaja",         defaultMovementName:"Takakyykky",
           sets:3, reps:1, targetVx:null, loadPct:0.90, suggestedLoadKg:seedK(0.90),
           note:"4. Kyykky — Opener 90% · 2nd 97% · 3rd 103%",
-          competitionLift:true, isBarbell:true, attemptsPct:[0.90, 0.97, 1.03] },
+          competitionLift:true, isBarbell:true, attemptsPct:[0.90, 0.97, 1.03], allowVelocityInput:true },
       ]},
     ]},
   ];

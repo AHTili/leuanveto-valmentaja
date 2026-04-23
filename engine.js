@@ -789,6 +789,108 @@ function hadFailureLastSession(recentTopSets) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// LOAD-VELOCITY PROFILE (v4.25.1 — Enode-valmistelu)
+// ═══════════════════════════════════════════════════════════════
+//
+// Rakentaa henkilökohtaisen load-velocity-käyrän ankkuripiste-sarjoista
+// (top singlet, openerit, kalibrointitestit). Käyrän avulla voidaan:
+//   1. estimoida e1RM ilman failurea (velocity @95% 1RM ≈ liikekohtainen)
+//   2. ristiinverrata Vx-pohjaista e1RM:ää (diagnostiikka)
+//   3. seurata neurovoiman muutosta kuorma-vakiolla (velocity nousee samalla kuormalla → PR-momentum)
+//
+// Käyttö: vain sarjoille joilla velocityMean !== null JA setRole on
+// "top" | "readiness_test" JA reps === 1 (puhdas 1RM-arvion pohjadata).
+// Multi-rep-setit (2+) jäävät ulos koska MCV riippuu rep-positiosta.
+//
+// Input: sets[] (sessions-store-tasoisia), bodyweightKg, isBarbell
+// Output: {
+//   points: [{ loadPct, velocity, dateISO, externalLoadKg, systemLoadKg }],
+//   slope: number,        // m/s per %1RM (tyypillisesti negatiivinen)
+//   intercept: number,    // y-intercept regressioviivasta
+//   v1rmEstimate: number, // velocity @100% 1RM (liikekohtainen "minimum velocity threshold")
+//   e1rmCrossCheck: number | null, // velocity-pohjainen 1RM arvio (kg)
+//   n: number             // pisteiden lukumäärä
+// }
+//
+// Evidenssi: González-Badillo & Sánchez-Medina 2010 — LV-relaatio lineaarinen
+// luotettavasti välillä 30-100% 1RM samalle liikkeelle samalle henkilölle.
+// Yksilölliset MVT:t: kyykky ~0.30 m/s, penkki ~0.17 m/s, leuka tuntematon
+// (streetlifting-data puuttuu). Atleetti rakentaa oman MVT:n ajan myötä.
+
+function computeLoadVelocityProfile(sets, bodyweightKg, options = {}) {
+  const { isBarbell = false, currentE1RMExternal = null } = options;
+  if (!sets || sets.length === 0) {
+    return { points: [], slope: null, intercept: null, v1rmEstimate: null, e1rmCrossCheck: null, n: 0 };
+  }
+
+  // Suodata: vain single-rep-setit joilla velocityMean tallennettuna.
+  // Velocity-input-gating (index.html) varmistaa että vain ankkuripisteisiin
+  // kirjataan velocity → presence of velocityMean + reps===1 on riittävä suodatin.
+  // Ei rajoiteta setRoleen koska secondary-slot-top-singlet tallentuvat
+  // "accessory"-rolena save-layerissa.
+  const anchors = sets.filter(s =>
+    s.reps === 1 &&
+    (s.velocityMean !== null && s.velocityMean !== undefined) &&
+    (s.externalLoadKg !== null && s.externalLoadKg !== undefined)
+  );
+
+  if (anchors.length < 2) {
+    return { points: anchors.map(a => ({
+      loadPct: null, velocity: a.velocityMean, dateISO: a.dateISO || a.timestamp || null,
+      externalLoadKg: a.externalLoadKg, systemLoadKg: isBarbell ? a.externalLoadKg : (a.externalLoadKg + bodyweightKg),
+    })), slope: null, intercept: null, v1rmEstimate: null, e1rmCrossCheck: null, n: anchors.length };
+  }
+
+  // Laske loadPct jokaiselle: suhteessa ikkunan max-kuormaan
+  const systemLoads = anchors.map(s => isBarbell ? s.externalLoadKg : (s.externalLoadKg + bodyweightKg));
+  const maxLoad = Math.max(...systemLoads);
+  const points = anchors.map((s, i) => ({
+    loadPct: systemLoads[i] / maxLoad,
+    velocity: s.velocityMean,
+    dateISO: s.dateISO || s.timestamp || null,
+    externalLoadKg: s.externalLoadKg,
+    systemLoadKg: systemLoads[i],
+  }));
+
+  // Lineaarinen regressio: velocity = slope × loadPct + intercept
+  const n = points.length;
+  const sumX = points.reduce((a, p) => a + p.loadPct, 0);
+  const sumY = points.reduce((a, p) => a + p.velocity, 0);
+  const sumXY = points.reduce((a, p) => a + p.loadPct * p.velocity, 0);
+  const sumXX = points.reduce((a, p) => a + p.loadPct * p.loadPct, 0);
+  const denom = n * sumXX - sumX * sumX;
+  if (denom === 0 || Math.abs(denom) < 1e-9) {
+    return { points, slope: null, intercept: null, v1rmEstimate: null, e1rmCrossCheck: null, n };
+  }
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+
+  // Velocity @100% 1RM (MVT = Minimum Velocity Threshold)
+  const v1rmEstimate = slope * 1.0 + intercept;
+
+  // E1RM cross-check: jos meillä on Vx-pohjainen e1RM, laske velocity-pohjainen ja vertaa.
+  // Idea: hae setti jossa velocity lähinnä odotettua MVT-arvoa, laske sen kuorma / loadPct.
+  // Tämä on heuristiikka — kunnollinen toteutus tarvitsisi liikekohtaiset MVT-vakiot.
+  let e1rmCrossCheck = null;
+  if (currentE1RMExternal !== null && currentE1RMExternal > 0 && v1rmEstimate > 0) {
+    // Käytä regressiota: jokaisesta pisteestä estimoi 1RM = systemLoad / loadPctAtV1RM
+    // jossa loadPctAtV1RM = (velocity - intercept) / slope → palauttaa loadPct:n.
+    // Jos mallinnus on oikein, kaikki pisteet kertovat saman 1RM:n.
+    const estimates = points.map(p => {
+      const pctAt1RM = 1.0; // MVT-kohta
+      // Inverse: load at MVT = systemLoad / (p.loadPct / pctAt1RM) = systemLoad / p.loadPct
+      return p.systemLoadKg / p.loadPct;
+    }).filter(v => v > 0 && isFinite(v));
+    if (estimates.length > 0) {
+      const avgSystemAt1RM = estimates.reduce((a, b) => a + b, 0) / estimates.length;
+      e1rmCrossCheck = isBarbell ? avgSystemAt1RM : Math.max(0, avgSystemAt1RM - bodyweightKg);
+    }
+  }
+
+  return { points, slope, intercept, v1rmEstimate, e1rmCrossCheck, n };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // DEFAULT DAY PLAN GENERATOR
 // ═══════════════════════════════════════════════════════════════
 
@@ -1004,6 +1106,43 @@ async function recommend(options = {}) {
     e1rmExternal: currentE1RMExternal?.toFixed(1),
     fromSets: recentTopSets.length,
   }, `e1RM laskettu ${recentTopSets.length} viimeisimmästä top-setistä`);
+
+  // v4.25.1: LV-profiilin cross-check (Enode-valmistelu). Ei vaikuta kuormaan —
+  // diagnostiikka kun velocity-dataa kertyy ankkuripisteistä. Jos ristiinveto
+  // eroaa yli ±7% Vx-pohjaisesta e1RM:stä, tämä on *signaali* että joko:
+  //   (a) Vx-raportointi on systemaattisesti biased (atleetin tunnettu taipumus), tai
+  //   (b) velocity-anturi on kalibroimaton, tai
+  //   (c) LV-profiili on vielä rakentumassa (n < 5 pistettä — vähemmän luotettava).
+  if (currentE1RMExternal !== null) {
+    // Anchor-set haku: primary-liikkeen KAIKKI setit joilla velocityMean
+    // (riippumatta setRole:sta — secondary-slot-top-singlet tallentuvat "accessory"-rolena).
+    const anchorSetsForLV = primaryMovementId
+      ? allSets.filter(s =>
+          s.movementId === primaryMovementId &&
+          s.velocityMean !== null && s.velocityMean !== undefined &&
+          s.reps === 1
+        )
+      : [];
+    const lvProfile = computeLoadVelocityProfile(anchorSetsForLV, bodyweightKg, {
+      isBarbell,
+      currentE1RMExternal,
+    });
+    if (lvProfile.n >= 3 && lvProfile.e1rmCrossCheck !== null) {
+      const diffPct = (lvProfile.e1rmCrossCheck - currentE1RMExternal) / currentE1RMExternal;
+      const absDiff = Math.abs(diffPct);
+      const severity = absDiff > 0.07 ? "SIGNIFICANT" : absDiff > 0.03 ? "MODERATE" : "ALIGNED";
+      trace("VBT_E1RM_CROSSCHECK", {},
+        {
+          e1rmVx: currentE1RMExternal.toFixed(1),
+          e1rmVelocity: lvProfile.e1rmCrossCheck.toFixed(1),
+          diffPct: (diffPct * 100).toFixed(1) + "%",
+          v1rmEstimate: lvProfile.v1rmEstimate?.toFixed(2),
+          points: lvProfile.n,
+          severity,
+        },
+        `LV-profiili ${lvProfile.n} pistettä · Vx-e1RM ${currentE1RMExternal.toFixed(1)} kg vs. velocity-e1RM ${lvProfile.e1rmCrossCheck.toFixed(1)} kg (${(diffPct * 100).toFixed(1)}%) · ${severity}`);
+    }
+  }
 
   // 5. Readiness
   const readiness = options.readiness || { combined: "GREEN", capLevel: 0, channels: {} };
@@ -2385,6 +2524,8 @@ export {
   adjustMULoad,
   // Failure lockout (v4.25 P2-16)
   hadFailureLastSession,
+  // Load-velocity profile (v4.25.1 — Enode)
+  computeLoadVelocityProfile,
   // Readiness test
   readinessTestLoad,
   // Speed

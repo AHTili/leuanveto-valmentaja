@@ -2070,6 +2070,13 @@ function renderActiveWorkout() {
       : "";
     subBits.push(`🎯 ${exercise.slotFunction}${src}`);
   }
+  // v4.25.1 (Enode): näytä velocity-zone-chip anchor-pistettä indikoimaan
+  if (exercise.allowVelocityInput && exercise.velocityStop && !isWarmupSet) {
+    const isMU2 = exercise.name === "Muscle-up" || exercise.name === "Muscle up";
+    if (!isMU2) {
+      subBits.push(`💎 <b>Velocity-ankkuri</b> · zone ≥ ${exercise.velocityStop.toFixed(2)} m/s`);
+    }
+  }
   const exSubHTML = subBits.length ? `<div class="ex-sub">${subBits.join("<br>")}</div>` : "";
 
   // ── Hero load card (work-set only; warmup uses simpler variant below) ──
@@ -2166,10 +2173,23 @@ function renderActiveWorkout() {
     return `<button class="${isTarget ? "target" : ""}" data-vara="${n}">V${n}</button>`;
   }).join("");
 
-  const velocityPanelHTML = state.settings?.velocityEnabled
+  // v4.25.1 (Enode): velocity-syöttö näkyy vain ankkuripisteissä (standardoidut
+  // max-effort-sarjat, ei grind-sarjat). Perustelu: työsarjojen Vx-grindaus
+  // kontaminoi MCV:n, joten per-sarja velocity olisi kohinaa. Vain:
+  //   - primer (lämppäyksen jälkeen, readiness_test — eri flowssa)
+  //   - top-single-slotit (secondary-role vk 8/12/13/14)
+  //   - Peaking-singlet vk 14 primary (reps===1 AND loadPct ≥ 0.85)
+  //   - Openerit + kisapäivä (competitionLift:true + sets/reps yksittäisiä)
+  //   - EI KOSKAAN Muscle-up (bimodaalinen)
+  const isMU = exercise.name === "Muscle-up" || exercise.name === "Muscle up";
+  const velocityAllowedForThisSet = state.settings?.velocityEnabled
+    && exercise.allowVelocityInput === true
+    && !isMU;
+  const velocityPanelHTML = velocityAllowedForThisSet
     ? `<div class="vel-panel" id="vel-panel" style="display:none">
-        <label>📊 Velocity (m/s)</label>
-        <input type="number" inputmode="decimal" step="0.01" id="input-set-velocity" placeholder="Setin mean velocity m/s">
+        <label>📊 Velocity (m/s) <span class="hint">ankkuripiste — ei työsarjoissa</span></label>
+        <input type="number" inputmode="decimal" step="0.01" id="input-set-velocity" placeholder="Mean velocity (Enode)">
+        ${exercise.velocityStop ? `<div class="muted" style="font-size:11px;margin-top:4px">🎯 Zone-kynnys: ${exercise.velocityStop.toFixed(2)} m/s</div>` : ""}
       </div>`
     : `<input type="hidden" id="input-set-velocity" value="">`;
 
@@ -2244,7 +2264,7 @@ function renderActiveWorkout() {
     <button id="btn-add-set" title="Lisää sarja">+ Lisäsarja</button>
     ${canSwapVariant ? `<button id="btn-swap-variant" title="Vaihda variaatio">🔀 Variaatio</button>` : ""}
     <button id="btn-add-exercise" title="Lisää liike">+ Liike</button>
-    ${state.settings?.velocityEnabled ? `<button id="btn-velocity-toggle" title="Näytä velocity-syöttö">💎 Velocity</button>` : ""}
+    ${velocityAllowedForThisSet ? `<button id="btn-velocity-toggle" title="Näytä velocity-syöttö">💎 Velocity</button>` : ""}
   </div>`;
 
   // Backfill- / plan-override -indikaattori
@@ -4270,7 +4290,7 @@ function renderSettingsView() {
           <input type="checkbox" id="set-velocity-enabled" ${s.velocityEnabled ? "checked" : ""} style="width:18px;height:18px">
           <span>Velocity-mittaus käytössä</span>
         </label>
-        <div class="muted" style="font-size:11px;margin-top:4px">Näyttää velocity-syötön sarjakohtaisesti (util-row "💎 Velocity"). Poista käytöstä jos sinulla ei ole mittausvälinettä (Vitruve, Enode, puhelinappi).</div>
+        <div class="muted" style="font-size:11px;margin-top:4px">Näyttää velocity-syötön <b>vain ankkuripisteissä</b> (primer, top single, kisa-openerit, peaking-singlet). Työsarjoissa piilossa — grindaus vääristäisi MCV:n. Vaatii mittausvälineen (Enode, Vitruve).</div>
       </div>
       <div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:6px">
         <label style="margin-top:0;font-size:13px;font-weight:600">Treenin tiheys (density)</label>
@@ -5356,6 +5376,9 @@ async function startWorkout(backfillDateISO = null) {
         slotSource: slot._resolvedFrom?.source || null,
         slotVariantIndex: slot._resolvedFrom?.variantIndex ?? null,
         slotVariants: slot._resolvedFrom?.availableVariants || null,
+        // v4.25.1 (Enode): velocity-ankkuripisteet ja zone-kynnys
+        allowVelocityInput: slot.allowVelocityInput === true,
+        velocityStop: slot.velocityStop ?? null,
       });
     }
   } else {

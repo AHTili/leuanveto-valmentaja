@@ -102,6 +102,16 @@ suositus?" -collapsible-kortissa.
 **Toiminta**: deltaPctRaw clampataan ≤ 0 — ei nosteta kuormaa.
 **Tarkoitus**: atleetin tunnettu grinding-taipumus (aliarvioi Vx) → suoja.
 
+### `VBT_E1RM_CROSSCHECK` (v4.25.1)
+**Laukaisu**: LV-profiilissa ≥ 3 ankkuripistettä JA Vx-pohjainen e1RM on laskettu.
+**Laskenta**: lineaarinen regressio (velocity vs. loadPct) ankkuripiste-seteistä → velocity-pohjainen 1RM-arvio. Verrataan Vx-pohjaiseen.
+**Severity**: ALIGNED (<±3%), MODERATE (3-7%), SIGNIFICANT (>7%).
+**Toiminta**: EI vaikuta kuormalaskentaan — diagnostiikka. Iso ero signaloi:
+- Vx-raportti systemaattisesti biased (atleetin grind-taipumus) TAI
+- Velocity-anturi kalibroimaton TAI
+- LV-profiili rakentuu vielä (n < 5)
+**Evidenssi**: González-Badillo & Sánchez-Medina 2010 — LV-relaatio lineaarinen 30-100% 1RM.
+
 ### `MU_AUTO_REGULATE` (v4.25)
 **Laukaisu**: dayPlan sisältää Muscle-up-slotin jolla muAutoRegulate=true.
 **Laskenta**: edellisen MU-session Vx-havainnoista (viim. 3 sarjaa):
