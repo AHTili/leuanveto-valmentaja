@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.1 — Program Wizard + custom mesocycle generator (pilot fixes: daysPerWeek order, alaraaja variants, wizard preview, rotation)
+// LeVe Coach v4.27.2 — Lift-spesifit variantit kaikille primaryille (DL/bench/kyykky/OHP nostettu eliittitasolle, leuka-identity säilyy)
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -180,6 +180,26 @@ const PRESET_MOVEMENTS = [
   { name: "Front squat",       category: "alaraaja", isPrimary: false, isPreset: true },
   { name: "Pin squat",         category: "alaraaja", isPrimary: false, isPreset: true },
   { name: "Walking lunge",     category: "alaraaja", isPrimary: false, isPreset: true },
+  // ─── Lift-spesifit variantit (v4.27.2) — primaryn nimen perusteella ohjautuvat
+  //     tukiliikkeet. Maaveto-primaryille DL-spesifit; penkki-primaryille pause/CGBP;
+  //     OHP-primaryille push press / Z-press / Seated.
+  // DL-spesifit
+  { name: "Block pull",        category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Paused DL",         category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Snatch-grip DL",    category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Good morning",      category: "alaraaja", isPrimary: false, isPreset: true },
+  // Kyykky-spesifit
+  { name: "Safety bar squat",  category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Box squat",         category: "alaraaja", isPrimary: false, isPreset: true },
+  // Penkki-spesifit
+  { name: "Paused bench press",    category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Spoto press",           category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Larsen press",          category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Board press",           category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  // OHP-spesifit
+  { name: "Push press",        category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Seated OHP",        category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Z-press",           category: "vertikaalityöntö", isPrimary: false, isPreset: true },
 ];
 
 // ─── Movement descriptions (v4.12) ───────────────────────────────
@@ -248,6 +268,25 @@ const MOVEMENT_DESCRIPTIONS = {
   "Front squat": { howTo: "Tanko etukulmalle (olympic-grip tai ristikahvat). Pysty asento kyykyn läpi, kyynärpäät korkealla. Alle vaakatason.", cue: "Kyynärpäät ylös — älä päästä tangon vajoamaan" },
   "Pin squat": { howTo: "Takakyykky häkissä turvapalikoiden päälle — istu tangon tangon pinnin päälle, starttaa nollasta. Heikkouden pisteen voimaa.", cue: "Pinnille istuminen poistaa stretch-refleksin" },
   "Walking lunge": { howTo: "Kävelyaskellus tangolla tai käsipainoilla. 10–20 askelta/sarja. Etujalka + unilateraalinen vakaus.", cue: "Takapolvi pehmeästi lähelle lattiaa, etujalka työtää" },
+
+  // ─── Lift-spesifit variantit (v4.27.2) ───
+  // DL-spesifit maaveto-primaryille
+  "Block pull": { howTo: "Maastaveto 5–15 cm korotuksella (levyt blokkien päällä tai pukit). Lyhyempi matka alapositiossa → suurempi lockout-kuorma. Helms & Bromley: supramaksimaalinen overload lockout-vahvuudelle.", cue: "Starttaa polvista — ei käytä jalkojen työntöä" },
+  "Paused DL": { howTo: "Maastaveto 1–2 s pysähdyksellä polven korkeudella nousussa. Eliminoi stretch-reflex-apu lockoutiin ja opettaa asennon ylläpitoa kriittisessä kohdassa.", cue: "Pysähdys polvessa = tanko lähellä, lapaluut lukossa" },
+  "Snatch-grip DL": { howTo: "Maastaveto leveällä (tempaus-)otteella. Suurempi liikerata + yläselän työ. Pidä selkä neutraali — ote pakottaa lantion alas.", cue: "Lapaluut sisäänvedetyt — leveä ote heikentää niitä" },
+  "Good morning": { howTo: "Tanko takakulmalle, taivuta lantiosta eteen polvet lievässä koukussa, takareidet puree. Nouse pakaralla. Erinomainen posterior chain hinge-liike.", cue: "Lonkka menee taakse — ei polvet eteen" },
+  // Kyykky-spesifit
+  "Safety bar squat": { howTo: "SSB-tanko (kaarevat kahvat) takakulmalle — pakottaa pystymmän asennon ja vähentää olkapäiden kuormaa. Quad-dominantti variantti.", cue: "Pidä kahvoista kiinni, ei työnnä ylöspäin" },
+  "Box squat": { howTo: "Takakyykky boksille istuen (ei pomppu). Pysähdys boksilla 1 s, nouse räjähtävästi. Opettaa posterior chain + startti-voimaa pohjalta.", cue: "Istu, älä vain kosketa — pysähdys nollaa stretch-refleksin" },
+  // Penkki-spesifit
+  "Paused bench press": { howTo: "Penkkipunnerrus 1–3 s pysähdyksellä rinnalla (ei pomppua). Voimanostajan kisakäytäntö — startti nollasta alhaalta.", cue: "Rinta pysyy tiukkana pysähdyksessä — ei vajoa" },
+  "Spoto press": { howTo: "Penkkipunnerrus 2–3 cm rinnasta pysähdyksellä (tanko ei kosketa rintaa). Rakentaa 'bottom-position overload' -voimaa ja eliminoi pomppu täysin.", cue: "Tanko hengähtää ilmassa — ei koskaan rintaan" },
+  "Larsen press": { howTo: "Penkkipunnerrus jalat penkin päällä (ei maakontaktia). Eliminoi leg drive → puhdas ylävartalon voima. Erinomainen kontrollin ja teknisen puhtauden rakentamiseen.", cue: "Pakara penkissä, jalat ilmassa — ei pomppua" },
+  "Board press": { howTo: "Penkkipunnerrus lauta rinnalla (1–3 lautaa päällekkäin). Lyhyempi liikerata → raskaampi kuorma lockout-vaiheeseen. Supramaksimaalinen tricep + lockout.", cue: "Tanko koskee lautaan, pysähdys, työnnä ylös" },
+  // OHP-spesifit
+  "Push press": { howTo: "Pystypunnerrus jaloilla autetulla starttikäynnistyksellä: dip 5–10 cm polvista, räjähtävä ylös. Suurempi kuorma kuin strict press — rakentaa lockoutia ja hermostollista kapasiteettia.", cue: "Dip pysty — ei eteen — ja räjähtävä ylös" },
+  "Seated OHP": { howTo: "Pystypunnerrus istuen tuetulla selällä. Eliminoi lantion kompensaation ja pakottaa puhtaan hartia + tricep -työn.", cue: "Selkä tiukkana selkänojaa vasten — ei kaareudu" },
+  "Z-press": { howTo: "Pystypunnerrus istuen lattialla jalat suorina edessä. Pakottaa täydellisen core-hallinnan + pystyn ryhdin. Ei mitään tukea selälle.", cue: "Jalat lukossa, rintakehä ylös — korjaa ryhtivirheet" },
 
   // ─── Core ───
   "Ab wheel rollout": { howTo: "Polvillaan, työnnä rulla eteen mahdollisimman kauas, palaa aktiivisesti. Hollow body asento koko ajan.", cue: "Alaselkä ei saa notkahdella" },
@@ -2639,6 +2678,53 @@ const PRIMARY_CATEGORY_PROFILES = {
   },
 };
 
+// v4.27.2 — PRIMARY-NIMEN perusteella ohjautuvat profiilit.
+// Kun käyttäjä valitsee spesifin päälikkeen (esim. "Maastaveto"), COMPLEMENT-
+// ja SECONDARY-roolit ohjautuvat LIIKE-SPESIFEIHIN variantteihin eivätkä vain
+// yleiseen alaraaja-kategoriaan. Tämä nostaa penkki/maave/kyykky-ohjelmat
+// eliittitasolle: alaraaja-bucket ei enää niputa maaveto-variantteja kyykkyyn.
+//
+// Prioriteetti: PRIMARY_SPECIFIC_PROFILES[primaryName][role] > PRIMARY_CATEGORY_PROFILES[category][role]
+// Jos primaryName ei löydy tai rooli puuttuu overridesta → fallback kategoriaprofiiliin.
+//
+// Lähteet:
+// - Bromley "Base Strength" (DL-variantit: RDL, pause DL, deficit, block pull)
+// - Calgary Barbell (pause bench, spoto, Larsen penkkipunnerruksen rakentajina)
+// - Juggernaut (SSB squat, front squat, pin squat kyykyn tukiliikkeinä)
+// - Helms "Muscle & Strength Pyramid" (variant selection principles per lift)
+const PRIMARY_SPECIFIC_PROFILES = {
+  "Maastaveto": {
+    // COMPLEMENT = maaveto-spesifit variantit. RDL ensin (pakaran + takareiden volyymi
+    // joka tukee suoraan kisamaavetoa), sitten pausat/deficit/block → range of motion
+    // ja spesifit heikkoudet.
+    COMPLEMENT: { category: "alaraaja", top: ["Romanian DL", "Paused DL", "Deficit DL", "Block pull", "Snatch-grip DL", "Good morning"] },
+    // SECONDARY = kyykky-variantit posterior chainille + unilateraaliset.
+    SECONDARY:  { category: "alaraaja", top: ["Front squat", "Bulgarian split squat", "Hip thrust", "Walking lunge", "Jalkaprässi"] },
+  },
+  "Takakyykky": {
+    COMPLEMENT: { category: "alaraaja", top: ["Front squat", "Pin squat", "Paused squat", "Safety bar squat", "Box squat", "Bulgarian split squat"] },
+    SECONDARY:  { category: "alaraaja", top: ["Romanian DL", "Hip thrust", "Walking lunge", "Jalkaprässi", "Leg curl"] },
+  },
+  "Kyykky": { // alias — sama kuin Takakyykky
+    COMPLEMENT: { category: "alaraaja", top: ["Front squat", "Pin squat", "Paused squat", "Safety bar squat", "Box squat", "Bulgarian split squat"] },
+    SECONDARY:  { category: "alaraaja", top: ["Romanian DL", "Hip thrust", "Walking lunge", "Jalkaprässi", "Leg curl"] },
+  },
+  "Penkkipunnerrus": {
+    // COMPLEMENT = penkki-spesifit: pause/spoto/Larsen rakentavat kisapenkkiä;
+    // CGBP + board = triceps/lockout; incline = pec volume.
+    COMPLEMENT: { category: "horisontaalityöntö", top: ["Paused bench press", "Close-grip bench", "Spoto press", "Larsen press", "Board press", "Vinopenkkipunnerrus"] },
+    // SECONDARY = vertikaalityöntö penkkiä tukevat (olkavoima → lockout tuki).
+    SECONDARY:  { category: "vertikaalityöntö", top: ["Pystypunnerrus käsipainot", "Push press", "Seated OHP", "Shoulder press laite"] },
+  },
+  "Pystypunnerrus": {
+    // COMPLEMENT = OHP-spesifit: push press (raskaampi overload), seated (pelkkä olka),
+    // Z-press (core + ryhti), käsipainot (asymmetria/liikerata).
+    COMPLEMENT: { category: "vertikaalityöntö", top: ["Push press", "Seated OHP", "Z-press", "Pystypunnerrus käsipainot", "Shoulder press laite"] },
+    // SECONDARY = penkki-variantit (olkapunnerrus + tricep tuki).
+    SECONDARY:  { category: "horisontaalityöntö", top: ["Vinopenkkipunnerrus", "Close-grip bench", "Larsen press", "Chest press"] },
+  },
+};
+
 // Skelettien (leuka-primary-preseettien) kategoria → funktionaalinen rooli.
 // Käytetään kun clooni-preseetistä haetaan uuden primaryn vastaavaa slotia.
 const SKELETON_CATEGORY_TO_ROLE = {
@@ -2666,23 +2752,36 @@ const GOAL_SKELETONS = {
 // Saa uuden accessory-slotin rooli-pohjaisesti.
 // orig = alkuperäinen accessory-slot leuka-skeletissä.
 // userPrimaryCategory = käyttäjän valitseman päälikkeen kategoria.
-function remapAccessorySlot(orig, userPrimaryCategory, dayIndex, slotIndex) {
+// primaryName (v4.27.2) = käyttäjän päälikkeen NIMI — käytetään PRIMARY_SPECIFIC_PROFILES-
+//   overridekenttien valintaan. Fallback: jos primaryName ei löydy tai tietty rooli
+//   puuttuu overridesta, käytetään kategoriapohjaista profiilia kuten ennen.
+// weekIndex (v4.27.2) = mesosyklin viikon 0-indeksi — käytetään rotaatiokaavassa,
+//   jotta variantit KIERTÄVÄT viikosta toiseen eikä sama variantti toistu 4 viikkoa.
+function remapAccessorySlot(orig, userPrimaryCategory, primaryName, dayIndex, slotIndex, weekIndex = 0) {
   const role = SKELETON_CATEGORY_TO_ROLE[orig.category] || "CORE";
-  const profile = PRIMARY_CATEGORY_PROFILES[userPrimaryCategory] || PRIMARY_CATEGORY_PROFILES.vertikaaliveto;
-  const target = profile[role] || profile.CORE;
+  const categoryProfile = PRIMARY_CATEGORY_PROFILES[userPrimaryCategory] || PRIMARY_CATEGORY_PROFILES.vertikaaliveto;
+  const specificProfile = primaryName ? PRIMARY_SPECIFIC_PROFILES[primaryName] : null;
+  // Override vain jos spesifinen profiili MÄÄRITTÄÄ tämän roolin. Muuten kategoria.
+  const target = (specificProfile && specificProfile[role]) || categoryProfile[role] || categoryProfile.CORE;
   const movements = target.top;
 
-  // IDENTITY PRESERVATION: jos alkuperäinen liike löytyy uuden profiilin top-listasta,
-  // pidä se. Tämä takaa että jos käyttäjä valitsee SAMAN päälikekategorian kuin preset,
-  // accessoryt pysyvät identtisinä. Preset-author on jo tehnyt valintansa huolella.
+  // IDENTITY PRESERVATION: jos alkuperäinen liike löytyy targetin top-listasta JA
+  // kategoriat täsmäävät, pidä se. Tämä takaa että kun käyttäjä valitsee primaryn
+  // jolle ei ole override-profiilia (esim. leuka = Lisäpainoleuanveto), ja sen kategoria
+  // on sama kuin preset-skeletonin → accessoryt pysyvät bit-for-bit identtisinä.
+  // Tärkeää: tämä guard ajetaan ENNEN rotaatiota, joten weekIndex ei voi rikkoa identtisyyttä.
   if (movements.includes(orig.defaultMovementName) && orig.category === target.category) {
     return { ...orig, variantName: null };
   }
 
   // Eri kategoria tai liikettä ei ole top-listassa → valitse rotation-idx:llä.
-  // v4.27.1: kerroin 2 antaa paremman permutaation (gcd(2,n)=1 kun n∈{3,5,7}),
-  // ts. eri slot-paikat saavat eri indeksejä eikä duplikaatteja muodostu vk:n sisällä.
-  const movementIdx = (dayIndex * 2 + slotIndex) % movements.length;
+  // v4.27.2 rotation: weekIndex*1 + dayIndex*2 + slotIndex*3
+  //   — weekIndex-kerroin 1: 4 vk yli saadaan 4 eri indeksiä (kunhan n≥4).
+  //   — päivä/slot-kertoimet (2, 3): antaa hyvän intra-week-permutaation
+  //     eri slot-paikoille, eikä kollisioita muodostu n∈{4,6,7}.
+  //   — n=5 kanssa voi olla yksi kollision per viikko, mutta variantit
+  //     kuitenkin kiertävät viikoittain, joten 4 vk:ssa nähdään kaikki.
+  const movementIdx = (weekIndex + dayIndex * 2 + slotIndex * 3) % movements.length;
   return {
     ...orig,
     category: target.category,
@@ -2703,14 +2802,15 @@ function substitutePrimarySlot(orig, primaryName, primaryCategory) {
 }
 
 // Kloonaa päivä uudella päälikkeellä + remapatuilla accessoryilla.
-function cloneDayWithPrimary(origDay, primaryName, primaryCategory, dayIndex) {
+// v4.27.2: weekIndex välitetään rotaatiokaavaan jotta variantit kiertävät viikoittain.
+function cloneDayWithPrimary(origDay, primaryName, primaryCategory, dayIndex, weekIndex = 0) {
   const newSlots = [];
   let slotIdx = 0;
   for (const s of origDay.slots) {
     if (s.role === "primary" || s.role === "backoff") {
       newSlots.push(substitutePrimarySlot(s, primaryName, primaryCategory));
     } else if (s.role === "accessory") {
-      newSlots.push(remapAccessorySlot(s, primaryCategory, dayIndex, slotIdx));
+      newSlots.push(remapAccessorySlot(s, primaryCategory, primaryName, dayIndex, slotIdx, weekIndex));
     } else {
       // warmup/opener/attempt — kopioi sellaisenaan (eivät esiinny perusskelete-presseteissä)
       newSlots.push({ ...s });
@@ -2744,11 +2844,13 @@ function applyRecoveryScalar(weekPlans, scalar) {
 function distributePrimariesToDays(weekPlans, primaries) {
   // primaries = [{ name, category }]
   if (primaries.length === 0) return weekPlans;
+  // v4.27.2: viikko-indeksi (0-based wp.week-1) välitetään cloneDayWithPrimary-funktioon
+  // → remapAccessorySlot-rotaatio kiertää variantteja viikosta toiseen.
   if (primaries.length === 1) {
     // Kaikki päivät saavat saman päälikkeen
     return weekPlans.map(wp => ({
       ...wp,
-      days: wp.days.map((d, dIdx) => cloneDayWithPrimary(d, primaries[0].name, primaries[0].category, dIdx)),
+      days: wp.days.map((d, dIdx) => cloneDayWithPrimary(d, primaries[0].name, primaries[0].category, dIdx, (wp.week || 1) - 1)),
     }));
   }
   // Useita päälikkeitä: rotaatio päivien yli
@@ -2756,7 +2858,7 @@ function distributePrimariesToDays(weekPlans, primaries) {
     ...wp,
     days: wp.days.map((d, dIdx) => {
       const primary = primaries[dIdx % primaries.length];
-      return cloneDayWithPrimary(d, primary.name, primary.category, dIdx);
+      return cloneDayWithPrimary(d, primary.name, primary.category, dIdx, (wp.week || 1) - 1);
     }),
   }));
 }
@@ -3681,6 +3783,7 @@ export {
   // Custom program generator (v4.27)
   generateCustomMesocycle,
   PRIMARY_CATEGORY_PROFILES,
+  PRIMARY_SPECIFIC_PROFILES,
   GOAL_SKELETONS,
   // Baselines
   getBaseline,

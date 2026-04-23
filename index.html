@@ -1339,6 +1339,34 @@ function showProgramWizardModal() {
             balanceWarningHTML = `<div style="margin-top:8px;padding:8px 10px;background:rgba(245,158,11,0.12);border-left:3px solid #f59e0b;border-radius:4px;font-size:11px;line-height:1.5">⚠ <b>Volyymi-epätasapaino:</b> ${dominant}-volyymi ${ratio.toFixed(1)}× toista. Harkitse lisä-päälikettä vastakkaiselle puolelle.</div>`;
           }
         }
+
+        // v4.27.2: Liike-spesifit taajuusvaroitukset.
+        // Tutkimus: Helms "MSP Volume", Bromley "Base Strength", Pritchett 2025 — raskas
+        // maaveto > 2×/vk on useimmille liikaa palautumiskapasiteetin puolesta; yksi
+        // päälike 4+ päivänä viikossa ylittää Prilepin MRV-lukuja.
+        const freqWarnings = [];
+        const maavePrimaryPresent = st.selectedPrimaryNames.includes("Maastaveto");
+        if (maavePrimaryPresent && st.selectedPrimaryNames.length === 1 && st.daysPerWeek >= 3) {
+          freqWarnings.push(`Maastaveto ${st.daysPerWeek}×/vk on palautumiskapasiteetin rajoilla — hermosto + alaselkä kuormittuu enemmän kuin kyykky. Harkitse 2×/vk + accessoryt, tai lisää penkki/leuka rotaatioon.`);
+        } else if (maavePrimaryPresent && st.daysPerWeek >= 4 && st.selectedPrimaryNames.length <= 2) {
+          freqWarnings.push(`Maaveto-primaryn taajuus on ${Math.ceil(st.daysPerWeek / st.selectedPrimaryNames.length)}×/vk — tutkimus suosittelee raskaalle DL:lle max 2×/vk. Voit jatkaa jos palautumiskykysi sietää.`);
+        }
+        if (st.selectedPrimaryNames.length === 1 && st.daysPerWeek >= 4) {
+          freqWarnings.push(`Yksi päälike ${st.daysPerWeek}×/vk on erittäin korkea taajuus (Prilepin-table raja useimmille). Lisää variantteja rotaatioon tai laske päiviä.`);
+        }
+        // Alaraaja-overload: 2+ alaraaja-primarya + 4+ päivää
+        const alaraajaPrimaryCount = st.selectedPrimaryNames.filter(n => {
+          const opt = WIZARD_PRIMARY_OPTIONS.find(p => p.name === n);
+          return opt && opt.category === "alaraaja";
+        }).length;
+        if (alaraajaPrimaryCount >= 2 && st.daysPerWeek >= 4) {
+          freqWarnings.push(`${alaraajaPrimaryCount} alaraaja-päälikettä + ${st.daysPerWeek}×/vk = systeeminen ylikuorma-riski (alaselkä, CNS). Harkitse ${st.daysPerWeek - 1}×/vk tai jätä toinen alaraaja-liike accessory-tasolle.`);
+        }
+        if (freqWarnings.length > 0) {
+          balanceWarningHTML += freqWarnings.map(w =>
+            `<div style="margin-top:6px;padding:8px 10px;background:rgba(245,158,11,0.12);border-left:3px solid #f59e0b;border-radius:4px;font-size:11px;line-height:1.5">⚠ <b>Taajuus:</b> ${w}</div>`
+          ).join("");
+        }
       } catch (err) {
         previewHTML = `<div style="margin-top:8px;color:#f87171;font-size:11px">⚠ Esikatselu epäonnistui: ${err.message}</div>`;
       }
