@@ -3247,6 +3247,16 @@ function renderMesocycle() {
       </div>
     </div>
 
+    <!-- 1b. OHJELMAN IDEA — v4.26.3: tarkoitus + käyttötapa kaikille ohjelmatyypeille -->
+    ${(() => {
+      const tpl = MESOCYCLE_TEMPLATES.find(t => t.id === meso.type);
+      if (!tpl?.about) return "";
+      return `<details class="card" style="padding:0;background:var(--card2)">
+        <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">💡 Ohjelman idea: ${tpl.label}</summary>
+        <div style="padding:0 14px 14px;font-size:13px;line-height:1.55;color:var(--muted)">${tpl.about}</div>
+      </details>`;
+    })()}
+
     <!-- 2. TÄMÄ VIIKKO — yksityiskohdat -->
     ${currentWeek ? (() => {
       const wdef = meso.weekDefs.find(w => w.week === currentWeek);

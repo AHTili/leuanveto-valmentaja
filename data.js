@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.26.2 — Schema version 4 (adds backupSnapshots store + pre-migration safety)
+// LeVe Coach v4.26.3 — Schema version 4 (adds backupSnapshots store + pre-migration safety)
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -1822,16 +1822,28 @@ function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg) {
 
 // ── Mesocycle template registry ──
 // All available mesocycle templates with metadata for UI
+// v4.26.3: `about` kuvaa ohjelman TARKOITUKSEN + odotukset — näkyy mesosykli-näkymän
+// "Ohjelman idea" -kortilla kaikille ohjelmatyypeille, jotta käyttäjä ymmärtää
+// mihin ohjelma sopii ja mitä odottaa.
 const MESOCYCLE_TEMPLATES = [
-  { id: "default",       label: "Perusjakso (Ma/Pe/No)",     icon: "⚡", desc: "3×/vk — Maksimivoima + Perusvoima + Nopeusvoima, 4 viikkoa", weeks: 4, factory: "createDefaultMesocycle" },
-  { id: "hypertrofia",   label: "Hypertrofiajakso",          icon: "💪", desc: "3×/vk — Korkea volyymi, 6-8 toistoa, lihasmassan kasvatus, 4 viikkoa", weeks: 4, factory: "createHypertrofiaMesocycle" },
-  { id: "maksimivoima",  label: "Maksimivoima-blokki",       icon: "🏋️", desc: "3×/vk — 2× maksimivoima + nopeusvoima, 1-3 toistoa, hermostollinen, 4 viikkoa", weeks: 4, factory: "createMaksimivoimaMesocycle" },
-  { id: "eksentrinen",   label: "Eksentrinen blokki",        icon: "⬇️", desc: "2×/vk — Korokeveto + isometria, supramaksimaalinen, 4 viikkoa", weeks: 4, factory: "createEksenterinenMesocycle" },
-  { id: "dup",           label: "DUP-jakso",                 icon: "🔄", desc: "3×/vk — Undulating: voima/hypertrofia/nopeus vaihtuu päivittäin, 4 viikkoa", weeks: 4, factory: "createDUPMesocycle" },
-  { id: "siirtyma",      label: "Siirtymäjakso (GPP)",       icon: "🌿", desc: "2-3×/vk — Yleiskunto, ote, prehab, kevyt, 3 viikkoa", weeks: 3, factory: "createSiirtymaMesocycle" },
-  { id: "palautuminen",  label: "Palautumisjakso",           icon: "😴", desc: "2×/vk — Aktiivinen palautuminen, matala intensiteetti, 2 viikkoa", weeks: 2, factory: "createPalautuminenMesocycle" },
-  { id: "peaking",          label: "Peaking (kilpailuun)",          icon: "🏆", desc: "4 viikkoa — Kilpailuun virittäytyminen, vaatii e1RM:n", weeks: 4, factory: "createPeakingMesocycle" },
-  { id: "streetlifting_16w", label: "Streetlifting 16 vk 🏋️",       icon: "🏋️", desc: "16 viikkoa — 4 kisaliikettä (MU/Leuka/Dippi/Kyykky), Hybrid Block-DUP, kisa-elokuu 2026", weeks: 16, factory: "createStreetlifting16WMesocycle" },
+  { id: "default",       label: "Perusjakso (Ma/Pe/No)",     icon: "⚡", desc: "3×/vk — Maksimivoima + Perusvoima + Nopeusvoima, 4 viikkoa", weeks: 4, factory: "createDefaultMesocycle",
+    about: "Yleispätevä 4 vk rakennusjakso jossa yhdistyy maksimivoima, perusvoima ja nopeusvoima saman viikon sisällä. Kuorma nousee viikoilta 1→3 (+0, +2.5%, +5%) ja viikko 4 on deload (-25%). Käytä kun: et ole kisaamassa, haluat pitää kaikki ominaisuudet samanaikaisesti työn alla. Soveltuu useimmille." },
+  { id: "hypertrofia",   label: "Hypertrofiajakso",          icon: "💪", desc: "3×/vk — Korkea volyymi, 6-8 toistoa, lihasmassan kasvatus, 4 viikkoa", weeks: 4, factory: "createHypertrofiaMesocycle",
+    about: "Lihasmassaa rakentava jakso: korkea volyymi (6-8 toistoa), kohtuullinen intensiteetti (Vx 2-3), runsaasti accessory-työtä. Progressive overload sarjojen kautta. Käytä kun: haluat kasvattaa lihasmassaa ennen voimablokkia, tai fyysinen koko on pullonkaula. Evidenssi: Israetel — hypertrophy MEV→MAV progression." },
+  { id: "maksimivoima",  label: "Maksimivoima-blokki",       icon: "🏋️", desc: "3×/vk — 2× maksimivoima + nopeusvoima, 1-3 toistoa, hermostollinen, 4 viikkoa", weeks: 4, factory: "createMaksimivoimaMesocycle",
+    about: "Hermostollinen blokki: 1-3 toistoa maksimikuormilla (Vx 1-4), 2 raskasta päivää + 1 nopeuspäivä. Kevyempi accessory-kuorma jotta keskushermosto ehtii palautua. Käytä kun: olet jo hypertrofiablokin jälkeen, tavoitteena PR tai kisaan valmistautuminen (ei vielä peaking-vaiheessa). Varoitus: vaatii hyvää palautumista." },
+  { id: "eksentrinen",   label: "Eksentrinen blokki",        icon: "⬇️", desc: "2×/vk — Korokeveto + isometria, supramaksimaalinen, 4 viikkoa", weeks: 4, factory: "createEksenterinenMesocycle",
+    about: "Erikoisblokki 2×/vk: 'Korokeveto' (supramaksimaalinen, hidas eksentrinen vaihe) + '2s ylipito' (isometria yläasennossa). Tavoite: sietokyky yli 1RM:n kuormille ja lockout-vahvuus. Käytä kun: olet kokenut nostaja jolla 1RM on pysähtynyt perusblokeissa. Varoitus: ei aloittelijoille — palautumiskuorma on korkea." },
+  { id: "dup",           label: "DUP-jakso",                 icon: "🔄", desc: "3×/vk — Undulating: voima/hypertrofia/nopeus vaihtuu päivittäin, 4 viikkoa", weeks: 4, factory: "createDUPMesocycle",
+    about: "Daily Undulating Periodization: intensiteetti vaihtuu joka päivä (raskas/volyymi/nopeus kierto) sen sijaan että se vaihtuisi viikottain. Viikko 1 = H-V-S, viikko 2 = S-H-V, jne. Käytä kun: vasteet perinteiseen lineaariseen progressioon ovat hiipuneet, tai haluat varioida ärsykettä. Evidenssi: Rhea et al. 2002 — DUP tuotti 25% suurempia voimanlisäyksiä vs lineaarinen." },
+  { id: "siirtyma",      label: "Siirtymäjakso (GPP)",       icon: "🌿", desc: "2-3×/vk — Yleiskunto, ote, prehab, kevyt, 3 viikkoa", weeks: 3, factory: "createSiirtymaMesocycle",
+    about: "Yleinen valmistautumisjakso (General Physical Preparation): matala intensiteetti, monipuoliset variantit (Neutraaliote, Myötäoteveto, 1.5-toisto hiissaus), grip-työ ja prehab. Viikkorakenne harvenee 3→2 sessioon tarkoituksellisesti — palautuminen on pääfokus. Käytä kun: siirryt blokista toiseen, tai palaat tauolta. Pidä mielessä: ei ole PR-jakso, vaan pohja." },
+  { id: "palautuminen",  label: "Palautumisjakso",           icon: "😴", desc: "2×/vk — Aktiivinen palautuminen, matala intensiteetti, 2 viikkoa", weeks: 2, factory: "createPalautuminenMesocycle",
+    about: "⚠ LYHYT SILTA — vain 2 viikkoa × 2 sessio/vk = 4 treeniä yhteensä. Ei täysi mesosykli, vaan aktiivinen palautumissilta raskaiden blokkien välissä (esim. kisan jälkeen tai ennen uutta intensiteettivaihetta). Super-kevyt kuorma (-25→-20%), Vx 4 kaikissa sarjoissa. Käytä kun: olet loppuunajettu tai kisan jälkeen. Älä käytä: itsenäisenä ohjelmana." },
+  { id: "peaking",          label: "Peaking (kilpailuun)",          icon: "🏆", desc: "4 viikkoa — Kilpailuun virittäytyminen, vaatii e1RM:n", weeks: 4, factory: "createPeakingMesocycle",
+    about: "Kilpajakson erityistapaus: 4 vk taper + kisapäivä jolloin suoritetaan opener/2. yritys/3. yritys järjestyksessä (oletuksena 92%/97%/102% e1RM:stä). Readiness-capit poistettu — luotat omaan säätelyysi. Vaatii: ajantasainen e1RM (pyytää sen aloituksessa). Käytä kun: kisa 4 vk päästä. Kisa-päivän automatiikka hoitaa opener- ja attempt-kuormalaskennan." },
+  { id: "streetlifting_16w", label: "Streetlifting 16 vk 🏋️",       icon: "🏋️", desc: "16 viikkoa — 4 kisaliikettä (MU/Leuka/Dippi/Kyykky), Hybrid Block-DUP, kisa-elokuu 2026", weeks: 16, factory: "createStreetlifting16WMesocycle",
+    about: "Akken referenssi-ohjelma: 16 vk jaettu 4 blokkiin (vk 1-4 Hypertrofia, 5-8 Voima, 9-12 Intensifikaatio, 13-16 Realization/Peak) Issurin 2010 -metodologialla. 4 kisaliikettä: Muscle-up, Leuka, Dippi, Kyykky. Kuormat loadPct-skaalattuja käyttäjän e1RM:ään — vaatii kalibroinnin aloituksessa. Accessory-volyymi taperoituu automaattisesti loppua kohti. Käytä kun: treenaat streetlifting-kisoihin nimenomaan näillä 4 liikkeellä." },
 ];
 
 // ── Hypertrofiajakso (4 viikkoa, 3×/vk) ──
