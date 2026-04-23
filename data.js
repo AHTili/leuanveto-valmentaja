@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.0 — Program Wizard + custom mesocycle generator
+// LeVe Coach v4.27.1 — Program Wizard + custom mesocycle generator (pilot fixes: daysPerWeek order, alaraaja variants, wizard preview, rotation)
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -173,6 +173,13 @@ const PRESET_MOVEMENTS = [
   { name: "Hollow body hold", category: "core", isPrimary: false, isPreset: true },
   { name: "Front-foot elevated split squat", category: "alaraaja", isPrimary: false, isPreset: true },
   { name: "Paused squat", category: "alaraaja", isPrimary: false, isPreset: true },
+  // ─── Alaraaja-variantit (v4.27.1) — maaveto/kyykky-spesifiset tukiliikkeet
+  //     räätälöityyn ohjelmageneraattoriin. COMPLEMENT/SECONDARY-rooleihin alaraaja-primaryille.
+  { name: "Romanian DL",       category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Deficit DL",        category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Front squat",       category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Pin squat",         category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Walking lunge",     category: "alaraaja", isPrimary: false, isPreset: true },
 ];
 
 // ─── Movement descriptions (v4.12) ───────────────────────────────
@@ -235,6 +242,12 @@ const MOVEMENT_DESCRIPTIONS = {
   "Leg extension": { howTo: "Polven ekstensio laitteella — puhdas quad-isolaatio.", cue: "Huiput lukitaan 1 s pohjalla" },
   "Bulgarian split squat": { howTo: "Takajalka penkillä, etujalka ~1 m edessä. Laskeudu suoraan alas. Pakara + quad unilateraalisti.", cue: "Etujalan polvi ei ylitä varvasta" },
   "Leg curl": { howTo: "Takareiden koukistus laitteella — makuulla tai istuen. Kontrolloitu alas.", cue: "Lantio pysyy penkissä — ei irtoa" },
+  // ─── Alaraaja-variantit (v4.27.1) ───
+  "Romanian DL": { howTo: "Maastaveto lähes suorin polvin. Lonkan saranaliike — työnnä takapuoli taakse ja laske tanko sääriä pitkin polviin tai alemmas. Takareidet + pakara. Tanko ei osu maahan toistojen välissä.", cue: "Lonkka taakse ensin, tanko seuraa — ei kyykyksi" },
+  "Deficit DL": { howTo: "Maastaveto 3–10 cm korokkeelta. Pidempi matka alapositiossa → lisää vetotyötä ja alkuradan voimaa. Selkä suora, pakara tiukka.", cue: "Sama tekniikka kuin mavessa — älä kumarra enemmän" },
+  "Front squat": { howTo: "Tanko etukulmalle (olympic-grip tai ristikahvat). Pysty asento kyykyn läpi, kyynärpäät korkealla. Alle vaakatason.", cue: "Kyynärpäät ylös — älä päästä tangon vajoamaan" },
+  "Pin squat": { howTo: "Takakyykky häkissä turvapalikoiden päälle — istu tangon tangon pinnin päälle, starttaa nollasta. Heikkouden pisteen voimaa.", cue: "Pinnille istuminen poistaa stretch-refleksin" },
+  "Walking lunge": { howTo: "Kävelyaskellus tangolla tai käsipainoilla. 10–20 askelta/sarja. Etujalka + unilateraalinen vakaus.", cue: "Takapolvi pehmeästi lähelle lattiaa, etujalka työtää" },
 
   // ─── Core ───
   "Ab wheel rollout": { howTo: "Polvillaan, työnnä rulla eteen mahdollisimman kauas, palaa aktiivisesti. Hollow body asento koko ajan.", cue: "Alaselkä ei saa notkahdella" },
@@ -2573,8 +2586,11 @@ const PRIMARY_CATEGORY_PROFILES = {
   },
   alaraaja: {
     label: "Alaraaja (kyykky, maave)",
-    COMPLEMENT:  { category: "alaraaja",          top: ["Hip thrust", "Bulgarian split squat", "Paused squat", "Front squat"] },
-    SECONDARY:   { category: "alaraaja",          top: ["Jalkaprässi", "Leg extension", "Front-foot elevated split squat", "Leg curl"] },
+    // COMPLEMENT rikastettu v4.27.1: RDL, Front squat, Paused squat ym. variantit ovat
+    // aitoja kyykky/maaveto-spesifisiä tukiliikkeitä (Brookfield, Bromley). "Paused squat"
+    // ja "Front squat" parantavat kyykkyä suoraan, "Romanian DL" ja "Deficit DL" maavetoa.
+    COMPLEMENT:  { category: "alaraaja",          top: ["Romanian DL", "Front squat", "Paused squat", "Deficit DL", "Hip thrust", "Pin squat", "Bulgarian split squat"] },
+    SECONDARY:   { category: "alaraaja",          top: ["Jalkaprässi", "Leg extension", "Front-foot elevated split squat", "Leg curl", "Walking lunge"] },
     BALANCE_1:   { category: "horisontaaliveto",  top: ["Seated row", "Chest-supported row"] },
     BALANCE_2:   { category: "horisontaalityöntö", top: ["Vinopenkkipunnerrus", "Chest press"] },
     ARM_SYN:     { category: "alaraaja",          top: ["Pohjenosto", "Leg curl"] },
@@ -2664,7 +2680,9 @@ function remapAccessorySlot(orig, userPrimaryCategory, dayIndex, slotIndex) {
   }
 
   // Eri kategoria tai liikettä ei ole top-listassa → valitse rotation-idx:llä.
-  const movementIdx = (dayIndex + slotIndex) % movements.length;
+  // v4.27.1: kerroin 2 antaa paremman permutaation (gcd(2,n)=1 kun n∈{3,5,7}),
+  // ts. eri slot-paikat saavat eri indeksejä eikä duplikaatteja muodostu vk:n sisällä.
+  const movementIdx = (dayIndex * 2 + slotIndex) % movements.length;
   return {
     ...orig,
     category: target.category,
@@ -2867,13 +2885,17 @@ function generateCustomMesocycle(answers, startDateISOArg) {
   }
   const skeleton = factory(startDateISO);
 
-  // 2. Substituoi päälikkeet + accessoryt
-  let weekPlans = distributePrimariesToDays(skeleton.weekPlans, primaries);
-
-  // 3. Skaalaa daysPerWeek (jos poikkeaa skeletin 3:sta)
+  // 2. Skaalaa daysPerWeek ENSIN (skeleton-primaryllä vielä — tämä takaa että
+  //    primary-rotaatio jakautuu OIKEALLE päivämäärälle, ei skeletin oletukselle.
+  //    v4.27.1 korjaus: aiemmin 4. päivä sai saman primaryn kuin 3. päivä,
+  //    mikä teki Ti/Pe-päivistä identtiset voimanostaja-skenaarioissa.)
+  let weekPlans = skeleton.weekPlans;
   if (daysPerWeek !== 3) {
     weekPlans = adjustDaysPerWeek(weekPlans, daysPerWeek);
   }
+
+  // 3. Substituoi päälikkeet + accessoryt (nyt lopulliselle päivälistalle)
+  weekPlans = distributePrimariesToDays(weekPlans, primaries);
 
   // 4. Skaalaa weekCount
   let weekDefs = skeleton.weekDefs;

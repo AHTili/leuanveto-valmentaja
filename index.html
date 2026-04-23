@@ -1291,14 +1291,65 @@ function showProgramWizardModal() {
       );
       overlay.querySelector("#wiz-recovery-desc").textContent = REC_META[st.recoveryCapacity].desc;
 
-      // Summary
+      // Summary + live preview (v4.27.1): aja generaattori nykyisillä valinnoilla
+      // ja näytä vk1:n päivät — käyttäjä näkee konkreettisesti mitä saa.
       const primariesLabel = st.selectedPrimaryNames.join(" + ");
       const goalLabel = GOAL_META[st.goal].label.toLowerCase();
+      let previewHTML = "";
+      let balanceWarningHTML = "";
+      try {
+        const answerPreview = {
+          goal: st.goal,
+          primaries: st.selectedPrimaryNames.map(name => {
+            const opt = WIZARD_PRIMARY_OPTIONS.find(p => p.name === name);
+            return { name: opt.name, category: opt.category };
+          }),
+          daysPerWeek: st.daysPerWeek,
+          weekCount: st.weekCount,
+          recoveryCapacity: st.recoveryCapacity,
+        };
+        const previewMeso = generateCustomMesocycle(answerPreview, todayISO());
+        const DOW = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
+        const wk1 = previewMeso.weekPlans.find(w => w.week === 1);
+        if (wk1) {
+          const dayLines = wk1.days.map(d => {
+            const primary = d.slots.find(s => s.role === "primary");
+            const accessoryCount = d.slots.filter(s => s.role === "accessory").length;
+            const primaryLbl = primary ? `${primary.defaultMovementName} (${primary.sets}×${primary.reps}${primary.targetVx != null ? ` @Vx${primary.targetVx}` : ""})` : "—";
+            return `<div style="margin-top:4px"><b>${DOW[d.dayOfWeek] || "?"}</b> <span class="muted">${d.dayType}</span> — ${primaryLbl} <span class="muted">+ ${accessoryCount} accessory</span></div>`;
+          }).join("");
+          previewHTML = `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.15)"><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px">Vk 1 esikatselu</div>${dayLines}</div>`;
+        }
+
+        // Volyymibalanssi-varoitus: vertaile category-sarjoja ja huomauta jos >2×
+        const setsByCat = {};
+        for (const wp of previewMeso.weekPlans) {
+          for (const d of wp.days) {
+            for (const s of d.slots) {
+              setsByCat[s.category] = (setsByCat[s.category] || 0) + (s.sets || 0);
+            }
+          }
+        }
+        const pushSets = (setsByCat["horisontaalityöntö"] || 0) + (setsByCat["vertikaalityöntö"] || 0) + (setsByCat["ojentajaekstensio"] || 0);
+        const pullSets = (setsByCat["vertikaaliveto"] || 0) + (setsByCat["horisontaaliveto"] || 0) + (setsByCat["hauisfleksio"] || 0);
+        if (pushSets > 0 && pullSets > 0) {
+          const ratio = Math.max(pushSets, pullSets) / Math.min(pushSets, pullSets);
+          if (ratio >= 2.0) {
+            const dominant = pushSets > pullSets ? "push" : "pull";
+            balanceWarningHTML = `<div style="margin-top:8px;padding:8px 10px;background:rgba(245,158,11,0.12);border-left:3px solid #f59e0b;border-radius:4px;font-size:11px;line-height:1.5">⚠ <b>Volyymi-epätasapaino:</b> ${dominant}-volyymi ${ratio.toFixed(1)}× toista. Harkitse lisä-päälikettä vastakkaiselle puolelle.</div>`;
+          }
+        }
+      } catch (err) {
+        previewHTML = `<div style="margin-top:8px;color:#f87171;font-size:11px">⚠ Esikatselu epäonnistui: ${err.message}</div>`;
+      }
+
       const rotation = st.selectedPrimaryNames.length > 1
-        ? ` Päälikkeet rotatoidaan ${st.daysPerWeek} päivälle (päivä 1 = ${st.selectedPrimaryNames[0]}, päivä 2 = ${st.selectedPrimaryNames[1] || "—"}${st.selectedPrimaryNames[2] ? ", päivä 3 = " + st.selectedPrimaryNames[2] : ""}).`
-        : ` Sama päälike kaikilla ${st.daysPerWeek} treenipäivällä (eri accessoryt/toistot).`;
+        ? ` Päälikkeet rotatoidaan ${st.daysPerWeek} päivälle.`
+        : ` Sama päälike kaikilla ${st.daysPerWeek} treenipäivällä.`;
       overlay.querySelector("#wiz-summary").innerHTML = `
-        <b>Yhteenveto:</b> ${st.weekCount} vk ${goalLabel}-mesosykli, ${st.daysPerWeek}×/vk, päälikkeet: <b>${primariesLabel}</b>.${rotation} Accessory-volyymi ${st.recoveryCapacity === "hyva" ? "100%" : st.recoveryCapacity === "keski" ? "85%" : "70%"} palautumiskyvyn mukaan.
+        <b>Yhteenveto:</b> ${st.weekCount} vk ${goalLabel}-mesosykli, ${st.daysPerWeek}×/vk, päälikkeet: <b>${primariesLabel}</b>.${rotation} Accessory-volyymi ${st.recoveryCapacity === "hyva" ? "100%" : st.recoveryCapacity === "keski" ? "85%" : "70%"}.
+        ${balanceWarningHTML}
+        ${previewHTML}
       `;
     };
     render();
