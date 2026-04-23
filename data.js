@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.26.1 — Schema version 4 (adds backupSnapshots store + pre-migration safety)
+// LeVe Coach v4.26.2 — Schema version 4 (adds backupSnapshots store + pre-migration safety)
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;

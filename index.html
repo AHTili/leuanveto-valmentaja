@@ -3293,18 +3293,16 @@ function renderMesocycle() {
       </div>
     </details>
 
-    <!-- 5. AUTOREG + VOLYYMI — näkyvät vain streetlifting_16w:ssä -->
-    ${isStreet16 ? `
-      <details class="card" style="padding:0">
-        <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">🎯 Per-liike autoregulaatio</summary>
-        <div style="padding:0 14px 14px">${renderPerLiftAutoregStatus(meso).replace('<div class="card">', '<div>').replace(/<div class="card-title">[\s\S]*?<\/div>/, '').replace(/<\/div>$/, '')}</div>
-      </details>
+    <!-- 5. AUTOREG + VOLYYMI — v4.26.2: toimivat kaikille ohjelmatyypeille (dynaaminen primary-tunnistus + blokkisarakejako) -->
+    <details class="card" style="padding:0">
+      <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">🎯 Per-liike autoregulaatio</summary>
+      <div style="padding:0 14px 14px">${renderPerLiftAutoregStatus(meso).replace('<div class="card">', '<div>').replace(/<div class="card-title">[\s\S]*?<\/div>/, '').replace(/<\/div>$/, '')}</div>
+    </details>
 
-      <details class="card" style="padding:0">
-        <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">📊 Volyymi-dashboard</summary>
-        <div style="padding:0 14px 14px">${renderVolumeDashboard(meso).replace('<div class="card">', '<div>').replace(/<div class="card-title">[\s\S]*?<\/div>/, '').replace(/<\/div>$/, '')}</div>
-      </details>
-    ` : ""}
+    <details class="card" style="padding:0">
+      <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">📊 Volyymi-dashboard</summary>
+      <div style="padding:0 14px 14px">${renderVolumeDashboard(meso).replace('<div class="card">', '<div>').replace(/<div class="card-title">[\s\S]*?<\/div>/, '').replace(/<\/div>$/, '')}</div>
+    </details>
 
     <button class="btn btn-outline btn-full mt" id="btn-new-meso">📋 Vaihda ohjelma</button>
   </div>`;
@@ -3395,15 +3393,26 @@ function renderWeekPlanDays(meso, weekNum, dayNames) {
 // PROGRAM OVERVIEW TABLE + VOLUME DASHBOARD
 // ═══════════════════════════════════════════════════════════════
 
+// v4.26.2: per-liike autoregulaatio toimii kaikille mesosyklityypeille.
+// Päälikkeet tunnistetaan weekPlans-datasta (primary-role-slotit) eikä hardcoded-listalta.
 function renderPerLiftAutoregStatus(meso) {
-  if (meso.type !== "streetlifting_16w") return "";
   const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
-  const lifts = [
-    { name: "Lisäpainoleuanveto", label: "⭐ Leuka",   icon: "🎯" },
-    { name: "Takakyykky",         label: "⭐ Kyykky",  icon: "🎯" },
-    { name: "Lisäpainodippi",     label: "⭐ Dippi",   icon: "🎯" },
-    { name: "Muscle-up",          label: "⭐ Muscle-up", icon: "🎯" },
-  ];
+
+  // Kerää uniikit primary-liikenimet mesosyklin weekPlans:sta
+  const primaryNames = new Set();
+  (meso.weekPlans || []).forEach(wp => {
+    (wp.days || []).forEach(d => {
+      (d.slots || []).forEach(s => {
+        if (s.role === "primary" && s.defaultMovementName) {
+          primaryNames.add(s.defaultMovementName);
+        }
+      });
+    });
+  });
+  if (primaryNames.size === 0) {
+    return `<div class="card"><div class="muted" style="font-size:11px">Ei päälikkeitä tunnistettu</div></div>`;
+  }
+  const lifts = Array.from(primaryNames).map(name => ({ name, label: `⭐ ${name}` }));
 
   const renderOne = (l) => {
     const mov = state.movements.find(m => m.name === l.name);
@@ -3507,23 +3516,54 @@ function renderProgramOverviewTable(meso, currentWeek) {
   </div>`;
 }
 
+// v4.26.2: volyymi-dashboard toimii kaikille mesosyklityypeille.
+// Blokkisarakkeet määritellään dynaamisesti weekCount:n mukaan:
+//  - 16 vk (streetlifting_16w): Hyp/Voima/Int/Peak (kuten ennen)
+//  - muut: yksi "Koko ohjelma" -blokki JOS ≤ 8 vk, muuten jako ~4 vk blokeiksi
 function renderVolumeDashboard(meso) {
   const CAT_LABELS = {
-    vertikaaliveto: "Leuka/MU",
-    alaraaja: "Kyykky",
-    "horisontaalityöntö": "Dippi/penkki",
-    "horisontaaliveto": "Rivaukset",
-    hauisfleksio: "Hauis",
-    "vertikaalityöntö": "Pystypunn.",
-    ojentajaekstensio: "Ojentaja",
-    core: "Core",
+    vertikaaliveto:       "Vertikaaliveto",
+    horisontaaliveto:     "Horisontaaliveto",
+    hauisfleksio:         "Hauis",
+    vertikaalityöntö:     "Vertikaalityöntö",
+    horisontaalityöntö:   "Horisontaalityöntö",
+    ojentajaekstensio:    "Ojentaja",
+    core:                 "Core",
+    alaraaja:             "Alaraaja",
+    muu:                  "Muu",
   };
-  const blocks = [
-    { name: "Hypertrofia", color: "#3a6b5c", weeks: [1,2,3,4] },
-    { name: "Voima",       color: "#5a4e7a", weeks: [5,6,7,8] },
-    { name: "Intensifikaatio", color: "#7a5a3e", weeks: [9,10,11,12] },
-    { name: "Realization/Peak", color: "#8a3e3e", weeks: [13,14,15,16] },
-  ];
+
+  const weekCount = meso.weekCount || (meso.weekPlans || []).length || 4;
+
+  // Rakenna blokkijako mesosyklityypin mukaan
+  let blocks;
+  if (meso.type === "streetlifting_16w" && weekCount === 16) {
+    blocks = [
+      { name: "Hypertrofia",       color: "#3a6b5c", weeks: [1,2,3,4] },
+      { name: "Voima",             color: "#5a4e7a", weeks: [5,6,7,8] },
+      { name: "Intensifikaatio",   color: "#7a5a3e", weeks: [9,10,11,12] },
+      { name: "Realization/Peak",  color: "#8a3e3e", weeks: [13,14,15,16] },
+    ];
+  } else if (weekCount <= 8) {
+    // Lyhyet ohjelmat: yksi blokki
+    blocks = [
+      { name: "Koko ohjelma", color: "#3a6b5c", weeks: Array.from({length: weekCount}, (_, i) => i + 1) },
+    ];
+  } else {
+    // Keskimittaiset ohjelmat: jaa ~4 vk blokkeihin
+    const palette = ["#3a6b5c", "#5a4e7a", "#7a5a3e", "#8a3e3e"];
+    blocks = [];
+    for (let start = 1; start <= weekCount; start += 4) {
+      const end = Math.min(start + 3, weekCount);
+      const weeks = [];
+      for (let w = start; w <= end; w++) weeks.push(w);
+      blocks.push({
+        name: `Vk ${start}–${end}`,
+        color: palette[blocks.length % palette.length],
+        weeks,
+      });
+    }
+  }
   const weeklyTotals = (weeks) => {
     const totals = {};
     weeks.forEach(w => {
@@ -3564,7 +3604,7 @@ function renderVolumeDashboard(meso) {
         </div>`;
       }).join("")}
     </div>
-    <div class="muted mt" style="font-size:10px">Benchmark: 6–10 working sets/liike/vk eliittitasoa (KoW/Heavyweight Cali)</div>
+    <div class="muted mt" style="font-size:10px">Benchmark: MEV 4–6 · MAV 10–20 · MRV 20+ sarjaa/lihasryhmä/vk (Israetel 2017)</div>
   </div>`;
 }
 
