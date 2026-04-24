@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.16 — MU-autoregulaation Vx-gradientti laajennettu. Aiempi adjustMULoad: −5 / −2.5 / 0 / +2.5 (avgVx:n mukaan). Kun atleetti raportoi avgVx ≥ 4 (selvästi liian kevyt), +2.5 kg oli liian varovainen — ohjelma eteni vain 2.5 kg/vk vaikka signaali sanoi että varaa on enemmänkin. Uusi porrastus lisää +5 kg -askeleen kun avgVx ≥ 4 JA minVx ≥ 3 (estää harhaanjohtavaa keskiarvoa jos 1 sarja oli V0-2). +5 kg on enimmäisaskel — MU:n bimodaalisen luonteen takia isommat kertahypyt ovat liian riskialttiita. v4.27.15: AMRAP-kalibrointiprotokolla W4 LA:lle. W4 LA-sessio (streetlifting_16w) vaihdettu "3RM testi"-labelista todelliseen AMRAP-kalibrointisessioon: kolme setRole:"calibration"-slotia (Leuka/Dippi/Kyykky) @85 % × tekninen failure, actualVx pakotetaan 0:aan. Engine.computeMovementProgress tunnistaa calibration-setit ja override:aa e1RM:n kun viim. 3 top-setissä on kalibrointi — sen sijaan että mediaani sekoittaisi Vx-biasoidut ja kalibrointi-setit. Epley+Vara actualVx=0:lla redusoituu puhtaaksi Epleyksi (load × (1 + reps/30)), joten kalibrointi antaa Vx-biasista vapaan ground-truth-mittauksen. Rate-limit-ankkuri ei muutu — kalibrointi-sessio suodatetaan computeRateLimitAnchorissa (Vx=0 drop), joten ankkuri pysyy todellisissa treenisessioissa. v4.27.14: rate-limit-ankkuri robustimmaksi (viim. 3 session raskain median). Pre-v4.27.14: rate-limit-cap (session-to-session +6/+10/+15 % Vx-deltan mukaan) käytti yksittäistä viim. setriä ankkurina (recentTopSets[length-1] primaryssa, selfSets[last] cross-referencessä) — altis yksittäisen anomalian vaikutukselle: deload-session kevein setti sulki capin keinotekoisesti alas, 3RM-testin failure-setti (Vx0) päätyi ankkuriksi, yksittäinen grind vinoutti cappia. KORJAUS: uusi computeRateLimitAnchor(recentTopSets)-helperi: ryhmittää setit sessionId:n mukaan, ottaa viim. 3 sessiota, laskee kunkin MEDIAN load + MEDIAN Vx (suodattaa readiness_testin ja Vx0-failuret), ankkuri = RASKAIN median-load näistä — deload/test ei vedä cappia alas, mutta yksittäinen spiikkikään ei nosta cappia perusteettomasti. Käytössä sekä primary-polussa (PROGRESSION_RATE_LIMIT) että cross-reference-haarassa (PROGRESSION_RATE_LIMIT_CROSSREF). v4.27.13: loadPct-slottien resolvointi (engine resolvoi jokaisen loadPct-slotin kuorman: sama liike → session-effective-e1RM primaryn rate-limitatusta targetista; cross-reference esim. Etukyykky→Takakyykky → referenssin e1RM + oma rate-limit; UI lukee slot.resolvedLoadKg:n).
+// LeVe Coach v4.27.17 — Accessory audit -korjaukset (composition fixes, viikosta riippumatta optimaaliset treenit). Kolme täsmämuutosta: (1) lowerAcc sai 5. slotin — Pohkeenkohotus 3×15 Vx4 ("calf-isolation", alaraaja). Perustelu: 230 kg+ kyykyn lockout vaatii nilkan rigidityä (soleus-toorque + gastrocnemius-elastic), aiemmin isolaatioo nolla — ankkurikohta puuttui plantariflexion ketjusta. (2) pushAcc (strength-blokki vk 5+) vaihdettu: Sivunosto 3×15 → Face pull 2×12 Vx4 ("scapular-control", horisontaaliveto). Perustelu: strength-blokissa viikottainen dippivolyymi nousee (primary 24–30 raskasta toistoa + backoff + skill-slotin tempo dippi) — posterior delt + rotator cuff balance kriittinen, ja foundation-blokissa (vk 1–4) pushAccPrehab tarjoaa jo face pullin 3×15 joten strength-blokissa riittää 2×12 (complementary volume). Sivunosto redundantti Pystypunnerruksen V3/8-rep-rangessa. (3) maDay warmup sai Band external rotation 2×12 per puoli — symmetria TO:n prehab-depthin kanssa (rotator cuff aktivaatio ennen vetoja, ei aiemmin ollut MA:lla mutta oli TO:lla). Manuaalinen muokkaus tuettu: accessorySlotOverrides-mekanismi salvaa slotId-pohjaisen vaihdon UI:n 🔒-lukolla, stagnation-swap ehdottaa automaattisesti vaihtoehtoa jos slot junnaa — rakenne pysyy pseudonyymisti eheänä. v4.27.16: MU-autoregulaation Vx-gradientti laajennettu. Aiempi adjustMULoad: −5 / −2.5 / 0 / +2.5 (avgVx:n mukaan). Kun atleetti raportoi avgVx ≥ 4 (selvästi liian kevyt), +2.5 kg oli liian varovainen — ohjelma eteni vain 2.5 kg/vk vaikka signaali sanoi että varaa on enemmänkin. Uusi porrastus lisää +5 kg -askeleen kun avgVx ≥ 4 JA minVx ≥ 3 (estää harhaanjohtavaa keskiarvoa jos 1 sarja oli V0-2). +5 kg on enimmäisaskel — MU:n bimodaalisen luonteen takia isommat kertahypyt ovat liian riskialttiita. v4.27.15: AMRAP-kalibrointiprotokolla W4 LA:lle. W4 LA-sessio (streetlifting_16w) vaihdettu "3RM testi"-labelista todelliseen AMRAP-kalibrointisessioon: kolme setRole:"calibration"-slotia (Leuka/Dippi/Kyykky) @85 % × tekninen failure, actualVx pakotetaan 0:aan. Engine.computeMovementProgress tunnistaa calibration-setit ja override:aa e1RM:n kun viim. 3 top-setissä on kalibrointi — sen sijaan että mediaani sekoittaisi Vx-biasoidut ja kalibrointi-setit. Epley+Vara actualVx=0:lla redusoituu puhtaaksi Epleyksi (load × (1 + reps/30)), joten kalibrointi antaa Vx-biasista vapaan ground-truth-mittauksen. Rate-limit-ankkuri ei muutu — kalibrointi-sessio suodatetaan computeRateLimitAnchorissa (Vx=0 drop), joten ankkuri pysyy todellisissa treenisessioissa. v4.27.14: rate-limit-ankkuri robustimmaksi (viim. 3 session raskain median). Pre-v4.27.14: rate-limit-cap (session-to-session +6/+10/+15 % Vx-deltan mukaan) käytti yksittäistä viim. setriä ankkurina (recentTopSets[length-1] primaryssa, selfSets[last] cross-referencessä) — altis yksittäisen anomalian vaikutukselle: deload-session kevein setti sulki capin keinotekoisesti alas, 3RM-testin failure-setti (Vx0) päätyi ankkuriksi, yksittäinen grind vinoutti cappia. KORJAUS: uusi computeRateLimitAnchor(recentTopSets)-helperi: ryhmittää setit sessionId:n mukaan, ottaa viim. 3 sessiota, laskee kunkin MEDIAN load + MEDIAN Vx (suodattaa readiness_testin ja Vx0-failuret), ankkuri = RASKAIN median-load näistä — deload/test ei vedä cappia alas, mutta yksittäinen spiikkikään ei nosta cappia perusteettomasti. Käytössä sekä primary-polussa (PROGRESSION_RATE_LIMIT) että cross-reference-haarassa (PROGRESSION_RATE_LIMIT_CROSSREF). v4.27.13: loadPct-slottien resolvointi (engine resolvoi jokaisen loadPct-slotin kuorman: sama liike → session-effective-e1RM primaryn rate-limitatusta targetista; cross-reference esim. Etukyykky→Takakyykky → referenssin e1RM + oma rate-limit; UI lukee slot.resolvedLoadKg:n).
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -515,6 +515,22 @@ const ACCESSORY_SLOT_CATALOG = {
       strength:   { sets: 3, reps: 10, targetVx: null },
       intensity:  { sets: 2, reps: 10, targetVx: null },
       peaking:    { sets: 2, reps: 12, targetVx: null },
+    },
+  },
+  "calf-isolation": {
+    function: "Pohkeiden isolaatio, nilkan rigidity",
+    rationale: "Raskaan kyykyn (230 kg+) lockout vaatii nilkan jäykkyyttä — soleus-toorque (staattinen plantariflexion) + gastrocnemius-elastic (reaktivinen). Ilman pohje-isolaatiota ankle-ketju on heikoin lenkki ja lockout karkaa. Seisten = gastrocnemius (bi-articular), istuen = soleus (mono-articular). Peakingissä kevyempi volyymi CNS-säästön vuoksi.",
+    phaseVariants: {
+      foundation: ["Pohkeenkohotus", "Standing calf raise"],
+      strength:   ["Pohkeenkohotus", "Seated calf raise"],
+      intensity:  ["Pohkeenkohotus", "Seated calf raise"],
+      peaking:    ["Pohkeenkohotus"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 15, targetVx: 3, note: "Täysi venytys pohjassa — stretch-mediated hypertrofia" },
+      strength:   { sets: 3, reps: 12, targetVx: 3 },
+      intensity:  { sets: 3, reps: 10, targetVx: 2 },
+      peaking:    { sets: 2, reps: 12, targetVx: 4 },
     },
   },
 
@@ -3236,12 +3252,15 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     slotAccessory("knee-dominant-accessory",    "alaraaja", "Jalkaprässi",             { sets:3, reps:10 }),
     slotAccessory("knee-unilateral",            "alaraaja", "Bulgarian split squat",   { sets:3, reps:10 }),
     slotAccessory("hamstring-isolation",        "alaraaja", "Leg curl",                { sets:3, reps:12 }),
+    // v4.27.17: Pohkeenkohotus 5. slotiksi — nilkan jäykkyys kyykyn lockoutiin (230 kg+ rakenne)
+    slotAccessory("calf-isolation",             "alaraaja", "Pohkeenkohotus",          { sets:3, reps:15, targetVx:3, note:"Ankle rigidity — kyykyn lockout-tuki, soleus+gastrocnemius" }),
   ];
   const pushAcc = () => [
     slotAccessory("bench-heavy",         "horisontaalityöntö", "Penkkipunnerrus",    { sets:4, reps:6,  targetVx:3, note:"kapea ote" }),
     slotAccessory("shoulder-vertical",   "vertikaalityöntö",   "Pystypunnerrus",     { sets:3, reps:8 }),
     slotAccessory("tricep-lockout",      "ojentajaekstensio",  "Tricep pushdown",    { sets:3, reps:12 }),
-    slotAccessory("shoulder-isolation",  "vertikaalityöntö",   "Sivunosto",          { sets:3, reps:15 }),
+    // v4.27.17: Sivunosto → Face pull — strength-blokin (vk 5+) raskas dippivolyymi vaatii posterior balance; ei foundation-blokin pushAccPrehab:n 3×15 vaan 2×12 koska volyymi jo täyttynyt muualla
+    slotAccessory("scapular-control",    "horisontaaliveto",   "Face pull",          { sets:2, reps:12, targetVx:4, note:"Posterior delt + rotator cuff — strength-blokin dippivolyymin tueksi" }),
   ];
 
   // ─── Dippi-prehab-accessory-paketti (v4.27.7 REFACTOR) ───
@@ -3343,6 +3362,8 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         { name: "Hyppynaru / Jumping Jacks", desc: "2–3 min yleislämmittely — veren virtaus + lihaslämpö ylös" },
         { name: "Band pull-apart", desc: "2×15 — posterior delt + lapa-retraktio" },
         { name: "Thoracic extension (foam roller)", desc: "2×8 per puoli — T-rangan liikkuvuus avautuu" },
+        // v4.27.17: Band external rotation symmetriaan TO:n prehab-depthin kanssa — rotator cuff aktivaatio ennen vetoja
+        { name: "Band external rotation", desc: "2×12 per puoli — rotator cuff ext, symmetria TO:n prehab-depthin kanssa" },
         { name: "Scapular hang", desc: "3×10 s — lapa-aktivaatio ennen vetoja" },
         { name: "BW-leuka (kevyt)", desc: "1×5 — liikemallin herätys" },
         { name: "Räjähtävä leuka BW", desc: "1×3 — max nopeus ylös, neural primer" },
