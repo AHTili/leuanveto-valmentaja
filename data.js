@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.17 — Accessory audit -korjaukset (composition fixes, viikosta riippumatta optimaaliset treenit). Kolme täsmämuutosta: (1) lowerAcc sai 5. slotin — Pohkeenkohotus 3×15 Vx4 ("calf-isolation", alaraaja). Perustelu: 230 kg+ kyykyn lockout vaatii nilkan rigidityä (soleus-toorque + gastrocnemius-elastic), aiemmin isolaatioo nolla — ankkurikohta puuttui plantariflexion ketjusta. (2) pushAcc (strength-blokki vk 5+) vaihdettu: Sivunosto 3×15 → Face pull 2×12 Vx4 ("scapular-control", horisontaaliveto). Perustelu: strength-blokissa viikottainen dippivolyymi nousee (primary 24–30 raskasta toistoa + backoff + skill-slotin tempo dippi) — posterior delt + rotator cuff balance kriittinen, ja foundation-blokissa (vk 1–4) pushAccPrehab tarjoaa jo face pullin 3×15 joten strength-blokissa riittää 2×12 (complementary volume). Sivunosto redundantti Pystypunnerruksen V3/8-rep-rangessa. (3) maDay warmup sai Band external rotation 2×12 per puoli — symmetria TO:n prehab-depthin kanssa (rotator cuff aktivaatio ennen vetoja, ei aiemmin ollut MA:lla mutta oli TO:lla). Manuaalinen muokkaus tuettu: accessorySlotOverrides-mekanismi salvaa slotId-pohjaisen vaihdon UI:n 🔒-lukolla, stagnation-swap ehdottaa automaattisesti vaihtoehtoa jos slot junnaa — rakenne pysyy pseudonyymisti eheänä. v4.27.16: MU-autoregulaation Vx-gradientti laajennettu. Aiempi adjustMULoad: −5 / −2.5 / 0 / +2.5 (avgVx:n mukaan). Kun atleetti raportoi avgVx ≥ 4 (selvästi liian kevyt), +2.5 kg oli liian varovainen — ohjelma eteni vain 2.5 kg/vk vaikka signaali sanoi että varaa on enemmänkin. Uusi porrastus lisää +5 kg -askeleen kun avgVx ≥ 4 JA minVx ≥ 3 (estää harhaanjohtavaa keskiarvoa jos 1 sarja oli V0-2). +5 kg on enimmäisaskel — MU:n bimodaalisen luonteen takia isommat kertahypyt ovat liian riskialttiita. v4.27.15: AMRAP-kalibrointiprotokolla W4 LA:lle. W4 LA-sessio (streetlifting_16w) vaihdettu "3RM testi"-labelista todelliseen AMRAP-kalibrointisessioon: kolme setRole:"calibration"-slotia (Leuka/Dippi/Kyykky) @85 % × tekninen failure, actualVx pakotetaan 0:aan. Engine.computeMovementProgress tunnistaa calibration-setit ja override:aa e1RM:n kun viim. 3 top-setissä on kalibrointi — sen sijaan että mediaani sekoittaisi Vx-biasoidut ja kalibrointi-setit. Epley+Vara actualVx=0:lla redusoituu puhtaaksi Epleyksi (load × (1 + reps/30)), joten kalibrointi antaa Vx-biasista vapaan ground-truth-mittauksen. Rate-limit-ankkuri ei muutu — kalibrointi-sessio suodatetaan computeRateLimitAnchorissa (Vx=0 drop), joten ankkuri pysyy todellisissa treenisessioissa. v4.27.14: rate-limit-ankkuri robustimmaksi (viim. 3 session raskain median). Pre-v4.27.14: rate-limit-cap (session-to-session +6/+10/+15 % Vx-deltan mukaan) käytti yksittäistä viim. setriä ankkurina (recentTopSets[length-1] primaryssa, selfSets[last] cross-referencessä) — altis yksittäisen anomalian vaikutukselle: deload-session kevein setti sulki capin keinotekoisesti alas, 3RM-testin failure-setti (Vx0) päätyi ankkuriksi, yksittäinen grind vinoutti cappia. KORJAUS: uusi computeRateLimitAnchor(recentTopSets)-helperi: ryhmittää setit sessionId:n mukaan, ottaa viim. 3 sessiota, laskee kunkin MEDIAN load + MEDIAN Vx (suodattaa readiness_testin ja Vx0-failuret), ankkuri = RASKAIN median-load näistä — deload/test ei vedä cappia alas, mutta yksittäinen spiikkikään ei nosta cappia perusteettomasti. Käytössä sekä primary-polussa (PROGRESSION_RATE_LIMIT) että cross-reference-haarassa (PROGRESSION_RATE_LIMIT_CROSSREF). v4.27.13: loadPct-slottien resolvointi (engine resolvoi jokaisen loadPct-slotin kuorman: sama liike → session-effective-e1RM primaryn rate-limitatusta targetista; cross-reference esim. Etukyykky→Takakyykky → referenssin e1RM + oma rate-limit; UI lukee slot.resolvedLoadKg:n).
+// LeVe Coach v4.27.18 — Loppuun viedyt accessory audit -löydökset (anti-rotation core + grip-endurance + triple-coverage fix). (1) Uusi slotId "core-antirotation" ACCESSORY_SLOT_CATALOGiin: Pallof press / Bird dog / Landmine anti-rotation / Pallof press hold, phase-taperaus foundation 3×10/side Vx3 → strength 3×8/side Vx3 → intensity 2×8/side Vx2 → peaking 2×10/side Vx4. Perustelu: raskas kyykky (230 kg+) luo epäsymmetristä kuormaa jonka vasta-kerääntyvä rotational-shear pettää hollow-only-coren; anti-rotation palvelee frontaalitasoa jota sagittal hollow ei kata. (2) TI-päivä (kyykky) saa core-antirotationin, MA+TO säilyttävät core-hollow:n (sagittal flexion tukee leuka/dippi/MU-chainia — biomechaaniseti eri tarve). (3) Uusi slotId "grip-endurance": Farmer carry / Dead hang / Heavy farmer carry, foundation 3×30s → strength 3×40s → intensity 2×45s → peaking 2×30s. (4) Foundation face pull triple-coverage -korjaus: mixAcc:ssa (LA-päivä) scapular-control → grip-endurance. Perustelu: MA pullAcc + TO pushAccPrehab + LA mixAcc = 9 sets × 15 reps = 135 reps/wk face pull foundation-blokissa (liikaa low-fatigue-liikkeelle); vaihto pudottaa volyymin 135 → 90 reps/wk ja tukee suoraan LA:n MU-työtä koska MU:n transition on false grip -endurance-rajoitettu. (5) Seed-liikkeet päivitetty: Pohkeenkohotus + Standing/Seated calf raise (v4.27.17 täydennys), Pallof press hold + Landmine anti-rotation + Bird dog + Hollow body hold + L-sit hold + Farmer carry + Heavy farmer carry + Heavy dead hang (kaikki 58 catalog-varianttia resolvoituu seediin). v4.27.17: Accessory audit -korjaukset (calf-isolation 5. slotina, pushAcc face pull swap, MA warmup band external rotation). (composition fixes, viikosta riippumatta optimaaliset treenit). Kolme täsmämuutosta: (1) lowerAcc sai 5. slotin — Pohkeenkohotus 3×15 Vx4 ("calf-isolation", alaraaja). Perustelu: 230 kg+ kyykyn lockout vaatii nilkan rigidityä (soleus-toorque + gastrocnemius-elastic), aiemmin isolaatioo nolla — ankkurikohta puuttui plantariflexion ketjusta. (2) pushAcc (strength-blokki vk 5+) vaihdettu: Sivunosto 3×15 → Face pull 2×12 Vx4 ("scapular-control", horisontaaliveto). Perustelu: strength-blokissa viikottainen dippivolyymi nousee (primary 24–30 raskasta toistoa + backoff + skill-slotin tempo dippi) — posterior delt + rotator cuff balance kriittinen, ja foundation-blokissa (vk 1–4) pushAccPrehab tarjoaa jo face pullin 3×15 joten strength-blokissa riittää 2×12 (complementary volume). Sivunosto redundantti Pystypunnerruksen V3/8-rep-rangessa. (3) maDay warmup sai Band external rotation 2×12 per puoli — symmetria TO:n prehab-depthin kanssa (rotator cuff aktivaatio ennen vetoja, ei aiemmin ollut MA:lla mutta oli TO:lla). Manuaalinen muokkaus tuettu: accessorySlotOverrides-mekanismi salvaa slotId-pohjaisen vaihdon UI:n 🔒-lukolla, stagnation-swap ehdottaa automaattisesti vaihtoehtoa jos slot junnaa — rakenne pysyy pseudonyymisti eheänä. v4.27.16: MU-autoregulaation Vx-gradientti laajennettu. Aiempi adjustMULoad: −5 / −2.5 / 0 / +2.5 (avgVx:n mukaan). Kun atleetti raportoi avgVx ≥ 4 (selvästi liian kevyt), +2.5 kg oli liian varovainen — ohjelma eteni vain 2.5 kg/vk vaikka signaali sanoi että varaa on enemmänkin. Uusi porrastus lisää +5 kg -askeleen kun avgVx ≥ 4 JA minVx ≥ 3 (estää harhaanjohtavaa keskiarvoa jos 1 sarja oli V0-2). +5 kg on enimmäisaskel — MU:n bimodaalisen luonteen takia isommat kertahypyt ovat liian riskialttiita. v4.27.15: AMRAP-kalibrointiprotokolla W4 LA:lle. W4 LA-sessio (streetlifting_16w) vaihdettu "3RM testi"-labelista todelliseen AMRAP-kalibrointisessioon: kolme setRole:"calibration"-slotia (Leuka/Dippi/Kyykky) @85 % × tekninen failure, actualVx pakotetaan 0:aan. Engine.computeMovementProgress tunnistaa calibration-setit ja override:aa e1RM:n kun viim. 3 top-setissä on kalibrointi — sen sijaan että mediaani sekoittaisi Vx-biasoidut ja kalibrointi-setit. Epley+Vara actualVx=0:lla redusoituu puhtaaksi Epleyksi (load × (1 + reps/30)), joten kalibrointi antaa Vx-biasista vapaan ground-truth-mittauksen. Rate-limit-ankkuri ei muutu — kalibrointi-sessio suodatetaan computeRateLimitAnchorissa (Vx=0 drop), joten ankkuri pysyy todellisissa treenisessioissa. v4.27.14: rate-limit-ankkuri robustimmaksi (viim. 3 session raskain median). Pre-v4.27.14: rate-limit-cap (session-to-session +6/+10/+15 % Vx-deltan mukaan) käytti yksittäistä viim. setriä ankkurina (recentTopSets[length-1] primaryssa, selfSets[last] cross-referencessä) — altis yksittäisen anomalian vaikutukselle: deload-session kevein setti sulki capin keinotekoisesti alas, 3RM-testin failure-setti (Vx0) päätyi ankkuriksi, yksittäinen grind vinoutti cappia. KORJAUS: uusi computeRateLimitAnchor(recentTopSets)-helperi: ryhmittää setit sessionId:n mukaan, ottaa viim. 3 sessiota, laskee kunkin MEDIAN load + MEDIAN Vx (suodattaa readiness_testin ja Vx0-failuret), ankkuri = RASKAIN median-load näistä — deload/test ei vedä cappia alas, mutta yksittäinen spiikkikään ei nosta cappia perusteettomasti. Käytössä sekä primary-polussa (PROGRESSION_RATE_LIMIT) että cross-reference-haarassa (PROGRESSION_RATE_LIMIT_CROSSREF). v4.27.13: loadPct-slottien resolvointi (engine resolvoi jokaisen loadPct-slotin kuorman: sama liike → session-effective-e1RM primaryn rate-limitatusta targetista; cross-reference esim. Etukyykky→Takakyykky → referenssin e1RM + oma rate-limit; UI lukee slot.resolvedLoadKg:n).
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -136,6 +136,15 @@ const PRESET_MOVEMENTS = [
   { name: "Hanging leg raise", category: "core", isPrimary: false, isPreset: true },
   { name: "Ab wheel rollout", category: "core", isPrimary: false, isPreset: true },
   { name: "Pallof press", category: "core", isPrimary: false, isPreset: true },
+  // v4.27.18: anti-rotation + grip-endurance + hollow variants
+  { name: "Pallof press hold", category: "core", isPrimary: false, isPreset: true },
+  { name: "Landmine anti-rotation", category: "core", isPrimary: false, isPreset: true },
+  { name: "Bird dog", category: "core", isPrimary: false, isPreset: true },
+  { name: "Hollow body hold", category: "core", isPrimary: false, isPreset: true },
+  { name: "L-sit hold", category: "core", isPrimary: false, isPreset: true },
+  { name: "Farmer carry", category: "core", isPrimary: false, isPreset: true },
+  { name: "Heavy farmer carry", category: "core", isPrimary: false, isPreset: true },
+  { name: "Heavy dead hang", category: "core", isPrimary: false, isPreset: true },
   // ─── Lower body ───
   { name: "Jalkaprässi", category: "alaraaja", isPrimary: false, isPreset: true },
   { name: "Kyykky", category: "alaraaja", isPrimary: false, isPreset: true },
@@ -145,6 +154,10 @@ const PRESET_MOVEMENTS = [
   { name: "Bulgarian split squat", category: "alaraaja", isPrimary: false, isPreset: true },
   { name: "Hip thrust", category: "alaraaja", isPrimary: false, isPreset: true },
   { name: "Pohjenosto", category: "alaraaja", isPrimary: false, isPreset: true },
+  // v4.27.18: calf-isolation variants (Pohkeenkohotus = yleisempi suomenkielinen termi vs Pohjenosto)
+  { name: "Pohkeenkohotus", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Standing calf raise", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Seated calf raise", category: "alaraaja", isPrimary: false, isPreset: true },
   // ─── Other / grip ───
   { name: "Rannekoukistus", category: "muu", isPrimary: false, isPreset: true },
   { name: "Wrist roller", category: "muu", isPrimary: false, isPreset: true },
@@ -617,6 +630,38 @@ const ACCESSORY_SLOT_CATALOG = {
       strength:   { sets: 3, reps: 8, targetVx: null, note: "Holdit 10-20 s" },
       intensity:  { sets: 2, reps: 8, targetVx: null },
       peaking:    { sets: 2, reps: 10, targetVx: null },
+    },
+  },
+  "core-antirotation": {
+    function: "Anti-rotation core, spine-stability lateraalikuormassa",
+    rationale: "Raskas kyykky (230 kg+) luo epäsymmetristä kuormaa — oikean ja vasemman puolen mikrokompensaatiot summautuvat spinal-shear-voimaksi jos anti-rotation-core pettää. Pallof press opettaa keskivartalon ignoraamaan ulkoista rotaatiovääntöä, mikä näkyy suoraan kyykyn lantion linjassa ja alaosan räjähtävyydessä. Toisin kuin hollow (sagittal flexion), anti-rotation palvelee frontaalitason stability:ä joka on kyykyn erityistarve.",
+    phaseVariants: {
+      foundation: ["Pallof press", "Bird dog"],
+      strength:   ["Pallof press", "Landmine anti-rotation"],
+      intensity:  ["Pallof press hold", "Pallof press"],
+      peaking:    ["Pallof press"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 10, targetVx: 3, note: "10 toistoa per puoli — kontrolloitu tempo, ei jerkkaa" },
+      strength:   { sets: 3, reps: 8,  targetVx: 3, note: "8 toistoa per puoli — raskaampi kuorma" },
+      intensity:  { sets: 2, reps: 8,  targetVx: 2, note: "Iso-hold 8–10 s per puoli tai 8 reps" },
+      peaking:    { sets: 2, reps: 10, targetVx: 4, note: "10 toistoa per puoli — kevyt kontrolli" },
+    },
+  },
+  "grip-endurance": {
+    function: "Otteen kesto, MU false grip -kapasiteetti",
+    rationale: "MU:n transition vaatii 3–6 sekunnin false grip -pitoa kisapainoilla — jos otteen kesto on raja-arvossa, transition hajoaa ennen työnnön alkua. Farmer carry kouluttaa myös scapular depression -pidon (MU-startin ankkuri) ja traps-volyymia ilman CNS-kuormaa. Dead hang on vaihtoehto jos carry-tilaa ei ole.",
+    phaseVariants: {
+      foundation: ["Farmer carry", "Dead hang"],
+      strength:   ["Farmer carry", "Heavy dead hang"],
+      intensity:  ["Heavy farmer carry", "Dead hang"],
+      peaking:    ["Farmer carry"],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 30, targetVx: null, note: "30 s per setti (tai 20 m carry) — moderate kuorma, keskity otteeseen" },
+      strength:   { sets: 3, reps: 40, targetVx: null, note: "40 s per setti (tai 25 m carry) — raskaampi kuorma" },
+      intensity:  { sets: 2, reps: 45, targetVx: null, note: "45 s max-effort carry — lähellä grip-failurea" },
+      peaking:    { sets: 2, reps: 30, targetVx: null, note: "30 s kevyt — ote-muistin ylläpito" },
     },
   },
 };
@@ -3296,7 +3341,12 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   ];
   const mixAcc = () => [
     slotAccessory("core-hollow",     "core",             "Ab wheel rollout",   { sets:3, reps:10 }),
-    slotAccessory("scapular-control","horisontaaliveto", "Face pull",          { sets:2, reps:15 }),
+    // v4.27.18: Face pull → Farmer carry. Perustelu: foundation-blokissa face pull
+    // triple-coverage (MA pullAcc + TO pushAccPrehab + LA mixAcc = 9 sets × 15 reps
+    // = 135 reps/wk, liikaa low-fatigue-liikkeeksi). Vaihto grip-endurance-slotiin
+    // tukee suoraan LA:n MU-työtä (false grip on grip-endurance-rajoitettu) ja
+    // pudottaa face pull -volyymin 135 → 90 reps/wk foundation-blokissa.
+    slotAccessory("grip-endurance",  "core",             "Farmer carry",       { sets:3, reps:30, note:"30 s per setti (tai 20 m) — MU false grip -tuki" }),
   ];
 
   // ─── Warmup ramp helper (v4.25 P2-15) ───
@@ -3394,7 +3444,9 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         allowVelocityInput: true });
     }
     const accessories = accessoryList === undefined ? lowerAcc() : accessoryList;
-    const coreSlot = slotAccessory("core-hollow", "core", "Ab wheel rollout", { sets:2, reps:10, targetVx:3 });
+    // v4.27.18: TI saa anti-rotation coren (frontaalitason spine-stability raskaassa kyykyssä)
+    // MA + TO säilyttävät hollow:n (sagittal flexion tukee leuka/dippi/MU-chainia)
+    const coreSlot = slotAccessory("core-antirotation", "core", "Pallof press", { sets:3, reps:10, targetVx:3, note:"10 toistoa per puoli — anti-rotation, spine-stability raskaaseen kyykkyyn" });
     return { dayOfWeek:2, dayType:"heavy", label:label || "TI — Kyykky + Alavartalo",
       warmup: [
         { name: "Hyppynaru / Jumping Jacks", desc: "2–3 min yleislämmittely" },
