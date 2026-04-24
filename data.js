@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.12 — (1) Session-to-session progression rate-limit primaryn kuormalle: yksittäinen session-e1RM-spiikki (esim. Vx-aliarvioinnista) ei enää saa nostaa kuormaa mahdottomia määriä viikossa. Cap: sama/vaikeampi Vx +6%, +1 helpompi +10%, +2 helpompi +15%. (2) LA skill-vaihe (vk 1-4) refaktoroitu palautumisvelka-analyysin pohjalta: Tempo pause dippi 3×8 V3 → BW eksentrinen dippi 3×3 V4 (vain eksentrinen pec-ROM ilman concentric triceps-kuormaa TO:n 96 ojentaja-toiston jälkeen). Mu-transition skill-vaiheessa 4×8 → 3×5 BW räjähtävä (32→15 leuka-toistoa 48h ennen MA:n leuka-primaryä). Aiemmin sorttaus teki pelkästään startDateISO:n perusteella — mikä aiheutti virheellisen "Mesosykli on päättynyt"-ejektion silloin, kun DB:ssä oli jäänne-meso (esim. vanha default), jonka startDateISO oli uudempi kuin käyttäjän aktiivisesti treenaaman streetlifting_16w:n. Dashboardiin lisätty myös defensiivinen ristiintarkistus: jos rec.error=="mesocycle-ended" mutta state.mesocycle:n resolveMesocyclePosition palauttaa in-range, ejektio evätään ja render jatkuu normaalisti.
+// LeVe Coach v4.27.13 — KRIITTINEN KORJAUS: loadPct-slottien resolvointi. Pre-v4.27.13: backoff-slotin kuorma laskettiin aina "primary × 0.85" (slot.backoffPct ohitettu), JA secondary-slotit (top single vk 7-16, etukyykky LA) eivät koskaan lukeneet omaa loadPct:tään — UI haki MovementProgress-historiasta. Tämä romautti streetlifting_16w:n relative-loading-arkkitehtuurin: "Top single @88-95%" ja LA etukyykky-progressio eivät toteutuneet suunnitellusti. KORJAUS: Engine resolvoi jokaisen loadPct-slotin kuorman: (a) sama liike kuin primary → session-effective-e1RM primaryn rate-limitatusta targetista → rate-limit säteilee automaattisesti backoff/secondary-slotteihin; (b) cross-reference (esim. Etukyykky→Takakyykky) → haetaan referenssin e1RM + oma rate-limit. UI lukee slot.resolvedLoadKg:n suoraan. Etukyykky-slot saa loadPctReferenceMovementName="Takakyykky" (0.85-skaalaus säilyy fsLoadScaled:issa).
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -3474,6 +3474,11 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         reps: fsWeek.reps,
         targetVx: fsWeek.vx,
         loadPct: fsLoadScaled,
+        // v4.27.13: loadPct viittaa takakyykkyn e1RM:ään (0.85-skaalaus
+        // sisäänrakennettu fsLoadScaled:iin). Engine hakee Takakyykky-liikkeen
+        // e1RM:n ja kertoo loadPct:llä → etukyykky saa oikean suhteellisen
+        // kuorman takakyykystä, ei lukkiudu seed-arvoon.
+        loadPctReferenceMovementName: "Takakyykky",
         suggestedLoadKg: Math.round(K * fsLoadScaled / 2.5) * 2.5,
         isBarbell: true,
         note: `Etukyykky ${fsWeek.note || "— tekninen 2. frekvenssi"}`,

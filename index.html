@@ -6533,6 +6533,7 @@ async function startWorkout(backfillDateISO = null) {
 
       let loadKg;
       const isBackoff = slot.role === "backoff";
+      const isSecondary = slot.role === "secondary";
 
       // Competition day: use computed attempt loads
       if (isAttempt && rec.attemptLoads) {
@@ -6550,7 +6551,17 @@ async function startWorkout(backfillDateISO = null) {
         // Apply variant load modifier (with athlete overrides)
         const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
         loadKg = roundToHalf(rec.targetExternalLoad * (1 + vMod));
+      } else if ((isBackoff || isSecondary) && typeof slot.resolvedLoadKg === "number") {
+        // v4.27.13: Engine-resolvoitu loadPct-kuorma backoff/secondary-slotille.
+        // Primaryn rate-limit on jo säteillyt tähän (sama-liike-slotti) TAI slot
+        // on resolvoitu cross-reference-liikkeen e1RM:stä (esim. etukyykky →
+        // Takakyykky). UI ei enää laske primary × 0.85 -arvoa eikä lue
+        // MovementProgressia — kumpikin ohitti ohjelman loadPct-intentin.
+        const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
+        loadKg = roundToHalf(slot.resolvedLoadKg * (1 + vMod));
       } else if (isBackoff && rec.targetExternalLoad !== null) {
+        // Fallback: slot ei määrittele loadPct:tä (legacy default-mesosykli) →
+        // käytä vanhaa primary × 0.85 -sääntöä.
         const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
         loadKg = roundToHalf(rec.targetExternalLoad * 0.85 * (1 + vMod));
       } else if (mov) {

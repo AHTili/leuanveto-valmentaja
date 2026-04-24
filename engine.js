@@ -1428,6 +1428,113 @@ async function recommend(options = {}) {
       "Ei e1RM-dataa — käytetään ohjelman ehdotettu lähtökuorma");
   }
 
+  // v4.27.13: NON-PRIMARY SLOT LOAD RESOLUTION
+  //
+  // Pre-v4.27.13-bug: UI renderöi backoff-slotin aina "primary × 0.85" (riippumatta
+  // slotin omasta loadPct:stä), ja secondary-slotit (top singlet, etukyykky LA)
+  // eivät koskaan lukeneet loadPct:tään — UI haki MovementProgress-historiasta.
+  // Tämä romautti streetlifting_16w:n relative-loading-arkkitehtuurin: vk 7-16
+  // "Top single @88-95%" ja LA:n etukyykky-progressio eivät ikinä toteutuneet
+  // suunnitellusti.
+  //
+  // Ratkaisu: Engine resolvoi jokaisen loadPct-slotin kuorman:
+  //   1. Sama liike kuin primary → johdetaan session-effective-e1RM primaryn
+  //      (mahdollisesti rate-limitatusta) targetExternalLoad:sta. Näin
+  //      primaryn rate-limit säteilee automaattisesti backoff/secondaryyn.
+  //   2. Eri liike (loadPctReferenceMovementName asetettu, esim. etukyykky
+  //      → Takakyykky) → haetaan referenssi-liikkeen e1RM sen omasta
+  //      historiasta, ja sovelletaan erillinen rate-limit slotin oman
+  //      liikkeen viim. sarjasta jos historiaa on.
+  // Resolvoitu kuorma asetetaan slot.resolvedLoadKg:ksi; UI lukee sen.
+  if (dayPlan?.slots) {
+    const primaryHasLoadPct = primarySlotMeta?.loadPct !== undefined &&
+                              primarySlotMeta?.loadPct !== null &&
+                              primarySlotMeta.loadPct > 0;
+    const sessionEffectiveE1RM = (primaryHasLoadPct && targetExternalLoad !== null)
+      ? targetExternalLoad / primarySlotMeta.loadPct
+      : null;
+    const primaryMovementName = primarySlotMeta?.defaultMovementName || null;
+
+    // Haetaan liikeluettelo kerran (tarvitaan cross-reference-haaralle)
+    let allMovsForResolve = null;
+    const needsAllMovs = dayPlan.slots.some(s => s.loadPctReferenceMovementName);
+    if (needsAllMovs) {
+      allMovsForResolve = options.allMovements || await getAllMovements();
+    }
+
+    for (const slot of dayPlan.slots) {
+      if (slot.role === "primary") continue;
+      if (slot.loadPct === undefined || slot.loadPct === null || slot.loadPct <= 0) continue;
+
+      // Haara A: slot jakaa primaryn liikkeen → käytä session-effective-e1RM
+      if (!slot.loadPctReferenceMovementName &&
+          sessionEffectiveE1RM !== null &&
+          primaryMovementName &&
+          slot.defaultMovementName === primaryMovementName) {
+        slot.resolvedLoadKg = roundToHalf(Math.max(0, sessionEffectiveE1RM * slot.loadPct));
+        trace("SLOT_LOAD_RESOLVED",
+          { slotRole: slot.role, slotMovement: slot.defaultMovementName },
+          { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct, sessionE1RM: sessionEffectiveE1RM.toFixed(1) },
+          `${slot.role} ${slot.defaultMovementName}: ${(slot.loadPct*100).toFixed(0)}% × ${sessionEffectiveE1RM.toFixed(1)} kg = ${slot.resolvedLoadKg} kg (primary-rate-limit säteilee)`);
+        continue;
+      }
+
+      // Haara B: cross-reference (esim. etukyykky → takakyykky-e1RM)
+      if (slot.loadPctReferenceMovementName && allMovsForResolve) {
+        const refMov = allMovsForResolve.find(m => m.name === slot.loadPctReferenceMovementName);
+        if (!refMov) continue;
+        const refSets = allSets
+          .filter(s => s.movementId === refMov.movementId &&
+                       (s.setRole === "top" || s.setRole === "readiness_test"))
+          .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+        if (refSets.length === 0) continue;
+        const refIsBarbell = slot.isBarbell === true;
+        const refRecent = refSets.slice(-6);
+        const refVals = refRecent.map(s => {
+          const vara = s.actualVx ?? s.targetVx ?? 1;
+          if (refIsBarbell) return e1rmAccessory(s.externalLoadKg || 0, s.reps || s.targetReps || 3, vara);
+          return e1rmExternal(bodyweightKg, s.externalLoadKg || 0, s.reps || s.targetReps || 3, vara);
+        }).filter(v => v !== null);
+        const refE1RM = refVals.length ? median(refVals) : null;
+        if (refE1RM === null || refE1RM <= 0) continue;
+
+        let baseLoad = roundToHalf(Math.max(0, refE1RM * slot.loadPct));
+
+        // Rate-limit slotin oman liikkeen viim. sarjasta (jos historiaa)
+        const selfMov = allMovsForResolve.find(m => m.name === slot.defaultMovementName);
+        if (selfMov) {
+          const selfSets = allSets
+            .filter(s => s.movementId === selfMov.movementId && s.externalLoadKg > 0)
+            .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+          if (selfSets.length > 0) {
+            const lastSelf = selfSets[selfSets.length - 1];
+            const lastLoad = lastSelf.externalLoadKg;
+            const lastVx = lastSelf.actualVx ?? lastSelf.targetVx ?? 2;
+            const newVx = slot.targetVx ?? 2;
+            const vxDelta = newVx - lastVx;
+            const weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
+            const capped = lastLoad * (1 + weeklyCap);
+            if (baseLoad > capped) {
+              const original = baseLoad;
+              baseLoad = roundToHalf(capped);
+              trace("PROGRESSION_RATE_LIMIT_CROSSREF",
+                { resolvedLoadKg: original },
+                { resolvedLoadKg: baseLoad, lastLoad, lastVx, newVx, weeklyCap, slotMovement: slot.defaultMovementName },
+                `${slot.defaultMovementName} rate-limit: ${original} → ${baseLoad} kg`);
+            }
+          }
+        }
+
+        slot.resolvedLoadKg = baseLoad;
+        trace("SLOT_LOAD_RESOLVED_CROSSREF",
+          { slotRole: slot.role, slotMovement: slot.defaultMovementName,
+            referenceMovement: slot.loadPctReferenceMovementName },
+          { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct, refE1RM: refE1RM.toFixed(1) },
+          `${slot.defaultMovementName}: ${(slot.loadPct*100).toFixed(0)}% × ${slot.loadPctReferenceMovementName}-e1RM (${refE1RM.toFixed(1)} kg) = ${slot.resolvedLoadKg} kg`);
+      }
+    }
+  }
+
   trace("TARGET_LOAD", {}, {
     targetExternalLoad,
     deltaPct: (deltaPct * 100).toFixed(2) + "%",
