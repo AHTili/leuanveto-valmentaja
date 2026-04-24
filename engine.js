@@ -866,6 +866,70 @@ function hadFailureLastSession(recentTopSets) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// RATE-LIMIT ANCHOR (v4.27.14)
+// ═══════════════════════════════════════════════════════════════
+//
+// Rate-limitin ankkurin valinta: session-vs-session -cappia varten tarvitaan
+// "mistä cap nousee" -viitearvo. Aiempi v4.27.12-toteutus käytti viim. settiä
+// (recentTopSets[length-1]) — altis yksittäisen anomalian vaikutukselle:
+//   • Deload-session viim. setti @55% kevyt → cap sulkeutuu valloittavasti
+//   • 3RM-testin 3. setti Vx0 → cap perustuu failure-settiin
+//   • Grindiin päätynyt yksittäinen sarja vinouttaa cappia
+//
+// v4.27.14-strategia:
+//   1. Ryhmitä sets sessionId:n mukaan (viim. 3 sessiota)
+//   2. Kussakin sessiossa suodata pois: readiness_test, Vx0, externalLoad<=0
+//   3. Laske kunkin session MEDIAN load + MEDIAN Vx
+//   4. Ankkuri = RASKAIN median-load näistä → estää deload/test-session
+//      vetämästä cappia keinotekoisesti alas
+//
+// Returns: { medianLoad, medianVx, fromSessions } tai null jos ei dataa.
+
+function computeRateLimitAnchor(recentTopSets) {
+  if (!recentTopSets || recentTopSets.length === 0) return null;
+
+  // Ryhmitä sessionId:n mukaan (säilytä aikajärjestys — recentTopSets on jo sortattu asc)
+  const sessionOrder = [];
+  const sessionGroups = new Map();
+  for (const s of recentTopSets) {
+    const sid = s.sessionId || `__no_session_${s.timestamp || ""}`;
+    if (!sessionGroups.has(sid)) {
+      sessionGroups.set(sid, []);
+      sessionOrder.push(sid);
+    }
+    sessionGroups.get(sid).push(s);
+  }
+
+  // Ota viim. 3 sessiota
+  const recentSessionIds = sessionOrder.slice(-3);
+
+  // Kustakin sessiosta: median load + median Vx (suodata häiriöt)
+  const profiles = [];
+  for (const sid of recentSessionIds) {
+    const sets = (sessionGroups.get(sid) || []).filter(s =>
+      (s.externalLoadKg || 0) > 0 &&
+      s.setRole !== "readiness_test" &&
+      s.actualVx !== 0  // Vx0 = failure, ei käytetä ankkurina
+    );
+    if (!sets.length) continue;
+    const medianLoad = median(sets.map(s => s.externalLoadKg));
+    const vxVals = sets.map(s => s.actualVx ?? s.targetVx ?? 2).filter(v => v !== null && v !== undefined);
+    const medianVx = vxVals.length ? median(vxVals) : 2;
+    profiles.push({ sessionId: sid, medianLoad, medianVx });
+  }
+
+  if (profiles.length === 0) return null;
+
+  // Ankkuri = raskain median-load → deload/test-sessio ei vedä cappia alas
+  const anchor = profiles.reduce((best, p) => p.medianLoad > best.medianLoad ? p : best);
+  return {
+    medianLoad: anchor.medianLoad,
+    medianVx: anchor.medianVx,
+    fromSessions: profiles.length,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // LOAD-VELOCITY PROFILE (v4.25.1 — Enode-valmistelu)
 // ═══════════════════════════════════════════════════════════════
 //
@@ -1368,33 +1432,39 @@ async function recommend(options = {}) {
         `${(pct*100).toFixed(0)}% × current e1RM (${currentE1RMExternal} kg) = ${targetExternalLoad} kg`);
 
       // v4.27.12: SESSION-TO-SESSION PROGRESSION RATE LIMIT
+      // v4.27.14: ROBUST ANCHOR — viim. 3 session raskain MEDIAN, ei yksittäistä setriä
       //
       // Suojaus yksittäisen session e1RM-spiikiltä. Cap-only-ohjelma EI saa
       // suosittaa fysiologisesti mahdottomia hyppyjä viikossa (esim. +19%
       // samalla Vx:llä). Epley+Vara e1RM on herkkä Vx-aliarvioinnille, ja
       // median viimeisistä N sarjasta heiluu rajusti kun historiaa on vähän.
       //
-      // Sääntö (per-primary-slot, session-vs-session):
+      // Sääntö (session-vs-session):
       //   • Vx pysyy samana tai vaikeutuu → max +6 % / viikko
       //   • Vx helpottuu +1                → max +10 % / viikko
       //   • Vx helpottuu +2 tai enemmän    → max +15 % / viikko
+      //
+      // Ankkurin valinta (v4.27.14):
+      //   1. Ryhmitä sets sessionId:n mukaan, ota viim. 3 sessiota
+      //   2. Kustakin: median load + median Vx (suodata readiness_test + Vx0)
+      //   3. Ankkuri = RASKAIN median-load — estää deload- tai test-session
+      //      vetävän cappia alas (ongelma v4.27.12:ssa: viim. setti voi olla
+      //      deloadin kevein setti → cap sulkeutuu vääristyneelle tasolle).
+      //
       // Käyttäjä voi aina manuaalisesti nostaa — tämä on vain *suositus*-cap.
-      if (recentTopSets.length > 0) {
-        const lastTop = recentTopSets[recentTopSets.length - 1];
-        const lastLoad = lastTop.externalLoadKg;
-        const lastVx = lastTop.actualVx ?? lastTop.targetVx ?? 2;
-        if (lastLoad > 0) {
-          const newVx = targetVx ?? 2;
-          const vxDelta = newVx - lastVx;  // positiivinen = helpompi
-          const weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
-          const capped = lastLoad * (1 + weeklyCap);
-          if (targetExternalLoad > capped) {
-            const original = targetExternalLoad;
-            targetExternalLoad = roundToHalf(capped);
-            trace("PROGRESSION_RATE_LIMIT", { targetExternalLoad: original },
-              { targetExternalLoad, lastLoad, lastVx, newVx, weeklyCap },
-              `Rate-limit: ${original} → ${targetExternalLoad} kg (max +${(weeklyCap*100).toFixed(0)} % kun Vx ${vxDelta >= 0 ? "helpottuu +"+vxDelta : vxDelta+" vaikeutuu"})`);
-          }
+      const anchor = computeRateLimitAnchor(recentTopSets);
+      if (anchor) {
+        const newVx = targetVx ?? 2;
+        const vxDelta = newVx - anchor.medianVx;  // positiivinen = helpompi
+        const weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
+        const capped = anchor.medianLoad * (1 + weeklyCap);
+        if (targetExternalLoad > capped) {
+          const original = targetExternalLoad;
+          targetExternalLoad = roundToHalf(capped);
+          trace("PROGRESSION_RATE_LIMIT", { targetExternalLoad: original },
+            { targetExternalLoad, anchorLoad: anchor.medianLoad, anchorVx: anchor.medianVx,
+              newVx, weeklyCap, fromSessions: anchor.fromSessions },
+            `Rate-limit: ${original} → ${targetExternalLoad} kg (ankkuri ${anchor.medianLoad.toFixed(1)} kg × Vx ${anchor.medianVx.toFixed(1)}, ${anchor.fromSessions} sessiosta, max +${(weeklyCap*100).toFixed(0)} % kun Vx ${vxDelta >= 0 ? "helpottuu +"+vxDelta.toFixed(1) : vxDelta.toFixed(1)+" vaikeutuu"})`);
         }
       }
     } else if (primarySlotMeta?.suggestedLoadKg) {
@@ -1500,27 +1570,33 @@ async function recommend(options = {}) {
 
         let baseLoad = roundToHalf(Math.max(0, refE1RM * slot.loadPct));
 
-        // Rate-limit slotin oman liikkeen viim. sarjasta (jos historiaa)
+        // Rate-limit slotin oman liikkeen historiasta
+        // v4.27.14: käyttää computeRateLimitAnchor-helperiä (viim. 3 session
+        // raskain median) sen sijaan että käytettäisiin yksittäistä viim. setriä.
+        // Robustimpi deload/test-sessioille ja yksittäisille anomalioille.
         const selfMov = allMovsForResolve.find(m => m.name === slot.defaultMovementName);
         if (selfMov) {
           const selfSets = allSets
             .filter(s => s.movementId === selfMov.movementId && s.externalLoadKg > 0)
             .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
-          if (selfSets.length > 0) {
-            const lastSelf = selfSets[selfSets.length - 1];
-            const lastLoad = lastSelf.externalLoadKg;
-            const lastVx = lastSelf.actualVx ?? lastSelf.targetVx ?? 2;
+          const selfAnchor = computeRateLimitAnchor(selfSets);
+          if (selfAnchor) {
             const newVx = slot.targetVx ?? 2;
-            const vxDelta = newVx - lastVx;
+            const vxDelta = newVx - selfAnchor.medianVx;
             const weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
-            const capped = lastLoad * (1 + weeklyCap);
+            const capped = selfAnchor.medianLoad * (1 + weeklyCap);
             if (baseLoad > capped) {
               const original = baseLoad;
               baseLoad = roundToHalf(capped);
               trace("PROGRESSION_RATE_LIMIT_CROSSREF",
                 { resolvedLoadKg: original },
-                { resolvedLoadKg: baseLoad, lastLoad, lastVx, newVx, weeklyCap, slotMovement: slot.defaultMovementName },
-                `${slot.defaultMovementName} rate-limit: ${original} → ${baseLoad} kg`);
+                { resolvedLoadKg: baseLoad,
+                  anchorLoad: selfAnchor.medianLoad,
+                  anchorVx: selfAnchor.medianVx,
+                  newVx, weeklyCap,
+                  fromSessions: selfAnchor.fromSessions,
+                  slotMovement: slot.defaultMovementName },
+                `${slot.defaultMovementName} rate-limit: ${original} → ${baseLoad} kg (ankkuri ${selfAnchor.medianLoad.toFixed(1)} kg × Vx ${selfAnchor.medianVx.toFixed(1)}, ${selfAnchor.fromSessions} sessiosta)`);
             }
           }
         }
