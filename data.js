@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.9 — Kriittinen lepoaika-bugikorjaus: exercise-objektiin startWorkout():ssa EI LISÄTTY targetVx/reps-kenttiä, jolloin pickRestForExercise:n accessory-haara pudotti KAIKKI tukiliikkeet isolation-lokeroon (60-90s / "1-1.5 min") riippumatta niiden todellisesta kuormituksesta. Kapea-ote penkki 4×6 V3 ja Pystypunnerrus 3×8 V3 näyttivät 1 min tauon pitäisi olla 2-3 min. Nyt exercise-taso saa slot.targetVx + slot.reps, ja compound-loaded accessorit (V3, ≤8 reps) palauttavat oikein accessoryCompound 2-3 min.
+// LeVe Coach v4.27.10 — getActiveMesocycle() priorisoi nyt sen mesosyklin, jonka mesocycleId:tä viimeisin sessio käytti. Aiemmin sorttaus teki pelkästään startDateISO:n perusteella — mikä aiheutti virheellisen "Mesosykli on päättynyt"-ejektion silloin, kun DB:ssä oli jäänne-meso (esim. vanha default), jonka startDateISO oli uudempi kuin käyttäjän aktiivisesti treenaaman streetlifting_16w:n. Dashboardiin lisätty myös defensiivinen ristiintarkistus: jos rec.error=="mesocycle-ended" mutta state.mesocycle:n resolveMesocyclePosition palauttaa in-range, ejektio evätään ja render jatkuu normaalisti.
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -1257,7 +1257,33 @@ async function getAllMesocycles() {
 async function getActiveMesocycle() {
   const all = await getAllMesocycles();
   if (!all.length) return null;
-  // Return the most recent mesocycle
+  // v4.27.10: aiemmin palautettiin AINA uusin startDateISO:n mukaan. Tämä aiheutti
+  // virheellisiä "ejektioita" kun DB:ssä oli vanha jäänne (esim. default-meso),
+  // jonka startDateISO oli uudempi kuin käyttäjän aktiivisesti treenaama meso
+  // (esim. streetlifting_16w aloitettu 3 kk sitten). Tällöin getActiveMesocycle
+  // palautti jäänteen, jonka weekCount+startDateISO asetti UI:n "päättynyt"-tilaan.
+  //
+  // Korjaus: jos kaikkien mesosyklien joukossa on useita, suosi sitä jonka
+  // mesocycleId:tä viimeisin sessio käytti. Jos sessioita ei ole (tai niiden
+  // mesocycleId ei vastaa mitään olemassa olevaa), fallback-säännöksi jää vanha
+  // "uusin startDateISO".
+  if (all.length === 1) return all[0];
+  try {
+    const sessions = await dbGetAll(STORES.sessions);
+    // Sort sessions descending by dateISO then timestamp; find latest with mesocycleId
+    sessions.sort((a, b) => {
+      const d = (b.dateISO || "").localeCompare(a.dateISO || "");
+      if (d !== 0) return d;
+      return (b.sessionId || "").localeCompare(a.sessionId || "");
+    });
+    for (const s of sessions) {
+      if (!s.mesocycleId) continue;
+      const match = all.find(m => m.mesocycleId === s.mesocycleId);
+      if (match) return match;
+    }
+  } catch (_) {
+    // fall through to startDateISO-sort
+  }
   all.sort((a, b) => (b.startDateISO || "").localeCompare(a.startDateISO || ""));
   return all[0];
 }

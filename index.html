@@ -1865,21 +1865,48 @@ function renderDashboard() {
   // v4.27.3: Mesosykli on päättynyt → näytä ilmoitus käyttäjälle eikä anna
   // sovelluksen hiljaisesti vaihtaa oletukseen. Käyttäjä valitsee seuraavan
   // ohjelman Mesosykli-näkymästä.
+  //
+  // v4.27.10 DEFENSIIVINEN TARKISTUS: Ennen "päättynyt"-kortin renderointia
+  // ristiintarkastetaan `state.mesocycle` suoraan. Jos sykli on rakenteeltaan
+  // vielä voimassa (startDateISO + weekCount asettavat tänään ohjelma-vk:lle),
+  // KIELLETÄÄN ejektio — tämä estää virhe-eliksiinin jossa jokin välissä kääntää
+  // rec.error=="mesocycle-ended" vaikka state.mesocycle on edelleen pätevä
+  // (esim. refresh() palauttaa eri meson kuin mitä recommend()-kutsun aikana
+  // oli). Jos epäkonsistenssia ilmenee, lokitetaan konsoliin ja yritetään
+  // computeRecommendation uudelleen jotta UI synkkaa itsensä.
   if (rec?.error === "mesocycle-ended") {
-    const prevType = rec.prevMesocycleType || "edellinen";
-    const prevTpl = MESOCYCLE_TEMPLATES.find(t => t.id === prevType);
-    const prevLabel = prevTpl?.label || prevType;
-    return `<div class="card" style="padding:20px;margin:16px;background:linear-gradient(135deg,rgba(139,92,246,0.12),rgba(59,130,246,0.08));border:1px solid rgba(139,92,246,0.3)">
-      <div style="font-size:28px;margin-bottom:8px">🏁</div>
-      <h2 style="margin:0 0 8px 0;font-size:20px">Mesosykli on päättynyt</h2>
-      <p style="margin:0 0 16px 0;line-height:1.5;color:var(--muted)">
-        Edellinen ohjelmasi <b>${prevLabel}</b> on suoritettu loppuun. Valitse seuraava jakso itse — emme vaihda ohjelmaa puolestasi.
-      </p>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <button class="btn-primary" data-nav="mesocycle" style="padding:12px">📋 Valitse uusi ohjelma</button>
-        <div style="font-size:12px;color:var(--muted);text-align:center;margin-top:4px">Aiemmat tuloksesi + e1RM säilyvät.</div>
-      </div>
-    </div>`;
+    let trulyEnded = true;
+    if (meso && meso.startDateISO && meso.weekCount) {
+      const pos = resolveMesocyclePosition(meso, today);
+      if (pos && pos.programWeek !== null && pos.reason === "in-range") {
+        trulyEnded = false;
+        // Inconsistency: engine says ended, but state.mesocycle says in-range.
+        // Log and schedule a re-sync without blocking rendering.
+        console.warn("[LeVe] Mesocycle-ended inconsistency — state says in-range (vk", pos.programWeek, "/", meso.weekCount, "), ignoring engine ejection");
+        // Kick off a background re-sync. computeRecommendation reuses state.mesocycle.
+        queueMicrotask(() => {
+          computeRecommendation().then(() => render()).catch(() => {});
+        });
+      }
+    }
+    if (trulyEnded) {
+      const prevType = rec.prevMesocycleType || "edellinen";
+      const prevTpl = MESOCYCLE_TEMPLATES.find(t => t.id === prevType);
+      const prevLabel = prevTpl?.label || prevType;
+      return `<div class="card" style="padding:20px;margin:16px;background:linear-gradient(135deg,rgba(139,92,246,0.12),rgba(59,130,246,0.08));border:1px solid rgba(139,92,246,0.3)">
+        <div style="font-size:28px;margin-bottom:8px">🏁</div>
+        <h2 style="margin:0 0 8px 0;font-size:20px">Mesosykli on päättynyt</h2>
+        <p style="margin:0 0 16px 0;line-height:1.5;color:var(--muted)">
+          Edellinen ohjelmasi <b>${prevLabel}</b> on suoritettu loppuun. Valitse seuraava jakso itse — emme vaihda ohjelmaa puolestasi.
+        </p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn-primary" data-nav="mesocycle" style="padding:12px">📋 Valitse uusi ohjelma</button>
+          <div style="font-size:12px;color:var(--muted);text-align:center;margin-top:4px">Aiemmat tuloksesi + e1RM säilyvät.</div>
+        </div>
+      </div>`;
+    }
+    // Fall-through: render normally using state.mesocycle. rec may be missing
+    // dayPlan etc. — downstream code gracefully handles rec-less paths.
   }
 
   const weekNum = rec?.weekNum ?? null;
