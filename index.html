@@ -6579,6 +6579,12 @@ async function startWorkout(backfillDateISO = null) {
         variantName: slot.variantName || null,
         tempoNote: vOverride?.tempoNote || null,
         loadKg,
+        // v4.27.9: exposataan targetVx + reps exercise-tasolle jotta
+        // pickRestForExercise voi erotella compound-loaded (2-3 min) isolation-
+        // työstä (1-1.5 min). Ilman näitä accessory-haara pudotti KAIKKI tuki-
+        // liikkeet isolation-lokeroon (undefined reps → !hasLoadedTarget → isolation).
+        targetVx: slot.targetVx ?? null,
+        reps: slot.reps ?? null,
         progressSuggestion,
         sets: finalSets,
         // Slot metadata (v4.11) for smart swap/lock UI
@@ -6601,6 +6607,8 @@ async function startWorkout(backfillDateISO = null) {
       originalCategory: "vertikaaliveto",
       role: "primary",
       loadKg: rec?.targetExternalLoad,
+      targetVx: rec?.targetVx ?? null,
+      reps: rec?.targetReps ?? null,
       progressSuggestion: "hold",
       sets: Array.from({ length: rec?.setCount || 3 }, (_, i) => ({
         idx: i,
@@ -6939,6 +6947,8 @@ function bindWorkoutEvents() {
         originalCategory: m.category,
         role: "accessory",
         loadKg: null,
+        targetVx: null,          // v4.27.9: manuaalinen accessory → fallback generic
+        reps: sr.reps,
         progressSuggestion: "hold",
         sets: Array.from({ length: sr.sets }, (_, i) => ({
           idx: i,

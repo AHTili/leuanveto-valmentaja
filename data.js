@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.8 — Lepoaika-logiikan korjaukset pickRestForExercise:ssä: (1) heavy-single-detektio reps≤3 + Vx≤2 → heavy rest riippumatta roolista (korjaa MU 3×1 V2 Saturday ja top single RPE 9+ secondary — aiemmin 2-3 min, pitäisi 3-5), (2) backoff V≥3 → volume rest 2-3 min (ei heavy 3-5), (3) "alaraaja"-kategoria lisätty compoundCategories-settiin (etukyykky sai aiemmin generic accessory 1.5-2.5).
+// LeVe Coach v4.27.9 — Kriittinen lepoaika-bugikorjaus: exercise-objektiin startWorkout():ssa EI LISÄTTY targetVx/reps-kenttiä, jolloin pickRestForExercise:n accessory-haara pudotti KAIKKI tukiliikkeet isolation-lokeroon (60-90s / "1-1.5 min") riippumatta niiden todellisesta kuormituksesta. Kapea-ote penkki 4×6 V3 ja Pystypunnerrus 3×8 V3 näyttivät 1 min tauon pitäisi olla 2-3 min. Nyt exercise-taso saa slot.targetVx + slot.reps, ja compound-loaded accessorit (V3, ≤8 reps) palauttavat oikein accessoryCompound 2-3 min.
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
