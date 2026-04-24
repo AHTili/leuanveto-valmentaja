@@ -1366,6 +1366,37 @@ async function recommend(options = {}) {
       targetExternalLoad = roundToHalf(Math.max(0, currentE1RMExternal * pct));
       trace("LOAD_PCT_RESOLVED", {}, { pct, currentE1RMExternal, targetExternalLoad },
         `${(pct*100).toFixed(0)}% × current e1RM (${currentE1RMExternal} kg) = ${targetExternalLoad} kg`);
+
+      // v4.27.12: SESSION-TO-SESSION PROGRESSION RATE LIMIT
+      //
+      // Suojaus yksittäisen session e1RM-spiikiltä. Cap-only-ohjelma EI saa
+      // suosittaa fysiologisesti mahdottomia hyppyjä viikossa (esim. +19%
+      // samalla Vx:llä). Epley+Vara e1RM on herkkä Vx-aliarvioinnille, ja
+      // median viimeisistä N sarjasta heiluu rajusti kun historiaa on vähän.
+      //
+      // Sääntö (per-primary-slot, session-vs-session):
+      //   • Vx pysyy samana tai vaikeutuu → max +6 % / viikko
+      //   • Vx helpottuu +1                → max +10 % / viikko
+      //   • Vx helpottuu +2 tai enemmän    → max +15 % / viikko
+      // Käyttäjä voi aina manuaalisesti nostaa — tämä on vain *suositus*-cap.
+      if (recentTopSets.length > 0) {
+        const lastTop = recentTopSets[recentTopSets.length - 1];
+        const lastLoad = lastTop.externalLoadKg;
+        const lastVx = lastTop.actualVx ?? lastTop.targetVx ?? 2;
+        if (lastLoad > 0) {
+          const newVx = targetVx ?? 2;
+          const vxDelta = newVx - lastVx;  // positiivinen = helpompi
+          const weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
+          const capped = lastLoad * (1 + weeklyCap);
+          if (targetExternalLoad > capped) {
+            const original = targetExternalLoad;
+            targetExternalLoad = roundToHalf(capped);
+            trace("PROGRESSION_RATE_LIMIT", { targetExternalLoad: original },
+              { targetExternalLoad, lastLoad, lastVx, newVx, weeklyCap },
+              `Rate-limit: ${original} → ${targetExternalLoad} kg (max +${(weeklyCap*100).toFixed(0)} % kun Vx ${vxDelta >= 0 ? "helpottuu +"+vxDelta : vxDelta+" vaikeutuu"})`);
+          }
+        }
+      }
     } else if (primarySlotMeta?.suggestedLoadKg) {
       // Ei vielä e1RM-historiaa → käytä plan-seedattua kuormaa
       targetExternalLoad = primarySlotMeta.suggestedLoadKg;

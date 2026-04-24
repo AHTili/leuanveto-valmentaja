@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.11 — getTodayPlan() preferoi tulevaisuutta (forward-first): perjantaina (lepopäivä) dashboard näyttää LA:n planin eikä eilisen TO:n. Aiempi "nearest" logiikka palautti tasapelissä ensimmäisen listauksessa (TO listataan ennen LA:ta → väärin). getActiveMesocycle() priorisoi sen mesosyklin, jonka mesocycleId:tä viimeisin sessio käytti. Aiemmin sorttaus teki pelkästään startDateISO:n perusteella — mikä aiheutti virheellisen "Mesosykli on päättynyt"-ejektion silloin, kun DB:ssä oli jäänne-meso (esim. vanha default), jonka startDateISO oli uudempi kuin käyttäjän aktiivisesti treenaaman streetlifting_16w:n. Dashboardiin lisätty myös defensiivinen ristiintarkistus: jos rec.error=="mesocycle-ended" mutta state.mesocycle:n resolveMesocyclePosition palauttaa in-range, ejektio evätään ja render jatkuu normaalisti.
+// LeVe Coach v4.27.12 — (1) Session-to-session progression rate-limit primaryn kuormalle: yksittäinen session-e1RM-spiikki (esim. Vx-aliarvioinnista) ei enää saa nostaa kuormaa mahdottomia määriä viikossa. Cap: sama/vaikeampi Vx +6%, +1 helpompi +10%, +2 helpompi +15%. (2) LA skill-vaihe (vk 1-4) refaktoroitu palautumisvelka-analyysin pohjalta: Tempo pause dippi 3×8 V3 → BW eksentrinen dippi 3×3 V4 (vain eksentrinen pec-ROM ilman concentric triceps-kuormaa TO:n 96 ojentaja-toiston jälkeen). Mu-transition skill-vaiheessa 4×8 → 3×5 BW räjähtävä (32→15 leuka-toistoa 48h ennen MA:n leuka-primaryä). Aiemmin sorttaus teki pelkästään startDateISO:n perusteella — mikä aiheutti virheellisen "Mesosykli on päättynyt"-ejektion silloin, kun DB:ssä oli jäänne-meso (esim. vanha default), jonka startDateISO oli uudempi kuin käyttäjän aktiivisesti treenaaman streetlifting_16w:n. Dashboardiin lisätty myös defensiivinen ristiintarkistus: jos rec.error=="mesocycle-ended" mutta state.mesocycle:n resolveMesocyclePosition palauttaa in-range, ejektio evätään ja render jatkuu normaalisti.
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -3504,20 +3504,32 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     });
 
     // MU-tukiliikkeet
-    // v4.27.7: Skill-vaiheessa (muLoad=0, foundation vk 1-4) dippi-support käyttää
-    // dip-tempo-rom-slottia (Tempo pause dippi 3×8 V3) — siirtynyt torstailla. MU on
-    // primary (ei dippi-liikemalli), 48+ h torstain dipistä → kudos tuore, tempo-
-    // mekanismi saa oikean stimuluksen. Load-vaiheissa (voima+intensity+peaking)
-    // säilyy mu-dip-support / Lisäpainodippi 3×5 V3 — MU-lockout-tuki raskaalla
-    // ristiriidassa tempo-työn kanssa, säilytetään spesifisyys.
+    // v4.27.12 KORJAUS: Skill-vaiheen Tempo pause dippi 3×8 V3 poistettu —
+    // palautumisvelka-analyysi osoitti sen olevan netto-negatiivinen torstain
+    // raskaan push-volyymin (dippi-primary + kapea penkki + pystäri + pullover =
+    // ~96 ojentaja/pec-toistoa) jälkeen. 48 h ei riitä tempo-työn oikeaan
+    // toteutukseen (triceps/pec-fatiikka → tekniikka rapisee, pec-insertion
+    // stretch-stimulus menetetään). Korvattu BW eksentrisellä dipillä: eksentrinen
+    // faasi harjoittaa pec-insertion ROM-hallintaa ILMAN concentric-triceps-
+    // kuormitusta → ei lisää palautumisvelkaa MA:n leuka-primaryä varten.
+    //
+    // Samoin mu-transition skill-vaiheessa 4×8 V3 → 3×5 V3 BW: 32 → 15 leuka-
+    // toistoa 48 h ennen MA:n leuka-primaryä (selkä/bicep-tuoreus säilyy).
+    //
+    // Load-vaiheissa säilyy Lisäpainodippi 3×5 V3 MU-lockout-tukena (kevyt
+    // volyymi, spesifi MU:n työnnölle).
     const dipSupport = isSkill
-      ? slotAccessory("dip-tempo-rom", "horisontaalityöntö", "Tempo pause dippi",
-          { sets:3, reps:8, targetVx:3, note:"Tempo 3 s alas + 1–2 s pysähdys — ROM- ja eksentrinen kapasiteetti (tuoreena MU:n rinnalla)" })
+      ? slotAccessory("dip-eccentric-bw", "horisontaalityöntö", "BW eksentrinen dippi",
+          { sets:3, reps:3, targetVx:4, note:"5 s lasku BW:lla, hyppy/avustettu ylös — vain eksentrinen pec-ROM, ei concentric triceps-kuormaa (TO:n 48 h palautuminen säilyy)" })
       : slotAccessory("mu-dip-support", "horisontaalityöntö", "Lisäpainodippi",
           { sets:3, reps:5, targetVx:3, note:"Kevyt — MU-lockout-tuki" });
 
     slots.push(
-      slotAccessory("mu-transition",  "vertikaaliveto",     "Leuanveto chest-to-bar", { sets:4, reps:isSkill?8:5, targetVx:3, note:"Kevyt — nopeus" }),
+      slotAccessory("mu-transition",  "vertikaaliveto",     "Leuanveto chest-to-bar",
+        { sets: isSkill ? 3 : 4, reps: 5, targetVx:3,
+          note: isSkill
+            ? "BW räjähtävä — nopeus, volyymi pienennetty (48 h ennen MA:n leuka-primaryä)"
+            : "Kevyt — nopeus" }),
       dipSupport,
       ...mixAcc()
     );
