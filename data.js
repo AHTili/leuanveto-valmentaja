@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.6 — Historia-välilehti: suodattimet (liike/päivätyyppi/meso/päivämäärä), rikastettu korttinäkymä (readiness/sRPE/PR/backfill chipit), session detail -modal (setit ryhmiteltynä liikkeen mukaan, inline-editointi + poisto), pagination 30+30
+// LeVe Coach v4.27.7 — Dippi-ohjelmoinnin restrukturointi: Tempo pause dippi siirtynyt torstailta lauantaille (korvaa skill-vaiheen mu-dip-supportin foundation-blokissa). Torstain pushAccPrehab palauttaa kapea-ote penkkipunnerruksen, säilyttää Dumbbell pulloverin + Face pullin v4.27.4:stä. Viikkodippivolyymi vk 1-3: 72→54 reps, parempi jakauma.
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -552,16 +552,19 @@ const ACCESSORY_SLOT_CATALOG = {
     },
   },
 
-  // ─── Dippi-prehab-slotit (v4.27.4) ───
-  // Käytössä VAIN foundation-blokissa (vk 1–4) pushAccPrehab-paketissa. Strength+
-  // intensity+peaking-vaiheissa ei variantteja → slot pudotetaan ("dropped-for-phase"),
-  // jolloin pushAcc ottaa tilalle samat toiminnot voima-fokuksella.
+  // ─── Dippi-prehab-slotit (v4.27.4, refaktoroitu v4.27.7) ───
+  // v4.27.7: Slot siirtynyt torstailta (pushAccPrehab) LAUANTAILLE skill-vaiheessa —
+  // korvaa mu-dip-support -slotin foundation-blokissa (vk 1-4, muLoad=0). Perustelu:
+  // Tempo pause dippi vaatii tuoretta kudosta ja hermolihaskontrolloa ROM-kapasiteetti-
+  // stimuluksena; torstaina primary-dipin jälkeen se on junk volumea. Lauantailla MU
+  // on primary (ei dippi-liikemalli), 48+ h palautumista edellisestä dipistä → oikea
+  // konteksti stretch-mediated-hypertrofialle pec-insertiossa (Warneke 2022-2024).
   "dip-tempo-rom": {
-    function: "Dippi-ROM + eksentrinen kapasiteetti",
-    rationale: "Sternum/pec-insertion-kestävyyden rakennus foundation-blokissa. Tempo pause + täysi ROM matalalla kuormalla (~60–70 % normaalista dipistä) = stretch-mediated hypertrophy pec-insertioon ennen kuin voima-blokki kuormittaa raskailla dipeillä. Close-grip dip on vaihtoehto raskaamman tempo-harjoittelun korvaajaksi jos kudos ärsyyntyy.",
+    function: "Dippi-ROM + eksentrinen kapasiteetti (prehab)",
+    rationale: "Sternum/pec-insertion-kestävyyden rakennus foundation-blokissa. Tempo pause + täysi ROM matalalla kuormalla (~60–70 % normaalista dipistä) = stretch-mediated hypertrophy pec-insertioon ennen kuin voima-blokki kuormittaa raskailla dipeillä. Tehdään lauantailla MU-päivänä tuoreena; torstaina se olisi junk volumea primary-dipin jälkeen. Close-grip dip on vaihtoehto jos kudos ärsyyntyy tempo-työstä.",
     phaseVariants: {
       foundation: ["Tempo pause dippi", "Close-grip dip"],
-      strength:   [],
+      strength:   [],  // skill-vaihe ohi → mu-dip-support (Lisäpainodippi) ottaa yli
       intensity:  [],
       peaking:    [],
     },
@@ -3215,26 +3218,36 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     slotAccessory("shoulder-isolation",  "vertikaalityöntö",   "Sivunosto",          { sets:3, reps:15 }),
   ];
 
-  // ─── Dippi-prehab-accessory-paketti (v4.27.4) ───
-  // Foundation-blokissa (vk 1–4) käytetään pushAcc:n sijaan tätä pakettia. Tavoite:
-  // pec-insertion + sternoclavicular-alueen kudoskapasiteetti, scapular balance
-  // (face pull posterior-puolelle) ja ROM-ääripään stretch-hypertrofia ennen kuin
-  // voima-blokki (vk 5–8) kuormittaa raskailla dipeillä ja kapea-otepenkillä.
+  // ─── Dippi-prehab-accessory-paketti (v4.27.7 REFACTOR) ───
+  // Foundation-blokissa (vk 1–4) käytetään pushAcc:n sijaan tätä pakettia.
   //
-  // Volyymi hieman kevyempi kuin pushAcc:ssä (11 sarjaa vs 13), koska tempo+stretch-
-  // liikkeet ovat per-sarja metabolisesti kuormittavampia. Liikkeet:
-  //   1) Tempo pause dippi — ROM+eccentric; korvaa kapea-otepenkin ajatuksen
-  //      siirtämällä stimulus dippispesifiseen liikemalliin turvallisella kuormalla.
-  //   2) Pystypunnerrus — säilyy; vertikaali-työnnön balanssi dippi-primary vastaan.
-  //   3) Dumbbell pullover — pec+lats stretch-hypertrofia; uniikki ROM jota mikään
-  //      nykyisen pushAcc:n liike ei kata.
-  //   4) Face pull — posterior scapular + rotator cuff; kriittinen dippi/penkki-
-  //      volyymin tasapainottaja. Puuttuu nykyisestä pushAcc:sta kokonaan.
+  // v4.27.7 muutos: Tempo pause dippi POISTETTU torstailta — siirtyy lauantailla
+  // mu-dip-support-slotin tilalle (skill-vaiheessa). Perustelu: Tempo pause dippi
+  // vaatii tuoretta kudosta ja hermolihaskontrolloa toimiakseen ROM-kapasiteetti-
+  // liikkeenä. Torstaina primary-dipin (24–30 raskasta toistoa) JÄLKEEN se on
+  // junk volumea — kontrolli rapissut, kudos kuormitettu. Lauantailla 48+h palautu-
+  // misen jälkeen MU-päivällä (ei-dippi primary) se pääsee oikeuksiinsa, ja VK:n
+  // kokonaisdippivolyymi vähenee 72→48–54 reps.
+  //
+  // Palautettu alkuperäisestä pushAcc:sta: Penkkipunnerrus (kapea ote) ja
+  // Ab wheel (jälkimmäisen lisää toDay() automaattisesti).
+  //
+  // Säilytetty v4.27.4:stä: Dumbbell pullover (uniikki stretch-ROM pec-insertio-
+  // kapasiteetille) + Face pull (posterior balance, "kriittinen dippi-volyymille").
+  //
+  // Pudotettu: Sivunosto (redundantti Pystypunnerruksen kanssa V3/8-rep-rangessa),
+  // Tricep pushdown (korvautuu kapea-ote penkillä kompoundina).
+  //
+  // Liikkeet (4 kpl + Ab wheel = 5 slottia, sama kpl-määrä kuin pushAcc):
+  //   1) Penkkipunnerrus kapea ote — triceps-dominantti, dip-lockout-spesifi
+  //   2) Pystypunnerrus — vertikaali-työnnön balanssi vs horisontaalidippi
+  //   3) Dumbbell pullover — stretch-mediated pec+lats hypertrofia (UNIIKKI ROM)
+  //   4) Face pull — posterior scapular + rotator cuff
   const pushAccPrehab = () => [
-    slotAccessory("dip-tempo-rom",       "horisontaalityöntö", "Tempo pause dippi",      { sets:3, reps:8,  targetVx:3, note:"Tempo 3 s alas + 1–2 s pysähdys — ROM-kapasiteetti, ei voima" }),
-    slotAccessory("shoulder-vertical",   "vertikaalityöntö",   "Pystypunnerrus",         { sets:3, reps:8,  targetVx:3 }),
-    slotAccessory("pec-stretch",         "horisontaalityöntö", "Dumbbell pullover",      { sets:2, reps:12, targetVx:4, note:"Täysi venytys — pec+lats stretch-hypertrofia" }),
-    slotAccessory("scapular-control",    "horisontaaliveto",   "Face pull",              { sets:3, reps:15, targetVx:4, note:"Posterior shoulder balance — kriittinen dippi-volyymille" }),
+    slotAccessory("bench-heavy",         "horisontaalityöntö", "Penkkipunnerrus",    { sets:4, reps:6,  targetVx:3, note:"Kapea ote — triceps-dominantti, dip-lockout-spesifi" }),
+    slotAccessory("shoulder-vertical",   "vertikaalityöntö",   "Pystypunnerrus",     { sets:3, reps:8,  targetVx:3 }),
+    slotAccessory("pec-stretch",         "horisontaalityöntö", "Dumbbell pullover",  { sets:2, reps:12, targetVx:4, note:"Täysi venytys — pec+lats stretch-hypertrofia" }),
+    slotAccessory("scapular-control",    "horisontaaliveto",   "Face pull",          { sets:3, reps:15, targetVx:4, note:"Posterior shoulder balance — kriittinen dippi-volyymille" }),
   ];
   const mixAcc = () => [
     slotAccessory("core-hollow",     "core",             "Ab wheel rollout",   { sets:3, reps:10 }),
@@ -3465,9 +3478,21 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     });
 
     // MU-tukiliikkeet
+    // v4.27.7: Skill-vaiheessa (muLoad=0, foundation vk 1-4) dippi-support käyttää
+    // dip-tempo-rom-slottia (Tempo pause dippi 3×8 V3) — siirtynyt torstailla. MU on
+    // primary (ei dippi-liikemalli), 48+ h torstain dipistä → kudos tuore, tempo-
+    // mekanismi saa oikean stimuluksen. Load-vaiheissa (voima+intensity+peaking)
+    // säilyy mu-dip-support / Lisäpainodippi 3×5 V3 — MU-lockout-tuki raskaalla
+    // ristiriidassa tempo-työn kanssa, säilytetään spesifisyys.
+    const dipSupport = isSkill
+      ? slotAccessory("dip-tempo-rom", "horisontaalityöntö", "Tempo pause dippi",
+          { sets:3, reps:8, targetVx:3, note:"Tempo 3 s alas + 1–2 s pysähdys — ROM- ja eksentrinen kapasiteetti (tuoreena MU:n rinnalla)" })
+      : slotAccessory("mu-dip-support", "horisontaalityöntö", "Lisäpainodippi",
+          { sets:3, reps:5, targetVx:3, note:"Kevyt — MU-lockout-tuki" });
+
     slots.push(
       slotAccessory("mu-transition",  "vertikaaliveto",     "Leuanveto chest-to-bar", { sets:4, reps:isSkill?8:5, targetVx:3, note:"Kevyt — nopeus" }),
-      slotAccessory("mu-dip-support", "horisontaalityöntö", "Lisäpainodippi",         { sets:3, reps:isSkill?8:5, targetVx:3, note:"Kevyt — prehab" }),
+      dipSupport,
       ...mixAcc()
     );
 
