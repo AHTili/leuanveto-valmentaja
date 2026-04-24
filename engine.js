@@ -404,8 +404,14 @@ function getWeekDef(mesocycle, weekNum) {
 
 /**
  * Get the planned day for today from the week plan.
- * If no exact match for dayOfWeek, finds the nearest training day in the week.
- * This ensures the user always gets a full program when they open the app.
+ * If no exact match for dayOfWeek, finds the NEXT training day (forward-first)
+ * so rest days show the upcoming session, not the one already completed.
+ *
+ * v4.27.11: Aiempi "nearest" logiikka palautti eiliseen planin tasapelitilanteissa.
+ * Esim. perjantaina (dow=5) TO (4) ja LA (6) ovat molemmat 1 päivän päässä,
+ * mutta TO listataan ensin weekPlans.days:ssa → TO voitti → dashboard näytti
+ * eilisen treenin uudelleen. Uusi logiikka laskee forward-etäisyyden (wrap-around
+ * seuraavaan viikkoon), joten perjantaina LA voittaa TO:n (fwd=1 vs fwd=6).
  */
 function getTodayPlan(mesocycle, weekNum, dayOfWeek) {
   if (!mesocycle || !mesocycle.weekPlans) return null;
@@ -414,14 +420,14 @@ function getTodayPlan(mesocycle, weekNum, dayOfWeek) {
   // Exact match
   const exact = weekPlan.days.find((d) => d.dayOfWeek === dayOfWeek);
   if (exact) return exact;
-  // Find nearest training day (prefer same day or next, fallback to previous)
+  // Forward-first: pienin päivien määrä TÄNÄÄN → d (wrap-around = ensi vk)
   let best = null;
-  let bestDist = Infinity;
+  let bestFwd = Infinity;
   for (const d of weekPlan.days) {
-    const dist = Math.abs(d.dayOfWeek - dayOfWeek);
-    const wrapDist = Math.min(dist, 7 - dist);
-    if (wrapDist < bestDist) {
-      bestDist = wrapDist;
+    let fwd = d.dayOfWeek - dayOfWeek;
+    if (fwd <= 0) fwd += 7; // wrap to next week if day already passed
+    if (fwd < bestFwd) {
+      bestFwd = fwd;
       best = d;
     }
   }
