@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.7 — Dippi-ohjelmoinnin restrukturointi: Tempo pause dippi siirtynyt torstailta lauantaille (korvaa skill-vaiheen mu-dip-supportin foundation-blokissa). Torstain pushAccPrehab palauttaa kapea-ote penkkipunnerruksen, säilyttää Dumbbell pulloverin + Face pullin v4.27.4:stä. Viikkodippivolyymi vk 1-3: 72→54 reps, parempi jakauma.
+// LeVe Coach v4.27.8 — Lepoaika-logiikan korjaukset pickRestForExercise:ssä: (1) heavy-single-detektio reps≤3 + Vx≤2 → heavy rest riippumatta roolista (korjaa MU 3×1 V2 Saturday ja top single RPE 9+ secondary — aiemmin 2-3 min, pitäisi 3-5), (2) backoff V≥3 → volume rest 2-3 min (ei heavy 3-5), (3) "alaraaja"-kategoria lisätty compoundCategories-settiin (etukyykky sai aiemmin generic accessory 1.5-2.5).
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;

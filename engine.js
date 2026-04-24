@@ -46,8 +46,18 @@ const REST_RECOMMENDATIONS = {
 
 /**
  * Pick the appropriate rest recommendation for an exercise based on its role,
- * category, and target Vx. Compound accessories with loaded targetVx need more
- * rest to avoid grinding; isolation work (curls, delt raises) can stay short.
+ * category, target Vx and reps. Compound accessories with loaded targetVx need
+ * more rest to avoid grinding; isolation work (curls, delt raises) stays short.
+ *
+ * v4.27.8 korjaukset:
+ *  1) Heavy-single-detektio (reps ≤ 3 AND targetVx ≤ 2) → heavy rest 3-5 min
+ *     riippumatta roolista tai dayType:stä. Fix: MU primary 3×1 V2 Saturday
+ *     (dayType=volume → sai 2-3 min, pitäisi 3-5), top-single RPE 9+ secondary
+ *     (sai 2-3, pitäisi 3-5), heavy secondary etukyykky 3×3 V2.
+ *  2) Backoff V ≥ 3 → volume rest 2-3 min (ei heavy 3-5) — backoff on määritelmän
+ *     mukaan kevyempi toisto-volyymin lisä, ei max-lift.
+ *  3) "alaraaja" lisätty compoundCategories-settiin — etukyykky/takakyykky
+ *     ilman alaryhmää saivat aiemmin generic accessory 1.5-2.5 min.
  *
  * @param {object} exercise - { role, category, targetVx, reps }
  * @param {string} dayType - "heavy" | "volume" | "speed" | "competition"
@@ -56,20 +66,39 @@ const REST_RECOMMENDATIONS = {
 function pickRestForExercise(exercise, dayType) {
   if (!exercise) return REST_RECOMMENDATIONS.heavy;
 
-  // Primary & back-off follow the day type
-  if (exercise.role === "primary" || exercise.role === "backoff") {
-    return REST_RECOMMENDATIONS[dayType] || REST_RECOMMENDATIONS.heavy;
-  }
-  // Competition attempts always get long rest
+  // Competition attempts always get long rest — katkaistaan ensimmäiseksi.
   if (exercise.role === "opener" || exercise.role === "attempt2" || exercise.role === "attempt3") {
     return REST_RECOMMENDATIONS.competition;
   }
 
-  // Accessory / support: differentiate compound vs isolation
+  // Heavy singles / top sets: reps ≤ 3 AND Vx ≤ 2 → heavy rest riippumatta roolista.
+  // Kattaa MU 3×1 V2 (Saturday volume), top single RPE 9+ secondary, heavy secondary
+  // etukyykky 3×3 V2. Näille 2-3 min ei riitä palauttamaan CNS:ää.
+  if (typeof exercise.reps === "number" && exercise.reps <= 3 &&
+      typeof exercise.targetVx === "number" && exercise.targetVx <= 2) {
+    return REST_RECOMMENDATIONS.heavy;
+  }
+
+  // Primary seuraa dayType:ä (heavy-heavy, volume-volume, speed-speed).
+  if (exercise.role === "primary") {
+    return REST_RECOMMENDATIONS[dayType] || REST_RECOMMENDATIONS.heavy;
+  }
+
+  // Backoff: V ≥ 3 = tavanomainen volume-backoff → volume rest (2-3 min).
+  // V ≤ 2 backoff = raskas (harvinainen) → seuraa dayType:ä.
+  if (exercise.role === "backoff") {
+    if (typeof exercise.targetVx === "number" && exercise.targetVx >= 3) {
+      return REST_RECOMMENDATIONS.volume;
+    }
+    return REST_RECOMMENDATIONS[dayType] || REST_RECOMMENDATIONS.heavy;
+  }
+
+  // Accessory / support / secondary: erottele compound vs isolation.
   const compoundCategories = new Set([
     "vertikaaliveto", "vertikaalityöntö",
     "horisontaaliveto", "horisontaalityöntö",
     "polvidominantti", "lonkkadominantti",
+    "alaraaja",  // v4.27.8: etukyykky/takakyykky kun kategoriana yleinen alaraaja
   ]);
   const isCompoundCategory = compoundCategories.has(exercise.category);
   const hasLoadedTarget = exercise.targetVx !== null && exercise.targetVx !== undefined && exercise.targetVx <= 3;
