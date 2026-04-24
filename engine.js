@@ -216,8 +216,11 @@ function computeBaseline(values, windowN) {
 }
 
 function classifyReadinessZ(z) {
-  if (z >= -0.5) return "GREEN";
-  if (z >= -1.0) return "YELLOW";
+  // v4.28.0 bugfix: boundary tulkittu konservatiivisesti. Aiemmin z === -0.5 palautti GREEN
+  // ja z === -1.0 palautti YELLOW (if z >= ...) — readiness-järjestelmässä rajalla on
+  // turvallisempaa valita alempi luokka, jotta grinder ei ohita YELLOW/RED-varoitusta.
+  if (z > -0.5) return "GREEN";
+  if (z > -1.0) return "YELLOW";
   return "RED";
 }
 
@@ -459,10 +462,16 @@ function calibrateMesocycle(varaFeedbackSets) {
   let adj = 0;
   let reason = "";
 
-  if (avgOvershoot > 1.0) {
+  // v4.28.0 bugfix: sign-konventio yhtenäistetty varaTrendCorrection-dokumentaation kanssa.
+  // overshoot = targetVx - actualVx. actualVx > targetVx ⇒ overshoot < 0 ⇒ TOO EASY (crushed)
+  // → lisää painoa. actualVx < targetVx ⇒ overshoot > 0 ⇒ TOO HARD (struggled) → vähennä.
+  // Aiemmin merkit olivat väärin päin: grinderille (actual=0, target=2 → overshoot=+2)
+  // engine suositteli +1% vaikka oli selvästi liian raskas. Kynnys-asymmetria säilytetty:
+  // +1% vaatii vahvan crush-signaalin (≤ -1.0), -1% lievemmälläkin struggle-signaalilla (≥ 0.5).
+  if (avgOvershoot < -1.0) {
     adj = 0.01; // +1%
     reason = `Liian kevyt (avgOvershoot=${avgOvershoot.toFixed(2)}) → +1%`;
-  } else if (avgOvershoot < -0.5) {
+  } else if (avgOvershoot > 0.5) {
     adj = -0.01; // -1%
     reason = `Liian raskas (avgOvershoot=${avgOvershoot.toFixed(2)}) → -1%`;
   } else {
