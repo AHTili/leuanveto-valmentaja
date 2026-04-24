@@ -828,6 +828,24 @@ function getAccessoryBlockScalar(weekNum) {
 //
 // Returns: { suggestedDeltaKg, reason, avgVx }
 
+// v4.27.16: MU autoregulation Vx-gradient laajennettu.
+//
+// Aiempi v4.25 porrastus (−5 / −2.5 / 0 / +2.5) oli liian loiva kun atleetti
+// raportoi clearly "liian kevyt" (avgVx ≥ 4): ohjelma eteni vain 2.5 kg viikossa
+// vaikka signaali oli että varaa on. Uusi taso:
+//
+//   minVx === 0        → −5 kg   (failure reset — edell. session jokin sarja failure)
+//   avgVx ≥ 4 & min≥3  → +5 kg   (clearly easy, ei yhtäkään rajoja hipovaa sarjaa)
+//   avgVx ≥ 3          → +2.5 kg (all-easy, pieni varma askel)
+//   avgVx ≥ 2          →  0 kg   (optimal-hold, kuormitus kohdillaan)
+//   avgVx < 2          → −2.5 kg (liian raskas, kevennä)
+//
+// minVx ≥ 3 -lukitus estää tilanteen jossa 1 sarja oli V0-1 (rajoilla) mutta
+// muut V5 → avg nousee neljään harhaanjohtavasti. +5 kg saa tapahtua vain
+// kun kaikki 3 sarjaa olivat vähintään Vx 3 (selvä varuus).
+//
+// MU-spesifinen varmistus: +5 kg on suurin yksittäinen askel. MU on bimodaalinen
+// (onnistuu/ei onnistu), joten +10 kg / sessio olisi vaarallisesti iso kerralla.
 function adjustMULoad(recentMUSets) {
   if (!recentMUSets || recentMUSets.length === 0) {
     return { suggestedDeltaKg: 0, reason: "no-history", avgVx: null };
@@ -841,6 +859,7 @@ function adjustMULoad(recentMUSets) {
   const avgVx = varas.reduce((a, b) => a + b, 0) / varas.length;
 
   if (minVx === 0) return { suggestedDeltaKg: -5, reason: "failure-reset", avgVx };
+  if (avgVx >= 4 && minVx >= 3) return { suggestedDeltaKg: 5, reason: "very-easy-big-jump", avgVx };
   if (avgVx >= 3) return { suggestedDeltaKg: 2.5, reason: "all-easy-progress", avgVx };
   if (avgVx >= 2) return { suggestedDeltaKg: 0, reason: "optimal-hold", avgVx };
   return { suggestedDeltaKg: -2.5, reason: "too-hard-backoff", avgVx };
