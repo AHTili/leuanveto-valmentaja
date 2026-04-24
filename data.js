@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.14 — RATE-LIMIT-ANKKURI ROBUSTIMMAKSI. Pre-v4.27.14: rate-limit-cap (session-to-session +6/+10/+15 % Vx-deltan mukaan) käytti yksittäistä viim. setriä ankkurina (recentTopSets[length-1] primaryssa, selfSets[last] cross-referencessä) — altis yksittäisen anomalian vaikutukselle: deload-session kevein setti sulki capin keinotekoisesti alas, 3RM-testin failure-setti (Vx0) päätyi ankkuriksi, yksittäinen grind vinoutti cappia. KORJAUS: uusi computeRateLimitAnchor(recentTopSets)-helperi: ryhmittää setit sessionId:n mukaan, ottaa viim. 3 sessiota, laskee kunkin MEDIAN load + MEDIAN Vx (suodattaa readiness_testin ja Vx0-failuret), ankkuri = RASKAIN median-load näistä — deload/test ei vedä cappia alas, mutta yksittäinen spiikkikään ei nosta cappia perusteettomasti. Käytössä sekä primary-polussa (PROGRESSION_RATE_LIMIT) että cross-reference-haarassa (PROGRESSION_RATE_LIMIT_CROSSREF). v4.27.13: loadPct-slottien resolvointi (engine resolvoi jokaisen loadPct-slotin kuorman: sama liike → session-effective-e1RM primaryn rate-limitatusta targetista; cross-reference esim. Etukyykky→Takakyykky → referenssin e1RM + oma rate-limit; UI lukee slot.resolvedLoadKg:n).
+// LeVe Coach v4.27.15 — AMRAP-KALIBROINTIPROTOKOLLA. W4 LA-sessio (streetlifting_16w) vaihdettu "3RM testi"-labelista todelliseen AMRAP-kalibrointisessioon: kolme setRole:"calibration"-slotia (Leuka/Dippi/Kyykky) @85 % × tekninen failure, actualVx pakotetaan 0:aan. Engine.computeMovementProgress tunnistaa calibration-setit ja override:aa e1RM:n kun viim. 3 top-setissä on kalibrointi — sen sijaan että mediaani sekoittaisi Vx-biasoidut ja kalibrointi-setit. Epley+Vara actualVx=0:lla redusoituu puhtaaksi Epleyksi (load × (1 + reps/30)), joten kalibrointi antaa Vx-biasista vapaan ground-truth-mittauksen. Rate-limit-ankkuri ei muutu — kalibrointi-sessio suodatetaan computeRateLimitAnchorissa (Vx=0 drop), joten ankkuri pysyy todellisissa treenisessioissa. v4.27.14: rate-limit-ankkuri robustimmaksi (viim. 3 session raskain median). Pre-v4.27.14: rate-limit-cap (session-to-session +6/+10/+15 % Vx-deltan mukaan) käytti yksittäistä viim. setriä ankkurina (recentTopSets[length-1] primaryssa, selfSets[last] cross-referencessä) — altis yksittäisen anomalian vaikutukselle: deload-session kevein setti sulki capin keinotekoisesti alas, 3RM-testin failure-setti (Vx0) päätyi ankkuriksi, yksittäinen grind vinoutti cappia. KORJAUS: uusi computeRateLimitAnchor(recentTopSets)-helperi: ryhmittää setit sessionId:n mukaan, ottaa viim. 3 sessiota, laskee kunkin MEDIAN load + MEDIAN Vx (suodattaa readiness_testin ja Vx0-failuret), ankkuri = RASKAIN median-load näistä — deload/test ei vedä cappia alas, mutta yksittäinen spiikkikään ei nosta cappia perusteettomasti. Käytössä sekä primary-polussa (PROGRESSION_RATE_LIMIT) että cross-reference-haarassa (PROGRESSION_RATE_LIMIT_CROSSREF). v4.27.13: loadPct-slottien resolvointi (engine resolvoi jokaisen loadPct-slotin kuorman: sama liike → session-effective-e1RM primaryn rate-limitatusta targetista; cross-reference esim. Etukyykky→Takakyykky → referenssin e1RM + oma rate-limit; UI lukee slot.resolvedLoadKg:n).
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -3558,6 +3558,111 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       slots };
   }
 
+  // ─── Calibration day (v4.27.15) ───
+  //
+  // AMRAP-kalibrointisessio deload-viikon lopuksi. Tarkoitus: korvata Vx-
+  // biasoitunut Epley+Vara-pohjainen e1RM-estimaatti ground-truth-mittauksella.
+  //
+  // Protokolla per liike:
+  //   1. Lämmittely (ramppi 40% → 75% × 2)
+  //   2. 1 sarja @85 % × AMRAP tekniseen failureen asti (EI grindiä — pysäytä
+  //      kun seuraava toisto ei lähde puhtaalla tekniikalla).
+  //   3. Atleetti raportoi toistot + actualVx = 0 (failure).
+  //   4. Engine laskee puhtaan Epleyn: e1RM = kuorma × (1 + toistot/30).
+  //
+  // Odotettu toistomäärä @85 %: 4-8 reps terve atleetti.
+  //   • < 2 reps → kuorma oli liian raskas (e1RM oli yliarvioitu → korjaus alas)
+  //   • > 12 reps → kuorma oli liian kevyt (e1RM oli aliarvioitu → korjaus ylös)
+  //
+  // Rate-limit: AMRAP-setti EI ankkuroi progression rate-limittiä
+  // (actualVx=0 suodatetaan computeRateLimitAnchorissa). Kalibrointi on
+  // "reset", ei progression-anchor.
+  //
+  // Miksi @85 % (ei @90 %+)? Epley-mallin tarkkuus on paras 2-10 rep-rangessa;
+  // @85 % antaa 4-8 reps keskivertoatleetilla. @90 %+ antaisi 2-4 reps mutta
+  // CNS-kuormitus korkeampi (epäsuositeltavaa deload-viikolla).
+  function calibrationDay(weekLabel = "Vk 4") {
+    const slots = [
+      {
+        role: "calibration",
+        category: "vertikaaliveto",
+        defaultMovementName: "Lisäpainoleuanveto",
+        sets: 1,
+        reps: null,             // AMRAP — ei kiinteää toistotavoitetta
+        targetVx: 0,            // tekninen failure
+        loadPct: 0.85,
+        suggestedLoadKg: seedL(0.85),
+        isCalibration: true,    // UI-flag: renderöi AMRAP-reps-kenttä
+        amrapTargetRange: [4, 8],
+        note: `${weekLabel} kalibrointi — Leuka AMRAP @85 % → tekninen failure (4–8 toistoa odotettu). Tulos päivittää e1RM:n puhtaalla Epleyllä.`,
+        velocityStop: 0.40,
+        allowVelocityInput: true,
+        warmupSets: [
+          { pct: 0.40, reps: 5, note: "Lämmittely" },
+          { pct: 0.55, reps: 3, note: "Ramppi" },
+          { pct: 0.70, reps: 2, note: "Viim. lämmittely" },
+          { pct: 0.80, reps: 1, note: "Ankkuri ennen AMRAPia" },
+        ],
+      },
+      {
+        role: "calibration",
+        category: "horisontaalityöntö",
+        defaultMovementName: "Lisäpainodippi",
+        sets: 1,
+        reps: null,
+        targetVx: 0,
+        loadPct: 0.85,
+        suggestedLoadKg: seedD(0.85),
+        isCalibration: true,
+        amrapTargetRange: [4, 8],
+        note: `${weekLabel} kalibrointi — Dippi AMRAP @85 % → tekninen failure. Lopeta kun liikemalli alkaa hajota (bounce/pec-stretch-raja).`,
+        velocityStop: 0.40,
+        allowVelocityInput: true,
+        warmupSets: [
+          { pct: 0.40, reps: 5, note: "Lämmittely" },
+          { pct: 0.55, reps: 3, note: "Ramppi" },
+          { pct: 0.70, reps: 2, note: "Viim. lämmittely" },
+          { pct: 0.80, reps: 1, note: "Ankkuri" },
+        ],
+      },
+      {
+        role: "calibration",
+        category: "alaraaja",
+        defaultMovementName: "Takakyykky",
+        sets: 1,
+        reps: null,
+        targetVx: 0,
+        loadPct: 0.85,
+        suggestedLoadKg: seedK(0.85),
+        isBarbell: true,
+        isCalibration: true,
+        amrapTargetRange: [4, 8],
+        note: `${weekLabel} kalibrointi — Kyykky AMRAP @85 % → tekninen failure (säilytä syvyys + selän neutraali — ei grindiä kompensoivalla tekniikalla).`,
+        velocityStop: 0.30,
+        allowVelocityInput: true,
+        warmupSets: [
+          { pct: 0.35, reps: 5, note: "Tyhjä tanko + kevyt" },
+          { pct: 0.50, reps: 3, note: "Ramppi" },
+          { pct: 0.65, reps: 2, note: "Lämmittely" },
+          { pct: 0.78, reps: 1, note: "Ankkuri" },
+        ],
+      },
+    ];
+    return {
+      dayOfWeek: 6,
+      dayType: "heavy",     // kalibrointi on raskas diagnoosi, ei volyymi
+      label: `LA — Kalibrointi AMRAP (${weekLabel}) 🎯`,
+      warmup: [
+        { name: "Hyppynaru / Jumping Jacks", desc: "3 min — perusteellinen lämmittely" },
+        { name: "Band pull-apart + dislocations", desc: "2×15 — olkapäät ja lavat valmiiksi" },
+        { name: "Hip 90/90 + Cossack", desc: "1 min per puoli — lonkka-mobilitetti kyykyjä varten" },
+        { name: "Scapular pull-up / push-up", desc: "2×8 — lapa-aktivaatio" },
+        { name: "Dynaaminen priming", desc: "Räjähtävä BW-leuka 2×3, BW-dippi 2×5 — neural primer" },
+      ],
+      slots,
+    };
+  }
+
   // ─── 16-week plan (v4.22 P2 REFACTOR) ───
   //
   // Kaikki kuormat RELATIIVISIA nykyiseen e1RM:ään (loadPct). Moottori skaalaa
@@ -3616,7 +3721,13 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       maDay("MA — Deload 3×5 @55%",       3,5,4, 0.55, null, null),
       tiDay("TI — Deload 3×5 @55%",       3,5,4, 0.55, null),
       toDay("TO — Deload 3×5 @55%",       3,5,4, 0.55, null, null),
-      laDay("LA — Deload + 3RM testi",   0, 3, "Kevyt tekninen · 3RM-testi (leuka/dippi/kyykky) kalibroi e1RM:n"),
+      // v4.27.15: 3RM-testi vaihdettu AMRAP-kalibroinniksi. Perustelu: 3RM on
+      // raskas CNS-testi (@~93 %, Vx~0) ja jakaa saman Vx-biasin kuin
+      // normaali treeni (e1RM = load × (1 + (3+0)/30) = load × 1.10 aina).
+      // AMRAP @85 % → tekninen failure antaa muuttuvan toistomäärän, joka
+      // kulkee puhtaan Epleyn läpi ilman Vx-biasia. Engine-side: e1RM
+      // override kun setRole === "calibration" (ks. engine.js computeMovementProgress).
+      calibrationDay("Vk 4"),
     ]},
 
     // ── BLOKKI 2: VOIMA — Akkumulaatio (vk 5–8) ──

@@ -1238,10 +1238,14 @@ async function recommend(options = {}) {
   const isBarbell = primarySlotMeta?.isBarbell === true;
 
   // Filter to primary movement top sets, sorted by date
+  // v4.27.15: calibration-setit (AMRAP-testit deload-viikoilla) lasketaan mukaan
+  // e1RM-laskentaan. Niillä actualVx === 0 (tekninen failure), jolloin Epley+Vara
+  // redusoituu puhtaaksi Epleyksi: e1RM = kuorma × (1 + toistot/30) — vapaa
+  // Vx-biasista.
   const topSets = allSets
     .filter((s) => {
       if (primaryMovementId && s.movementId !== primaryMovementId) return false;
-      return s.setRole === "top" || s.setRole === "readiness_test";
+      return s.setRole === "top" || s.setRole === "readiness_test" || s.setRole === "calibration";
     })
     .sort((a, b) => {
       // Sort by session date via sessionId lookup or timestamp
@@ -1261,7 +1265,38 @@ async function recommend(options = {}) {
     })
     .filter((v) => v !== null);
 
-  const currentE1RMSystem = e1rmValues.length > 0 ? median(e1rmValues) : null;
+  // v4.27.15: CALIBRATION OVERRIDE
+  //
+  // AMRAP-kalibrointisetti (setRole === "calibration", actualVx === 0) antaa
+  // Vx-biasista vapaan ground-truth-mittauksen e1RM:stä. Jos TOP-sarjoissa on
+  // viim. 3 setissä yksi tai useampi kalibrointi, override: käytä pelkästään
+  // kalibrointisettien mediaania (ohita Vx-kontaminoidut top-singlet).
+  //
+  // Ikkunat:
+  //   • Kalibrointi viim. 3 topissa → override (tuore kalibrointi hallitsee)
+  //   • Vanhempi kalibrointi       → takaisin mediaaniin (strength changes
+  //                                   drift + uutta data kertyy)
+  //
+  // Miksi pelkkä Vx=0 ei riitä? Koska viim. 6 top-setin median sekoittaa
+  // kalibroinnin 5 muun (Vx-biasilla kontaminoidun) setin kanssa. Override
+  // antaa kalibroinnille sen ansaitseman "reset"-painon.
+  const last3Sets = recentTopSets.slice(-3);
+  const recentCalibSets = last3Sets.filter(s => s.setRole === "calibration");
+  let currentE1RMSystem;
+  let e1rmSource = "median";
+  if (recentCalibSets.length > 0) {
+    const calibE1rms = recentCalibSets.map(s => {
+      const vara = s.actualVx ?? 0;  // AMRAP = failure, Vx=0 oletus
+      if (isBarbell) {
+        return e1rmAccessory(s.externalLoadKg || 0, s.reps || 1, vara);
+      }
+      return e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || 1, vara);
+    }).filter(v => v !== null);
+    currentE1RMSystem = calibE1rms.length > 0 ? median(calibE1rms) : (e1rmValues.length > 0 ? median(e1rmValues) : null);
+    if (calibE1rms.length > 0) e1rmSource = `calibration (${recentCalibSets.length} AMRAP${recentCalibSets.length > 1 ? "s" : ""})`;
+  } else {
+    currentE1RMSystem = e1rmValues.length > 0 ? median(e1rmValues) : null;
+  }
   const currentE1RMExternal = currentE1RMSystem !== null
     ? (isBarbell ? currentE1RMSystem : Math.max(0, currentE1RMSystem - bodyweightKg))
     : null;
@@ -1270,7 +1305,8 @@ async function recommend(options = {}) {
     e1rmSystem: currentE1RMSystem?.toFixed(1),
     e1rmExternal: currentE1RMExternal?.toFixed(1),
     fromSets: recentTopSets.length,
-  }, `e1RM laskettu ${recentTopSets.length} viimeisimmästä top-setistä`);
+    source: e1rmSource,
+  }, `e1RM laskettu ${recentTopSets.length} viimeisimmästä top-setistä (lähde: ${e1rmSource})`);
 
   // v4.25.1: LV-profiilin cross-check (Enode-valmistelu). Ei vaikuta kuormaan —
   // diagnostiikka kun velocity-dataa kertyy ankkuripisteistä. Jos ristiinveto
@@ -2611,10 +2647,11 @@ async function recommendPeaking(options = {}) {
   // e1RM from sets
   const allSets = options.allSets || (await getAllSets());
   const primaryMovementId = options.primaryMovementId || null;
+  // v4.27.15: calibration-setit mukaan topSets-filtteriin myös peaking-polussa.
   const topSets = allSets
     .filter(s => {
       if (primaryMovementId && s.movementId !== primaryMovementId) return false;
-      return s.setRole === "top" || s.setRole === "readiness_test";
+      return s.setRole === "top" || s.setRole === "readiness_test" || s.setRole === "calibration";
     })
     .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
 
@@ -2632,7 +2669,21 @@ async function recommendPeaking(options = {}) {
     })
     .filter(v => v !== null);
 
-  const currentE1RMSystem = e1rmValues.length > 0 ? median(e1rmValues) : null;
+  // v4.27.15: Calibration override — ks. recommend()-pääpolun kommentti.
+  const peakingLast3Sets = recentTopSets.slice(-3);
+  const peakingCalibSets = peakingLast3Sets.filter(s => s.setRole === "calibration");
+  let currentE1RMSystem;
+  if (peakingCalibSets.length > 0) {
+    const calibE1rms = peakingCalibSets.map(s => {
+      const vara = s.actualVx ?? 0;
+      return isBarbellPeaking
+        ? e1rmAccessory(s.externalLoadKg || 0, s.reps || 1, vara)
+        : e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || 1, vara);
+    }).filter(v => v !== null);
+    currentE1RMSystem = calibE1rms.length > 0 ? median(calibE1rms) : (e1rmValues.length > 0 ? median(e1rmValues) : null);
+  } else {
+    currentE1RMSystem = e1rmValues.length > 0 ? median(e1rmValues) : null;
+  }
   // Barbell: external = system (ei BW-vähennystä). Muut: sys - BW.
   const currentE1RMExternal = currentE1RMSystem !== null
     ? (isBarbellPeaking ? currentE1RMSystem : Math.max(0, currentE1RMSystem - bodyweightKg))

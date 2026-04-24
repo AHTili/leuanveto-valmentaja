@@ -2538,6 +2538,7 @@ function renderActiveWorkout() {
     : exercise.role === "attempt3" ? "🏆 3. yritys"
     : exercise.role === "support" ? "🎯 Tukiliike"
     : exercise.role === "accessory" ? "💪 Apuliike"
+    : exercise.role === "calibration" ? "🎯 Kalibrointi (AMRAP)"
     : (exercise.category || "");
   const progressTag = isLoadIncrease ? '<span class="text-ok">· Progressio ↑</span>' : "";
   const lockHTML = exercise.slotId
@@ -2610,6 +2611,21 @@ function renderActiveWorkout() {
   const targetVx = currentSet.targetVx;
   const targetVxStr = targetVx !== null && targetVx !== undefined ? `V${targetVx}` : "—";
 
+  // v4.27.15: Kalibrointi-AMRAP → renderöidään eri target-rivi (ei kiinteää
+  // reps-tavoitetta, sen sijaan "AMRAP → tekninen failure").
+  const isCalibrationSet = exercise.role === "calibration" || exercise.isCalibration === true;
+  const amrapRange = exercise.amrapTargetRange;
+  const amrapRangeStr = Array.isArray(amrapRange) ? `${amrapRange[0]}–${amrapRange[1]}` : "4–8";
+  const targetRowHTML = isCalibrationSet
+    ? `<div class="target-row">
+        <span class="label">🎯 AMRAP</span>
+        <span class="vals">→ tekninen failure · Vx 0 · odotettu ${amrapRangeStr} toistoa</span>
+      </div>`
+    : `<div class="target-row">
+        <span class="label">🎯 Tavoite</span>
+        <span class="vals">${targetReps} toistoa · ${targetVxStr}</span>
+      </div>`;
+
   // Work-set hero
   const heroHTML = isWarmupSet ? "" : `<div class="load-hero">
     <div class="set-line">
@@ -2623,10 +2639,7 @@ function renderActiveWorkout() {
     </div>
     <div class="load-edit-hint">Napauta lukua muokataksesi painoa</div>
     ${prevGhostHTML}
-    <div class="target-row">
-      <span class="label">🎯 Tavoite</span>
-      <span class="vals">${targetReps} toistoa · ${targetVxStr}</span>
-    </div>
+    ${targetRowHTML}
   </div>`;
 
   // Warmup card (simpler — chip + load + hint)
@@ -6634,6 +6647,9 @@ async function startWorkout(backfillDateISO = null) {
         // v4.25.1 (Enode): velocity-ankkuripisteet ja zone-kynnys
         allowVelocityInput: slot.allowVelocityInput === true,
         velocityStop: slot.velocityStop ?? null,
+        // v4.27.15: AMRAP-kalibrointi-slotin metadata UI:n renderöintiä varten
+        isCalibration: slot.isCalibration === true || slot.role === "calibration",
+        amrapTargetRange: slot.amrapTargetRange || null,
       });
     }
   } else {
@@ -7423,12 +7439,18 @@ async function saveWorkoutToDb(sessionNotes = "") {
   for (const exercise of w.exercises) {
     for (const s of exercise.sets) {
       if (!s.completed || s.isWarmup) continue;
+      // v4.27.15: "calibration"-rooli → setRole "calibration" (engine laskee
+      // näille puhtaan Epleyn ja override:aa e1RM:n; ks. computeMovementProgress).
+      const savedSetRole = exercise.role === "primary" ? "top"
+        : exercise.role === "backoff" ? "backoff"
+        : exercise.role === "calibration" ? "calibration"
+        : "accessory";
       sets.push({
         setId: uid(),
         sessionId: w.sessionId,
         movementId: exercise.movementId,
         variantId: variantCache[exercise.variantName] || null,
-        setRole: exercise.role === "primary" ? "top" : exercise.role === "backoff" ? "backoff" : "accessory",
+        setRole: savedSetRole,
         externalLoadKg: s.loadKg,
         reps: s.reps,
         targetReps: s.targetReps,
