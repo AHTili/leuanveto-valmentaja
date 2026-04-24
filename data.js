@@ -1,5 +1,5 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v4.27.19 — Streetlifting-alignment-korjaus: peruttu v4.27.18 grip-endurance-lisäys mixAcc:sta. Kontekstivirhe: v4.27.18:ssa lisättiin Farmer carry LA-päivän mixAcc:iin "MU false grip -tueksi", mutta streetlifterille (kisaliikkeet MU + Leuka + Dippi + Takakyykky) erillinen carry on dedikoitua harjoitusaikaa ilman kisahyötyä — ote tulee jo 94 kg leuka-primarysta ja MU-transitionin false grip -pidosta. Palautettu: mixAcc = [core-hollow] (1 slot, sama kuin MA/TI/TO:n coreSlot). Grip-endurance-entry poistettu ACCESSORY_SLOT_CATALOGista (seed-liikkeet Farmer carry/Dead hang/Heavy dead hang/Heavy farmer carry säilyvät mahdollista manuaalista accessorySlotOverrides-lisäystä varten). SAMALLA tunnustettu: etukyykky ON jo LA:ssa (v4.25 P1-1 fsWeek-parametri) 11/16 viikkoa — vk 1-3 motor pattern @55-62%, vk 5-7 strength @65-70%, vk 9-11 neural @70-75%, vk 13-14 taper @65-70% (kaikki suhteessa Takakyykky e1RM × 0.85). Deload-viikot 4, 8, 12 intentionaalisesti ilman: vk 4 sisältää Takakyykky AMRAP-kalibroinnin (v4.27.15), vk 8 + 12 puhdas palautuminen ennen seuraavaa blokkia. 2×/vk kyykky-frekvenssi toteutuu: TI raskas primary + LA tekninen etukyykky. Face pull foundation-volyymi pysyy 90 reps/wk (MA pullAcc 3×15 + TO pushAccPrehab 3×15) — sama v4.27.18 target ilman LA-redundanssia. v4.27.18: Anti-rotation core + grip-endurance + triple-coverage fix (grip-endurance-osa nyt peruttu). (anti-rotation core + grip-endurance + triple-coverage fix). (1) Uusi slotId "core-antirotation" ACCESSORY_SLOT_CATALOGiin: Pallof press / Bird dog / Landmine anti-rotation / Pallof press hold, phase-taperaus foundation 3×10/side Vx3 → strength 3×8/side Vx3 → intensity 2×8/side Vx2 → peaking 2×10/side Vx4. Perustelu: raskas kyykky (230 kg+) luo epäsymmetristä kuormaa jonka vasta-kerääntyvä rotational-shear pettää hollow-only-coren; anti-rotation palvelee frontaalitasoa jota sagittal hollow ei kata. (2) TI-päivä (kyykky) saa core-antirotationin, MA+TO säilyttävät core-hollow:n (sagittal flexion tukee leuka/dippi/MU-chainia — biomechaaniseti eri tarve). (3) Uusi slotId "grip-endurance": Farmer carry / Dead hang / Heavy farmer carry, foundation 3×30s → strength 3×40s → intensity 2×45s → peaking 2×30s. (4) Foundation face pull triple-coverage -korjaus: mixAcc:ssa (LA-päivä) scapular-control → grip-endurance. Perustelu: MA pullAcc + TO pushAccPrehab + LA mixAcc = 9 sets × 15 reps = 135 reps/wk face pull foundation-blokissa (liikaa low-fatigue-liikkeelle); vaihto pudottaa volyymin 135 → 90 reps/wk ja tukee suoraan LA:n MU-työtä koska MU:n transition on false grip -endurance-rajoitettu. (5) Seed-liikkeet päivitetty: Pohkeenkohotus + Standing/Seated calf raise (v4.27.17 täydennys), Pallof press hold + Landmine anti-rotation + Bird dog + Hollow body hold + L-sit hold + Farmer carry + Heavy farmer carry + Heavy dead hang (kaikki 58 catalog-varianttia resolvoituu seediin). v4.27.17: Accessory audit -korjaukset (calf-isolation 5. slotina, pushAcc face pull swap, MA warmup band external rotation). (composition fixes, viikosta riippumatta optimaaliset treenit). Kolme täsmämuutosta: (1) lowerAcc sai 5. slotin — Pohkeenkohotus 3×15 Vx4 ("calf-isolation", alaraaja). Perustelu: 230 kg+ kyykyn lockout vaatii nilkan rigidityä (soleus-toorque + gastrocnemius-elastic), aiemmin isolaatioo nolla — ankkurikohta puuttui plantariflexion ketjusta. (2) pushAcc (strength-blokki vk 5+) vaihdettu: Sivunosto 3×15 → Face pull 2×12 Vx4 ("scapular-control", horisontaaliveto). Perustelu: strength-blokissa viikottainen dippivolyymi nousee (primary 24–30 raskasta toistoa + backoff + skill-slotin tempo dippi) — posterior delt + rotator cuff balance kriittinen, ja foundation-blokissa (vk 1–4) pushAccPrehab tarjoaa jo face pullin 3×15 joten strength-blokissa riittää 2×12 (complementary volume). Sivunosto redundantti Pystypunnerruksen V3/8-rep-rangessa. (3) maDay warmup sai Band external rotation 2×12 per puoli — symmetria TO:n prehab-depthin kanssa (rotator cuff aktivaatio ennen vetoja, ei aiemmin ollut MA:lla mutta oli TO:lla). Manuaalinen muokkaus tuettu: accessorySlotOverrides-mekanismi salvaa slotId-pohjaisen vaihdon UI:n 🔒-lukolla, stagnation-swap ehdottaa automaattisesti vaihtoehtoa jos slot junnaa — rakenne pysyy pseudonyymisti eheänä. v4.27.16: MU-autoregulaation Vx-gradientti laajennettu. Aiempi adjustMULoad: −5 / −2.5 / 0 / +2.5 (avgVx:n mukaan). Kun atleetti raportoi avgVx ≥ 4 (selvästi liian kevyt), +2.5 kg oli liian varovainen — ohjelma eteni vain 2.5 kg/vk vaikka signaali sanoi että varaa on enemmänkin. Uusi porrastus lisää +5 kg -askeleen kun avgVx ≥ 4 JA minVx ≥ 3 (estää harhaanjohtavaa keskiarvoa jos 1 sarja oli V0-2). +5 kg on enimmäisaskel — MU:n bimodaalisen luonteen takia isommat kertahypyt ovat liian riskialttiita. v4.27.15: AMRAP-kalibrointiprotokolla W4 LA:lle. W4 LA-sessio (streetlifting_16w) vaihdettu "3RM testi"-labelista todelliseen AMRAP-kalibrointisessioon: kolme setRole:"calibration"-slotia (Leuka/Dippi/Kyykky) @85 % × tekninen failure, actualVx pakotetaan 0:aan. Engine.computeMovementProgress tunnistaa calibration-setit ja override:aa e1RM:n kun viim. 3 top-setissä on kalibrointi — sen sijaan että mediaani sekoittaisi Vx-biasoidut ja kalibrointi-setit. Epley+Vara actualVx=0:lla redusoituu puhtaaksi Epleyksi (load × (1 + reps/30)), joten kalibrointi antaa Vx-biasista vapaan ground-truth-mittauksen. Rate-limit-ankkuri ei muutu — kalibrointi-sessio suodatetaan computeRateLimitAnchorissa (Vx=0 drop), joten ankkuri pysyy todellisissa treenisessioissa. v4.27.14: rate-limit-ankkuri robustimmaksi (viim. 3 session raskain median). Pre-v4.27.14: rate-limit-cap (session-to-session +6/+10/+15 % Vx-deltan mukaan) käytti yksittäistä viim. setriä ankkurina (recentTopSets[length-1] primaryssa, selfSets[last] cross-referencessä) — altis yksittäisen anomalian vaikutukselle: deload-session kevein setti sulki capin keinotekoisesti alas, 3RM-testin failure-setti (Vx0) päätyi ankkuriksi, yksittäinen grind vinoutti cappia. KORJAUS: uusi computeRateLimitAnchor(recentTopSets)-helperi: ryhmittää setit sessionId:n mukaan, ottaa viim. 3 sessiota, laskee kunkin MEDIAN load + MEDIAN Vx (suodattaa readiness_testin ja Vx0-failuret), ankkuri = RASKAIN median-load näistä — deload/test ei vedä cappia alas, mutta yksittäinen spiikkikään ei nosta cappia perusteettomasti. Käytössä sekä primary-polussa (PROGRESSION_RATE_LIMIT) että cross-reference-haarassa (PROGRESSION_RATE_LIMIT_CROSSREF). v4.27.13: loadPct-slottien resolvointi (engine resolvoi jokaisen loadPct-slotin kuorman: sama liike → session-effective-e1RM primaryn rate-limitatusta targetista; cross-reference esim. Etukyykky→Takakyykky → referenssin e1RM + oma rate-limit; UI lukee slot.resolvedLoadKg:n).
+// LeVe Coach v4.27.20 — LA-päivän 2. kyykky-eksposointi blokki-progressiivisesti (general → specific). Aiempi v4.27.19: LA käytti etukyykky-variaatiota kaikissa 11 työviikossa — block-periodization-oppi (Matvejev, Issurin, Stone) vaatii progressiota kohti kisaspesifisyyttä. Uusi FS-rakenne: (1) Foundation vk 1-3: Etukyykky (motor pattern, quad-dominant variation), (2) Strength vk 5-7: Etukyykky (GPP, volyymi), (3) Intensity vk 9-11: Box squat (sticking-point specificity — TI:ssä jo Paused squat backoffissa, LA tarvitsee eri spesifisyyden; box squat nollaa stretch-refleksin → puhdas concentric "kuopasta" = 200 kg+ kisakyykyn klassinen sticking point), (4) Peaking vk 13-14: Takakyykky kisastyle kevyt (opener rehearsal + motor groove, maksimi-specificity ilman CNS-fatiikkaa). Tekninen toteutus: FS.wN-objektit saivat movement- ja refScale-kentät; laDay() lukee ne ja valitsee defaultMovementNamen, velocity-stopin (Box squat räjähtävämpi 0.60, Takakyykky kisastyle 0.55, Etukyykky konservatiivinen 0.55) sekä warmup-rampin (Takakyykky käyttää RAMP_BARBELLia, muut kevyemmän teknisen rampin). Cross-reference säilyy Takakyykky-e1RM:ssä; refScale 0.85 (Etukyykky/Box squat) tai 1.00 (Takakyykky self). Viikkoplaanien labelit päivitetty: vk 9-11 "box squat", vk 13-14 "kisakyykky kevyt". Warmup-rivin teksti dynaaminen (${fsWeek.movement}-lämmittely). Etukyykky lisätty PRESET_MOVEMENTS-seediin (oli orphan — defaultMovementName käytti "Etukyykky" mutta seedissä oli vain englanninkielinen "Front squat"). Deload-viikot 4, 8, 12 edelleen intentionaalisesti ilman LA-kyykkyä. v4.27.19: streetlifting-alignment (peru grip-endurance mixAcc:sta).: peruttu v4.27.18 grip-endurance-lisäys mixAcc:sta. Kontekstivirhe: v4.27.18:ssa lisättiin Farmer carry LA-päivän mixAcc:iin "MU false grip -tueksi", mutta streetlifterille (kisaliikkeet MU + Leuka + Dippi + Takakyykky) erillinen carry on dedikoitua harjoitusaikaa ilman kisahyötyä — ote tulee jo 94 kg leuka-primarysta ja MU-transitionin false grip -pidosta. Palautettu: mixAcc = [core-hollow] (1 slot, sama kuin MA/TI/TO:n coreSlot). Grip-endurance-entry poistettu ACCESSORY_SLOT_CATALOGista (seed-liikkeet Farmer carry/Dead hang/Heavy dead hang/Heavy farmer carry säilyvät mahdollista manuaalista accessorySlotOverrides-lisäystä varten). SAMALLA tunnustettu: etukyykky ON jo LA:ssa (v4.25 P1-1 fsWeek-parametri) 11/16 viikkoa — vk 1-3 motor pattern @55-62%, vk 5-7 strength @65-70%, vk 9-11 neural @70-75%, vk 13-14 taper @65-70% (kaikki suhteessa Takakyykky e1RM × 0.85). Deload-viikot 4, 8, 12 intentionaalisesti ilman: vk 4 sisältää Takakyykky AMRAP-kalibroinnin (v4.27.15), vk 8 + 12 puhdas palautuminen ennen seuraavaa blokkia. 2×/vk kyykky-frekvenssi toteutuu: TI raskas primary + LA tekninen etukyykky. Face pull foundation-volyymi pysyy 90 reps/wk (MA pullAcc 3×15 + TO pushAccPrehab 3×15) — sama v4.27.18 target ilman LA-redundanssia. v4.27.18: Anti-rotation core + grip-endurance + triple-coverage fix (grip-endurance-osa nyt peruttu). (anti-rotation core + grip-endurance + triple-coverage fix). (1) Uusi slotId "core-antirotation" ACCESSORY_SLOT_CATALOGiin: Pallof press / Bird dog / Landmine anti-rotation / Pallof press hold, phase-taperaus foundation 3×10/side Vx3 → strength 3×8/side Vx3 → intensity 2×8/side Vx2 → peaking 2×10/side Vx4. Perustelu: raskas kyykky (230 kg+) luo epäsymmetristä kuormaa jonka vasta-kerääntyvä rotational-shear pettää hollow-only-coren; anti-rotation palvelee frontaalitasoa jota sagittal hollow ei kata. (2) TI-päivä (kyykky) saa core-antirotationin, MA+TO säilyttävät core-hollow:n (sagittal flexion tukee leuka/dippi/MU-chainia — biomechaaniseti eri tarve). (3) Uusi slotId "grip-endurance": Farmer carry / Dead hang / Heavy farmer carry, foundation 3×30s → strength 3×40s → intensity 2×45s → peaking 2×30s. (4) Foundation face pull triple-coverage -korjaus: mixAcc:ssa (LA-päivä) scapular-control → grip-endurance. Perustelu: MA pullAcc + TO pushAccPrehab + LA mixAcc = 9 sets × 15 reps = 135 reps/wk face pull foundation-blokissa (liikaa low-fatigue-liikkeelle); vaihto pudottaa volyymin 135 → 90 reps/wk ja tukee suoraan LA:n MU-työtä koska MU:n transition on false grip -endurance-rajoitettu. (5) Seed-liikkeet päivitetty: Pohkeenkohotus + Standing/Seated calf raise (v4.27.17 täydennys), Pallof press hold + Landmine anti-rotation + Bird dog + Hollow body hold + L-sit hold + Farmer carry + Heavy farmer carry + Heavy dead hang (kaikki 58 catalog-varianttia resolvoituu seediin). v4.27.17: Accessory audit -korjaukset (calf-isolation 5. slotina, pushAcc face pull swap, MA warmup band external rotation). (composition fixes, viikosta riippumatta optimaaliset treenit). Kolme täsmämuutosta: (1) lowerAcc sai 5. slotin — Pohkeenkohotus 3×15 Vx4 ("calf-isolation", alaraaja). Perustelu: 230 kg+ kyykyn lockout vaatii nilkan rigidityä (soleus-toorque + gastrocnemius-elastic), aiemmin isolaatioo nolla — ankkurikohta puuttui plantariflexion ketjusta. (2) pushAcc (strength-blokki vk 5+) vaihdettu: Sivunosto 3×15 → Face pull 2×12 Vx4 ("scapular-control", horisontaaliveto). Perustelu: strength-blokissa viikottainen dippivolyymi nousee (primary 24–30 raskasta toistoa + backoff + skill-slotin tempo dippi) — posterior delt + rotator cuff balance kriittinen, ja foundation-blokissa (vk 1–4) pushAccPrehab tarjoaa jo face pullin 3×15 joten strength-blokissa riittää 2×12 (complementary volume). Sivunosto redundantti Pystypunnerruksen V3/8-rep-rangessa. (3) maDay warmup sai Band external rotation 2×12 per puoli — symmetria TO:n prehab-depthin kanssa (rotator cuff aktivaatio ennen vetoja, ei aiemmin ollut MA:lla mutta oli TO:lla). Manuaalinen muokkaus tuettu: accessorySlotOverrides-mekanismi salvaa slotId-pohjaisen vaihdon UI:n 🔒-lukolla, stagnation-swap ehdottaa automaattisesti vaihtoehtoa jos slot junnaa — rakenne pysyy pseudonyymisti eheänä. v4.27.16: MU-autoregulaation Vx-gradientti laajennettu. Aiempi adjustMULoad: −5 / −2.5 / 0 / +2.5 (avgVx:n mukaan). Kun atleetti raportoi avgVx ≥ 4 (selvästi liian kevyt), +2.5 kg oli liian varovainen — ohjelma eteni vain 2.5 kg/vk vaikka signaali sanoi että varaa on enemmänkin. Uusi porrastus lisää +5 kg -askeleen kun avgVx ≥ 4 JA minVx ≥ 3 (estää harhaanjohtavaa keskiarvoa jos 1 sarja oli V0-2). +5 kg on enimmäisaskel — MU:n bimodaalisen luonteen takia isommat kertahypyt ovat liian riskialttiita. v4.27.15: AMRAP-kalibrointiprotokolla W4 LA:lle. W4 LA-sessio (streetlifting_16w) vaihdettu "3RM testi"-labelista todelliseen AMRAP-kalibrointisessioon: kolme setRole:"calibration"-slotia (Leuka/Dippi/Kyykky) @85 % × tekninen failure, actualVx pakotetaan 0:aan. Engine.computeMovementProgress tunnistaa calibration-setit ja override:aa e1RM:n kun viim. 3 top-setissä on kalibrointi — sen sijaan että mediaani sekoittaisi Vx-biasoidut ja kalibrointi-setit. Epley+Vara actualVx=0:lla redusoituu puhtaaksi Epleyksi (load × (1 + reps/30)), joten kalibrointi antaa Vx-biasista vapaan ground-truth-mittauksen. Rate-limit-ankkuri ei muutu — kalibrointi-sessio suodatetaan computeRateLimitAnchorissa (Vx=0 drop), joten ankkuri pysyy todellisissa treenisessioissa. v4.27.14: rate-limit-ankkuri robustimmaksi (viim. 3 session raskain median). Pre-v4.27.14: rate-limit-cap (session-to-session +6/+10/+15 % Vx-deltan mukaan) käytti yksittäistä viim. setriä ankkurina (recentTopSets[length-1] primaryssa, selfSets[last] cross-referencessä) — altis yksittäisen anomalian vaikutukselle: deload-session kevein setti sulki capin keinotekoisesti alas, 3RM-testin failure-setti (Vx0) päätyi ankkuriksi, yksittäinen grind vinoutti cappia. KORJAUS: uusi computeRateLimitAnchor(recentTopSets)-helperi: ryhmittää setit sessionId:n mukaan, ottaa viim. 3 sessiota, laskee kunkin MEDIAN load + MEDIAN Vx (suodattaa readiness_testin ja Vx0-failuret), ankkuri = RASKAIN median-load näistä — deload/test ei vedä cappia alas, mutta yksittäinen spiikkikään ei nosta cappia perusteettomasti. Käytössä sekä primary-polussa (PROGRESSION_RATE_LIMIT) että cross-reference-haarassa (PROGRESSION_RATE_LIMIT_CROSSREF). v4.27.13: loadPct-slottien resolvointi (engine resolvoi jokaisen loadPct-slotin kuorman: sama liike → session-effective-e1RM primaryn rate-limitatusta targetista; cross-reference esim. Etukyykky→Takakyykky → referenssin e1RM + oma rate-limit; UI lukee slot.resolvedLoadKg:n).
 
 const APP_VERSION = "3.2.0";
 const SCHEMA_VERSION = 4;
@@ -186,6 +186,8 @@ const PRESET_MOVEMENTS = [
   { name: "Hollow body hold", category: "core", isPrimary: false, isPreset: true },
   { name: "Front-foot elevated split squat", category: "alaraaja", isPrimary: false, isPreset: true },
   { name: "Paused squat", category: "alaraaja", isPrimary: false, isPreset: true },
+  // v4.27.20: Etukyykky (suomenkielinen) — laDay fsWeek default foundation/strength vaiheissa
+  { name: "Etukyykky", category: "alaraaja", isPrimary: false, isPreset: true },
   // ─── Alaraaja-variantit (v4.27.1) — maaveto/kyykky-spesifiset tukiliikkeet
   //     räätälöityyn ohjelmageneraattoriin. COMPLEMENT/SECONDARY-rooleihin alaraaja-primaryille.
   { name: "Romanian DL",       category: "alaraaja", isPrimary: false, isPreset: true },
@@ -3529,33 +3531,59 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     const isSkill = muLoad === 0;
     const slots = [];
 
-    // Etukyykky secondary (ennen MU:ta) — LA:n 2. kyykky-eksposointi
+    // LA:n 2. kyykky-eksposointi — variaatio etenee blokin mukaan (v4.27.20):
+    //   Foundation/Strength (vk 1-7): Etukyykky — quad-dominant, motor diversity
+    //   Intensity (vk 9-11):           Box squat — stretch-reflex nollattu,
+    //                                  puhdas concentric "kuopasta" (sticking
+    //                                  point specificity; TI:ssä jo Paused squat
+    //                                  backoffissa, LA tarvitsee eri kulman)
+    //   Peaking (vk 13-14):            Takakyykky kisastyle kevyt — opener
+    //                                  rehearsal + motor groove, maksimi-
+    //                                  specificity ennen kisaa
+    //
+    // Cross-reference loading: kaikki laskevat Takakyykky-e1RM:stä. refScale
+    // skaalaa liikkeen RM-suhteeseen takakyykky-e1RM:än kanssa (Etukyykky
+    // ~85 %, Box squat ~85 %, Takakyykky self 100 %).
     if (fsWeek && fsWeek.pct > 0) {
       const fsLoadPct = fsWeek.pct;
-      // Etukyykky on ~85 % takakyykystä, joten loadPct skaalattu alas.
-      const fsLoadScaled = fsLoadPct * 0.85;
+      const movement  = fsWeek.movement  ?? "Etukyykky";   // default = v4.25 P1-1 käyttäytyminen
+      const refScale  = fsWeek.refScale  ?? 0.85;          // default = etukyykky-skaalaus
+      const fsLoadScaled = fsLoadPct * refScale;
+      // Velocity-stop per liike (biomechanicsin ja CNS:n mukaan):
+      //   Etukyykky: konservatiivinen (tekninen, rintakehän asento)
+      //   Box squat: räjähtävämpi (puhdas concentric boksilta)
+      //   Takakyykky: normaali (kisaliike)
+      const vStop = movement === "Box squat"
+        ? (fsWeek.vx <= 2 ? 0.50 : 0.60)
+        : movement === "Takakyykky"
+          ? (fsWeek.vx <= 2 ? 0.40 : 0.55)
+          : (fsWeek.vx <= 2 ? 0.45 : 0.55);  // Etukyykky default
+      // Warmup: takakyykky käyttää standardi tanko-rampia (kisalift),
+      // etukyykky/box squat kevyempi tekninen ramp.
+      const wUp = movement === "Takakyykky"
+        ? RAMP_BARBELL.slice(0, 4)
+        : [
+            { pct: 0.30, reps: 5, note: "Tyhjä tanko + kevyt" },
+            { pct: 0.50, reps: 3, note: "Liikemalli" },
+            { pct: 0.70, reps: 2, note: "Aktivaatio" },
+          ];
       slots.push({
         role: "secondary",
         category: "alaraaja",
-        defaultMovementName: "Etukyykky",
+        defaultMovementName: movement,
         sets: fsWeek.sets,
         reps: fsWeek.reps,
         targetVx: fsWeek.vx,
         loadPct: fsLoadScaled,
-        // v4.27.13: loadPct viittaa takakyykkyn e1RM:ään (0.85-skaalaus
+        // v4.27.13: loadPct viittaa Takakyykky-e1RM:ään (refScale-skaalaus
         // sisäänrakennettu fsLoadScaled:iin). Engine hakee Takakyykky-liikkeen
-        // e1RM:n ja kertoo loadPct:llä → etukyykky saa oikean suhteellisen
-        // kuorman takakyykystä, ei lukkiudu seed-arvoon.
+        // e1RM:n ja kertoo loadPct:llä → liike saa oikean suhteellisen kuorman.
         loadPctReferenceMovementName: "Takakyykky",
         suggestedLoadKg: Math.round(K * fsLoadScaled / 2.5) * 2.5,
         isBarbell: true,
-        note: `Etukyykky ${fsWeek.note || "— tekninen 2. frekvenssi"}`,
-        velocityStop: fsWeek.vx <= 2 ? 0.45 : 0.55,
-        warmupSets: [
-          { pct: 0.30, reps: 5, note: "Tyhjä tanko + kevyt" },
-          { pct: 0.50, reps: 3, note: "Liikemalli" },
-          { pct: 0.70, reps: 2, note: "Aktivaatio" },
-        ],
+        note: `${movement} ${fsWeek.note || "— tekninen 2. frekvenssi"}`,
+        velocityStop: vStop,
+        warmupSets: wUp,
       });
     }
 
@@ -3621,7 +3649,8 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         { name: "False Grip hang", desc: "3×20 s — ranteiden asento kuntoon" },
         { name: "Band dislocations", desc: "2×10 — olka-mobiliteetti MU:n push-osaan" },
         { name: "Räjähtävä leuka BW", desc: "3×3 — maksimaalinen nopeus ylös, neural primer" },
-        ...(fsWeek ? [{ name: "Etukyykky-lämmittely", desc: "Ks. slotin warmupSets — ennen MU:ta" }] : []),
+        // v4.27.20: warmup-rivin nimi heijastaa block-specific variaatiota
+        ...(fsWeek ? [{ name: `${fsWeek.movement ?? "Etukyykky"}-lämmittely`, desc: "Ks. slotin warmupSets — ennen MU:ta" }] : []),
       ],
       slots };
   }
@@ -3743,23 +3772,46 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   //
   // Intensiteetti: 65% → 85% → 92% primary-progressio. 100+ % kuormia EI
   // suunnitella — vain "Top single RPE 8" -kohdissa (vk 12 ja vk 14 PR-yritys).
-  // ─── Etukyykky-progressio LA:lle (v4.25 P1-1) ───
-  // % on suhteessa takakyykky-e1RM:ään; laDay() skaalaa sen ×0.85 etukyykylle.
-  // Rakenne: motor pattern -palautus (vk 1–2) → hypertrofia (vk 3, 5–7) →
-  // neuraalinen (vk 9–11) → realization (vk 13–14). Vk 4, 8, 12 deloadeissa
-  // ei etukyykkyä; vk 15–16 taperissa ei myöskään.
+  // ─── LA:n 2. kyykky-progressio (v4.25 P1-1, v4.27.20 block-specific variation) ───
+  // % on suhteessa takakyykky-e1RM:ään; laDay() skaalaa movementin mukaan
+  // (refScale: Etukyykky 0.85, Box squat 0.85, Takakyykky self 1.00).
+  //
+  // Block-periodization-rakenne (general → specific):
+  //   Foundation vk 1-3: Etukyykky — motor pattern, quad-dominant variation
+  //   Strength  vk 5-7:  Etukyykky — GPP, moderate strength
+  //   Intensity vk 9-11: Box squat — sticking-point specificity (stretch-reflex
+  //                      nollattu, puhdas concentric; TI:ssä on Paused squat)
+  //   Peaking   vk 13-14: Takakyykky kisastyle kevyt — opener rehearsal,
+  //                       motor groove, CNS primer ilman fatiikkaa
+  //
+  // Deload-viikot 4, 8, 12 intentionaalisesti ilman LA-kyykkyä:
+  //   vk 4  = Takakyykky AMRAP-kalibrointi (calibrationDay, v4.27.15)
+  //   vk 8  = puhdas palautuminen ennen intensity-blokkia
+  //   vk 12 = puhdas palautuminen ennen peakingia
+  // Vk 15-16 taperissa ei myöskään — viimeinen raskas on vk 14.
+  //
+  // Volyymirakenne: Foundation nouseva (3→4 sarjaa), Strength tasainen,
+  // Intensity laskeva volyymi/raskaampi, Peaking minimaalinen (realization).
   const FS = {
-    w1:  { sets:3, reps:5, vx:4, pct:0.55, note:"@55 % — motor pattern palautus" },
-    w2:  { sets:3, reps:5, vx:4, pct:0.60, note:"@60 %" },
-    w3:  { sets:4, reps:5, vx:3, pct:0.62, note:"@62 % — volyymi-peak blokki 1" },
-    w5:  { sets:3, reps:5, vx:3, pct:0.65, note:"@65 % — voima-blokki alkaa" },
-    w6:  { sets:3, reps:5, vx:3, pct:0.68, note:"@68 %" },
-    w7:  { sets:4, reps:5, vx:3, pct:0.70, note:"@70 %" },
-    w9:  { sets:3, reps:4, vx:3, pct:0.70, note:"@70 % — intensifikaatio, matalampi volyymi" },
-    w10: { sets:3, reps:4, vx:3, pct:0.72, note:"@72 %" },
-    w11: { sets:3, reps:3, vx:2, pct:0.75, note:"@75 % — viimeinen raskaampi" },
-    w13: { sets:3, reps:3, vx:3, pct:0.70, note:"@70 % — pidetään matala, taper alkaa" },
-    w14: { sets:2, reps:3, vx:3, pct:0.65, note:"@65 % — kevyt aktivointi" },
+    // Foundation — Etukyykky, motor pattern + hypertrofia
+    w1:  { sets:3, reps:5, vx:4, pct:0.55, movement:"Etukyykky", refScale:0.85, note:"@55 % — motor pattern palautus" },
+    w2:  { sets:3, reps:5, vx:4, pct:0.60, movement:"Etukyykky", refScale:0.85, note:"@60 %" },
+    w3:  { sets:4, reps:5, vx:3, pct:0.62, movement:"Etukyykky", refScale:0.85, note:"@62 % — volyymi-peak blokki 1" },
+    // Strength — Etukyykky, volyymi + voima
+    w5:  { sets:3, reps:5, vx:3, pct:0.65, movement:"Etukyykky", refScale:0.85, note:"@65 % — voima-blokki alkaa" },
+    w6:  { sets:3, reps:5, vx:3, pct:0.68, movement:"Etukyykky", refScale:0.85, note:"@68 %" },
+    w7:  { sets:4, reps:5, vx:3, pct:0.70, movement:"Etukyykky", refScale:0.85, note:"@70 %" },
+    // Intensity — Box squat, sticking-point specificity
+    // Box squat takakyykyn nosturiin nähden ~80–85 % RM → @58–65 % Takakyykky-e1RM
+    // vastaa box-squat-RM:stä ~68–76 %, joka on intensity-vaiheen moderate-heavy.
+    w9:  { sets:3, reps:5, vx:3, pct:0.58, movement:"Box squat", refScale:0.85, note:"@58 % Takakyykky — Box squat, pysähtys 1 s boksilla, räjähtävä nousu" },
+    w10: { sets:3, reps:5, vx:3, pct:0.62, movement:"Box squat", refScale:0.85, note:"@62 % Takakyykky — Box squat" },
+    w11: { sets:3, reps:4, vx:2, pct:0.65, movement:"Box squat", refScale:0.85, note:"@65 % Takakyykky — Box squat, viim. raskaampi" },
+    // Peaking — Takakyykky kisastyle kevyt, maksimi-specificity
+    // refScale 1.00 = ei skaalausta; % suoraan Takakyykky-e1RM:stä.
+    // Löydetään opener-tunne ilman CNS-fatiikkaa.
+    w13: { sets:3, reps:3, vx:3, pct:0.65, movement:"Takakyykky", refScale:1.00, note:"@65 % kisakyykky — opener rehearsal, kisastyle" },
+    w14: { sets:2, reps:3, vx:3, pct:0.60, movement:"Takakyykky", refScale:1.00, note:"@60 % kisakyykky — motor groove, kevyt" },
   };
 
   const weekPlans = [
@@ -3839,13 +3891,13 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       maDay("MA — Leuka 4×3 @85%",  4,3,1, 0.85, 0.70, null),
       tiDay("TI — Kyykky 4×3 @85%", 4,3,1, 0.85, null),
       toDay("TO — Dippi 4×3 @85%",  4,3,1, 0.85, 0.70, null),
-      laDay("LA — MU +7.5 kg + etukyykky", 7.5, 4, "+7.5 kg — intensifikaatio alkaa", 2, FS.w9),
+      laDay("LA — MU +7.5 kg + box squat", 7.5, 4, "+7.5 kg — intensifikaatio alkaa", 2, FS.w9),
     ]},
     { week:10, days:[
       maDay("MA — Leuka 4×3 @87% + top 92%",  4,3,1, 0.87, null, 0.92),
       tiDay("TI — Kyykky 4×3 @87% + top 92%", 4,3,1, 0.87, 0.92),
       toDay("TO — Dippi 4×3 @87% + top 92%",  4,3,1, 0.87, null, 0.92),
-      laDay("LA — MU +10 kg + etukyykky",     10, 3, "+10 kg", 2, FS.w10),
+      laDay("LA — MU +10 kg + box squat",     10, 3, "+10 kg", 2, FS.w10),
     ]},
     { week:11, days:[
       // v4.25 P1-5: 4×3 → 3×3 (Prilepin: 85–95% max 14 reps/sessio, optimal 10).
@@ -3853,7 +3905,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       maDay("MA — Leuka 3×3 @90% + top 95%",  3,3,1, 0.90, null, 0.95),
       tiDay("TI — Kyykky 3×3 @90% + top 95%", 3,3,1, 0.90, 0.95),
       toDay("TO — Dippi 3×3 @90% + top 95%",  3,3,1, 0.90, null, 0.95),
-      laDay("LA — MU +12.5 kg (viim. raskas) + etukyykky", 12.5, 3, "+12.5 kg", 2, FS.w11),
+      laDay("LA — MU +12.5 kg (viim. raskas) + box squat", 12.5, 3, "+12.5 kg", 2, FS.w11),
     ]},
     { week:12, days:[
       // RPE9-testi: 2×2 @ kevyt, 1 × top @ 95 % RPE9. Tulos päivittää e1RM:n
@@ -3880,7 +3932,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       maDay("MA — Realization 3×2 @92% + finisher",       3,2,1, 0.92, null, 0.93, finisherAcc("taper-aktivointi")),
       tiDay("TI — Realization kyykky 3×2 @92% + finisher", 3,2,1, 0.92, 0.93, finisherAcc("taper-aktivointi")),
       toDay("TO — Realization 3×2 @92% + finisher",       3,2,1, 0.92, null, 0.93, finisherAcc("taper-aktivointi")),
-      laDay("LA — MU +15 kg + etukyykky kevyt", 15, 3, "+15 kg — competition ready (3 sarjaa, ei 4)", 2, FS.w13),
+      laDay("LA — MU +15 kg + kisakyykky kevyt", 15, 3, "+15 kg — competition ready (3 sarjaa, ei 4)", 2, FS.w13),
     ]},
     { week:14, days:[
       // v4.25 P1-7: Peaking intensiteetti 97% → 93% (97% 12 pv ennen kisaa liian raskas,
@@ -3889,7 +3941,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       maDay("MA — Peaking 2×1 @93% + kevyt",       2,1,1, 0.93, null, null, finisherMinimal("kevyt")),
       tiDay("TI — Peaking kyykky 2×1 @93% + kevyt", 2,1,1, 0.93, null, finisherMinimal("kevyt")),
       toDay("TO — Peaking 2×1 @93% + kevyt",       2,1,1, 0.93, null, null, finisherMinimal("kevyt")),
-      laDay("LA — MU opener rehearsal + etukyykky kevyt", 15, 3, "Opener harjoitus +15 kg (V2 — tekniikka edellä)", 2, FS.w14),
+      laDay("LA — MU opener rehearsal + kisakyykky kevyt", 15, 3, "Opener harjoitus +15 kg (V2 — tekniikka edellä)", 2, FS.w14),
     ]},
     { week:15, days:[
       // Taper: opener-harjoitus vk 15. Kuormat suhteessa atleetin nykyiseen
