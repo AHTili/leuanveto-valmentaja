@@ -771,6 +771,7 @@ import {
   findMissedPriorSessions,
   eliteVolumeCheck,
   computeMovementE1RM, computeMovementE1RMHistory,
+  computeStreetliftingOpenerStrategy,
   REST_RECOMMENDATIONS,
   pickRestForExercise,
   DEFAULT_VARIANT_MODIFIERS,
@@ -2072,6 +2073,51 @@ function renderDashboard() {
 
   const phaseTimelineHTML = buildPhaseTimelineHTML(meso, typeof weekNum === "number" ? weekNum : null, deloadMode);
 
+  // v4.29.0 (P2): Streetlifting opener-strategia peaking-vaiheessa (vk 13–16).
+  // Laskee per kilpailuliike opener (88 %) / 2nd (95 %) / 3rd (102 %) viimeisimmän
+  // e1RM:n perusteella. Tarkoitus: käyttäjä voi suunnitella kisapäivän nostot ennalta.
+  const openerStrategyHTML = (() => {
+    if (meso?.type !== "streetlifting_16w") return "";
+    if (typeof weekNum !== "number" || weekNum < 13) return "";
+    const COMP_LIFTS = ["Lisäpainoleuanveto", "Lisäpainodippi", "Takakyykky", "Maastaveto"];
+    const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
+    const e1rms = {};
+    for (const liftName of COMP_LIFTS) {
+      const mov = state.movements.find(m => m.name === liftName);
+      if (!mov) continue;
+      const sets = state.allSets.filter(s => s.movementId === mov.movementId);
+      const history = computeMovementE1RMHistory(sets, state.sessions, mov.isPrimary, bw);
+      if (history.length > 0) {
+        const lastE1rm = history[history.length - 1].e1rm;
+        if (lastE1rm > 0) e1rms[liftName] = lastE1rm;
+      }
+    }
+    const strategy = computeStreetliftingOpenerStrategy(e1rms);
+    if (!strategy) return "";
+    const liftLabels = {
+      "Lisäpainoleuanveto": "Leuanveto",
+      "Lisäpainodippi": "Dippi",
+      "Takakyykky": "Kyykky",
+      "Maastaveto": "Maaveto",
+    };
+    const rowsHTML = Object.entries(strategy).map(([liftName, s]) => `
+      <div style="display:grid;grid-template-columns:1fr repeat(3, 1fr);gap:6px;padding:6px 0;border-top:1px solid var(--border);font-size:13px">
+        <div style="font-weight:600">${liftLabels[liftName] || liftName}</div>
+        <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">opener</div><div style="font-weight:700">${s.opener} kg</div></div>
+        <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">2.</div><div style="font-weight:600">${s.second} kg</div></div>
+        <div style="text-align:center"><div style="font-size:11px;color:var(--muted)">3. PR</div><div style="font-weight:700;color:var(--acc)">${s.third} kg</div></div>
+      </div>`).join("");
+    return `<div class="card" style="margin-top:10px;border-color:rgba(245, 158, 11, 0.4);background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(239,68,68,0.04))">
+      <div class="card-title">🏆 Kisapäivän opener-strategia (peak vk ${weekNum}/16)</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">88 % / 95 % / 102 % e1RM — IPF World Classic 2021 -voittaja-aineistoon perustuva (Helms, Bromley)</div>
+      ${rowsHTML}
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.4">
+        💡 Opener = "viimeisin treenisingle prep-blokin lopussa". 2. yritys = ~95 % (RPE 9). 3. yritys = PR-yritys.<br>
+        Viimeinen raskas single ~92–95 % avattavasta vk 14:llä. Maaveto pois viim. 10–14 vrk, kyykky 7–10 vrk, leuka/dippi 5–7 vrk.
+      </div>
+    </div>`;
+  })();
+
   const ctaDurationPill = estDur ? `<span class="duration">~${estDur} min</span>` : "";
   const ctaLabel = deloadMode ? "▶ ALOITA KEVENNYS" : "▶ ALOITA TREENI";
   const deloadBtnLabel = isDeloadOverride ? "↩ Peru kevennys" : "🌿 Kevennys";
@@ -2117,6 +2163,8 @@ function renderDashboard() {
       <button class="btn btn-outline" id="btn-readiness">📊 Readiness</button>
       ${meso ? `<button class="btn btn-outline" id="btn-insert-deload">${deloadBtnLabel}</button>` : ""}
     </div>
+
+    ${openerStrategyHTML}
 
     ${renderStimCard(deloadMode)}
 

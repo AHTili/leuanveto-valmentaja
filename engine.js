@@ -2596,6 +2596,53 @@ function assignVariantRotation(weekPlans) {
 // ═══════════════════════════════════════════════════════════════
 
 /**
+ * v4.29.0 (P2): Streetlifting opener-strategia kisapäivälle.
+ *
+ * Laskee per kilpailu­liike opener / 2nd / 3rd -prosentit e1RM:n perusteella.
+ * Lähde: StrengthLog/IPF World Classic 2021 -data (voittajien openerit ~88 %),
+ * Helms 2018 ja Bromley Peak Strength.
+ *
+ * Käyttö: peaking-vaiheessa (vk 13–16) dashboard näyttää tämän taulukon
+ * jotta käyttäjä voi suunnitella kisapäivän nostot ennalta.
+ *
+ * @param {Object} e1rmsByMovementName — { "Lisäpainoleuanveto": 94, ... }
+ * @returns {Object|null} per liike: { e1rm, opener, second, third } tai null
+ */
+function computeStreetliftingOpenerStrategy(e1rmsByMovementName) {
+  if (!e1rmsByMovementName || typeof e1rmsByMovementName !== "object") return null;
+  // SLRY/SSW/IPL-kilpailu­liikkeet — kaikki neljä, käyttäjä valitsee mitkä koskevat
+  // hänen kisaformaattinsa (esim. SSW: MU + leuka + dippi + kyykky, ei maavetoa)
+  const COMPETITION_LIFTS = [
+    "Lisäpainoleuanveto",
+    "Lisäpainodippi",
+    "Takakyykky",
+    "Maastaveto",
+  ];
+  // Eliittikäytäntö (Helms, Bromley, IPF World Classic 2021 -data):
+  //   Opener:  88–90 % 1RM (= "viimeisin treenisingle prep-blokin lopussa")
+  //   2nd:     94–96 % 1RM
+  //   3rd:    100–103 % 1RM (PR-yritys)
+  const OPENER_PCT = 0.88;
+  const SECOND_PCT = 0.95;
+  const THIRD_PCT = 1.02;
+  const result = {};
+  for (const liftName of COMPETITION_LIFTS) {
+    const e1rm = e1rmsByMovementName[liftName];
+    if (!e1rm || e1rm <= 0) continue;
+    result[liftName] = {
+      e1rm: Math.round(e1rm * 10) / 10,
+      opener: roundToHalf(e1rm * OPENER_PCT),
+      second: roundToHalf(e1rm * SECOND_PCT),
+      third: roundToHalf(e1rm * THIRD_PCT),
+      openerPct: OPENER_PCT,
+      secondPct: SECOND_PCT,
+      thirdPct: THIRD_PCT,
+    };
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+/**
  * Compute attempt loads for competition day.
  * Returns { warmupLoads: [...], opener, second, third } in external kg.
  */
@@ -2896,6 +2943,7 @@ export {
   assignVariantRotation,
   // Peaking
   computeAttemptLoads,
+  computeStreetliftingOpenerStrategy,
   // Weekly
   weeklyStimulus,
   // Stagnation

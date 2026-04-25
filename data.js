@@ -175,6 +175,13 @@ const PRESET_MOVEMENTS = [
   { name: "Scapular pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
   { name: "Band-assisted muscle-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
   { name: "Räjähtävä leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  // v4.29.0 (P3): ME-rotaatio yläosalla — vaihtuvat pää-leuka-variantit foundation/strength-blokeille
+  { name: "Chin-up myötäote", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Paused pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Fat-bar pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  // v4.29.0 (P4): Overload-liikkeet — eliitti­tason heikon kohdan ylikuormitus
+  { name: "Heavy negative leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Board dippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
   { name: "Pendlay row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
   { name: "Weighted inverted row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
   // v4.28.2: Ring dip poistettu — kalustorajoite (atleetilla ei ole renkaita).
@@ -251,6 +258,13 @@ const MOVEMENT_DESCRIPTIONS = {
   "Scapular pull-up": { howTo: "Roiku tangossa, aktivoi vain lapaluut — lasku alas ja nosto ylös ILMAN kyynärpäiden koukistusta. 10 s holdeja mukaan.", cue: "Kyynärpäät suoriksi — vain lapalihakset työskentelevät" },
   "Band-assisted muscle-up": { howTo: "Kuminauha tangon ympäri, jalat/polvet nauhaan. Tee koko MU-liikerata kevyemmällä kuormalla.", cue: "Harjoittele transition-liikerataa, älä pelkkää vetoa" },
   "Pendlay row": { howTo: "Tanko maasta, selkä vaakatasossa, vedä tanko alarintaan, tanko PALAA maahan joka toistolla. Ei selän rullaamista.", cue: "Pysähdys maahan = nollasta starttaus joka toisto" },
+  // v4.29.0 (P3): ME-rotaatio yläosalla
+  "Chin-up myötäote": { howTo: "Leuanveto vastaote (palms facing you), kapeampi ote (~hartioiden leveys). Hauis-emphasoitu rotaatio kilpaleukaan nähden. Käytetään ME-rotaation osana foundation-vaiheessa hauis-overloadina ja vetävän voiman rakentamiseen ennen kapeaote-spesifisyyttä.", cue: "Kyynärvarret pystyssä, hauis tekee työn — ei svingausta" },
+  "Paused pull-up": { howTo: "Leuanveto kilpaote, 1–2 s pysähdys yläasennossa (leuka tangon yli). Pakottaa täyden lockoutin ja eliminoi top-end momentumin. Strength-blokin ME-variantti — hauis/lat-pidätyskapasiteetti.", cue: "Yläasento puhdas pysähdys, ei vippaamalla yli" },
+  "Fat-bar pull-up": { howTo: "Leuanveto paksu tanko (2.0\"+) tai pyyhe tangon ympäri (towel pull). Forearm-/grip-overload kilpaleukaan nähden — ME-rotaation huippu strength-blokin lopussa. Vaatii fat-bar tai pyyhe.", cue: "Otteen avautuminen on stop-signaali — älä grindaa pelkällä gripillä" },
+  // v4.29.0 (P4): Overload-liikkeet
+  "Heavy negative leuka": { howTo: "Eksentrinen leuanveto supramaksimaalisella kuormalla (110–120 % 1RM). Hyppy/avustettu yläasentoon, 3–5 s hallittu lasku. 3–5 settiä × 1–3 toistoa. Westside-tyylinen overload — CNS:n totuttaminen kuormaan, joka ei ole konsentrisesti nostettavissa. Vk 5–12, ei kisaviikolla (DOMS-riski).", cue: "Lasku 5 s tasaisesti — ei vapaapudotusta. Pysähdys puolivälissä = liian raskas." },
+  "Board dippi": { howTo: "Dippi rajoitetulla ROM:lla (ylä-1/3) lautaa tai vaahtomuovipalaa apuna käyttäen, 105–115 % 1RM. Lockout-overload — triceps-/sternum-spesifinen kuormitus joka ei kuormita pec-insertion-stretchia. Vk 5–12 strength/intensity-blokeissa, 3×3–5.", cue: "Lautaa kosketus = pysähdys, sieltä lockout — ei alle." },
   "Weighted inverted row": { howTo: "Matala tanko, vartalo suora, lisäpaino vyötäröllä/rinnassa. Vedä tanko rintaan.", cue: "Tanko rintaan, ei napaan" },
   "Close-grip dip": { howTo: "Kapea dippiote (kahvat lähes koskettavat toisiaan), kyynärpäät taakse. Triceps-fokus, vähemmän rintaa.", cue: "Kyynärpäät aivan vartalon vieressä" },
   "Straight bar dip": { howTo: "Dippi suoralla tangolla — spesifi kisa-asento MU:n lukitukseen. Tanko vartalon edessä, nojaa eteen.", cue: "Sama asento kuin MU:n huipulla" },
@@ -597,6 +611,41 @@ const ACCESSORY_SLOT_CATALOG = {
       strength:   { sets: 3, reps: 5, targetVx: 3 },
       intensity:  { sets: 2, reps: 4, targetVx: 3 },
       peaking:    { sets: 2, reps: 5, targetVx: 4 },
+    },
+  },
+  // v4.29.0 (P4): Overload-liikkeet — eliitti­tason heikon kohdan ylikuormitus.
+  // Westsiden law-of-accommodation -periaate streetliftingiin sovitettuna:
+  // CNS-tason kuormitus, joka ylittää konsentrisen 1RM:n, totuttaa hermolihas­
+  // järjestelmän kuormaan ja vahvistaa lockout-spesifistä voimaa. Käytössä vain
+  // strength + intensity -blokeissa (vk 5-12), ei foundation/peakingissa.
+  // Murton 2018 -meta: lopeta supramaksimaaliset eksentrikat vk 13:lla DOMS-riskin
+  // takia. Käyttäjä voi swap:ata accessorySlotOverridesilla vapaasti.
+  "overload-pull-eccentric": {
+    function: "Leuanveto eksentrinen overload (110–120 % 1RM)",
+    rationale: "Heavy negative pull-up: hyppy yläasentoon + 3–5 s hallittu lasku 110–120 % 1RM. Westsiden eksentrinen overload-periaate. Totuttaa CNS:n kuormaan jota ei voi konsentrisesti nostaa, vahvistaa hauis/lat -kapasiteetin lockoutissa. Vain vk 5-12 (Murton 2018: peakvaiheessa DOMS-riski liian iso).",
+    phaseVariants: {
+      foundation: [],
+      strength:   ["Heavy negative leuka"],
+      intensity:  ["Heavy negative leuka"],
+      peaking:    [],
+    },
+    repScheme: {
+      strength:   { sets: 3, reps: 3, targetVx: null, note: "110–115 % 1RM, 5 s lasku — vain eksentrinen, hyppy ylös" },
+      intensity:  { sets: 3, reps: 2, targetVx: null, note: "115–120 % 1RM, 5 s lasku — vain eksentrinen" },
+    },
+  },
+  "overload-dip-lockout": {
+    function: "Dippi-lockout overload (105–115 % 1RM, board/foam)",
+    rationale: "Board dip: rajoitettu ROM (ylä-1/3) lautaa apuna käyttäen, 105–115 % 1RM. Lockout-spesifinen triceps + sternum-overload — ei rasita pec-insertion stretchia. Vain vk 5-12. Vrt. board press penkkipunnerruksessa.",
+    phaseVariants: {
+      foundation: [],
+      strength:   ["Board dippi"],
+      intensity:  ["Board dippi"],
+      peaking:    [],
+    },
+    repScheme: {
+      strength:   { sets: 3, reps: 5, targetVx: 3, note: "105–110 % 1RM, ylä-1/3 ROM, kontrolloitu lasku lautaan" },
+      intensity:  { sets: 3, reps: 3, targetVx: 3, note: "110–115 % 1RM, ylä-1/3 ROM" },
     },
   },
   // v4.28.0: BW eksentrinen dippi skill-vaiheelle (vk 1-4). Korvaa aiemman tempo-pause-dipin
@@ -3561,6 +3610,11 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       { name: "Thoracic extension (foam roller)", desc: "2×8 per puoli — T-rangan liikkuvuus avautuu" },
       // v4.27.17: Band external rotation symmetriaan TO:n prehab-depthin kanssa — rotator cuff aktivaatio ennen vetoja
       { name: "Band external rotation", desc: "2×12 per puoli — rotator cuff ext, symmetria TO:n prehab-depthin kanssa" },
+      // v4.29.0 (P5): Tendoni-prehab — distaalibiceps + triceps-jänneprehab. Suositus, ei pakollinen.
+      // Distaalibiceps-rupture on dokumentoitu eliittitason riski raskaassa kuormitetussa leuanvedossa
+      // (Coombes 2015, Malliaras 2013). Käyttäjä voi skipata jos olo on jo lämmin.
+      { name: "Distaalibiceps-prehab (suositus)", desc: "Eksentrinen vastaote-curl 2×8 light, 3 s lasku — jänne­valmistelu raskaaseen leukaan" },
+      { name: "Triceps-prehab (suositus)", desc: "Light triceps extension 2×10 — eri päivä kuin TO:n dippi, lockout-jänneprehab" },
       { name: "Scapular hang", desc: "3×10 s — lapa-aktivaatio ennen vetoja" },
       { name: "BW-leuka (kevyt)", desc: "1×5 — liikemallin herätys" },
       { name: "Räjähtävä leuka BW", desc: "1×3 — max nopeus ylös, neural primer" },
@@ -3870,9 +3924,12 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         { name: "Scapular pull-up", desc: "2×10 — lapa-aktivaatio ennen MU:ta" },
         { name: "False Grip hang", desc: "3×20 s — ranteiden asento kuntoon" },
         { name: "Band dislocations", desc: "2×10 — olka-mobiliteetti MU:n push-osaan" },
+        // v4.29.0 (P5): Distaalibiceps-prehab toinen viikoittainen kerta (1. kerta MA:lla).
+        // Käyttäjä voi skipata jos olo on jo lämmin — suositus, ei pakollinen.
+        { name: "Distaalibiceps-prehab (suositus)", desc: "Eksentrinen vastaote-curl 2×8 light, 3 s lasku — toinen viikoittainen jänneprehab MU-vetoon" },
         { name: "Räjähtävä leuka BW", desc: "3×3 — maksimaalinen nopeus ylös, neural primer" },
         // v4.27.20: warmup-rivin nimi heijastaa block-specific variaatiota
-        ...(fsWeek ? [{ name: `${fsWeek.movement ?? "Etukyykky"}-lämmittely`, desc: "Ks. slotin warmupSets — ennen MU:ta" }] : []),
+        ...(fsWeek ? [{ name: `${fsWeek.movement ?? "Paused squat"}-lämmittely`, desc: "Ks. slotin warmupSets — ennen MU:ta" }] : []),
       ],
       slots };
   }
