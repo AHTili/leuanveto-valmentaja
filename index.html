@@ -734,6 +734,7 @@ import {
   getVariantsForMovement, getVariantByName, getAllVariants,
   getAllSessions, getSession, saveSession, deleteSession,
   getSetsForSession, getAllSets, saveSet, saveSets, deleteSet,
+  savePendingWorkoutLocal, loadPendingWorkoutLocal, clearPendingWorkoutLocal,
   saveMeasurement, getMeasurementsByType, getLatestBodyweight, saveBodyweightEntry,
   getAllPRs, savePR, deletePR, seedHistoricalPRsIfNeeded,
   MESOCYCLE_TEMPLATES,
@@ -871,7 +872,49 @@ async function init() {
   await computeReadiness();
   await computeRecommendation();
   applyDensityClass();
+  // v4.28.1: tarkista onko keskeneräinen treeni edellisestä sessiosta. Jos on,
+  // tarjoa käyttäjälle jatkoa tai hylkäämistä ennen dashboardin renderöintiä.
+  await checkPendingWorkoutRecovery();
   render();
+}
+
+// v4.28.1: keskeneräisen treenin palautus localStorage-pendingWorkout-avaimesta.
+// Kutsutaan init():n lopussa ennen renderiä. Synkroninen window.confirm riittää
+// minimitoiminnallisuuteen — jatkossa voidaan vaihtaa custom-modaaliin.
+async function checkPendingWorkoutRecovery() {
+  const pending = loadPendingWorkoutLocal();
+  if (!pending?.workout) return;
+  const w = pending.workout;
+  // Laske progress kerronta käyttäjälle
+  let doneSets = 0, totalSets = 0;
+  for (const ex of (w.exercises || [])) {
+    for (const s of (ex.sets || [])) {
+      if (s.isWarmup) continue;
+      totalSets++;
+      if (s.completed) doneSets++;
+    }
+  }
+  const savedAt = pending.savedAt ? new Date(pending.savedAt) : null;
+  const savedAtStr = savedAt
+    ? `${savedAt.toLocaleDateString("fi-FI")} klo ${savedAt.toLocaleTimeString("fi-FI", { hour: "2-digit", minute: "2-digit" })}`
+    : "tuntematon ajankohta";
+  const dateStr = w.dateISO || "";
+  const msg =
+    `Keskeneräinen treeni löytyi.\n\n` +
+    `Päivä: ${dateStr}\n` +
+    `Tallennettu: ${savedAtStr}\n` +
+    `Edistyminen: ${doneSets}/${totalSets} sarjaa kirjattu\n\n` +
+    `Jatketaanko treeniä? (Peruuta = hylkää keskeneräinen)`;
+  if (confirm(msg)) {
+    state.workout = w;
+    state.view = "workout";
+    // Wake Lock + AudioContext vaativat käyttäjäinteraktion — restore-confirm laukeaa
+    // käyttäjän klikkauksesta, joten voimme yrittää.
+    ensureAudioCtx();
+    ensureWakeLock();
+  } else {
+    clearPendingWorkoutLocal();
+  }
 }
 
 // v4.23 P4.2: apply density class to body. Kutsutaan settings-tallennuksessa
@@ -3351,7 +3394,8 @@ function addRestSeconds(delta) {
 
 // Visibility change: kun selain palaa etualle, Wake Lock saatetaan joutua
 // hankkimaan uudelleen (release järjestelmän toimesta tapahtuu tyypillisesti
-// kun sivu menee taustalle).
+// kun sivu menee taustalle). Lisäksi tallennetaan pending workout aina kun
+// sivu menee taustalle — kattaa puhelimen lukituksen, sovelluksen vaihdon yms.
 if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && state.workout && state.restTimerInterval !== null) {
@@ -3360,6 +3404,18 @@ if (typeof document !== "undefined") {
       state.restTimerSeconds = computeRestSeconds();
       updateRestTimerUI();
     }
+    if (document.visibilityState === "hidden" && state.workout) {
+      savePendingWorkoutLocal(state.workout);
+    }
+  });
+}
+
+// v4.28.1: pagehide kattaa sulkemisen, refreshin ja tab-vaihdon synkronisesti.
+// localStorage on synkroninen, joten tallennus ehtii valmistua ennen kuin sivu sulkeutuu.
+// (beforeunload ei toimi luotettavasti mobiilissa; pagehide on suositeltu vaihtoehto.)
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => {
+    if (state.workout) savePendingWorkoutLocal(state.workout);
   });
 }
 
@@ -3411,6 +3467,7 @@ function showEndWorkoutConfirm() {
     const wasBackfill = !!state.workout?.isBackfill;
     const wasPlanOverride = !!state.workout?.isPlanOverride;
     state.workout = null;
+    clearPendingWorkoutLocal();
     state.view = "dashboard";
     // Jos treeni oli mennyt-päivän backfill tai plan-override, palautetaan
     // state.recommendation tänään ennen dashboard-renderöintiä
@@ -6703,6 +6760,10 @@ async function startWorkout(backfillDateISO = null) {
   ensureAudioCtx();
   ensureWakeLock();
 
+  // v4.28.1: autosave heti alusta — jos käyttäjä keskeyttää ennen ensimmäistäkään
+  // sarjaa, sovellus muistaa että treeni oli käynnissä ja tarjoaa jatkoa.
+  savePendingWorkoutLocal(state.workout);
+
   render();
 }
 
@@ -6803,6 +6864,7 @@ function bindWorkoutEvents() {
     w.currentSetIdx++;
     selectedReps = null;
     selectedVara = null;
+    savePendingWorkoutLocal(state.workout);
     render();
   });
 
@@ -6823,6 +6885,7 @@ function bindWorkoutEvents() {
     w.currentSetIdx = firstWorkIdx >= 0 ? firstWorkIdx : exercise.sets.length;
     selectedReps = null;
     selectedVara = null;
+    savePendingWorkoutLocal(state.workout);
     render();
   });
 
@@ -6957,6 +7020,7 @@ function bindWorkoutEvents() {
     w.currentSetIdx++;
     selectedReps = null;
     selectedVara = null;
+    savePendingWorkoutLocal(state.workout);
     render();
   });
 
@@ -7133,6 +7197,7 @@ function bindWorkoutEvents() {
   if (saveBtn) saveBtn.addEventListener("click", async () => {
     const sessionNotes = ($("#input-session-notes")?.value || "").trim().slice(0, 500);
     await saveWorkoutToDb(sessionNotes);
+    clearPendingWorkoutLocal();
     showToast("Treeni tallennettu!", "ok");
     state.workout = null;
     releaseWakeLock();
@@ -7148,6 +7213,7 @@ function bindWorkoutEvents() {
     const wasBackfill = !!state.workout?.isBackfill;
     const wasPlanOverride = !!state.workout?.isPlanOverride;
     state.workout = null;
+    clearPendingWorkoutLocal();
     state.view = "dashboard";
     releaseWakeLock();
     if (wasBackfill || wasPlanOverride) await computeRecommendation();

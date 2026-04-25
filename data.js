@@ -177,7 +177,8 @@ const PRESET_MOVEMENTS = [
   { name: "Räjähtävä leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true },
   { name: "Pendlay row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
   { name: "Weighted inverted row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
-  { name: "Ring dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  // v4.28.2: Ring dip poistettu — kalustorajoite (atleetilla ei ole renkaita).
+  // Korvattu Tempo pause dipillä mu-dip-support foundation-vaiheessa.
   { name: "Close-grip dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
   { name: "Straight bar dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
   { name: "Russian dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
@@ -242,7 +243,7 @@ const MOVEMENT_DESCRIPTIONS = {
   "Takakyykky": { howTo: "Tanko takakulmalle, jalat hartianleveydellä. Istu taaksepäin, polvet kääntyvät varpaiden suuntaan. Reiden yläpinta alle vaakatason.", cue: "Rintakehä auki koko liikeradan ajan" },
 
   // ─── Streetlifting-spesifiset (v4.11) ───
-  "Räjähtävä leuka": { howTo: "Leuanveto maksimaalisella kiihdytyksellä — yritä saada leuka reilusti tangon yli. Speed-strength-zone on ~30–60% 1RM: jos BW on yli 55% 1RM:stä (vahvat vetäjät), käytä kuminauha-assistia ylävaiheessa nopeuden säilyttämiseksi. Jos BW on alle 40% 1RM:stä, lisää kuormaa (vyö) 30–50% 1RM tasolle. 3 räjähtävää toistoa/sarja, 2 min palautus.", cue: "Nopeus > volyymi — keskeytä jos hidastuu" },
+  "Räjähtävä leuka": { howTo: "Leuanveto maksimaalisella kiihdytyksellä — yritä saada leuka reilusti tangon yli. Speed-strength-zone on ~30–60 % 1RM: jos BW on yli 55 % 1RM:stä (vahvat vetäjät), käytä kuminauha-assistia ylävaiheessa nopeuden säilyttämiseksi. Jos BW on alle 40 % 1RM:stä, lisää kuormaa (vyö) 30–50 % 1RM tasolle. 3 räjähtävää toistoa/sarja, V4 (lopeta heti kun nopeus laskee — ei grindausta), 2 min palautus.", cue: "Nopeus > volyymi — keskeytä jos hidastuu" },
   "Leuanveto chest-to-bar": { howTo: "Myötäote (pronated) — streetlifting/CrossFit-standardi, vastaote tekee liikkeestä helpomman ja vähentää C2B-spesifisyyttä. Vedä kunnes rinta koskettaa tangon, rintaranka taakse, lapaluut kokoon. Kontrolloitu alas.", cue: "Rinta tankoon, ei leuka" },
   "False grip pull-up": { howTo: "Ranteet tangon yli (false grip), vedä chest-to-bar. Valmistaa muscle-upin transition-vaiheen — ranteiden täytyy olla tangon yläpuolella.", cue: "Rannekulma pysyy — ei pudota pohjalla" },
   "False grip row": { howTo: "Matala tanko, false grip, vedä rintaa tankoon. Kehonpaino-soutu — jalat maassa, vartalo suora.", cue: "Harjoittaa tranistionin voimaa ilman koko MU:n kuormaa" },
@@ -251,7 +252,6 @@ const MOVEMENT_DESCRIPTIONS = {
   "Band-assisted muscle-up": { howTo: "Kuminauha tangon ympäri, jalat/polvet nauhaan. Tee koko MU-liikerata kevyemmällä kuormalla.", cue: "Harjoittele transition-liikerataa, älä pelkkää vetoa" },
   "Pendlay row": { howTo: "Tanko maasta, selkä vaakatasossa, vedä tanko alarintaan, tanko PALAA maahan joka toistolla. Ei selän rullaamista.", cue: "Pysähdys maahan = nollasta starttaus joka toisto" },
   "Weighted inverted row": { howTo: "Matala tanko, vartalo suora, lisäpaino vyötäröllä/rinnassa. Vedä tanko rintaan.", cue: "Tanko rintaan, ei napaan" },
-  "Ring dip": { howTo: "Dippi renkailla — epävakaus pakottaa olkapäät stabiloimaan. Aloita pienemmällä kuormalla kuin tankodipissä.", cue: "Renkaat pysyvät vartalon lähellä — ei levitä" },
   "Close-grip dip": { howTo: "Kapea dippiote (kahvat lähes koskettavat toisiaan), kyynärpäät taakse. Triceps-fokus, vähemmän rintaa.", cue: "Kyynärpäät aivan vartalon vieressä" },
   "Straight bar dip": { howTo: "Dippi suoralla tangolla — spesifi kisa-asento MU:n lukitukseen. Tanko vartalon edessä, nojaa eteen.", cue: "Sama asento kuin MU:n huipulla" },
   "Russian dip": { howTo: "Dippi, laske kyynärvarret tangolle, nosta sieltä takaisin ylös täydeksi dipiksi. MU:n transition-loppuvaiheen spesifi.", cue: "Hallittu lasku kyynärvarsille — älä pudota" },
@@ -375,9 +375,11 @@ const ACCESSORY_SLOT_CATALOG = {
       peaking:    ["Räjähtävä leuka"],
     },
     repScheme: {
-      foundation: { sets: 3, reps: 5, targetVx: 3 },
-      strength:   { sets: 3, reps: 4, targetVx: 3 },
-      intensity:  { sets: 3, reps: 3, targetVx: 3 },
+      // RFD/speed-strength: 3 toistoa V4 -- lopetus heti kun nopeus laskee.
+      // 5 toistoa V3 olisi hypertrofiaa, ei räjähtävyyttä (Mann/Bosco velocity-zone).
+      foundation: { sets: 3, reps: 3, targetVx: 4 },
+      strength:   { sets: 3, reps: 3, targetVx: 4 },
+      intensity:  { sets: 3, reps: 3, targetVx: 4 },
       peaking:    { sets: 2, reps: 3, targetVx: 4 },
     },
   },
@@ -581,9 +583,11 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "mu-dip-support": {
     function: "MU:n lukitus — dippi-spesifi",
-    rationale: "MU:n yläasento = kisa-dippi. Variantit kuormittavat eri kulmista (ring = stabiliteetti, Russian = transition-loppuvaihe, straight bar = spesifi MU-huippu) ilman pääliikkeen kuormaa.",
+    // v4.28.2: Ring dip → Tempo pause dippi foundationissa (kalustorajoite, ei renkaita).
+    // Tempo pause antaa saman pec-stretch-stimuluksen tankodippinä, ei vaadi rinkejä.
+    rationale: "MU:n yläasento = kisa-dippi. Variantit kuormittavat eri kulmista (Tempo pause = ROM + pec-stretch, Russian = transition-loppuvaihe, straight bar = spesifi MU-huippu) ilman pääliikkeen kuormaa.",
     phaseVariants: {
-      foundation: ["Lisäpainodippi", "Ring dip"],
+      foundation: ["Lisäpainodippi", "Tempo pause dippi"],
       strength:   ["Lisäpainodippi", "Russian dip"],
       intensity:  ["Straight bar dip", "Lisäpainodippi"],
       peaking:    ["Lisäpainodippi"],
@@ -602,8 +606,8 @@ const ACCESSORY_SLOT_CATALOG = {
   // accessorySlotOverrides + stagnation-detection eivät tunnistaneet sitä. Nyt täysin
   // integroitu: lukitus, swap, progressio — kaikki slotId-pohjainen UI toimii.
   "dip-eccentric-bw": {
-    function: "BW eksentrinen dippi — pec-insertion ROM skill-vaiheessa",
-    rationale: "5 s BW eksentrinen lasku + hyppy/avustettu ylös. Harjoittaa pec-insertion eccentric kapasiteettia ILMAN concentric-triceps-kuormaa → ei lisää palautumisvelkaa TO:n dippi-primaryyn eikä MA:n leuka-primaryyn. Käytössä vain foundation-blokissa skill-vaiheen aikana; voima-blokista eteenpäin mu-dip-support (Lisäpainodippi) ottaa yli.",
+    function: "Eksentrinen dippi — pec-insertion ROM + lisäkuormalla skill-vaiheessa",
+    rationale: "5 s eksentrinen lasku + hyppy/avustettu ylös. Harjoittaa pec-insertion eccentric kapasiteettia ILMAN concentric-triceps-kuormaa → ei lisää palautumisvelkaa TO:n dippi-primaryyn eikä MA:n leuka-primaryyn. Lisäpaino vyössä (+10–25 kg, säädä kokemustason mukaan) tekee liikkeestä mielekkään: pelkkä BW V4 on kokeneelle harjoittelijalle alikuormitettu eikä tuota stimulusta. Käytössä vain foundation-blokissa skill-vaiheen aikana; voima-blokista eteenpäin mu-dip-support (Lisäpainodippi) ottaa yli.",
     phaseVariants: {
       foundation: ["BW eksentrinen dippi", "Tempo pause dippi"],
       strength:   [],
@@ -611,7 +615,9 @@ const ACCESSORY_SLOT_CATALOG = {
       peaking:    [],
     },
     repScheme: {
-      foundation: { sets: 3, reps: 3, targetVx: 4, note: "5 s lasku BW:lla, hyppy/avustettu ylös — vain eksentrinen pec-ROM" },
+      // targetVx:null koska eksentrisessä työssä Vx ei ole mielekäs metriikka
+      // (ei concentric-RM:ää josta varaa lasketaan). Kuormitus tulee laskuajasta + lisäpainosta.
+      foundation: { sets: 4, reps: 3, targetVx: null, note: "5 s lasku +10–25 kg vyö, hyppy/avustettu ylös — eksentrinen pec-ROM (ei Vx-tracking)" },
     },
   },
 
@@ -1233,6 +1239,46 @@ async function saveSets(sets) {
 
 async function deleteSet(setId) {
   return dbDelete(STORES.sets, setId);
+}
+
+// ── Pending workout (autosave) ──────────────────────────────────
+// Synkroninen localStorage-pohjainen varmuuskopio kesken jääneestä treenistä.
+// Tallennetaan jokaisen sarjan kirjaamisen yhteydessä + pagehide/beforeunload-eventeissä.
+// Sovelluksen avatessa tarjotaan jatkoa jos avain löytyy.
+const PENDING_WORKOUT_KEY = "LeVe.pendingWorkout";
+
+function savePendingWorkoutLocal(workout) {
+  if (!workout) return false;
+  try {
+    const payload = { savedAt: new Date().toISOString(), workout };
+    localStorage.setItem(PENDING_WORKOUT_KEY, JSON.stringify(payload));
+    return true;
+  } catch (e) {
+    // QuotaExceeded tai disabled localStorage — ei tappava virhe
+    console.warn("savePendingWorkoutLocal failed:", e);
+    return false;
+  }
+}
+
+function loadPendingWorkoutLocal() {
+  try {
+    const raw = localStorage.getItem(PENDING_WORKOUT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.workout?.sessionId) return null;
+    return parsed; // { savedAt, workout }
+  } catch (e) {
+    console.warn("loadPendingWorkoutLocal failed:", e);
+    return null;
+  }
+}
+
+function clearPendingWorkoutLocal() {
+  try {
+    localStorage.removeItem(PENDING_WORKOUT_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 // Measurements
@@ -3312,7 +3358,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   });
 
   const pullAcc = () => [
-    slotAccessory("pull-vertical-explosive", "vertikaaliveto",   "Leuanveto chest-to-bar", { sets:3, reps:5,  targetVx:3 }),
+    slotAccessory("pull-vertical-explosive", "vertikaaliveto",   "Leuanveto chest-to-bar", { sets:3, reps:3,  targetVx:4 }),
     slotAccessory("pull-horizontal-heavy",   "horisontaaliveto", "Chest-supported row",    { sets:4, reps:8 }),
     slotAccessory("bicep-chain",             "hauisfleksio",     "Hauiskääntö tanko",       { sets:3, reps:12 }),
     slotAccessory("scapular-control",        "horisontaaliveto", "Face pull",              { sets:3, reps:15 }),
@@ -3670,8 +3716,14 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     const isSkill = muLoad === 0;
     const slots = [];
 
-    // LA:n 2. kyykky-eksposointi — variaatio etenee blokin mukaan (v4.27.20):
-    //   Foundation/Strength (vk 1-7): Etukyykky — quad-dominant, motor diversity
+    // LA:n 2. kyykky-eksposointi — variaatio etenee blokin mukaan (v4.28.1):
+    //   Foundation/Strength (vk 1-7): Paused squat — kisaspesifi liikemalli
+    //                                  (sama kuin takakyykky, 2 s pysähdys).
+    //                                  Aiemmin etukyykky → motor diversity, mutta
+    //                                  kokeneelle kilpailijalle 4 kk kisaan se
+    //                                  ei siirry kisakyykkyyn. Paused squat antaa
+    //                                  sticking-point-spesifisyyden ALUSTA ALKAEN
+    //                                  + säilyttää kisakyykyn liikemallin.
     //   Intensity (vk 9-11):           Box squat — stretch-reflex nollattu,
     //                                  puhdas concentric "kuopasta" (sticking
     //                                  point specificity; TI:ssä jo Paused squat
@@ -3681,25 +3733,27 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     //                                  specificity ennen kisaa
     //
     // Cross-reference loading: kaikki laskevat Takakyykky-e1RM:stä. refScale
-    // skaalaa liikkeen RM-suhteeseen takakyykky-e1RM:än kanssa (Etukyykky
+    // skaalaa liikkeen RM-suhteeseen takakyykky-e1RM:än kanssa (Paused squat
     // ~85 %, Box squat ~85 %, Takakyykky self 100 %).
     if (fsWeek && fsWeek.pct > 0) {
       const fsLoadPct = fsWeek.pct;
-      const movement  = fsWeek.movement  ?? "Etukyykky";   // default = v4.25 P1-1 käyttäytyminen
-      const refScale  = fsWeek.refScale  ?? 0.85;          // default = etukyykky-skaalaus
+      const movement  = fsWeek.movement  ?? "Paused squat";  // default = v4.28.1 (oli "Etukyykky")
+      const refScale  = fsWeek.refScale  ?? 0.85;          // 85 % takakyykky-e1RM:stä
       const fsLoadScaled = fsLoadPct * refScale;
       // Velocity-stop per liike (biomechanicsin ja CNS:n mukaan):
-      //   Etukyykky: konservatiivinen (tekninen, rintakehän asento)
+      //   Paused squat: konservatiivinen (2 s pysähdys, stretch-reflex pois)
       //   Box squat: räjähtävämpi (puhdas concentric boksilta)
       //   Takakyykky: normaali (kisaliike)
       const vStop = movement === "Box squat"
         ? (fsWeek.vx <= 2 ? 0.50 : 0.60)
         : movement === "Takakyykky"
           ? (fsWeek.vx <= 2 ? 0.40 : 0.55)
-          : (fsWeek.vx <= 2 ? 0.45 : 0.55);  // Etukyykky default
-      // Warmup: takakyykky käyttää standardi tanko-rampia (kisalift),
-      // etukyykky/box squat kevyempi tekninen ramp.
-      const wUp = movement === "Takakyykky"
+          : movement === "Paused squat"
+            ? (fsWeek.vx <= 2 ? 0.40 : 0.55)
+            : (fsWeek.vx <= 2 ? 0.45 : 0.55);  // muu (esim. Etukyykky-legacy)
+      // Warmup: kisakyykky-liikemalli (Takakyykky/Paused squat) käyttää standardi
+      // tanko-rampia, box squat kevyempi tekninen ramp.
+      const wUp = (movement === "Takakyykky" || movement === "Paused squat")
         ? RAMP_BARBELL.slice(0, 4)
         : [
             { pct: 0.30, reps: 5, note: "Tyhjä tanko + kevyt" },
@@ -3778,7 +3832,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // volyymi, spesifi MU:n työnnölle).
     const dipSupport = isSkill
       ? slotAccessory("dip-eccentric-bw", "horisontaalityöntö", "BW eksentrinen dippi",
-          { sets:3, reps:3, targetVx:4, note:"5 s lasku BW:lla, hyppy/avustettu ylös — vain eksentrinen pec-ROM, ei concentric triceps-kuormaa (TO:n 48 h palautuminen säilyy)" })
+          { sets:4, reps:3, targetVx:null, note:"5 s lasku +10–25 kg vyö (säädä kokemustason mukaan), hyppy/avustettu ylös — vain eksentrinen pec-ROM, ei concentric triceps-kuormaa (TO:n 48 h palautuminen säilyy). Ei Vx-tracking." })
       : slotAccessory("mu-dip-support", "horisontaalityöntö", "Lisäpainodippi",
           { sets:3, reps:5, targetVx:3, note:"Kevyt — MU-lockout-tuki" });
 
@@ -3795,8 +3849,8 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // Skill-vaihe saa ylimääräisen räjähtävän leuka-slotin (pull-vertical-explosive)
     if (isSkill) {
       slots.push(slotAccessory("pull-vertical-explosive", "vertikaaliveto", "Räjähtävä leuka",
-        { sets: 4, reps: 3, targetVx: 3,
-          note: "BW räjähtävä — maksimi nopeus ylös, RFD-stimulus. Rakentaa MU-vedon concentric-nopeutta 48 h ennen MA:n leuka-primaryä." }));
+        { sets: 4, reps: 3, targetVx: 4,
+          note: "BW räjähtävä — maksimi nopeus ylös, V4 (lopeta heti jos nopeus laskee). RFD-stimulus, rakentaa MU-vedon concentric-nopeutta 48 h ennen MA:n leuka-primaryä." }));
     }
     slots.push(
       dipSupport,
@@ -3961,14 +4015,15 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   // Volyymirakenne: Foundation nouseva (3→4 sarjaa), Strength tasainen,
   // Intensity laskeva volyymi/raskaampi, Peaking minimaalinen (realization).
   const FS = {
-    // Foundation — Etukyykky, motor pattern + hypertrofia
-    w1:  { sets:3, reps:5, vx:4, pct:0.55, movement:"Etukyykky", refScale:0.85, note:"@55 % — motor pattern palautus" },
-    w2:  { sets:3, reps:5, vx:4, pct:0.60, movement:"Etukyykky", refScale:0.85, note:"@60 %" },
-    w3:  { sets:4, reps:5, vx:3, pct:0.62, movement:"Etukyykky", refScale:0.85, note:"@62 % — volyymi-peak blokki 1" },
-    // Strength — Etukyykky, volyymi + voima
-    w5:  { sets:3, reps:5, vx:3, pct:0.65, movement:"Etukyykky", refScale:0.85, note:"@65 % — voima-blokki alkaa" },
-    w6:  { sets:3, reps:5, vx:3, pct:0.68, movement:"Etukyykky", refScale:0.85, note:"@68 %" },
-    w7:  { sets:4, reps:5, vx:3, pct:0.70, movement:"Etukyykky", refScale:0.85, note:"@70 %" },
+    // Foundation — Paused squat, kisaspesifi motor pattern + hypertrofia
+    // (v4.28.1: oli Etukyykky; 4 kk kisaan asti spesifisyys voittaa motor diversityn)
+    w1:  { sets:3, reps:5, vx:4, pct:0.55, movement:"Paused squat", refScale:0.85, note:"@55 % Takakyykky — Paused squat 2 s, motor pattern palautus" },
+    w2:  { sets:3, reps:5, vx:4, pct:0.60, movement:"Paused squat", refScale:0.85, note:"@60 % Takakyykky — Paused squat 2 s" },
+    w3:  { sets:4, reps:5, vx:3, pct:0.62, movement:"Paused squat", refScale:0.85, note:"@62 % Takakyykky — Paused squat 2 s, volyymi-peak blokki 1" },
+    // Strength — Paused squat, volyymi + voima sticking-point-spesifisyydellä
+    w5:  { sets:3, reps:5, vx:3, pct:0.65, movement:"Paused squat", refScale:0.85, note:"@65 % Takakyykky — Paused squat 2 s, voima-blokki alkaa" },
+    w6:  { sets:3, reps:5, vx:3, pct:0.68, movement:"Paused squat", refScale:0.85, note:"@68 % Takakyykky — Paused squat 2 s" },
+    w7:  { sets:4, reps:5, vx:3, pct:0.70, movement:"Paused squat", refScale:0.85, note:"@70 % Takakyykky — Paused squat 2 s" },
     // Intensity — Box squat, sticking-point specificity
     // Box squat takakyykyn nosturiin nähden ~80–85 % RM → @58–65 % Takakyykky-e1RM
     // vastaa box-squat-RM:stä ~68–76 %, joka on intensity-vaiheen moderate-heavy.
@@ -4002,19 +4057,19 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       //          — pec-insertion- ja sternum-alueen kudoskapasiteetti ennen voima-blokkia.
       toDay("TO — Dippi 4×6 @65%",        4,6,3, 0.65, null, null, pushAccPrehab()),
       // v4.28.0 (M4): muNote poistettu, skill-struktuuri nyt laDay:n slot-rakenne itsestään
-      laDay("LA — MU skill + etukyykky (eksentrinen + transition + räjähtävä)", 0, 5, null, null, FS.w1),
+      laDay("LA — MU skill + paused squat (eksentrinen + transition + räjähtävä)", 0, 5, null, null, FS.w1),
     ]},
     { week:2, days:[
       maDay("MA — Leuka 5×6 @68%",        5,6,3, 0.68, null, null),
       tiDay("TI — Kyykky 5×6 @68%",       5,6,3, 0.68, null, undefined, tiBackoffRegular(0.54)),
       toDay("TO — Dippi 5×6 @68%",        5,6,3, 0.68, null, null, pushAccPrehab()),
-      laDay("LA — MU skill + etukyykky", 0, 5, null, null, FS.w2),
+      laDay("LA — MU skill + paused squat", 0, 5, null, null, FS.w2),
     ]},
     { week:3, days:[
       maDay("MA — Leuka 5×6 @72%",        5,6,2, 0.72, null, null),
       tiDay("TI — Kyykky 5×6 @72%",       5,6,2, 0.72, null, undefined, tiBackoffRegular(0.58)),
       toDay("TO — Dippi 5×6 @72%",        5,6,2, 0.72, null, null, pushAccPrehab()),
-      laDay("LA — MU: ENSIMMÄINEN STRICT 🎯 + etukyykky", 0, 5, "🎯 Tavoite: ensimmäinen puhdas strict muscle-up (eksentrinen → full MU)", null, FS.w3),
+      laDay("LA — MU: ENSIMMÄINEN STRICT 🎯 + paused squat", 0, 5, "🎯 Tavoite: ensimmäinen puhdas strict muscle-up (eksentrinen → full MU)", null, FS.w3),
     ]},
     { week:4, days:[
       maDay("MA — Deload 3×5 @55%",       3,5,4, 0.55, null, null),
@@ -4042,13 +4097,13 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       maDay("MA — Leuka 4×4 @75%",        4,4,2, 0.75, 0.65, null, undefined, "myotaote"),
       tiDay("TI — Kyykky 4×4 @75%",       4,4,2, 0.75, null, undefined, tiBackoffPaused(0.60)),
       toDay("TO — Dippi 4×4 @75%",        4,4,2, 0.75, 0.65, null, undefined, "kapea"),
-      laDay("LA — MU +2.5 kg + etukyykky", 2.5, 3, "Ensimmäinen painolla (+2.5 kg) — jos strict puhdas", 2, FS.w5),
+      laDay("LA — MU +2.5 kg + paused squat", 2.5, 3, "Ensimmäinen painolla (+2.5 kg) — jos strict puhdas", 2, FS.w5),
     ]},
     { week:6, days:[
       maDay("MA — Leuka 4×4 @78%",        4,4,2, 0.78, 0.65, null, undefined, "myotaote"),
       tiDay("TI — Kyykky 4×4 @78%",       4,4,2, 0.78, null, undefined, tiBackoffPaused(0.62)),
       toDay("TO — Dippi 4×4 @78%",        4,4,2, 0.78, 0.65, null, undefined, "kapea"),
-      laDay("LA — MU +2.5–5 kg + etukyykky", 2.5, 3, "+2.5 kg (tai +5 jos edellinen meni hyvin)", 2, FS.w6),
+      laDay("LA — MU +2.5–5 kg + paused squat", 2.5, 3, "+2.5 kg (tai +5 jos edellinen meni hyvin)", 2, FS.w6),
     ]},
     { week:7, days:[
       // v4.28.0 (H4): Vk 7 top single @88% POISTETTU kaikilta kolmelta — strength-blokin
@@ -4057,7 +4112,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       maDay("MA — Leuka 4×4 @82%",  4,4,2, 0.82, 0.68, null, undefined, "myotaote"),
       tiDay("TI — Kyykky 4×4 @82%", 4,4,2, 0.82, null, undefined, tiBackoffPaused(0.66)),
       toDay("TO — Dippi 4×4 @82%",  4,4,2, 0.82, 0.68, null, undefined, "kapea"),
-      laDay("LA — MU +5 kg + etukyykky",      5, 3, "+5 kg — raskas viikko", 2, FS.w7),
+      laDay("LA — MU +5 kg + paused squat",      5, 3, "+5 kg — raskas viikko", 2, FS.w7),
     ]},
     { week:8, days:[
       // Deload + välitesti: top single @ 92 % rakentaa e1RM-näkymää ennen blokki 3:a.
@@ -4407,6 +4462,10 @@ export {
   saveSet,
   saveSets,
   deleteSet,
+  // Pending workout (autosave, v4.28.1)
+  savePendingWorkoutLocal,
+  loadPendingWorkoutLocal,
+  clearPendingWorkoutLocal,
   // Measurements
   getMeasurementsByType,
   getMeasurementsByDate,
