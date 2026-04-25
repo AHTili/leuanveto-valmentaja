@@ -6,6 +6,15 @@ const SCHEMA_VERSION = 4;
 const DB_NAME = "LeVeCoachDB";
 const TIMEZONE = "Europe/Helsinki";
 
+// v4.30.2: Ohjelman build-versio. Käytetään mesocycle-objektin programVersion-
+// kentässä auto-rebuild -mekanismiin (ks. rebuildStreetlifting16WMesocycle).
+// Nosta tätä JOKAISESSA streetlifting_16w-ohjelmaa muuttavassa committissa
+// (data.js: PRESET_MOVEMENTS / ACCESSORY_SLOT_CATALOG / weekPlans / FS / maDay/tiDay/
+//  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
+// ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
+// käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
+const PROGRAM_BUILD_VERSION = "4.30.2";
+
 // ── Store names ──
 const STORES = {
   appMeta: "appMeta",
@@ -4483,6 +4492,56 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     accessorySlotOverrides: {}, // { [slotId]: { movementName, locked, variantIndex, reason, swappedAt } }
     insertedDeloads: [], // [{ afterProgramWeek: N, invokedDateISO, reason }] — laajentaa kalenteripituutta
     replacedWithDeload: [], // [{ programWeek: N, invokedDateISO, reason }] — korvaa kyseisen vk:n kevennyksellä, ei pidennä
+    // v4.30.2: ohjelmaversio auto-rebuild -mekanismille. Init() vertaa tätä
+    // PROGRAM_BUILD_VERSION-vakioon ja kutsuu rebuildStreetlifting16WMesocycle:n
+    // jos versiot eroavat → uudet ohjelmamuutokset näkyvät heti ilman edistyksen menetystä.
+    programVersion: PROGRAM_BUILD_VERSION,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// v4.30.2: AUTO-REBUILD MEKANISMI
+// ═══════════════════════════════════════════════════════════════
+//
+// Ongelma: createStreetlifting16WMesocycle rakentaa weekPlans kerran
+// (mesocyclen luonti­hetkellä) ja tallentaa sen IndexedDB:hen. Kun data.js
+// muuttuu (esim. ME-rotaatio, uudet liikkeet, korjatut Vx-arvot), olemassa
+// oleva mesocycle ei päivity — käyttäjä joutuu aloittamaan uuden ohjelman
+// nähdäkseen muutokset, mikä hävittää vk-numeron + kalibroinnin.
+//
+// Ratkaisu: rebuildStreetlifting16WMesocycle korvaa weekPlans + weekDefs
+// uusilla, mutta säilyttää käyttäjän edistystiedot:
+//   - mesocycleId, startDateISO (vk-numero pysyy oikeana)
+//   - streetliftingConfig.calibration (AMRAP-vk 4 -tulokset)
+//   - streetliftingConfig.competitionDate
+//   - accessorySlotOverrides (käyttäjän omat liike­swapit)
+//   - insertedDeloads, replacedWithDeload (kevennysten muutokset)
+//   - postCycleAnalysis (jos on)
+//
+// Init():ssä kutsutaan kun mesocycle.programVersion !== PROGRAM_BUILD_VERSION.
+
+function rebuildStreetlifting16WMesocycle(existingMesocycle) {
+  if (!existingMesocycle || existingMesocycle.type !== "streetlifting_16w") {
+    return existingMesocycle;
+  }
+  // Käytä olemassa olevaa kalibrointia → seed-kuormat säilyvät, vaikka weekPlans rakennetaan uudelleen
+  const cal = existingMesocycle.streetliftingConfig?.calibration || {};
+  const fresh = createStreetlifting16WMesocycle(existingMesocycle.startDateISO, cal);
+  // Säilytä edistystiedot, korvaa vain rakenteet
+  return {
+    ...existingMesocycle,
+    // Korvataan uudella ajantasaisella koodilla:
+    weekDefs: fresh.weekDefs,
+    weekPlans: fresh.weekPlans,
+    programVersion: PROGRAM_BUILD_VERSION,
+    // Säilytetään streetliftingConfig kokonaisuudessaan, mutta varmistetaan että
+    // kalibrointi on edelleen siellä (ei putoa pois jos fresh oletti tyhjän cal:n)
+    streetliftingConfig: {
+      ...fresh.streetliftingConfig,
+      ...existingMesocycle.streetliftingConfig,
+    },
+    // mesocycleId, startDateISO, weekCount, accessorySlotOverrides, insertedDeloads,
+    // replacedWithDeload, postCycleAnalysis säilyvät alkuperäisestä (...existingMesocycle).
   };
 }
 
@@ -4491,6 +4550,8 @@ export {
   // Constants
   APP_VERSION,
   SCHEMA_VERSION,
+  PROGRAM_BUILD_VERSION,
+  rebuildStreetlifting16WMesocycle,
   TIMEZONE,
   STORES,
   CATEGORIES,

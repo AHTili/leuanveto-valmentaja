@@ -735,6 +735,8 @@ import {
   getAllSessions, getSession, saveSession, deleteSession,
   getSetsForSession, getAllSets, saveSet, saveSets, deleteSet,
   savePendingWorkoutLocal, loadPendingWorkoutLocal, clearPendingWorkoutLocal,
+  // v4.30.2: auto-rebuild mesocycle when program version changes
+  PROGRAM_BUILD_VERSION, rebuildStreetlifting16WMesocycle,
   saveMeasurement, getMeasurementsByType, getLatestBodyweight, saveBodyweightEntry,
   getAllPRs, savePR, deletePR, seedHistoricalPRsIfNeeded,
   MESOCYCLE_TEMPLATES,
@@ -860,14 +862,26 @@ async function init() {
     state.mesocycle = createDefaultMesocycle(todayISO());
     assignVariantRotation(state.mesocycle.weekPlans);
     await saveMesocycle(state.mesocycle);
-  } else if (!["peaking", "eksentrinen", "siirtyma"].includes(state.mesocycle.type)) {
-    // Migrate existing mesocycle: add variants if missing
-    const hasVariants = state.mesocycle.weekPlans?.some(wp =>
-      wp.days?.some(d => d.slots?.some(s => s.variantName))
-    );
-    if (!hasVariants && state.mesocycle.weekPlans) {
-      assignVariantRotation(state.mesocycle.weekPlans);
+  } else {
+    // v4.30.2: AUTO-REBUILD jos ohjelma on päivittynyt sitten mesocyclen luomisen
+    if (state.mesocycle.type === "streetlifting_16w" &&
+        state.mesocycle.programVersion !== PROGRAM_BUILD_VERSION) {
+      const oldVersion = state.mesocycle.programVersion || "ennen-v4.30.2";
+      console.info(`[LeVe] Mesocycle program version mismatch: ${oldVersion} → ${PROGRAM_BUILD_VERSION}. Rebuilding weekPlans, säilytetään edistys.`);
+      state.mesocycle = rebuildStreetlifting16WMesocycle(state.mesocycle);
       await saveMesocycle(state.mesocycle);
+      // Toast näytetään checkPendingWorkoutRecoveryn jälkeen jotta UI on valmis.
+      // Käytetään globaalia merkkiä jotta ensimmäisessä render():issa näytetään ilmoitus.
+      state._rebuildNoticeFromVersion = oldVersion;
+    } else if (!["peaking", "eksentrinen", "siirtyma"].includes(state.mesocycle.type)) {
+      // Migrate existing mesocycle: add variants if missing
+      const hasVariants = state.mesocycle.weekPlans?.some(wp =>
+        wp.days?.some(d => d.slots?.some(s => s.variantName))
+      );
+      if (!hasVariants && state.mesocycle.weekPlans) {
+        assignVariantRotation(state.mesocycle.weekPlans);
+        await saveMesocycle(state.mesocycle);
+      }
     }
   }
   await computeReadiness();
@@ -877,6 +891,13 @@ async function init() {
   // tarjoa käyttäjälle jatkoa tai hylkäämistä ennen dashboardin renderöintiä.
   await checkPendingWorkoutRecovery();
   render();
+  // v4.30.2: ilmoita käyttäjälle auto-rebuild:sta render:in jälkeen (UI valmis)
+  if (state._rebuildNoticeFromVersion) {
+    setTimeout(() => {
+      showToast(`Ohjelma päivitetty automaattisesti (${state._rebuildNoticeFromVersion} → ${PROGRAM_BUILD_VERSION}). Vk-numerosi ja kalibrointisi säilyivät.`, "ok", 6000);
+      delete state._rebuildNoticeFromVersion;
+    }, 500);
+  }
 }
 
 // v4.28.1: keskeneräisen treenin palautus localStorage-pendingWorkout-avaimesta.
