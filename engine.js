@@ -2306,8 +2306,11 @@ function getFutureWorkouts(mesocycle, currentDateISO, daysAhead = 14) {
       dayType: dayPlan.dayType,
       weekNum,
       weekLabel: weekDef?.label || "",
+      label: dayPlan.label || "",
       deltaPctBase: weekDef?.deltaPctBase || 0,
       slots: dayPlan.slots,
+      // v4.30.4: warmup mukaan jotta sykli-näkymä voi näyttää koko treenin tarkasteluun
+      warmup: dayPlan.warmup || [],
     });
   }
 

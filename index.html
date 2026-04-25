@@ -3794,24 +3794,65 @@ function renderMesocycle() {
       </div>`;
     })() : ""}
 
-    <!-- 3. TULEVAT — seuraavat 14 pv -->
+    <!-- 3. TULEVAT — seuraavat 14 pv (v4.30.4: klikattavissa auki) -->
     ${futureWorkouts.length > 0 ? `<div class="card">
-      <div class="card-title">📅 Seuraavat 14 päivää</div>
-      ${futureWorkouts.map(fw => `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
-        <div class="flex-between">
-          <span style="font-weight:600;font-size:13px">${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5)}</span>
-          <span class="chip" style="font-size:10px">${dayTypeLabel(fw.dayType)}</span>
-        </div>
-        <div style="margin-top:4px">
-          ${fw.slots.filter(s => s.role === "primary" || s.role === "backoff" || ["warmup","opener","attempt2","attempt3"].includes(s.role)).map(s => {
-            const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "🏆";
-            return `<div class="flex-between" style="padding:2px 0;font-size:12px">
-              <span class="muted">${icon} ${s.defaultMovementName}</span>
-              <span class="muted">${s.sets}×${s.reps}${s.targetVx !== null ? ` V${s.targetVx}` : ""}</span>
-            </div>`;
-          }).join("")}
-        </div>
-      </div>`).join("")}
+      <div class="card-title">📅 Seuraavat 14 päivää <span style="font-size:11px;font-weight:400;color:var(--muted)">— klikkaa avataksesi yksityiskohdat</span></div>
+      ${futureWorkouts.map(fw => {
+        const primaryAndBackoff = fw.slots.filter(s => s.role === "primary" || s.role === "backoff" || ["warmup","opener","attempt2","attempt3"].includes(s.role));
+        const accessories = fw.slots.filter(s => s.role === "accessory");
+        const summary = primaryAndBackoff.map(s => {
+          const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "🏆";
+          return `<div class="flex-between" style="padding:2px 0;font-size:12px">
+            <span class="muted">${icon} ${s.defaultMovementName}</span>
+            <span class="muted">${s.sets}×${s.reps}${s.targetVx != null ? ` V${s.targetVx}` : ""}</span>
+          </div>`;
+        }).join("");
+        const dayLabel = stripRedundantDayPrefix(fw.label) || dayTypeLabel(fw.dayType);
+        // Detail: warmup + kaikki slotit (myös accessoryt) + suggested kuormat
+        const warmupHTML = (fw.warmup && fw.warmup.length > 0) ? `
+          <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">
+            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">🔥 LÄMMITTELY</div>
+            ${fw.warmup.map(w => `<div style="padding:3px 0;font-size:11px">
+              <span style="font-weight:600">${w.name}</span>
+              ${w.desc ? `<span class="muted"> — ${w.desc}</span>` : ""}
+            </div>`).join("")}
+          </div>` : "";
+        const accessoriesHTML = accessories.length > 0 ? `
+          <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">
+            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">🔧 APULIIKKEET</div>
+            ${accessories.map(s => {
+              const loadInfo = s.suggestedLoadKg ? ` · seed ${s.suggestedLoadKg} kg` : (s.loadPct ? ` · ${Math.round(s.loadPct*100)} %` : "");
+              return `<div class="flex-between" style="padding:3px 0;font-size:11px">
+                <span class="muted">• ${s.defaultMovementName}${s.note ? ` <span style="font-size:10px;opacity:0.7">(${s.note.slice(0, 50)}${s.note.length > 50 ? "..." : ""})</span>` : ""}</span>
+                <span class="muted">${s.sets}×${s.reps}${s.targetVx != null ? ` V${s.targetVx}` : ""}${loadInfo}</span>
+              </div>`;
+            }).join("")}
+          </div>` : "";
+        const primaryDetail = primaryAndBackoff.length > 0 ? `
+          <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">
+            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">⭐ PÄÄLIIKKEET + BACKOFF</div>
+            ${primaryAndBackoff.map(s => {
+              const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "🏆";
+              const loadInfo = s.suggestedLoadKg ? ` · seed ${s.suggestedLoadKg} kg` : (s.loadPct ? ` · ${Math.round(s.loadPct*100)} %` : "");
+              return `<div class="flex-between" style="padding:3px 0;font-size:11px">
+                <span class="muted">${icon} ${s.defaultMovementName}${s.note ? ` <span style="font-size:10px;opacity:0.7">(${s.note.slice(0, 60)}${s.note.length > 60 ? "..." : ""})</span>` : ""}</span>
+                <span class="muted">${s.sets}×${s.reps}${s.targetVx != null ? ` V${s.targetVx}` : ""}${loadInfo}</span>
+              </div>`;
+            }).join("")}
+          </div>` : "";
+        return `<details style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <summary style="cursor:pointer;list-style:none;outline:none">
+            <div class="flex-between">
+              <span style="font-weight:600;font-size:13px">${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5).replace("-", ".")} <span style="font-weight:400;color:var(--muted);font-size:11px">— ${dayLabel}</span></span>
+              <span class="chip" style="font-size:10px">${dayTypeLabel(fw.dayType)} ▼</span>
+            </div>
+            <div style="margin-top:4px">${summary}</div>
+          </summary>
+          ${warmupHTML}
+          ${primaryDetail}
+          ${accessoriesHTML}
+        </details>`;
+      }).join("")}
     </div>` : ""}
 
     <!-- 4. KOKO OHJELMA — dynaaminen per mesosyklityyppi (v4.26.1 fix) -->
