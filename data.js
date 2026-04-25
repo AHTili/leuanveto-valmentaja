@@ -176,7 +176,7 @@ const PRESET_MOVEMENTS = [
   { name: "Band-assisted muscle-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
   { name: "Räjähtävä leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true },
   // v4.29.0 (P3): ME-rotaatio yläosalla — vaihtuvat pää-leuka-variantit foundation/strength-blokeille
-  { name: "Chin-up myötäote", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Vastaote-leuanveto", category: "vertikaaliveto", isPrimary: false, isPreset: true },
   { name: "Paused pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
   // v4.30.0: Tempo pull-up (ei grippi-spesifi) korvaa Fat-bar pull-upin ME-rotaation
   // viim. vaiheessa — käyttäjä on meritoitunut leuanvetäjä, grippi ei ole rajoittava.
@@ -262,7 +262,7 @@ const MOVEMENT_DESCRIPTIONS = {
   "Band-assisted muscle-up": { howTo: "Kuminauha tangon ympäri, jalat/polvet nauhaan. Tee koko MU-liikerata kevyemmällä kuormalla.", cue: "Harjoittele transition-liikerataa, älä pelkkää vetoa" },
   "Pendlay row": { howTo: "Tanko maasta, selkä vaakatasossa, vedä tanko alarintaan, tanko PALAA maahan joka toistolla. Ei selän rullaamista.", cue: "Pysähdys maahan = nollasta starttaus joka toisto" },
   // v4.29.0 (P3): ME-rotaatio yläosalla
-  "Chin-up myötäote": { howTo: "Leuanveto vastaote (palms facing you), kapeampi ote (~hartioiden leveys). Hauis-emphasoitu rotaatio kilpaleukaan nähden. Käytetään ME-rotaation osana foundation-vaiheessa hauis-overloadina ja vetävän voiman rakentamiseen ennen kapeaote-spesifisyyttä.", cue: "Kyynärvarret pystyssä, hauis tekee työn — ei svingausta" },
+  "Vastaote-leuanveto": { howTo: "Vastaote (palms toward you, supinated) kapealla otteella (~hartioiden leveys). Sama otesuunta kuin kisaleukasi, mutta kapeampi → hauis-emphasis. ME-rotaation foundation-variantti — hauis-overload ja vetävän voiman rakennus ennen lockout/eccentric-vaiheita. Vrt. kisa-vastaote = leveä; tämä = kapea.", cue: "Kapea ote, hauis tekee työn — ei svingausta. Kyynärvarret pystyssä koko liikkeen ajan." },
   "Paused pull-up": { howTo: "Leuanveto kilpaote, 1–2 s pysähdys yläasennossa (leuka tangon yli). Pakottaa täyden lockoutin ja eliminoi top-end momentumin. Strength-blokin ME-variantti — hauis/lat-pidätyskapasiteetti.", cue: "Yläasento puhdas pysähdys, ei vippaamalla yli" },
   // v4.30.0: Tempo pull-up — eccentric volyymi normaalikuormalla (vrt. Heavy negative joka on supramaksimi)
   "Tempo pull-up": { howTo: "Leuanveto kilpaote normaalikuormalla, 3–4 s kontrolloitu eccentric (lasku). Konsentrinen normaali nopeus. Time-under-tension + eccentric volyymi ilman supramaksimaalista kuormaa. Strength-blokin loppupään ME-variantti — eri stimulus kuin Heavy negative (joka on 110–120 % 1RM 5 s lasku).", cue: "Lasku 3–4 sekuntia tasaisesti — ei vapaapudotusta, ei venähdys-bouncea pohjalla" },
@@ -4138,8 +4138,8 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // v4.28.0 (L1): TI saa foundation-blokissa yleisen Takakyykky-backoffin (ei paused) —
     // motor pattern + hypertrofia, ei teknistä ylikuormitusta. Paused squat palaa strength-blokissa.
     { week:1, days:[
-      // v4.30.0: ME-rotaatio vk 1-3 = Chin-up myötäote (hauis-overload). Vk 5-6 paused, vk 7 tempo.
-      maDay("MA — Chin-up myötäote 4×6 @65 %", 4,6,3, 0.65, null, null, undefined, undefined, "foundation", "Chin-up myötäote", false),
+      // v4.30.0: ME-rotaatio vk 1-3 = Vastaote-leuanveto (hauis-overload). Vk 5-6 paused, vk 7 tempo.
+      maDay("MA — Vastaote-leuanveto 4×6 @65 %", 4,6,3, 0.65, null, null, undefined, undefined, "foundation", "Vastaote-leuanveto", false),
       tiDay("TI — Kyykky 4×6 @65%",       4,6,3, 0.65, null, undefined, tiBackoffRegular(0.52)),
       // v4.27.4: Foundation-blokissa dippi-päivälle pushAccPrehab (tempo+stretch+face pull)
       //          — pec-insertion- ja sternum-alueen kudoskapasiteetti ennen voima-blokkia.
@@ -4148,13 +4148,13 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       laDay("LA — MU skill + paused squat (eksentrinen + transition + räjähtävä)", 0, 5, null, null, FS.w1),
     ]},
     { week:2, days:[
-      maDay("MA — Chin-up myötäote 5×6 @68 %", 5,6,3, 0.68, null, null, undefined, undefined, "foundation", "Chin-up myötäote", false),
+      maDay("MA — Vastaote-leuanveto 5×6 @68 %", 5,6,3, 0.68, null, null, undefined, undefined, "foundation", "Vastaote-leuanveto", false),
       tiDay("TI — Kyykky 5×6 @68%",       5,6,3, 0.68, null, undefined, tiBackoffRegular(0.54)),
       toDay("TO — Dippi 5×6 @68%",        5,6,3, 0.68, null, null, pushAccPrehab()),
       laDay("LA — MU skill + paused squat", 0, 5, null, null, FS.w2),
     ]},
     { week:3, days:[
-      maDay("MA — Chin-up myötäote 5×6 @72 %", 5,6,2, 0.72, null, null, undefined, undefined, "foundation", "Chin-up myötäote", false),
+      maDay("MA — Vastaote-leuanveto 5×6 @72 %", 5,6,2, 0.72, null, null, undefined, undefined, "foundation", "Vastaote-leuanveto", false),
       tiDay("TI — Kyykky 5×6 @72%",       5,6,2, 0.72, null, undefined, tiBackoffRegular(0.58)),
       toDay("TO — Dippi 5×6 @72%",        5,6,2, 0.72, null, null, pushAccPrehab()),
       laDay("LA — MU: ENSIMMÄINEN STRICT 🎯 + paused squat", 0, 5, "🎯 Tavoite: ensimmäinen puhdas strict muscle-up (eksentrinen → full MU)", null, FS.w3),
