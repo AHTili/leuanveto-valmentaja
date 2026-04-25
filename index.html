@@ -774,6 +774,8 @@ import {
   eliteVolumeCheck,
   computeMovementE1RM, computeMovementE1RMHistory,
   computeStreetliftingOpenerStrategy,
+  // v4.30.3: ennuste edistymis-näkymälle
+  predictE1RMEndOfProgram, computeStreetliftingFinalProjection,
   REST_RECOMMENDATIONS,
   pickRestForExercise,
   DEFAULT_VARIANT_MODIFIERS,
@@ -2140,7 +2142,13 @@ function renderDashboard() {
   })();
 
   const ctaDurationPill = estDur ? `<span class="duration">~${estDur} min</span>` : "";
-  const ctaLabel = deloadMode ? "▶ ALOITA KEVENNYS" : "▶ ALOITA TREENI";
+  // v4.30.3 (bugi): tarkista onko tänään jo tehty sessio. Jos on, CTA muuttuu
+  // "tänään tehty"-tilaan eikä päivän treeniä esitetä uudelleen aloitettavaksi.
+  const todaySession = (state.sessions || []).find(s => (s.dateISO || "") === today);
+  const dayAlreadyDone = !!todaySession;
+  const ctaLabel = dayAlreadyDone
+    ? "✅ TÄNÄÄN TEHTY"
+    : (deloadMode ? "▶ ALOITA KEVENNYS" : "▶ ALOITA TREENI");
   const deloadBtnLabel = isDeloadOverride ? "↩ Peru kevennys" : "🌿 Kevennys";
 
   return `<div class="fade-in">
@@ -2173,9 +2181,10 @@ function renderDashboard() {
         ? `<div class="slot-list">${warmupLineHTML}${slotRowsHTML}</div>`
         : '<div class="slot-list"><div class="muted" style="text-align:center;padding:8px 0">Ei ohjelmaa — aloita mesosykli</div></div>'}
 
-      <button class="primary-cta${deloadMode ? " deload" : ""}" id="btn-start-workout"${slots.length === 0 ? " disabled" : ""}>
-        ${ctaLabel}${ctaDurationPill}
+      <button class="primary-cta${deloadMode ? " deload" : ""}${dayAlreadyDone ? " done" : ""}" id="btn-start-workout"${slots.length === 0 || dayAlreadyDone ? " disabled" : ""}>
+        ${ctaLabel}${dayAlreadyDone ? "" : ctaDurationPill}
       </button>
+      ${dayAlreadyDone ? `<div style="font-size:12px;color:var(--muted);text-align:center;margin-top:6px">Päivän treeni on tallennettu. Voit tarkastella sitä Historia-välilehdellä.</div>` : ""}
 
       ${phaseTimelineHTML}
     </div>
@@ -5055,6 +5064,84 @@ function renderProgress() {
     </div>
 
     ${moveCardsHTML || '<div class="card"><div class="muted">Ei e1RM-dataa kisaliikkeille. Tee sarjoja nähdäksesi trendit.</div></div>'}
+
+    ${(() => {
+      // v4.30.3: Ennuste kisaan -kortti — vain streetlifting_16w-mesosyklin yhteydessä
+      const meso = state.mesocycle;
+      if (!meso || meso.type !== "streetlifting_16w") return "";
+      const rec = state.recommendation;
+      const currentWeek = typeof rec?.weekNum === "number" ? rec.weekNum : null;
+      if (!currentWeek) return "";
+      const totalWeeks = meso.weekCount || 16;
+      // Kerää e1RM-historia per kilpailuliike (Maaveto mukaan jos historiaa)
+      const COMP_LIFTS = ["Lisäpainoleuanveto", "Lisäpainodippi", "Takakyykky", "Maastaveto"];
+      const historyByMovement = {};
+      for (const liftName of COMP_LIFTS) {
+        const mov = state.movements.find(m => m.name === liftName);
+        if (!mov) continue;
+        const liftSets = state.allSets.filter(s => s.movementId === mov.movementId);
+        if (liftSets.length === 0) continue;
+        const hist = computeMovementE1RMHistory(liftSets, state.sessions, mov.isPrimary, bw);
+        if (hist.length > 0) historyByMovement[liftName] = hist;
+      }
+      const projection = computeStreetliftingFinalProjection(historyByMovement, currentWeek, totalWeeks);
+      if (!projection) return "";
+      const liftLabels = {
+        "Lisäpainoleuanveto": "Leuanveto",
+        "Lisäpainodippi": "Dippi",
+        "Takakyykky": "Kyykky",
+        "Maastaveto": "Maaveto",
+      };
+      const confidenceLabels = {
+        "high": "vahva",
+        "medium": "kohtalainen",
+        "low": "alustava",
+        "exact": "tarkka",
+      };
+      const rowsHTML = Object.entries(projection).map(([liftName, p]) => {
+        const gainSign = p.gainKg >= 0 ? "+" : "";
+        const gainCls = p.gainKg > 0 ? "text-ok" : p.gainKg < 0 ? "text-bad" : "";
+        return `<div style="padding:10px 0;border-top:1px solid var(--border)">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
+            <div style="font-weight:700;font-size:14px">${liftLabels[liftName] || liftName}</div>
+            <div style="font-size:11px;color:var(--muted)">Ennuste ${confidenceLabels[p.confidence] || p.confidence} · ${p.weeksRemaining} vk jäljellä</div>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+            <div style="font-size:12px;color:var(--muted)">Nyt</div>
+            <div style="font-weight:600;font-size:15px">${p.current} kg</div>
+            <div style="font-size:12px;color:var(--muted)">→</div>
+            <div style="font-weight:800;font-size:18px;color:var(--acc)">${p.predicted} kg</div>
+            <div style="font-size:12px" class="${gainCls}">${gainSign}${p.gainKg} kg (${gainSign}${p.gainPct} %)</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;font-size:12px">
+            <div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;text-align:center">
+              <div style="font-size:10px;color:var(--muted)">Kisa-opener</div>
+              <div style="font-weight:700">${p.opener} kg</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;text-align:center">
+              <div style="font-size:10px;color:var(--muted)">2. yritys</div>
+              <div style="font-weight:600">${p.second} kg</div>
+            </div>
+            <div style="background:rgba(245,158,11,0.08);padding:6px;border-radius:6px;text-align:center;border:1px solid rgba(245,158,11,0.3)">
+              <div style="font-size:10px;color:var(--muted)">3. yritys (PR)</div>
+              <div style="font-weight:800;color:var(--acc)">${p.third} kg</div>
+            </div>
+          </div>
+        </div>`;
+      }).join("");
+      return `<div class="card" style="margin-top:12px;border-color:rgba(139,92,246,0.4);background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(59,130,246,0.04))">
+        <div class="card-title" style="display:flex;align-items:center;gap:6px">🎯 Ennuste kisaan
+          <span style="font-size:11px;font-weight:400;color:var(--muted)">(vk ${currentWeek}/${totalWeeks})</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;line-height:1.4">
+          Block-aware ennuste käyttäjäsi todellisesta etenemistahdista. Peaking-vaiheessa (viim. 4 vk) gain-rate puolitetaan — realization toteuttaa olemassa olevia gainsia, ei tuota uusia. Deload-viikot (4, 8, 12) eivät kasvata e1RM:ää.
+        </div>
+        ${rowsHTML}
+        <div style="font-size:11px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);line-height:1.4">
+          💡 Ennuste perustuu historialliseen tahtiisi (jos ≥3 mittauspistettä) tai oletukseen 0,5 % / vk edistyneelle harjoittelijalle. Vahva ennuste = 6+ mittauspistettä. Kisa-yritysten kuormat = 88 % / 95 % / 102 % ennustetusta loppu-e1RM:stä (Helms, IPF World Classic 2021 -voittaja-aineisto).
+        </div>
+      </div>`;
+    })()}
 
     <div class="section-header">Viikkovolyymi (hard sets)</div>
     <div class="card vol-card">

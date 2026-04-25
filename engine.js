@@ -2596,6 +2596,110 @@ function assignVariantRotation(weekPlans) {
 // ═══════════════════════════════════════════════════════════════
 
 /**
+ * v4.30.3: e1RM-ennuste ohjelman loppuun saakka.
+ *
+ * Käyttää käyttäjän historiallista trendiä jos saatavilla (≥3 mittauspistettä),
+ * muuten edistyneelle harjoittelijalle realistista 0.5 % / vk -default-tahtia.
+ * Block-aware: peaking-vaiheessa (viim. 4 vk) gain-rate puolitetaan koska
+ * realization ei tuota uusia gainsia, vaan toteuttaa olemassa olevia.
+ *
+ * @param {Array} history - computeMovementE1RMHistory:n output [{dateISO, e1rm, ...}]
+ * @param {number} currentWeekNum - nykyinen viikko (1–totalWeeks)
+ * @param {number} totalWeeks - ohjelman pituus (default 16)
+ * @returns {Object|null} { predictedFinal, weeklyGainPct, weeksRemaining,
+ *                         confidence: "high"|"medium"|"low", projection: [{week, e1rm}] }
+ */
+function predictE1RMEndOfProgram(history, currentWeekNum, totalWeeks = 16) {
+  if (!history || history.length === 0) return null;
+  const currentE1RM = history[history.length - 1].e1rm;
+  if (!currentE1RM || currentE1RM <= 0) return null;
+  const remainingWeeks = Math.max(0, totalWeeks - currentWeekNum);
+  if (remainingWeeks === 0) {
+    return { predictedFinal: currentE1RM, weeklyGainPct: 0,
+             weeksRemaining: 0, confidence: "exact", projection: [] };
+  }
+
+  // 1. Arvioi viikoittainen kasvuprosentti historiasta (jos riittävästi dataa)
+  let weeklyGainPct = 0.005; // default 0.5% / vk edistyneelle harjoittelijalle
+  let confidence = "low";
+  if (history.length >= 3) {
+    const first = history[0];
+    const last = history[history.length - 1];
+    const firstMs = new Date(first.dateISO).getTime();
+    const lastMs = new Date(last.dateISO).getTime();
+    const weeksSpan = (lastMs - firstMs) / (7 * 24 * 60 * 60 * 1000);
+    if (weeksSpan >= 1 && first.e1rm > 0) {
+      const totalGainPct = (last.e1rm - first.e1rm) / first.e1rm;
+      const observed = totalGainPct / weeksSpan;
+      // Clamp realistisiin haarukoihin: −0.5%/vk … +1.5%/vk (eliittilifter)
+      weeklyGainPct = Math.max(-0.005, Math.min(0.015, observed));
+      confidence = history.length >= 6 ? "high" : "medium";
+    }
+  }
+
+  // 2. Block-aware projektio: peaking (viim. 4 vk) → puolet gain-ratesta
+  //    Deload-viikot (4, 8, 12) → ei kasvua (CNS-konservointi)
+  const peakingStart = totalWeeks - 3; // vk 13–16 (jos totalWeeks=16)
+  let projectedE1RM = currentE1RM;
+  const projection = [];
+  for (let w = currentWeekNum + 1; w <= totalWeeks; w++) {
+    const isPeaking = w >= peakingStart;
+    const isDeload = w === 4 || w === 8 || w === 12;
+    const weeklyGain = isDeload ? 0 : (isPeaking ? weeklyGainPct * 0.5 : weeklyGainPct);
+    projectedE1RM *= (1 + weeklyGain);
+    projection.push({ week: w, e1rm: Math.round(projectedE1RM * 10) / 10 });
+  }
+
+  return {
+    predictedFinal: Math.round(projectedE1RM * 10) / 10,
+    weeklyGainPct,
+    weeksRemaining: remainingWeeks,
+    confidence,
+    projection,
+  };
+}
+
+/**
+ * v4.30.3: Streetlifting kisapäivän tavoite-ennuste.
+ *
+ * Yhdistää e1RM-ennusteen + opener-strategian: ennustaa per kilpailu­liike
+ * mitä kuormat kisapäivänä tulevat olemaan, jos käyttäjän nykyinen
+ * etenemistahti jatkuu.
+ *
+ * @param {Object} historyByMovement - { "Lisäpainoleuanveto": [...e1rmHistory], ... }
+ * @param {number} currentWeekNum
+ * @param {number} totalWeeks
+ * @returns {Object|null} per liike: { current, predicted, opener, second, third, weeklyGainPct }
+ */
+function computeStreetliftingFinalProjection(historyByMovement, currentWeekNum, totalWeeks = 16) {
+  if (!historyByMovement) return null;
+  const COMPETITION_LIFTS = ["Lisäpainoleuanveto", "Lisäpainodippi", "Takakyykky", "Maastaveto"];
+  const result = {};
+  for (const liftName of COMPETITION_LIFTS) {
+    const history = historyByMovement[liftName];
+    if (!history || history.length === 0) continue;
+    const currentE1RM = history[history.length - 1].e1rm;
+    if (!currentE1RM || currentE1RM <= 0) continue;
+    const prediction = predictE1RMEndOfProgram(history, currentWeekNum, totalWeeks);
+    if (!prediction) continue;
+    const finalE1RM = prediction.predictedFinal;
+    result[liftName] = {
+      current: Math.round(currentE1RM * 10) / 10,
+      predicted: finalE1RM,
+      gainKg: Math.round((finalE1RM - currentE1RM) * 10) / 10,
+      gainPct: Math.round(((finalE1RM - currentE1RM) / currentE1RM) * 1000) / 10, // 1 desimaali
+      opener: roundToHalf(finalE1RM * 0.88),
+      second: roundToHalf(finalE1RM * 0.95),
+      third: roundToHalf(finalE1RM * 1.02),
+      weeklyGainPct: prediction.weeklyGainPct,
+      confidence: prediction.confidence,
+      weeksRemaining: prediction.weeksRemaining,
+    };
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+/**
  * v4.29.0 (P2): Streetlifting opener-strategia kisapäivälle.
  *
  * Laskee per kilpailu­liike opener / 2nd / 3rd -prosentit e1RM:n perusteella.
@@ -2944,6 +3048,9 @@ export {
   // Peaking
   computeAttemptLoads,
   computeStreetliftingOpenerStrategy,
+  // v4.30.3: ennuste
+  predictE1RMEndOfProgram,
+  computeStreetliftingFinalProjection,
   // Weekly
   weeklyStimulus,
   // Stagnation
