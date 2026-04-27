@@ -2144,8 +2144,11 @@ function renderDashboard() {
   const ctaDurationPill = estDur ? `<span class="duration">~${estDur} min</span>` : "";
   // v4.30.3 (bugi): tarkista onko tänään jo tehty sessio. Jos on, CTA muuttuu
   // "tänään tehty"-tilaan eikä päivän treeniä esitetä uudelleen aloitettavaksi.
+  // v4.32.2 (bugi): jos plan-override on aktiivinen (käyttäjä klikkasi "Vaihda päivä"),
+  // CTA aktivoidaan vaikka tänään olisi tehty oma plani — käyttäjä haluaa nyt eri päivän
+  // plania tehdä. Aiemmin disabled CTA jätti käyttäjän jumiin override-tilaan.
   const todaySession = (state.sessions || []).find(s => (s.dateISO || "") === today);
-  const dayAlreadyDone = !!todaySession;
+  const dayAlreadyDone = !!todaySession && !state.planOverrideDateISO;
   const ctaLabel = dayAlreadyDone
     ? "✅ TÄNÄÄN TEHTY"
     : (deloadMode ? "▶ ALOITA KEVENNYS" : "▶ ALOITA TREENI");
@@ -7307,12 +7310,20 @@ function bindWorkoutEvents() {
     const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
     const suggestParamsForMovement = (m) => {
       // 1. Käyttäjän aiempi historia — etsi viimeisin sessio jossa liikettä tehtiin
+      // v4.32.2 BUGIKORJAUS: filtteröi primer- (readiness_test) ja calibration-rivit
+      // pois — ne ovat erityismittauksia eivätkä edusta normaalia treenisarja-rakennetta.
+      // Aiemmin sets-määrä saattoi olla 1 (jos viimeinen sessio oli pelkkä primer).
       const movementSets = (state.allSets || [])
-        .filter(s => s.movementId === m.movementId)
+        .filter(s =>
+          s.movementId === m.movementId &&
+          s.setRole !== "readiness_test" &&
+          s.setRole !== "calibration" &&
+          !s.isWarmup
+        )
         .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
       if (movementSets.length > 0) {
         const lastSet = movementSets[0];
-        const lastSessionSets = movementSets.filter(s => s.sessionId === lastSet.sessionId && !s.isWarmup);
+        const lastSessionSets = movementSets.filter(s => s.sessionId === lastSet.sessionId);
         if (lastSessionSets.length > 0) {
           // Mediaani-paino jotta yksittäinen anomalia ei vinouta suositusta
           const loads = lastSessionSets.map(s => s.externalLoadKg).filter(v => v != null && v > 0);
@@ -7686,11 +7697,20 @@ function bindWorkoutEvents() {
     });
   });
 
-  // Swap exercise (slot-aware in v4.11, eliittitaso v4.32.1)
+  // Swap exercise (slot-aware in v4.11, eliittitaso v4.32.1, primary-suoja v4.32.2)
   const swapBtn = $("#btn-swap-exercise");
   if (swapBtn) swapBtn.addEventListener("click", async () => {
     const exercise = w.exercises[w.currentExerciseIdx];
     if (!exercise) return;
+
+    // v4.32.2 KRIITTINEN BUGIKORJAUS: estä primary/backoff/secondary -liikkeiden
+    // swap. Aiemmin käyttäjä saattoi vahingossa vaihtaa MA-leuka-primaryn esim.
+    // Pendlay row:hyn legacy-pathia pitkin → ohjelman kilpailuspesifisyys rikki.
+    // Pää­liikkeet ovat lukittuja kisaspesifisyyteen; vain accessoryja swappataan.
+    if (exercise.role === "primary" || exercise.role === "backoff" || exercise.role === "secondary") {
+      showToast(`Pää­liikettä ei voi vaihtaa swapilla. Variantin vaihto: 🔀 Variaatio (jos käytössä).`, "warn", 4000);
+      return;
+    }
 
     // v4.32.1: Eliittitason data-pohjainen swap
     // - Tunnistaa stagnaation nykyisellä liikkeellä (e1RM-trend < 0 viim. 3 vk)
@@ -7699,8 +7719,16 @@ function bindWorkoutEvents() {
     const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
 
     // Apufunktio: laske kasvuprosentti viim. 6 viikon ajalta
+    // v4.32.2 BUGIKORJAUS: filtteröi primer-rivit (readiness_test) ja calibration-
+    // rivit pois — ne ovat erityismittauksia jotka vääristävät trendiä jos
+    // sisällytetään (primer @ ~60 % e1RM, calibration AMRAP @ V0).
     const computeMovementGrowth = (movId, isPrimaryHint = false) => {
-      const sets = (state.allSets || []).filter(s => s.movementId === movId);
+      const sets = (state.allSets || []).filter(s =>
+        s.movementId === movId &&
+        s.setRole !== "readiness_test" &&
+        s.setRole !== "calibration" &&
+        !s.isWarmup
+      );
       if (sets.length < 2) return { growthPct: null, lastE1RM: null, sessions: 0, isStagnating: false };
       const movDef = state.movements.find(m => m.movementId === movId);
       const isPrim = movDef?.isPrimary ?? isPrimaryHint;
