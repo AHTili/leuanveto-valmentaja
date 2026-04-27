@@ -750,7 +750,8 @@ import {
   parseCSV, importHistoricalCSV,
   getMovementProgress, getAllMovementProgress, saveMovementProgress,
   getTracesForRec,
-  CATEGORIES, PULL_VOLUME_CATEGORIES, MRV_SETS_PER_CATEGORY, CATEGORY_LABELS_SHORT, CATEGORY_COLORS,
+  CATEGORIES, PULL_VOLUME_CATEGORIES, INJURY_RISK_CATEGORIES, INJURY_RISK_LOADED_MOVEMENTS,
+  MRV_SETS_PER_CATEGORY, CATEGORY_LABELS_SHORT, CATEGORY_COLORS,
   VARIANT_DAY_TYPE_MAP, ACCESSORY_SLOT_CATALOG, MOVEMENT_DESCRIPTIONS,
   validateVelocity, validateLoad, validateReps, validateHRV, validateBodyweight,
   isVelocityTypo,
@@ -3039,6 +3040,40 @@ function renderActiveWorkout() {
       </div>
       ${exSubHTML}
       ${exercise.exerciseNote ? `<div class="exercise-note-display" style="background:rgba(139,92,246,0.08);border-left:3px solid var(--acc);padding:8px 10px;margin-top:6px;border-radius:6px;font-size:13px;line-height:1.4;color:var(--text)">📝 ${exercise.exerciseNote.replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div>` : ""}
+      ${(() => {
+        // v4.32.6: Venähdys-riski-banneri kuormitetuille accessoryille jotka
+        // ovat V5 tai tiukempi targetilla. Käyttäjäpalaute: "vasen rinta otti
+        // osumaa väsyneenä lopussa V5-dipeissä" → muistutus + konkreettiset
+        // lämppäpainoehdotukset ennen työsarjoja. Primary-slotilla on jo
+        // warmupSets-rampi, ei tarvitse banneria.
+        if (isWarmupSet) return "";
+        if (exercise.role === "primary") return "";
+        if (exercise.targetVx === null || exercise.targetVx === undefined) return "";
+        if (exercise.targetVx > 5) return "";
+        const isRiskyCat = INJURY_RISK_CATEGORIES.has(exercise.category);
+        const isRiskyMov = INJURY_RISK_LOADED_MOVEMENTS.has(exercise.name);
+        if (!isRiskyCat && !isRiskyMov) return "";
+        // Konkreettiset lämppäpainoehdotukset
+        const wkLoad = exercise.loadKg ?? exercise.suggestedLoadKg ?? null;
+        let ramp = "";
+        if (wkLoad === 0 || wkLoad === null) {
+          ramp = "BW × 5 kontrolloidusti (täysi ROM, ei bouncea) ennen työsarjoja";
+        } else if (typeof wkLoad === "number" && wkLoad > 0) {
+          // Skaalaa per kuorma: ~40 % × 5, ~65 % × 3 jos liike on kuormitettu
+          const pct40 = Math.round(wkLoad * 0.40 / 2.5) * 2.5;
+          const pct65 = Math.round(wkLoad * 0.65 / 2.5) * 2.5;
+          if (pct40 < 2.5) {
+            ramp = `BW × 5 + ${pct65} kg × 3 ennen ${wkLoad} kg työsarjoja`;
+          } else {
+            ramp = `${pct40} kg × 5 → ${pct65} kg × 3 ennen ${wkLoad} kg työsarjoja`;
+          }
+        } else {
+          ramp = "Lämppäsarja(t) ennen työsarjoja: 1–2 sarjaa kevyemmällä paino";
+        }
+        return `<div style="background:rgba(245,158,11,0.10);border-left:3px solid #f59e0b;padding:8px 10px;margin-top:6px;border-radius:6px;font-size:12px;line-height:1.45;color:var(--text)">
+          ⚠ <b>Venähdys-riski</b> — V${exercise.targetVx} on tiukka${isRiskyCat ? ` ${exercise.category === "horisontaalityöntö" ? "(rinta/sternum)" : exercise.category === "alaraaja" ? "(hamstring/etureisi)" : "(olkapää/anterior delt)"}` : ""}. Älä mene suoraan työpainoon väsyneenä. <br><b style="color:#f59e0b">${ramp}</b>
+        </div>`;
+      })()}
     </div>
 
     ${whyThisMovementHTML}
