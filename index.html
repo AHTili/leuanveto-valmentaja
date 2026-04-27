@@ -1713,6 +1713,43 @@ function showEditSetModal(setData) {
   });
 }
 
+// v4.32.5: Liikekohtainen muistiinpano-modaali (per-liike per-treeni).
+// Tallennus: ensimmäiseen kirjattuun setRecordiin kentäksi `exerciseNote`.
+// Historiassa näkyy liikkeen rivin alla.
+function showExerciseNoteModal(title, currentNote = "") {
+  return new Promise(resolve => {
+    closeModal();
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title" style="display:flex;align-items:center;gap:6px">📝 Liikemuistiinpano</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px;line-height:1.4">${title}</div>
+        <div style="margin-top:10px">
+          <textarea data-field="note" rows="4" maxlength="500"
+            placeholder="Esim. 'Olo erinomainen, voisi nostaa', 'Kyynärpää jäykkä', 'Tekniikka petti viimeisellä toistolla'..."
+            style="width:100%;font-size:14px;padding:10px;border-radius:8px;background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:inherit;resize:vertical">${currentNote.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</textarea>
+          <div style="font-size:11px;color:var(--muted);text-align:right;margin-top:2px">Max 500 merkkiä</div>
+        </div>
+        <div class="btn-group" style="margin-top:12px">
+          <button class="btn btn-ok" style="flex:2" data-modal-ok>Tallenna</button>
+          <button class="btn btn-outline" style="flex:1" data-modal-cancel>Peruuta</button>
+        </div>
+      </div>`;
+    const submit = () => {
+      const note = (overlay.querySelector("[data-field='note']").value || "").trim().slice(0, 500);
+      closeModal();
+      resolve(note);
+    };
+    overlay.querySelector("[data-modal-ok]").addEventListener("click", submit);
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); resolve(null); });
+    overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.querySelector("[data-field='note']").focus(), 50);
+  });
+}
+
 function showSetsRepsModal(title, defaultSets = 3, defaultReps = 10) {
   return new Promise(resolve => {
     closeModal();
@@ -2679,9 +2716,17 @@ function renderActiveWorkout() {
     // Fallback streetlifting-kalibrointiin
     const cal = state.mesocycle?.streetliftingConfig?.calibration;
     if (!cal || !exercise?.name) return null;
-    if (exercise.name === "Lisäpainoleuanveto") return cal.leukaExtKg;
-    if (exercise.name === "Lisäpainodippi") return cal.dippiExtKg;
-    if (exercise.name === "Takakyykky") return cal.kyykkyExtKg;
+    // v4.32.5 (bugi): aiemmin tunnistettiin VAIN kilpa­liikkeet — ME-rotaation
+    // varianteille (Vastaote-leuanveto, Paused pull-up, Tempo pull-up vk 1-7)
+    // primer ei näkynyt → velocity ei tallentunut. Nyt kaikki vertikaaliveto-
+    // primaryt mappaavat leukaExtKg:hen, koska ne ovat saman MU-rakenteen ME-
+    // variantteja (sama lihasryhmä, sama kuormitus­pohja).
+    const PULL_VARIANTS = ["Lisäpainoleuanveto", "Vastaote-leuanveto", "Paused pull-up", "Tempo pull-up"];
+    const DIP_VARIANTS = ["Lisäpainodippi"]; // ei dippi-rotaatiota tällä hetkellä
+    const SQUAT_VARIANTS = ["Takakyykky", "Paused squat", "Etukyykky"];
+    if (PULL_VARIANTS.includes(exercise.name)) return cal.leukaExtKg;
+    if (DIP_VARIANTS.includes(exercise.name)) return cal.dippiExtKg;
+    if (SQUAT_VARIANTS.includes(exercise.name)) return cal.kyykkyExtKg;
     if (exercise.name === "Muscle-up") return null; // MU ei e1RM-pohjainen
     return null;
   })();
@@ -2989,9 +3034,11 @@ function renderActiveWorkout() {
         ${exercise.name}
         ${swapHTML}
         <span class="info" id="btn-info-exercise" title="Tietoja liikkeestä">ⓘ</span>
+        <span class="info ${exercise.exerciseNote ? "has-note" : ""}" id="btn-exercise-note" title="${exercise.exerciseNote ? "Muokkaa muistiinpanoa" : "Lisää muistiinpano"}" style="${exercise.exerciseNote ? "color:var(--acc)" : ""}">📝</span>
         ${lockHTML}
       </div>
       ${exSubHTML}
+      ${exercise.exerciseNote ? `<div class="exercise-note-display" style="background:rgba(139,92,246,0.08);border-left:3px solid var(--acc);padding:8px 10px;margin-top:6px;border-radius:6px;font-size:13px;line-height:1.4;color:var(--text)">📝 ${exercise.exerciseNote.replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div>` : ""}
     </div>
 
     ${whyThisMovementHTML}
@@ -4636,11 +4683,15 @@ async function openSessionDetail(sessionId) {
           if (e1 > maxE1) maxE1 = e1;
         }
       }
+      // v4.32.5 (#2): Liikekohtainen muistiinpano — etsi notes:t kaikista liikkeen seteistä,
+      // näytä ensimmäisen ei-tyhjän arvo (kaikki kirjautuvat samalla notesilla per-treeni).
+      const exNote = (movSets.find(s => s.exerciseNote) || {}).exerciseNote || null;
       bodyHTML += `<div style="margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
           <div style="font-weight:600;font-size:14px">${movName}</div>
           ${maxE1 > 0 ? `<div class="muted" style="font-size:11px">e1RM: <b style="color:var(--txt)">${maxE1.toFixed(1)} kg</b></div>` : ""}
         </div>
+        ${exNote ? `<div style="background:rgba(139,92,246,0.06);border-left:2px solid var(--acc);padding:6px 8px;margin-bottom:6px;border-radius:4px;font-size:12px;line-height:1.4;color:var(--text)">📝 ${exNote.replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div>` : ""}
         <div style="display:flex;flex-direction:column;gap:4px">
           ${movSets.map((s, i) => {
             const vxTxt = s.actualVx != null ? `V${s.actualVx}` : "V?";
@@ -4680,7 +4731,7 @@ async function openSessionDetail(sessionId) {
       <div class="modal-title">${formatDate(sess.dateISO)}</div>
       <div style="padding:0 4px">
         <div style="margin-bottom:8px">
-          <div class="muted" style="font-size:12px">${dayTypeLabel(sess.plannedDayType || "-")}${sess.bodyweightKg ? ` · ${sess.bodyweightKg} kg` : ""}${sess.planSourceDateISO && sess.planSourceDateISO !== sess.dateISO ? ` · plan ${formatDateShort(sess.planSourceDateISO)}` : ""}</div>
+          <div class="muted" style="font-size:12px">${dayTypeLabel(sess.plannedDayType || "-")}${sess.bodyweightKg ? ` · ${sess.bodyweightKg} kg` : ""}${sess.planSourceDateISO && sess.planSourceDateISO !== sess.dateISO ? ` · plan ${formatDateShort(sess.planSourceDateISO)}` : ""}${sess.durationMin != null ? ` · ⏱ ${sess.durationMin} min` : ""}${sess.isReconstructed ? ` · 🔧 rekonstruoitu` : ""}</div>
           ${headerChips.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${headerChips.join("")}</div>` : ""}
           ${readinessDetailsHTML}
         </div>
@@ -4991,6 +5042,28 @@ function renderProgress() {
   const tonnage7 = recentSets.reduce((sum, s) => sum + (s.externalLoadKg || 0) * (s.reps || 0), 0);
   const tonnageStr = tonnage7 >= 1000 ? `${(tonnage7/1000).toFixed(1)}t` : `${Math.round(tonnage7)}kg`;
 
+  // v4.32.5 (#4): Treenin keskimääräinen kesto (outlier-suoja: trimmataan
+  // ylin + alin 10 % jos sessioita >= 5). Koskee sessioita joilla durationMin
+  // on numerollinen ja > 0. Katkaisu 5 min - 240 min suojaa selvistä virheistä
+  // (puhelin auki yön yli yms.).
+  const durationsAll = (state.sessions || [])
+    .map(s => s.durationMin)
+    .filter(d => typeof d === "number" && d >= 5 && d <= 240);
+  let avgDurationMin = null;
+  let avgDurationN = 0;
+  if (durationsAll.length >= 1) {
+    let trimmed = [...durationsAll];
+    if (durationsAll.length >= 5) {
+      // Trimmaa ylin + alin 10 % outlier-suoja
+      trimmed = [...durationsAll].sort((a, b) => a - b);
+      const k = Math.floor(durationsAll.length * 0.1);
+      trimmed = trimmed.slice(k, durationsAll.length - k);
+    }
+    avgDurationMin = Math.round(trimmed.reduce((a, b) => a + b, 0) / trimmed.length);
+    avgDurationN = trimmed.length;
+  }
+  const durationStr = avgDurationMin != null ? `${avgDurationMin}` : "–";
+
   // ── e1RM sparklines for kisaliike ──
   const moveCards = KISALIIKKEET_NAMES.map(name => {
     const mov = state.movements.find(m => m.name === name);
@@ -5162,6 +5235,10 @@ function renderProgress() {
       <div class="kpi-card-p">
         <div class="k">${tonnageStr}</div>
         <div class="kl">Tonnage · 7 pv</div>
+      </div>
+      <div class="kpi-card-p" title="${avgDurationN > 0 ? `Keskiarvo ${avgDurationN} treenistä (outlier-suoja: ylin+alin 10 % trimmattu kun N≥5)` : "Ei kestodataa vielä"}">
+        <div class="k">${durationStr}<small>min</small></div>
+        <div class="kl">Kesto ka${avgDurationN >= 5 ? " ✂" : ""}</div>
       </div>
     </div>
 
@@ -8007,6 +8084,37 @@ function bindWorkoutEvents() {
     });
   });
 
+  // v4.32.5 (#2): Liikekohtainen muistiinpano-nappi (📝)
+  // Tallennus: state.workout.exercises[idx].exerciseNote → kirjautuu seuraavaan
+  // tallennettavaan setRecord:iin kentäksi `exerciseNote`. Säilyy treenin
+  // valmistumisen jälkeen historiassa per-liike-muistiinpanona.
+  const noteBtn = $("#btn-exercise-note");
+  if (noteBtn) noteBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const exercise = w.exercises[w.currentExerciseIdx];
+    if (!exercise) return;
+    const currentNote = exercise.exerciseNote || "";
+    const newNote = await showExerciseNoteModal(exercise.name, currentNote);
+    if (newNote === null) return; // Peruutettu
+    exercise.exerciseNote = newNote || null;
+    // Päivitä myös jo kirjautuneet sets:t kuluvalle liikkeelle samalla notesilla,
+    // jotta historia näyttää oikein vaikka muistiinpano kirjoitetaan myöhemmin.
+    try {
+      const setsForEx = (state.allSets || []).filter(s =>
+        s.movementId === exercise.movementId && s.sessionId === w.sessionId
+      );
+      for (const s of setsForEx) {
+        const updated = { ...s, exerciseNote: newNote || null };
+        await saveSet(updated);
+      }
+      state.allSets = await getAllSets();
+    } catch (err) { /* ignore — uudet sets:t saavat notes-kentän tallennuksen yhteydessä */ }
+    // Autosave + render
+    savePendingWorkoutLocal(w);
+    render();
+    showToast(newNote ? "Muistiinpano tallennettu" : "Muistiinpano tyhjennetty", "ok", 1500);
+  });
+
   // Lock/unlock slot (v4.11)
   const lockBtn = $("#btn-lock-slot");
   if (lockBtn) lockBtn.addEventListener("click", async (e) => {
@@ -8044,6 +8152,13 @@ async function saveWorkoutToDb(sessionNotes = "") {
   // Save session — käytä backfill-päivämäärää jos asetettu, muuten tänään.
   // planSourceDateISO kertoo minkä päivän planiä seurattiin (audit, voi poiketa dateISO:sta)
   // sRPE (v4.23 P3.2): session-level Borg CR10 1–10, käytetään fatiikkatrendiin
+  // v4.32.5 (#4): startedAt/endedAt + durationMin tallennetaan, jotta kestodataa voidaan
+  // analysoida pidemmällä aikavälillä (outlier-suojaus laskelmissa).
+  const endedAtISO = new Date().toISOString();
+  const startedAtISO = w.startedAt || endedAtISO;
+  const durationMin = w.startedAt
+    ? Math.max(0, Math.round((new Date(endedAtISO).getTime() - new Date(startedAtISO).getTime()) / 60000))
+    : null;
   const session = {
     sessionId: w.sessionId,
     dateISO: w.dateISO || todayISO(),
@@ -8058,6 +8173,9 @@ async function saveWorkoutToDb(sessionNotes = "") {
     isPlanOverride: !!w.isPlanOverride,
     planSourceDateISO: w.planSourceDateISO || w.dateISO || todayISO(),
     sRPE: w.sRPE ?? null,
+    startedAt: startedAtISO,
+    endedAt: endedAtISO,
+    durationMin: durationMin,
   };
   await saveSession(session);
 
@@ -8130,6 +8248,9 @@ async function saveWorkoutToDb(sessionNotes = "") {
         deviceMeta: null,
         manualOverride: null,
         timestamp: new Date().toISOString(),
+        // v4.32.5 (#2): Liikekohtainen muistiinpano (per-treeni). Tallennetaan
+        // jokaiseen liikkeen settiin samalla arvolla → näkyy historiassa.
+        exerciseNote: exercise.exerciseNote || null,
       });
     }
 
@@ -8224,6 +8345,27 @@ function showMovementDetail(mov) {
   const totalSets = sets.length;
   const totalSessions = new Set(sets.map(s => s.sessionId)).size;
 
+  // v4.32.5 (#3): Kaikki sarjat aikajärjestyksessä — paino × toistot × vara
+  // Näytetään tarkka per-sarja-data (ei vain median per session). Käyttäjä
+  // näkee miten Vx + paino kehittyy yli aikaa.
+  const allSetsSorted = sets
+    .filter(s => s.setRole !== "warmup" && s.setRole !== "readiness_test" && s.externalLoadKg !== null)
+    .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+  const sessionDateById = {};
+  for (const sess of state.sessions || []) sessionDateById[sess.sessionId] = sess.dateISO;
+  // Liikekohtaiset muistiinpanot: kerää kaikki uniikit treenikohtaiset notes:t
+  const exerciseNotesAll = [];
+  const seenSessions = new Set();
+  for (const s of allSetsSorted) {
+    if (!s.exerciseNote || seenSessions.has(s.sessionId)) continue;
+    seenSessions.add(s.sessionId);
+    exerciseNotesAll.push({
+      dateISO: sessionDateById[s.sessionId] || "?",
+      sessionId: s.sessionId,
+      note: s.exerciseNote,
+    });
+  }
+
   const detailDiv = document.getElementById("movement-detail");
   if (!detailDiv) return;
 
@@ -8242,10 +8384,48 @@ function showMovementDetail(mov) {
       <div class="kpi-box"><div class="kpi">${totalSessions}</div><div class="kpi-label">Treenejä</div></div>
     </div>
     ${history.length > 1 ? renderMiniChart(history) : ""}
-    ${history.length > 0 ? `<table class="mt">
-      <tr><th>Pvm</th><th>Paino</th><th>Toistot</th><th>e1RM</th></tr>
-      ${history.slice(-8).map(p => `<tr><td>${formatDateShort(p.dateISO)}</td><td>${p.load} kg</td><td>${p.reps}</td><td>${p.e1rm.toFixed(1)}</td></tr>`).join("")}
-    </table>` : '<div class="muted mt">Ei dataa vielä</div>'}
+    ${exerciseNotesAll.length > 0 ? `
+      <details class="mt" style="margin-top:12px">
+        <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--acc);user-select:none">📝 Liikekohtaiset muistiinpanot (${exerciseNotesAll.length})</summary>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+          ${exerciseNotesAll.slice(0, 20).map(n => `
+            <div style="background:rgba(139,92,246,0.06);border-left:2px solid var(--acc);padding:6px 8px;border-radius:4px;font-size:12px;line-height:1.4">
+              <div style="font-weight:600;font-size:11px;color:var(--muted);margin-bottom:2px">${formatDateShort(n.dateISO)}</div>
+              <div>${n.note.replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div>
+            </div>
+          `).join("")}
+        </div>
+      </details>
+    ` : ""}
+    ${allSetsSorted.length > 0 ? `
+      <div class="mt" style="margin-top:14px">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px">SARJAHISTORIA — paino × toistot × vara (${Math.min(allSetsSorted.length, 30)}/${allSetsSorted.length})</div>
+        <table style="width:100%;font-size:12px">
+          <tr style="text-align:left;color:var(--muted);font-size:11px">
+            <th style="padding:4px 6px">Pvm</th><th style="padding:4px 6px">Paino</th><th style="padding:4px 6px">Toistot</th><th style="padding:4px 6px">Vx</th><th style="padding:4px 6px">e1RM</th><th style="padding:4px 6px">Rooli</th>
+          </tr>
+          ${allSetsSorted.slice(0, 30).map(s => {
+            const d = sessionDateById[s.sessionId] || "?";
+            const reps = s.reps || 0;
+            const load = s.externalLoadKg || 0;
+            const vx = s.actualVx;
+            const e1 = (load > 0 && reps > 0) ? load * (1 + (reps + (vx ?? 0)) / 30) : 0;
+            const vxStr = vx === null || vx === undefined ? "?" : `V${vx}`;
+            const vxColor = vx === 0 ? "color:#ef4444" : vx === 1 ? "color:#f59e0b" : vx >= 4 ? "color:var(--muted)" : "";
+            const roleEmoji = s.setRole === "top" ? "⭐" : s.setRole === "backoff" ? "•" : s.setRole === "calibration" ? "🎯" : "·";
+            return `<tr>
+              <td style="padding:4px 6px;font-size:11px">${formatDateShort(d)}</td>
+              <td style="padding:4px 6px;font-weight:600">${load} kg</td>
+              <td style="padding:4px 6px">${reps}</td>
+              <td style="padding:4px 6px;${vxColor}">${vxStr}</td>
+              <td style="padding:4px 6px">${e1 > 0 ? e1.toFixed(1) : "-"}</td>
+              <td style="padding:4px 6px">${roleEmoji}</td>
+            </tr>`;
+          }).join("")}
+        </table>
+        ${allSetsSorted.length > 30 ? `<div style="font-size:11px;color:var(--muted);text-align:center;margin-top:6px">+${allSetsSorted.length - 30} vanhempaa sarjaa</div>` : ""}
+      </div>
+    ` : '<div class="muted mt">Ei dataa vielä</div>'}
   </div>`;
 
   document.getElementById("btn-close-detail")?.addEventListener("click", () => {
