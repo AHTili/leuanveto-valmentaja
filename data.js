@@ -13,7 +13,7 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
-const PROGRAM_BUILD_VERSION = "4.31.0";
+const PROGRAM_BUILD_VERSION = "4.31.1";
 
 // ── Store names ──
 const STORES = {
@@ -3480,7 +3480,12 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   // pohjaa volyymillä).
   const pullAcc = (withOverload = false) => {
     const slots = [
-      slotAccessory("pull-vertical-explosive", "vertikaaliveto",   "Leuanveto chest-to-bar", { sets:3, reps:3,  targetVx:4 }),
+      // v4.31.1: fallback-nimi "Räjähtävä leuka" (oli "Leuanveto chest-to-bar"). Slot-ID
+      // pull-vertical-explosive = RFD-stimulus, ja foundation-vaiheen phaseVariants:in
+      // 1. variantti on "Räjähtävä leuka". Aiempi fallback-nimi aiheutti UI-ristiriidan:
+      // sykli-näkymä näytti chest-to-bar (fallback), päivän treeni Räjähtävä leuka (engine
+      // resolvoi phaseVariants:ista). Sama liike, eri näytetty nimi.
+      slotAccessory("pull-vertical-explosive", "vertikaaliveto",   "Räjähtävä leuka",        { sets:3, reps:3,  targetVx:4 }),
       slotAccessory("pull-horizontal-heavy",   "horisontaaliveto", "Chest-supported row",    { sets:4, reps:8 }),
       slotAccessory("bicep-chain",             "hauisfleksio",     "Hauiskääntö tanko",       { sets:3, reps:12 }),
       slotAccessory("scapular-control",        "horisontaaliveto", "Face pull",              { sets:3, reps:15 }),
