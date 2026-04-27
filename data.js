@@ -13,7 +13,7 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
-const PROGRAM_BUILD_VERSION = "4.31.1";
+const PROGRAM_BUILD_VERSION = "4.31.2";
 
 // ── Store names ──
 const STORES = {
@@ -3479,13 +3479,14 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   // peak-vaiheessa supramaksimaalisten eksentrikkojen DOMS-riski liian iso, foundation rakentaa
   // pohjaa volyymillä).
   const pullAcc = (withOverload = false) => {
+    // v4.31.2: Poistettu pull-vertical-explosive MA-päivän pullAcc:sta — duplikointi
+    // LA-päivän pull-vertical-explosive-slotin kanssa (sama liike, sama 3×3 V4 -parametri).
+    // Räjähtävä leuka tulee nyt VAIN LA-päivältä:
+    //   - Skill-vaihe (vk 1-4): LA 4×3 V4 (MU-priming + RFD)
+    //   - Strength + intensity (vk 5-12): LA 3×3 V4 (3-frequency leuka, RFD-stimulus)
+    //   - Peaking (vk 13-16): pois (taper)
+    // MA-päivän accessoryt keskittyvät tukiliikkeisiin (selkä, hauis, scapular).
     const slots = [
-      // v4.31.1: fallback-nimi "Räjähtävä leuka" (oli "Leuanveto chest-to-bar"). Slot-ID
-      // pull-vertical-explosive = RFD-stimulus, ja foundation-vaiheen phaseVariants:in
-      // 1. variantti on "Räjähtävä leuka". Aiempi fallback-nimi aiheutti UI-ristiriidan:
-      // sykli-näkymä näytti chest-to-bar (fallback), päivän treeni Räjähtävä leuka (engine
-      // resolvoi phaseVariants:ista). Sama liike, eri näytetty nimi.
-      slotAccessory("pull-vertical-explosive", "vertikaaliveto",   "Räjähtävä leuka",        { sets:3, reps:3,  targetVx:4 }),
       slotAccessory("pull-horizontal-heavy",   "horisontaaliveto", "Chest-supported row",    { sets:4, reps:8 }),
       slotAccessory("bicep-chain",             "hauisfleksio",     "Hauiskääntö tanko",       { sets:3, reps:12 }),
       slotAccessory("scapular-control",        "horisontaaliveto", "Face pull",              { sets:3, reps:15 }),

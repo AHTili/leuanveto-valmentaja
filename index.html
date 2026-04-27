@@ -2149,7 +2149,17 @@ function renderDashboard() {
   const ctaLabel = dayAlreadyDone
     ? "✅ TÄNÄÄN TEHTY"
     : (deloadMode ? "▶ ALOITA KEVENNYS" : "▶ ALOITA TREENI");
-  const deloadBtnLabel = isDeloadOverride ? "↩ Peru kevennys" : "🌿 Kevennys";
+  // v4.31.2: label heijastaa painikkeen todellista toimintaa
+  // - Kevennysviikolla: peruuttaa nykyisen kevennyksen
+  // - Tuleva vk merkitty kevennykseksi: peruuttaa vahingossa-merkityn
+  // - Muuten: lisää kevennyksen seuraavalle viikolle
+  const futureDeloadMarked = meso && (meso.replacedWithDeload || []).some(r => {
+    const week = typeof r === "number" ? r : r.programWeek;
+    return week > (rec?.weekNum ?? 0);
+  });
+  const deloadBtnLabel = isDeloadOverride
+    ? "↩ Peru nykyinen kevennys"
+    : (futureDeloadMarked ? "↩ Peru tuleva kevennys" : "🌿 Kevennys");
 
   return `<div class="fade-in">
     <div class="dash-topline">
@@ -5957,22 +5967,50 @@ function bind() {
     const meso = state.mesocycle;
     if (!meso) return;
     const today = todayISO();
-    if (isDeloadOverrideWeek(meso, today)) {
-      showToast("Olet jo kevennysviikolla", "warn");
-      return;
-    }
     const pos = resolveMesocyclePosition(meso, today);
     if (!pos) { showToast("Ei aktiivista mesosykliä", "bad"); return; }
     const currentProgWeek = pos.programWeek;
+    const replaced = [...(meso.replacedWithDeload || [])];
+
+    // v4.31.2: Peruutuslogiikka — jos olet aktiivisesti kevennysviikolla TAI tuleva
+    // viikko on merkitty kevennykseksi (esim. vahingossa-klikkaus), tarjoa peruuttamista.
+    // Aiemmin painikkeessa oli "↩ Peru kevennys" -teksti mutta klikkaus näytti vain
+    // toastin — todellinen peruutus puuttui.
+    if (isDeloadOverrideWeek(meso, today)) {
+      const undo = confirm(
+        `Olet kevennysviikolla (vk ${currentProgWeek}).\n\n` +
+        `Perutaanko kevennys ja palautetaan alkuperäinen ohjelma?\n\n` +
+        `(Tehdyt treenit säilyvät — vain päivän plani palautuu)`
+      );
+      if (!undo) return;
+      meso.replacedWithDeload = replaced.filter(r => (typeof r === "number" ? r : r.programWeek) !== currentProgWeek);
+      await saveMesocycle(meso);
+      state.mesocycle = meso;
+      await computeRecommendation();
+      showToast(`Vk ${currentProgWeek} kevennys peruutettu`, "ok");
+      render();
+      return;
+    }
     const targetWeek = currentProgWeek + 1;
     if (targetWeek > (meso.weekCount || 16)) {
       showToast("Et voi korvata viimeistä viikkoa kevennyksellä", "warn");
       return;
     }
-    const replaced = [...(meso.replacedWithDeload || [])];
     const alreadyReplaced = replaced.some(r => (typeof r === "number" ? r : r.programWeek) === targetWeek);
     if (alreadyReplaced) {
-      showToast(`Vk ${targetWeek} on jo merkitty kevennykseksi`, "warn");
+      // v4.31.2: tarjoa peruuttamista vahingossa-klikkauksen tapauksessa
+      const undo = confirm(
+        `Vk ${targetWeek} on merkitty kevennykseksi.\n\n` +
+        `Perutaanko ja palautetaan alkuperäinen ohjelma?\n\n` +
+        `(Käytä jos klikkasit vahingossa Kevennys-painiketta)`
+      );
+      if (!undo) return;
+      meso.replacedWithDeload = replaced.filter(r => (typeof r === "number" ? r : r.programWeek) !== targetWeek);
+      await saveMesocycle(meso);
+      state.mesocycle = meso;
+      await computeRecommendation();
+      showToast(`Vk ${targetWeek} kevennys peruutettu`, "ok");
+      render();
       return;
     }
     const targetWeekDef = meso.weekDefs?.find(w => w.week === targetWeek);
