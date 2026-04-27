@@ -13,7 +13,7 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
-const PROGRAM_BUILD_VERSION = "4.31.2";
+const PROGRAM_BUILD_VERSION = "4.32.3";
 
 // ── Store names ──
 const STORES = {
@@ -386,6 +386,28 @@ const MOVEMENT_DESCRIPTIONS = {
 // First item in each phase = default. If stagnation detected, engine advances index.
 const ACCESSORY_SLOT_CATALOG = {
   // ─── PULL PATTERNS ───
+  // v4.32.3: Volyymi-leuanveto chest-to-bar — MA-päivän 2. veto.
+  // Ero LA:n pull-vertical-explosive -slottiin: tämä on **klassinen volyymi+ROM-veto**
+  // (3×5 V3, raskaammalla), kun taas LA:n Räjähtävä leuka on **RFD-stimulus** (3×3 V4
+  // BW, max-velocity). Yhdessä → MA volyymi + LA RFD ilman duplikointia. Käyttäjäpalaute
+  // v4.32.2: "miksi MA-treenissä ei ollut oletuksena korkeita leukoja 2. liikkeenä".
+  // Kompromissi aiemman duplikointi-poiston (v4.31.2 Räjähtävä leuka MA:lta pois) ja
+  // nykyisen tarpeen välillä: chest-to-bar ON eri liike kuin Räjähtävä → ei duplikointia.
+  "pull-volume": {
+    function: "Volyymi-leuanveto chest-to-bar — MA-päivän 2. veto",
+    rationale: "Chest-to-bar volyymi-veto MA-päivän leuka-primaryn perään. Klassinen volyymi + ROM-stimulus 3×5 V3 raskaammalla otteella — eri tarkoitus kuin LA:n Räjähtävä leuka (RFD-spesifi 3×3 V4 BW). Yhdessä antaa täydellisen frekvenssirakenteen: MA volyymi → LA RFD, ei duplikointia. Foundation/strength täysi volyymi, intensity kevyempi taperia kohti, peaking pois (taper).",
+    phaseVariants: {
+      foundation: ["Leuanveto chest-to-bar", "Lisäpainoleuanveto"],
+      strength:   ["Leuanveto chest-to-bar", "Lisäpainoleuanveto"],
+      intensity:  ["Leuanveto chest-to-bar"],
+      peaking:    [],
+    },
+    repScheme: {
+      foundation: { sets: 3, reps: 5, targetVx: 3, note: "Chest-to-bar 3×5 V3 — volyymi + ROM, MA-päivän 2. leuka" },
+      strength:   { sets: 3, reps: 5, targetVx: 3, note: "Chest-to-bar 3×5 V3 — volyymi-veto" },
+      intensity:  { sets: 3, reps: 4, targetVx: 3, note: "Chest-to-bar 3×4 — kevyempi taperia kohti" },
+    },
+  },
   "pull-horizontal-heavy": {
     function: "Raskas horisontaaliveto, selän paksuus",
     rationale: "Paksuntaa keskiselkää → suora tuki leuanvedolle ja MU-transitiolle. Hypertrofiassa chest-supported/seal pysäytyksellä (stretch-mediated volyymi), voimablokissa Pendlay (raskas ja eksplosiivinen).",
@@ -3479,14 +3501,13 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   // peak-vaiheessa supramaksimaalisten eksentrikkojen DOMS-riski liian iso, foundation rakentaa
   // pohjaa volyymillä).
   const pullAcc = (withOverload = false) => {
-    // v4.31.2: Poistettu pull-vertical-explosive MA-päivän pullAcc:sta — duplikointi
-    // LA-päivän pull-vertical-explosive-slotin kanssa (sama liike, sama 3×3 V4 -parametri).
-    // Räjähtävä leuka tulee nyt VAIN LA-päivältä:
-    //   - Skill-vaihe (vk 1-4): LA 4×3 V4 (MU-priming + RFD)
-    //   - Strength + intensity (vk 5-12): LA 3×3 V4 (3-frequency leuka, RFD-stimulus)
-    //   - Peaking (vk 13-16): pois (taper)
-    // MA-päivän accessoryt keskittyvät tukiliikkeisiin (selkä, hauis, scapular).
+    // v4.31.2: Poistettu pull-vertical-explosive (Räjähtävä leuka) duplikointi LA:lta.
+    // v4.32.3: Lisätty pull-volume (Leuanveto chest-to-bar 3×5 V3) MA:n 2. vedoksi.
+    //   - MA pull-volume: chest-to-bar volyymi + ROM-tekniikka, raskaampi (3×5 V3)
+    //   - LA pull-vertical-explosive: Räjähtävä leuka RFD, BW max-velocity (3×3 V4)
+    //   Eri liikkeet, eri tarkoitus → ei duplikointia.
     const slots = [
+      slotAccessory("pull-volume",             "vertikaaliveto",   "Leuanveto chest-to-bar", { sets:3, reps:5, targetVx:3 }),
       slotAccessory("pull-horizontal-heavy",   "horisontaaliveto", "Chest-supported row",    { sets:4, reps:8 }),
       slotAccessory("bicep-chain",             "hauisfleksio",     "Hauiskääntö tanko",       { sets:3, reps:12 }),
       slotAccessory("scapular-control",        "horisontaaliveto", "Face pull",              { sets:3, reps:15 }),
