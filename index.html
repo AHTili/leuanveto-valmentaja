@@ -903,19 +903,25 @@ async function init() {
 }
 
 // v4.28.1: keskeneräisen treenin palautus localStorage-pendingWorkout-avaimesta.
-// Kutsutaan init():n lopussa ennen renderiä. Synkroninen window.confirm riittää
-// minimitoiminnallisuuteen — jatkossa voidaan vaihtaa custom-modaaliin.
+// v4.32.4 (H): Korvattu window.confirm omalla modaalilla joka näyttää treenin
+// tilan kuvallisesti — paremmin mobiilissa, näyttää enemmän tietoa kerrallaan.
 async function checkPendingWorkoutRecovery() {
   const pending = loadPendingWorkoutLocal();
   if (!pending?.workout) return;
   const w = pending.workout;
   // Laske progress kerronta käyttäjälle
   let doneSets = 0, totalSets = 0;
+  let lastCompletedSet = null;
   for (const ex of (w.exercises || [])) {
     for (const s of (ex.sets || [])) {
       if (s.isWarmup) continue;
       totalSets++;
-      if (s.completed) doneSets++;
+      if (s.completed) {
+        doneSets++;
+        if (s.reps != null && s.loadKg != null) {
+          lastCompletedSet = { exName: ex.name, reps: s.reps, vx: s.actualVx, loadKg: s.loadKg };
+        }
+      }
     }
   }
   const savedAt = pending.savedAt ? new Date(pending.savedAt) : null;
@@ -923,17 +929,44 @@ async function checkPendingWorkoutRecovery() {
     ? `${savedAt.toLocaleDateString("fi-FI")} klo ${savedAt.toLocaleTimeString("fi-FI", { hour: "2-digit", minute: "2-digit" })}`
     : "tuntematon ajankohta";
   const dateStr = w.dateISO || "";
-  const msg =
-    `Keskeneräinen treeni löytyi.\n\n` +
-    `Päivä: ${dateStr}\n` +
-    `Tallennettu: ${savedAtStr}\n` +
-    `Edistyminen: ${doneSets}/${totalSets} sarjaa kirjattu\n\n` +
-    `Jatketaanko treeniä? (Peruuta = hylkää keskeneräinen)`;
-  if (confirm(msg)) {
+  const progressPct = totalSets > 0 ? Math.round((doneSets / totalSets) * 100) : 0;
+  const lastSetHTML = lastCompletedSet
+    ? `<div style="font-size:12px;color:var(--muted);padding:6px 10px;background:rgba(255,255,255,0.04);border-radius:6px;margin-top:8px">
+        <div style="font-weight:600;margin-bottom:2px">Viimeinen kirjattu sarja:</div>
+        <div>${lastCompletedSet.exName} · ${lastCompletedSet.loadKg} kg × ${lastCompletedSet.reps}${lastCompletedSet.vx != null ? ` V${lastCompletedSet.vx}` : ""}</div>
+      </div>` : "";
+
+  const wantContinue = await new Promise(resolve => {
+    closeModal();
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title" style="display:flex;align-items:center;gap:8px">⏸ Keskeneräinen treeni</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5;margin-top:4px">Sovellus tallensi treenisi automaattisesti. Voit jatkaa siitä mihin jäit.</div>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;font-size:13px"><span class="muted">Päivä</span><span style="font-weight:600">${dateStr}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px"><span class="muted">Tallennettu</span><span>${savedAtStr}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px"><span class="muted">Edistyminen</span><span style="font-weight:700;color:var(--acc)">${doneSets}/${totalSets} sarjaa (${progressPct} %)</span></div>
+          <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:2px"><div style="width:${progressPct}%;height:100%;background:var(--acc);transition:width 0.3s"></div></div>
+        </div>
+        ${lastSetHTML}
+        <div class="btn-group" style="margin-top:14px">
+          <button class="btn btn-ok" style="flex:2" data-modal-ok>▶ Jatka treeniä</button>
+          <button class="btn btn-outline" style="flex:1" data-modal-cancel>🗑 Hylkää</button>
+        </div>
+      </div>`;
+    overlay.querySelector("[data-modal-ok]").addEventListener("click", () => { closeModal(); resolve(true); });
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); resolve(false); });
+    document.body.appendChild(overlay);
+  });
+
+  if (wantContinue) {
     state.workout = w;
     state.view = "workout";
-    // Wake Lock + AudioContext vaativat käyttäjäinteraktion — restore-confirm laukeaa
-    // käyttäjän klikkauksesta, joten voimme yrittää.
+    // Wake Lock + AudioContext vaativat käyttäjäinteraktion — modal-painikkeen
+    // klikkaus on tällainen interaktio, joten voimme yrittää.
     ensureAudioCtx();
     ensureWakeLock();
   } else {
@@ -2096,6 +2129,26 @@ function renderDashboard() {
 
   const phaseTimelineHTML = buildPhaseTimelineHTML(meso, typeof weekNum === "number" ? weekNum : null, deloadMode);
 
+  // v4.32.4 (C): Variant-rotaation tilarivi — kertoo missä ME-rotaation vaiheessa
+  // käyttäjä on. Vain streetlifting_16w-mesosyklillä, ei riko olemassa olevaa
+  // phaseTimelineHTML-rakennetta. Pelkkä informaatio-rivi sen alle.
+  const meRotationHTML = (() => {
+    if (meso?.type !== "streetlifting_16w") return "";
+    if (typeof weekNum !== "number" || weekNum < 1 || weekNum > 16) return "";
+    let label = "";
+    if (weekNum >= 1 && weekNum <= 3) label = "ME-leuka: Vastaote-leuanveto (kapea ote, hauis-overload)";
+    else if (weekNum === 4) label = "Deload — kalibrointi";
+    else if (weekNum === 5 || weekNum === 6) label = "ME-leuka: Paused pull-up (lockout-statiikka)";
+    else if (weekNum === 7) label = "ME-leuka: Tempo pull-up (eccentric-volyymi)";
+    else if (weekNum === 8) label = "Deload — RPE9-test";
+    else if (weekNum >= 9 && weekNum <= 11) label = "ME-rotaatio päättynyt — kilpaote lukko";
+    else if (weekNum === 12) label = "Deload — RPE9-test";
+    else if (weekNum >= 13 && weekNum <= 14) label = "Realization + taper";
+    else if (weekNum >= 15 && weekNum <= 16) label = "Kisaviikko — opener-rehearsal";
+    if (!label) return "";
+    return `<div style="font-size:11px;color:var(--muted);text-align:center;padding:6px 0;margin-top:-6px;line-height:1.4">📍 ${label}</div>`;
+  })();
+
   // v4.29.0 (P2): Streetlifting opener-strategia peaking-vaiheessa (vk 13–16).
   // Laskee per kilpailuliike opener (88 %) / 2nd (95 %) / 3rd (102 %) viimeisimmän
   // e1RM:n perusteella. Tarkoitus: käyttäjä voi suunnitella kisapäivän nostot ennalta.
@@ -2200,6 +2253,7 @@ function renderDashboard() {
       ${dayAlreadyDone ? `<div style="font-size:12px;color:var(--muted);text-align:center;margin-top:6px">Päivän treeni on tallennettu. Voit tarkastella sitä Historia-välilehdellä.</div>` : ""}
 
       ${phaseTimelineHTML}
+      ${meRotationHTML}
     </div>
 
     <div class="secondary-row">
@@ -5128,14 +5182,29 @@ function renderProgress() {
       if (!currentWeek) return "";
       const totalWeeks = meso.weekCount || 16;
       // Kerää e1RM-historia per kilpailuliike (Maaveto mukaan jos historiaa)
+      // v4.32.4 (F): jos sets-historia tyhjä, fallback PR-rekisteriin → ennuste-kortti
+      // aktivoituu vk 1:llä yhdellä mittauspisteellä (PR), ei vasta 3+ treenin jälkeen.
       const COMP_LIFTS = ["Lisäpainoleuanveto", "Lisäpainodippi", "Takakyykky", "Maastaveto"];
       const historyByMovement = {};
+      const todayStr = todayISO();
       for (const liftName of COMP_LIFTS) {
         const mov = state.movements.find(m => m.name === liftName);
         if (!mov) continue;
         const liftSets = state.allSets.filter(s => s.movementId === mov.movementId);
-        if (liftSets.length === 0) continue;
-        const hist = computeMovementE1RMHistory(liftSets, state.sessions, mov.isPrimary, bw);
+        let hist = [];
+        if (liftSets.length > 0) {
+          hist = computeMovementE1RMHistory(liftSets, state.sessions, mov.isPrimary, bw);
+        }
+        // Fallback: jos historia tyhjä mutta PR-rekisterissä on liike, lisää PR-piste
+        if (hist.length === 0) {
+          const prs = (state.prs || [])
+            .filter(p => p.movementName === liftName && p.value > 0)
+            .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+          if (prs.length > 0) {
+            const bestPR = prs[prs.length - 1]; // viimeisin
+            hist = [{ dateISO: bestPR.dateISO || todayStr, e1rm: bestPR.value, load: bestPR.value, reps: 1 }];
+          }
+        }
         if (hist.length > 0) historyByMovement[liftName] = hist;
       }
       const projection = computeStreetliftingFinalProjection(historyByMovement, currentWeek, totalWeeks);
@@ -7359,24 +7428,39 @@ function bindWorkoutEvents() {
       } catch (e) { /* fallback to default */ }
       // 3. TASO 3 — Painosuositus e1RM-historian perusteella jos kuormitettu
       //    Lisäpainoleuanveto / Lisäpainodippi / Takakyykky / Maastaveto / Penkkipunnerrus
+      // v4.32.4 (D): jos sets-historia tyhjä, fallback PR-rekisteriin (state.prs)
+      //   → käyttäjä näkee 60 % paino­suosituksen heti vk 1:llä, ei vasta 3+ treenin jälkeen
       const KUORMITETUT = ["Lisäpainoleuanveto", "Lisäpainodippi", "Takakyykky", "Maastaveto", "Penkkipunnerrus"];
       let suggestedLoad = null;
       let loadDetail = "";
       if (KUORMITETUT.includes(m.name)) {
         try {
           const allLiftSets = (state.allSets || []).filter(s => s.movementId === m.movementId);
+          let currentE1RM = null;
+          let e1rmSource = "history"; // "history" tai "PR"
           if (allLiftSets.length > 0) {
             const history = computeMovementE1RMHistory(allLiftSets, state.sessions, m.isPrimary, bw);
-            if (history.length > 0) {
-              const currentE1RM = history[history.length - 1].e1rm;
-              if (currentE1RM > 0) {
-                // 60 % e1RM = standardin accessory-kuorma
-                const isBarbell = m.category === "alaraaja";
-                const raw = currentE1RM * 0.60;
-                suggestedLoad = isBarbell ? Math.round(raw / 2.5) * 2.5 : Math.round(raw * 2) / 2;
-                loadDetail = ` @ ${suggestedLoad} kg (60 % e1RM)`;
-              }
+            if (history.length > 0 && history[history.length - 1].e1rm > 0) {
+              currentE1RM = history[history.length - 1].e1rm;
             }
+          }
+          // v4.32.4: PR-fallback jos historiaa ei ole
+          if (!currentE1RM) {
+            const prs = (state.prs || []).filter(p => p.movementName === m.name && p.value > 0);
+            if (prs.length > 0) {
+              // Otetaan korkein PR-arvo (paras 1RM)
+              currentE1RM = Math.max(...prs.map(p => p.value));
+              e1rmSource = "PR";
+            }
+          }
+          if (currentE1RM && currentE1RM > 0) {
+            // 60 % e1RM = standardin accessory-kuorma
+            const isBarbell = m.category === "alaraaja";
+            const raw = currentE1RM * 0.60;
+            suggestedLoad = isBarbell ? Math.round(raw / 2.5) * 2.5 : Math.round(raw * 2) / 2;
+            loadDetail = e1rmSource === "PR"
+              ? ` @ ${suggestedLoad} kg (60 % PR ${currentE1RM} kg)`
+              : ` @ ${suggestedLoad} kg (60 % e1RM)`;
           }
         } catch (e) { /* ignore */ }
       }
@@ -7393,16 +7477,62 @@ function bindWorkoutEvents() {
 
     // Esivalmistele suositukset listamodaalille
     const optionsWithSugg = options.map(m => ({ m, sugg: suggestParamsForMovement(m) }));
-    const movIdx = await showListModal(
-      "Lisää liike",
-      optionsWithSugg.map(({ m, sugg }, i) => ({
-        icon: i < sameCategory.length ? "✅" : "🔹",
-        label: m.name,
-        desc: `${m.category} · ${sugg.sourceDetail}`,
-      }))
-    );
-    if (movIdx !== null && movIdx >= 0 && movIdx < optionsWithSugg.length) {
-      const { m, sugg } = optionsWithSugg[movIdx];
+
+    // v4.32.4 (A): Lyhennetty Top 5 -lista oletuksena, "📋 Näytä kaikki..." -toggle.
+    // Vähennetään UX-kuormaa kun listalla on 100+ liikettä. Top N = saman kategorian
+    // liikkeet (slot-suositukset etusijalla) + "Näytä kaikki" -optio.
+    const TOP_N = 5;
+    const showTopN = optionsWithSugg.length > TOP_N + 1;
+    let chosenIdx = null;
+    let chosenItem = null;
+    if (showTopN) {
+      const topItems = optionsWithSugg.slice(0, TOP_N);
+      const showAllOptionIdx = topItems.length;
+      const movIdx = await showListModal(
+        "Lisää liike",
+        [
+          ...topItems.map(({ m, sugg }, i) => ({
+            icon: i < sameCategory.length ? "✅" : "🔹",
+            label: m.name,
+            desc: `${m.category} · ${sugg.sourceDetail}`,
+          })),
+          { icon: "📋", label: "Näytä kaikki...", desc: `${optionsWithSugg.length - TOP_N} muuta liikettä` },
+        ]
+      );
+      if (movIdx === null) return;
+      if (movIdx === showAllOptionIdx) {
+        // Käyttäjä halusi koko listan
+        const fullIdx = await showListModal(
+          "Lisää liike — kaikki liikkeet",
+          optionsWithSugg.map(({ m, sugg }, i) => ({
+            icon: i < sameCategory.length ? "✅" : "🔹",
+            label: m.name,
+            desc: `${m.category} · ${sugg.sourceDetail}`,
+          }))
+        );
+        if (fullIdx === null || fullIdx < 0 || fullIdx >= optionsWithSugg.length) return;
+        chosenIdx = fullIdx;
+      } else if (movIdx >= 0 && movIdx < topItems.length) {
+        chosenIdx = movIdx;
+      } else {
+        return;
+      }
+    } else {
+      // < 6 vaihtoehtoa: näytetään suoraan koko lista (ei tarvetta toggleen)
+      const movIdx = await showListModal(
+        "Lisää liike",
+        optionsWithSugg.map(({ m, sugg }, i) => ({
+          icon: i < sameCategory.length ? "✅" : "🔹",
+          label: m.name,
+          desc: `${m.category} · ${sugg.sourceDetail}`,
+        }))
+      );
+      if (movIdx === null || movIdx < 0 || movIdx >= optionsWithSugg.length) return;
+      chosenIdx = movIdx;
+    }
+    chosenItem = optionsWithSugg[chosenIdx];
+    if (chosenItem) {
+      const { m, sugg } = chosenItem;
       const sr = await showSetsRepsModal(
         `${m.name} — ${sugg.sourceDetail}`,
         sugg.sets,
