@@ -7280,29 +7280,129 @@ function bindWorkoutEvents() {
     render();
   });
 
-  // Add extra exercise
+  // Add extra exercise (v4.32.0 — eliittitason älykkyys)
   const addExBtn = $("#btn-add-exercise");
   if (addExBtn) addExBtn.addEventListener("click", async () => {
-    const options = state.movements.filter(m => !w.exercises.some(ex => ex.movementId === m.movementId));
-    if (options.length === 0) { showToast("Kaikki liikkeet jo mukana", "warn"); return; }
+    const optionsRaw = state.movements.filter(m => !w.exercises.some(ex => ex.movementId === m.movementId));
+    if (optionsRaw.length === 0) { showToast("Kaikki liikkeet jo mukana", "warn"); return; }
+
+    // v4.32.0 TASO 1 — Listausjärjestys: saman kategorian liikkeet ensin (kuten swap)
+    const primary = w.exercises.find(ex => ex.role === "primary");
+    const currentEx = w.exercises[w.currentExerciseIdx];
+    const refCategory = currentEx?.category || primary?.category || null;
+    const sameCategory = refCategory ? optionsRaw.filter(m => m.category === refCategory) : [];
+    const otherCategory = refCategory ? optionsRaw.filter(m => m.category !== refCategory) : optionsRaw;
+    const options = [...sameCategory, ...otherCategory];
+
+    // v4.32.0 TASO 2+3 — Suositukset jokaiselle liikkeelle: historia → slot-katalogi → default
+    // Lasketaan vain kerran cache-arvona koska iso lista voisi muuten olla hidasta.
+    const phase = (() => {
+      const meso = state.mesocycle;
+      const wk = state.recommendation?.weekNum;
+      if (meso?.type === "streetlifting_16w" && typeof wk === "number") {
+        return wk <= 4 ? "foundation" : wk <= 8 ? "strength" : wk <= 12 ? "intensity" : "peaking";
+      }
+      return "foundation";
+    })();
+    const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
+    const suggestParamsForMovement = (m) => {
+      // 1. Käyttäjän aiempi historia — etsi viimeisin sessio jossa liikettä tehtiin
+      const movementSets = (state.allSets || [])
+        .filter(s => s.movementId === m.movementId)
+        .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+      if (movementSets.length > 0) {
+        const lastSet = movementSets[0];
+        const lastSessionSets = movementSets.filter(s => s.sessionId === lastSet.sessionId && !s.isWarmup);
+        if (lastSessionSets.length > 0) {
+          // Mediaani-paino jotta yksittäinen anomalia ei vinouta suositusta
+          const loads = lastSessionSets.map(s => s.externalLoadKg).filter(v => v != null && v > 0);
+          const medianLoad = loads.length ? loads.sort((a,b) => a-b)[Math.floor(loads.length/2)] : null;
+          return {
+            sets: lastSessionSets.length,
+            reps: lastSet.reps || lastSet.targetReps || 10,
+            targetVx: lastSet.targetVx,
+            loadKg: medianLoad,
+            source: "history",
+            sourceDetail: `Edellinen treeni · ${lastSessionSets.length}×${lastSet.reps}${lastSet.targetVx != null ? ` V${lastSet.targetVx}` : ""}${medianLoad ? ` @ ${medianLoad} kg` : ""}`,
+          };
+        }
+      }
+      // 2. ACCESSORY_SLOT_CATALOG — etsi slot jonka variantti tämä on
+      try {
+        for (const [slotId, slotDef] of Object.entries(ACCESSORY_SLOT_CATALOG || {})) {
+          const variants = slotDef.phaseVariants?.[phase] || [];
+          if (variants.includes(m.name)) {
+            const rs = slotDef.repScheme?.[phase];
+            if (rs) {
+              return {
+                sets: rs.sets || 3,
+                reps: rs.reps || 10,
+                targetVx: rs.targetVx ?? null,
+                loadKg: null,
+                source: "catalog",
+                sourceDetail: `Slot ${slotId} (${phase}) · ${rs.sets}×${rs.reps}${rs.targetVx != null ? ` V${rs.targetVx}` : ""}`,
+              };
+            }
+          }
+        }
+      } catch (e) { /* fallback to default */ }
+      // 3. TASO 3 — Painosuositus e1RM-historian perusteella jos kuormitettu
+      //    Lisäpainoleuanveto / Lisäpainodippi / Takakyykky / Maastaveto / Penkkipunnerrus
+      const KUORMITETUT = ["Lisäpainoleuanveto", "Lisäpainodippi", "Takakyykky", "Maastaveto", "Penkkipunnerrus"];
+      let suggestedLoad = null;
+      let loadDetail = "";
+      if (KUORMITETUT.includes(m.name)) {
+        try {
+          const allLiftSets = (state.allSets || []).filter(s => s.movementId === m.movementId);
+          if (allLiftSets.length > 0) {
+            const history = computeMovementE1RMHistory(allLiftSets, state.sessions, m.isPrimary, bw);
+            if (history.length > 0) {
+              const currentE1RM = history[history.length - 1].e1rm;
+              if (currentE1RM > 0) {
+                // 60 % e1RM = standardin accessory-kuorma
+                const isBarbell = m.category === "alaraaja";
+                const raw = currentE1RM * 0.60;
+                suggestedLoad = isBarbell ? Math.round(raw / 2.5) * 2.5 : Math.round(raw * 2) / 2;
+                loadDetail = ` @ ${suggestedLoad} kg (60 % e1RM)`;
+              }
+            }
+          }
+        } catch (e) { /* ignore */ }
+      }
+      // 4. Default 3×10 (yleinen accessory)
+      return {
+        sets: 3,
+        reps: 10,
+        targetVx: null,
+        loadKg: suggestedLoad,
+        source: "default",
+        sourceDetail: `Default 3×10${loadDetail}`,
+      };
+    };
+
+    // Esivalmistele suositukset listamodaalille
+    const optionsWithSugg = options.map(m => ({ m, sugg: suggestParamsForMovement(m) }));
     const movIdx = await showListModal(
       "Lisää liike",
-      options.map(m => ({ icon: "🔹", label: m.name, desc: m.category }))
+      optionsWithSugg.map(({ m, sugg }, i) => ({
+        icon: i < sameCategory.length ? "✅" : "🔹",
+        label: m.name,
+        desc: `${m.category} · ${sugg.sourceDetail}`,
+      }))
     );
-    if (movIdx !== null && movIdx >= 0 && movIdx < options.length) {
-      const m = options[movIdx];
-      const sr = await showSetsRepsModal(`${m.name} — Sarjat & toistot`);
+    if (movIdx !== null && movIdx >= 0 && movIdx < optionsWithSugg.length) {
+      const { m, sugg } = optionsWithSugg[movIdx];
+      const sr = await showSetsRepsModal(
+        `${m.name} — ${sugg.sourceDetail}`,
+        sugg.sets,
+        sugg.reps
+      );
       if (!sr) return;
 
-      // v4.31.3: Sijaintivalinta — kun lisättävä liike on SAMAA kategoriaa kuin
-      // primary (esim. molemmat vertikaalivetoja), tarjoa "primaryn perään"
-      // -vaihtoehto. Eri kategoria → loppuun (oletus, ei turhaa modaalia).
-      // Käyttäjäpalaute v4.31.2: "haluan lisätä manuaalisesti maanantain pääliikkeen
-      // perään korkeita leukoja, aivan kuten oli aiemmin".
-      const primary = w.exercises.find(ex => ex.role === "primary");
-      const sameCategory = primary && primary.category === m.category;
-      let insertAt = w.exercises.length; // default: loppuun
-      if (sameCategory) {
+      // v4.31.3: Sijaintivalinta primaryn perään / loppuun
+      const sameCatAsPrimary = primary && primary.category === m.category;
+      let insertAt = w.exercises.length;
+      if (sameCatAsPrimary) {
         const positionIdx = await showListModal(
           `Mihin ${m.name} lisätään?`,
           [
@@ -7310,13 +7410,10 @@ function bindWorkoutEvents() {
             { icon: "⬇", label: "Treenin loppuun", desc: "Viimeiseksi liikkeeksi (oletus)" },
           ]
         );
-        if (positionIdx === null) return; // peruttu sijaintimodaalissa → ei lisätä
+        if (positionIdx === null) return;
         if (positionIdx === 0) {
-          // Primaryn perään
           const primaryIdx = w.exercises.findIndex(ex => ex.role === "primary");
           insertAt = primaryIdx >= 0 ? primaryIdx + 1 : 1;
-          // Jos primaryllä on backoff-/secondary-slotteja samalla movementId:llä
-          // (top single tms.), niiden jälkeen on vielä parempi paikka:
           while (insertAt < w.exercises.length &&
                  (w.exercises[insertAt].role === "backoff" || w.exercises[insertAt].role === "secondary") &&
                  w.exercises[insertAt].movementId === primary.movementId) {
@@ -7325,21 +7422,22 @@ function bindWorkoutEvents() {
         }
       }
 
+      // v4.32.0: käytä suositusta Vx + paino -arvoille (kun käyttäjä syötti vain sets+reps)
       const newExercise = {
         movementId: m.movementId,
         name: m.name,
         category: m.category,
         originalCategory: m.category,
         role: "accessory",
-        loadKg: null,
-        targetVx: null,          // v4.27.9: manuaalinen accessory → fallback generic
+        loadKg: sugg.loadKg,
+        targetVx: sugg.targetVx,
         reps: sr.reps,
         progressSuggestion: "hold",
         sets: Array.from({ length: sr.sets }, (_, i) => ({
           idx: i,
           targetReps: sr.reps,
-          targetVx: null,
-          loadKg: null,
+          targetVx: sugg.targetVx,
+          loadKg: sugg.loadKg,
           reps: null,
           actualVx: null,
           velocity: null,
@@ -7347,13 +7445,12 @@ function bindWorkoutEvents() {
         })),
       };
       w.exercises.splice(insertAt, 0, newExercise);
-      // v4.31.3: Pidä currentExerciseIdx oikein — jos uusi liike työnnetään
-      // nykyisen indeksin alle, kasvata indeksiä jotta käyttäjä pysyy samassa
-      // liikkeessä (ei "hyppää taaksepäin" jo tehtyyn).
       if (insertAt <= w.currentExerciseIdx) {
         w.currentExerciseIdx++;
       }
-      showToast(`${m.name} lisätty${insertAt < w.exercises.length - 1 ? ` (${insertAt + 1}. liikkeeksi)` : ""}`, "ok");
+      const positionLabel = insertAt < w.exercises.length - 1 ? ` (${insertAt + 1}. liikkeeksi)` : "";
+      const suggSummary = sugg.source !== "default" ? ` · ${sugg.source === "history" ? "📜 historia" : "🎯 katalogi"}` : "";
+      showToast(`${m.name} lisätty${positionLabel}${suggSummary}`, "ok");
       render();
     }
   });
