@@ -7686,16 +7686,62 @@ function bindWorkoutEvents() {
     });
   });
 
-  // Swap exercise (slot-aware in v4.11)
+  // Swap exercise (slot-aware in v4.11, eliittitaso v4.32.1)
   const swapBtn = $("#btn-swap-exercise");
   if (swapBtn) swapBtn.addEventListener("click", async () => {
     const exercise = w.exercises[w.currentExerciseIdx];
     if (!exercise) return;
 
+    // v4.32.1: Eliittitason data-pohjainen swap
+    // - Tunnistaa stagnaation nykyisellä liikkeellä (e1RM-trend < 0 viim. 3 vk)
+    // - Järjestää slot-variantit kasvuprosentin mukaan (paras ensin)
+    // - Näyttää datan: kasvu-% + treenikertojen määrä per variantti
+    const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
+
+    // Apufunktio: laske kasvuprosentti viim. 6 viikon ajalta
+    const computeMovementGrowth = (movId, isPrimaryHint = false) => {
+      const sets = (state.allSets || []).filter(s => s.movementId === movId);
+      if (sets.length < 2) return { growthPct: null, lastE1RM: null, sessions: 0, isStagnating: false };
+      const movDef = state.movements.find(m => m.movementId === movId);
+      const isPrim = movDef?.isPrimary ?? isPrimaryHint;
+      const history = computeMovementE1RMHistory(sets, state.sessions, isPrim, bw);
+      if (history.length < 2) return { growthPct: null, lastE1RM: null, sessions: history.length, isStagnating: false };
+      // 21 päivän (3 vk) ikkunan trendi
+      const cutoffMs = Date.now() - 21 * 24 * 60 * 60 * 1000;
+      const recent = history.filter(h => new Date(h.dateISO).getTime() >= cutoffMs);
+      const ref = recent.length >= 2 ? recent : history.slice(-Math.min(history.length, 6));
+      if (ref.length < 2) return { growthPct: null, lastE1RM: history[history.length - 1].e1rm, sessions: history.length, isStagnating: false };
+      const first = ref[0].e1rm;
+      const last = ref[ref.length - 1].e1rm;
+      const growthPct = first > 0 ? ((last - first) / first) * 100 : null;
+      const isStagnating = growthPct !== null && growthPct <= 0.5 && ref.length >= 3; // ≤0.5 % 3+ datapisteessä = stagnaatio
+      return { growthPct, lastE1RM: last, sessions: history.length, isStagnating };
+    };
+
+    // Tarkista stagnaatio nykyisellä liikkeellä
+    const currentGrowth = computeMovementGrowth(exercise.movementId);
+    const stagnationWarning = currentGrowth.isStagnating
+      ? `⚠️ ${exercise.name} — kehitys ${currentGrowth.growthPct.toFixed(1)} % viim. 3 vk (jumittaa)`
+      : "";
+
     // Slot-driven: offer slot variants first, then remainder of library
     if (exercise.slotId && exercise.slotVariants?.length) {
       const variants = exercise.slotVariants.filter(n => n !== exercise.name);
       const variantMovs = variants.map(n => state.movements.find(m => m.name === n)).filter(Boolean);
+
+      // v4.32.1: Laske kasvuprosentti per variantti, järjestä paras ensin
+      const variantRanking = variantMovs.map(m => ({
+        mov: m,
+        ...computeMovementGrowth(m.movementId, m.isPrimary),
+      }));
+      variantRanking.sort((a, b) => {
+        // Korkein kasvu ensin; ne joilla on dataa ennen niitä joilla ei ole
+        if (a.growthPct !== null && b.growthPct !== null) return b.growthPct - a.growthPct;
+        if (a.growthPct !== null) return -1;
+        if (b.growthPct !== null) return 1;
+        return 0;
+      });
+
       const variantNames = new Set(variantMovs.map(m => m.name));
       const sameCat = state.movements.filter(m =>
         m.category === exercise.category && !variantNames.has(m.name) && m.name !== exercise.name
@@ -7703,14 +7749,36 @@ function bindWorkoutEvents() {
       const others = state.movements.filter(m =>
         m.category !== exercise.category && !variantNames.has(m.name) && m.name !== exercise.name
       );
-      const opts = [...variantMovs, ...sameCat, ...others];
+      const opts = [...variantRanking.map(v => v.mov), ...sameCat, ...others];
+
+      // Modaalin otsikko: stagnaatio-varoitus jos havaittu
+      const modalTitle = stagnationWarning
+        ? `${stagnationWarning}\n\nVaihda ${exercise.slotFunction || exercise.name}`
+        : `Vaihda ${exercise.slotFunction || exercise.name}`;
+
       const idx = await showListModal(
-        `Vaihda ${exercise.slotFunction || exercise.name}`,
-        opts.map((m, i) => ({
-          icon: i < variantMovs.length ? "🎯" : m.category === exercise.category ? "✅" : "🔹",
-          label: m.name,
-          desc: i < variantMovs.length ? "Slot-variantti (sama funktio)" : m.category,
-        }))
+        modalTitle,
+        opts.map((m, i) => {
+          const ranking = variantRanking.find(v => v.mov.movementId === m.movementId);
+          if (ranking) {
+            // Slot-variantti: näytä kasvu-data
+            let icon, desc;
+            if (ranking.growthPct !== null) {
+              const sign = ranking.growthPct >= 0 ? "+" : "";
+              icon = ranking.growthPct >= 2 ? "📈" : ranking.growthPct >= 0 ? "🎯" : "📉";
+              desc = `Slot-variantti · ${sign}${ranking.growthPct.toFixed(1)} % kehitys, ${ranking.sessions} treeni${ranking.sessions !== 1 ? "ä" : ""}${ranking.lastE1RM ? `, e1RM ${ranking.lastE1RM.toFixed(0)} kg` : ""}`;
+            } else {
+              icon = "🎯";
+              desc = ranking.sessions === 0 ? "Slot-variantti · ei vielä dataa" : "Slot-variantti · liian vähän dataa trendiin";
+            }
+            return { icon, label: m.name, desc };
+          }
+          return {
+            icon: m.category === exercise.category ? "✅" : "🔹",
+            label: m.name,
+            desc: m.category === exercise.category ? `${m.category} (sama kategoria)` : m.category,
+          };
+        })
       );
       if (idx !== null && idx >= 0 && idx < opts.length) {
         const chosen = opts[idx];
@@ -7729,10 +7797,11 @@ function bindWorkoutEvents() {
             variantIndex: variantIdx >= 0 ? variantIdx : null,
             locked: existing.locked || false,
             swappedAt: todayISO(),
-            reason: "Käyttäjän valinta",
+            reason: currentGrowth.isStagnating ? "Stagnaatio (auto-detected)" : "Käyttäjän valinta",
           };
           await saveMesocycle(state.mesocycle);
-          showToast(`Vaihdettu ${chosen.name} — tallennettu ohjelmaan`, "ok");
+          const swapNote = currentGrowth.isStagnating ? " (stagnaatio→vaihto)" : "";
+          showToast(`Vaihdettu ${chosen.name}${swapNote} — tallennettu ohjelmaan`, "ok");
         }
         render();
       }
