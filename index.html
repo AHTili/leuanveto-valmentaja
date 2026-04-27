@@ -7293,7 +7293,39 @@ function bindWorkoutEvents() {
       const m = options[movIdx];
       const sr = await showSetsRepsModal(`${m.name} — Sarjat & toistot`);
       if (!sr) return;
-      w.exercises.push({
+
+      // v4.31.3: Sijaintivalinta — kun lisättävä liike on SAMAA kategoriaa kuin
+      // primary (esim. molemmat vertikaalivetoja), tarjoa "primaryn perään"
+      // -vaihtoehto. Eri kategoria → loppuun (oletus, ei turhaa modaalia).
+      // Käyttäjäpalaute v4.31.2: "haluan lisätä manuaalisesti maanantain pääliikkeen
+      // perään korkeita leukoja, aivan kuten oli aiemmin".
+      const primary = w.exercises.find(ex => ex.role === "primary");
+      const sameCategory = primary && primary.category === m.category;
+      let insertAt = w.exercises.length; // default: loppuun
+      if (sameCategory) {
+        const positionIdx = await showListModal(
+          `Mihin ${m.name} lisätään?`,
+          [
+            { icon: "⬆", label: "Heti pääliikkeen perään", desc: `${primary.name} → ${m.name} → muut accessoryt` },
+            { icon: "⬇", label: "Treenin loppuun", desc: "Viimeiseksi liikkeeksi (oletus)" },
+          ]
+        );
+        if (positionIdx === null) return; // peruttu sijaintimodaalissa → ei lisätä
+        if (positionIdx === 0) {
+          // Primaryn perään
+          const primaryIdx = w.exercises.findIndex(ex => ex.role === "primary");
+          insertAt = primaryIdx >= 0 ? primaryIdx + 1 : 1;
+          // Jos primaryllä on backoff-/secondary-slotteja samalla movementId:llä
+          // (top single tms.), niiden jälkeen on vielä parempi paikka:
+          while (insertAt < w.exercises.length &&
+                 (w.exercises[insertAt].role === "backoff" || w.exercises[insertAt].role === "secondary") &&
+                 w.exercises[insertAt].movementId === primary.movementId) {
+            insertAt++;
+          }
+        }
+      }
+
+      const newExercise = {
         movementId: m.movementId,
         name: m.name,
         category: m.category,
@@ -7313,8 +7345,15 @@ function bindWorkoutEvents() {
           velocity: null,
           completed: false,
         })),
-      });
-      showToast(`${m.name} lisätty`, "ok");
+      };
+      w.exercises.splice(insertAt, 0, newExercise);
+      // v4.31.3: Pidä currentExerciseIdx oikein — jos uusi liike työnnetään
+      // nykyisen indeksin alle, kasvata indeksiä jotta käyttäjä pysyy samassa
+      // liikkeessä (ei "hyppää taaksepäin" jo tehtyyn).
+      if (insertAt <= w.currentExerciseIdx) {
+        w.currentExerciseIdx++;
+      }
+      showToast(`${m.name} lisätty${insertAt < w.exercises.length - 1 ? ` (${insertAt + 1}. liikkeeksi)` : ""}`, "ok");
       render();
     }
   });
