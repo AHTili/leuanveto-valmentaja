@@ -2676,7 +2676,10 @@ function predictE1RMEndOfProgram(history, currentWeekNum, totalWeeks = 16) {
  */
 function computeStreetliftingFinalProjection(historyByMovement, currentWeekNum, totalWeeks = 16) {
   if (!historyByMovement) return null;
-  const COMPETITION_LIFTS = ["Lisäpainoleuanveto", "Lisäpainodippi", "Takakyykky", "Maastaveto"];
+  // v4.32.7 bugfix: Maastaveto poistettu — streetlifting-kisaliikkeet ovat MU + Leuka + Dippi + Takakyykky.
+  // Maastaveto oli aiemmin virheellisesti listalla; ennuste-kortti näytti maavedon "kisaliikkeenä"
+  // streetlifting_16w-mesosyklissä vaikka mesosykli ei tue maavetoa kisaliikkeenä.
+  const COMPETITION_LIFTS = ["Lisäpainoleuanveto", "Muscle-up", "Lisäpainodippi", "Takakyykky"];
   const result = {};
   for (const liftName of COMPETITION_LIFTS) {
     const history = historyByMovement[liftName];
@@ -2717,13 +2720,14 @@ function computeStreetliftingFinalProjection(historyByMovement, currentWeekNum, 
  */
 function computeStreetliftingOpenerStrategy(e1rmsByMovementName) {
   if (!e1rmsByMovementName || typeof e1rmsByMovementName !== "object") return null;
-  // SLRY/SSW/IPL-kilpailu­liikkeet — kaikki neljä, käyttäjä valitsee mitkä koskevat
-  // hänen kisaformaattinsa (esim. SSW: MU + leuka + dippi + kyykky, ei maavetoa)
+  // v4.32.7 bugfix: streetlifting-kisaliikkeet ovat MU + Leuka + Dippi + Takakyykky.
+  // SSW-formaatti ei sisällä maavetoa. Aiemmassa listassa oli Maastaveto mutta ei
+  // Muscle-upia — molemmat virheelliset. Korjattu kanoniseen streetlifting-listaan.
   const COMPETITION_LIFTS = [
     "Lisäpainoleuanveto",
+    "Muscle-up",
     "Lisäpainodippi",
     "Takakyykky",
-    "Maastaveto",
   ];
   // Eliittikäytäntö (Helms, Bromley, IPF World Classic 2021 -data):
   //   Opener:  88–90 % 1RM (= "viimeisin treenisingle prep-blokin lopussa")

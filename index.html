@@ -2193,7 +2193,10 @@ function renderDashboard() {
   const openerStrategyHTML = (() => {
     if (meso?.type !== "streetlifting_16w") return "";
     if (typeof weekNum !== "number" || weekNum < 13) return "";
-    const COMP_LIFTS = ["Lisäpainoleuanveto", "Lisäpainodippi", "Takakyykky", "Maastaveto"];
+    // v4.32.7 bugfix: aiemmin virheellinen lista [Leuka, Dippi, Kyykky, Maastaveto] —
+    // streetlifting-kisaliikkeet ovat MU + Leuka + Dippi + Takakyykky (ei maavetoa, MU mukana).
+    // Käytetään kanonista KISALIIKKEET_NAMES-listaa joka on muutenkin sivun käytössä.
+    const COMP_LIFTS = KISALIIKKEET_NAMES;
     const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
     const e1rms = {};
     for (const liftName of COMP_LIFTS) {
@@ -2210,9 +2213,9 @@ function renderDashboard() {
     if (!strategy) return "";
     const liftLabels = {
       "Lisäpainoleuanveto": "Leuanveto",
+      "Muscle-up": "MU",
       "Lisäpainodippi": "Dippi",
       "Takakyykky": "Kyykky",
-      "Maastaveto": "Maaveto",
     };
     const rowsHTML = Object.entries(strategy).map(([liftName, s]) => `
       <div style="display:grid;grid-template-columns:1fr repeat(3, 1fr);gap:6px;padding:6px 0;border-top:1px solid var(--border);font-size:13px">
@@ -5293,10 +5296,11 @@ function renderProgress() {
       const currentWeek = typeof rec?.weekNum === "number" ? rec.weekNum : null;
       if (!currentWeek) return "";
       const totalWeeks = meso.weekCount || 16;
-      // Kerää e1RM-historia per kilpailuliike (Maaveto mukaan jos historiaa)
+      // Kerää e1RM-historia per kilpailuliike — streetlifting-kisaliikkeet (MU + Leuka + Dippi + Kyykky).
+      // v4.32.7 bugfix: aiemmassa listassa oli Maastaveto (väärin) mutta ei Muscle-upia (väärin).
       // v4.32.4 (F): jos sets-historia tyhjä, fallback PR-rekisteriin → ennuste-kortti
       // aktivoituu vk 1:llä yhdellä mittauspisteellä (PR), ei vasta 3+ treenin jälkeen.
-      const COMP_LIFTS = ["Lisäpainoleuanveto", "Lisäpainodippi", "Takakyykky", "Maastaveto"];
+      const COMP_LIFTS = KISALIIKKEET_NAMES;
       const historyByMovement = {};
       const todayStr = todayISO();
       for (const liftName of COMP_LIFTS) {
@@ -5323,9 +5327,9 @@ function renderProgress() {
       if (!projection) return "";
       const liftLabels = {
         "Lisäpainoleuanveto": "Leuanveto",
+        "Muscle-up": "MU",
         "Lisäpainodippi": "Dippi",
         "Takakyykky": "Kyykky",
-        "Maastaveto": "Maaveto",
       };
       const confidenceLabels = {
         "high": "vahva",
