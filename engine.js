@@ -901,24 +901,22 @@ function getAccessoryBlockScalar(weekNum) {
 //
 // Returns: { suggestedDeltaKg, reason, avgVx }
 
-// v4.27.16: MU autoregulation Vx-gradient laajennettu.
+// v4.27.16: MU autoregulation Vx-gradient laajennettu (alkuperäinen).
+// v4.32.9 M15: Gradient pienennetty puoleen — MU on suhteellisesti raskaampi liike
+// kuin takakyykky. 91 kg atleetti, MU 1RM ≈ BW + 30-50 kg lisäpaino → +2.5 kg lisäys
+// = 5-8% suhteellisesti, kun BS:ssä +5 kg / 200 kg = 2.5%. Eli MU:n +2.5 kg on
+// funktionaalisesti yhtä iso askel kuin BS:n +5 kg. Pere Coll käytännössä +1-2.5 kg
+// microloading WPU/MU:hun; Schulz (KoW) RPE-pohjainen 1.25-2.5 kg WPU/Dipissä,
+// MU vielä konservatiivisemmin. Tutkimus: ei peer-reviewed-RCT MU-spesifisesti,
+// mutta calisthenics-coaching-konsensus tukee pienempää askelta skill-painotteisille
+// liikkeille.
 //
-// Aiempi v4.25 porrastus (−5 / −2.5 / 0 / +2.5) oli liian loiva kun atleetti
-// raportoi clearly "liian kevyt" (avgVx ≥ 4): ohjelma eteni vain 2.5 kg viikossa
-// vaikka signaali oli että varaa on. Uusi taso:
-//
-//   minVx === 0        → −5 kg   (failure reset — edell. session jokin sarja failure)
-//   avgVx ≥ 4 & min≥3  → +5 kg   (clearly easy, ei yhtäkään rajoja hipovaa sarjaa)
-//   avgVx ≥ 3          → +2.5 kg (all-easy, pieni varma askel)
-//   avgVx ≥ 2          →  0 kg   (optimal-hold, kuormitus kohdillaan)
-//   avgVx < 2          → −2.5 kg (liian raskas, kevennä)
-//
-// minVx ≥ 3 -lukitus estää tilanteen jossa 1 sarja oli V0-1 (rajoilla) mutta
-// muut V5 → avg nousee neljään harhaanjohtavasti. +5 kg saa tapahtua vain
-// kun kaikki 3 sarjaa olivat vähintään Vx 3 (selvä varuus).
-//
-// MU-spesifinen varmistus: +5 kg on suurin yksittäinen askel. MU on bimodaalinen
-// (onnistuu/ei onnistu), joten +10 kg / sessio olisi vaarallisesti iso kerralla.
+// Uusi taso:
+//   minVx === 0        → −2.5 kg (failure reset — pienempi pudotus kuin BS:ssä)
+//   avgVx ≥ 4 & min≥3  → +2.5 kg (clearly easy — entinen +5 jaettu kahteen)
+//   avgVx ≥ 3          → +1.25 kg (all-easy, microloading)
+//   avgVx ≥ 2          →  0 kg   (optimal-hold)
+//   avgVx < 2          → −1.25 kg (liian raskas, kevennä konservatiivisesti)
 function adjustMULoad(recentMUSets) {
   if (!recentMUSets || recentMUSets.length === 0) {
     return { suggestedDeltaKg: 0, reason: "no-history", avgVx: null };
@@ -931,11 +929,12 @@ function adjustMULoad(recentMUSets) {
   const minVx = Math.min(...varas);
   const avgVx = varas.reduce((a, b) => a + b, 0) / varas.length;
 
-  if (minVx === 0) return { suggestedDeltaKg: -5, reason: "failure-reset", avgVx };
-  if (avgVx >= 4 && minVx >= 3) return { suggestedDeltaKg: 5, reason: "very-easy-big-jump", avgVx };
-  if (avgVx >= 3) return { suggestedDeltaKg: 2.5, reason: "all-easy-progress", avgVx };
+  // v4.32.9 M15: gradient pienennetty puoleen MU-spesifyydelle
+  if (minVx === 0) return { suggestedDeltaKg: -2.5, reason: "failure-reset", avgVx };
+  if (avgVx >= 4 && minVx >= 3) return { suggestedDeltaKg: 2.5, reason: "very-easy-big-jump", avgVx };
+  if (avgVx >= 3) return { suggestedDeltaKg: 1.25, reason: "all-easy-progress", avgVx };
   if (avgVx >= 2) return { suggestedDeltaKg: 0, reason: "optimal-hold", avgVx };
-  return { suggestedDeltaKg: -2.5, reason: "too-hard-backoff", avgVx };
+  return { suggestedDeltaKg: -1.25, reason: "too-hard-backoff", avgVx };
 }
 
 // ═══════════════════════════════════════════════════════════════
