@@ -3148,6 +3148,404 @@ const SUGGESTED_NEXT_TEMPLATE = {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// v4.34.0 AI-BLOCK-TUNING (deload-pohjainen analyysipaketti)
+// ═══════════════════════════════════════════════════════════════
+//
+// Generoi rikkaan analyysipaketin atleetin viedäkseen Claude/ChatGPT:lle
+// deload-viikolla (vk 4, 8, 12). AI palauttaa block-tuning-suosituksia
+// kolmessa kategoriassa:
+//   A) Sovellus-tason muutokset (atleetti applaa UI:ssa: slot-swap, e1RM, BW)
+//   B) Rakenteelliset muutokset (Claude Code -tasolla: %-progressio,
+//      set/rep, backoff-tyyli, engine-säätö)
+//   C) Mentaalinen koutsaus (atleetti sisäistää: tekniikkavinkit,
+//      pattern-tunnistus, riskimanagement)
+//
+// Output: { markdown, json, prompt, meta }
+//   markdown = atleetin luettava 1500-2000 sanan narratiivi
+//   json     = strukturoitu data Claude AI:lle ristivertailuun
+//   prompt   = valmis copy-paste AI-prompt jossa kaikki konteksti
+
+function generateBlockTuningPackage(ctx) {
+  const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings, decisionTraces } = ctx;
+
+  if (!mesocycle || mesocycle.type !== "streetlifting_16w") {
+    return { error: "AI-Block-Tuning vaatii streetlifting_16w-mesosyklin." };
+  }
+
+  const wk = currentWeekNum;
+  // Deload-tunnistus: vk 4, 8, 12. Vk 16 (kisaviikko) ei generoi.
+  const deloadWeeks = [4, 8, 12];
+  if (!deloadWeeks.includes(wk)) {
+    return {
+      error: `AI-Block-Tuning aktivoituu vain deload-viikoilla (vk 4, 8, 12). Olet vk ${wk}. Seuraava deload: vk ${deloadWeeks.find(d => d > wk) || "16 (kisaviikko)"}.`
+    };
+  }
+
+  // Blokki-rakenne
+  const blockMap = {
+    4:  { prevBlock: "Foundation",   prevWeeks: [1,2,3], nextBlock: "Strength",  nextWeeks: [5,6,7] },
+    8:  { prevBlock: "Strength",     prevWeeks: [5,6,7], nextBlock: "Intensity", nextWeeks: [9,10,11] },
+    12: { prevBlock: "Intensity",    prevWeeks: [9,10,11], nextBlock: "Peaking",   nextWeeks: [13,14] },
+  };
+  const block = blockMap[wk];
+
+  // ── Atleettiprofile ──
+  const cal = mesocycle.streetliftingConfig?.calibration || {};
+  const bw = settings?.bodyweightKg || 91;
+  const profile = {
+    bw,
+    weekCount: mesocycle.weekCount || 16,
+    competitionDate: mesocycle.streetliftingConfig?.competitionDate || "elokuu 2026",
+    calibration: cal,
+    prs: (prs || []).map(p => ({ movement: p.movementName, value: p.value, dateISO: p.dateISO, context: p.context })),
+  };
+
+  // ── Edellisen blokin sessio-data ──
+  const prevBlockSessions = (sessions || []).filter(s => {
+    const sw = getMesocycleWeek(mesocycle, s.dateISO);
+    return block.prevWeeks.includes(sw);
+  }).sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+
+  const sessionAnalysis = prevBlockSessions.map(sess => {
+    const sessSets = (allSets || []).filter(set => set.sessionId === sess.sessionId);
+    const sw = getMesocycleWeek(mesocycle, sess.dateISO);
+    const slots = sessSets.map(set => ({
+      movementName: set.movementName,
+      role: set.setRole,
+      prescribed: { reps: set.targetReps, vx: set.targetVx, loadKg: set.targetLoadKg, loadPct: set.targetLoadPct },
+      actual: { reps: set.reps, actualVx: set.actualVx, loadKg: set.externalLoadKg, velocity: set.velocityMs },
+      vxDelta: (set.targetVx != null && set.actualVx != null) ? (set.targetVx - set.actualVx) : null,
+    }));
+    return {
+      week: sw,
+      dateISO: sess.dateISO,
+      label: sess.label,
+      dayType: sess.dayType,
+      slots,
+      notes: sess.notes || null,
+    };
+  });
+
+  // ── e1RM-trendit per kisaliike ──
+  const compLifts = ["Lisäpainoleuanveto", "Muscle-up", "Lisäpainodippi", "Takakyykky"];
+  const e1rmTrends = {};
+  for (const liftName of compLifts) {
+    const liftSets = (allSets || []).filter(set => set.movementName === liftName && set.externalLoadKg > 0);
+    if (liftSets.length === 0) continue;
+    const sortedSets = liftSets.sort((a, b) => (a.timestamp || a.dateISO || "").localeCompare(b.timestamp || b.dateISO || ""));
+    const dataPoints = sortedSets.slice(-12).map(s => {
+      const vara = s.actualVx ?? s.targetVx ?? 1;
+      const e1rm = liftName === "Takakyykky"
+        ? e1rmAccessory(s.externalLoadKg || 0, s.reps || 1, vara)
+        : e1rmSystem(bw, s.externalLoadKg || 0, s.reps || 1, vara);
+      return { dateISO: s.dateISO, e1rm: Math.round(e1rm * 10) / 10, load: s.externalLoadKg, reps: s.reps, vx: s.actualVx };
+    });
+    if (dataPoints.length >= 2) {
+      const first = dataPoints[0].e1rm;
+      const latest = dataPoints[dataPoints.length - 1].e1rm;
+      const deltaPct = first > 0 ? ((latest - first) / first) * 100 : 0;
+      e1rmTrends[liftName] = {
+        first, latest, deltaPct: Math.round(deltaPct * 10) / 10,
+        dataPoints,
+      };
+    }
+  }
+
+  // ── HRV / MPV / BW-trendit ──
+  const blockMeasurements = (measurements || []).filter(m => {
+    const mw = getMesocycleWeek(mesocycle, m.dateISO);
+    return block.prevWeeks.includes(mw) || mw === wk;
+  }).sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+
+  const trends = {
+    hrv: blockMeasurements.filter(m => m.hrv != null).map(m => ({ dateISO: m.dateISO, value: m.hrv })),
+    mpv: blockMeasurements.filter(m => m.mpv != null).map(m => ({ dateISO: m.dateISO, value: m.mpv })),
+    bodyweight: blockMeasurements.filter(m => m.bodyweightKg != null).map(m => ({ dateISO: m.dateISO, value: m.bodyweightKg })),
+  };
+
+  // ── Anomaliat ──
+  const anomalies = [];
+  for (const sess of sessionAnalysis) {
+    for (const slot of sess.slots) {
+      if (slot.actual.actualVx === 0 && slot.role === "primary") {
+        anomalies.push({ type: "failure-primary", week: sess.week, day: sess.label, movement: slot.movementName, prescribed: slot.prescribed, actual: slot.actual });
+      }
+      if (slot.vxDelta != null && Math.abs(slot.vxDelta) >= 2 && slot.role === "primary") {
+        anomalies.push({ type: "vx-mismatch", week: sess.week, day: sess.label, movement: slot.movementName, vxDelta: slot.vxDelta, prescribed: slot.prescribed, actual: slot.actual });
+      }
+    }
+  }
+
+  // ── Aggregaatit ──
+  const totalSessions = sessionAnalysis.length;
+  const completedSets = sessionAnalysis.reduce((sum, s) => sum + s.slots.length, 0);
+  const vxHits = sessionAnalysis.reduce((acc, s) => {
+    for (const slot of s.slots) {
+      if (slot.prescribed.vx != null && slot.actual.actualVx != null) {
+        acc.total++;
+        // Hit: actual within ±1 of target
+        if (Math.abs(slot.vxDelta || 0) <= 1) acc.hits++;
+      }
+    }
+    return acc;
+  }, { hits: 0, total: 0 });
+  const aggregates = {
+    totalSessions,
+    completedSets,
+    vxHitRate: vxHits.total > 0 ? Math.round((vxHits.hits / vxHits.total) * 100) : null,
+    failureCount: anomalies.filter(a => a.type === "failure-primary").length,
+  };
+
+  // ── Seuraavan blokin prescribed ──
+  const wp = mesocycle.weekPlans || [];
+  const nextBlockPrescribed = block.nextWeeks.map(nw => {
+    const wkPlan = wp[nw - 1];
+    if (!wkPlan?.days) return null;
+    return {
+      week: nw,
+      days: wkPlan.days.map(d => ({
+        label: d.label,
+        primary: (d.slots || []).find(s => s.role === "primary"),
+        backoff: (d.slots || []).find(s => s.role === "backoff"),
+        topSet: (d.slots || []).find(s => s.role === "secondary" || s.role === "calibration"),
+      })),
+    };
+  }).filter(Boolean);
+
+  // ── Markdown-narratiivi (atleetille) ──
+  const markdown = buildMarkdownNarrative({ profile, block, currentWeek: wk, sessionAnalysis, e1rmTrends, trends, anomalies, aggregates, nextBlockPrescribed });
+
+  // ── JSON-data (AI:lle) ──
+  const json = {
+    meta: {
+      version: "4.34.0",
+      generatedAt: new Date().toISOString(),
+      currentWeek: wk,
+      blockTransition: `${block.prevBlock} → ${block.nextBlock}`,
+    },
+    profile,
+    completedBlock: {
+      name: block.prevBlock,
+      weeks: block.prevWeeks,
+      sessions: sessionAnalysis,
+      e1rmTrends,
+      trends,
+      anomalies,
+      aggregates,
+    },
+    upcomingBlock: {
+      name: block.nextBlock,
+      weeks: block.nextWeeks,
+      prescribed: nextBlockPrescribed,
+    },
+  };
+
+  // ── AI-prompt (valmis copy-paste) ──
+  const prompt = buildAiPrompt({ profile, block, currentWeek: wk, json, markdown });
+
+  return {
+    markdown,
+    json,
+    prompt,
+    meta: {
+      currentWeek: wk,
+      blockTransition: `${block.prevBlock} → ${block.nextBlock}`,
+      generatedAt: new Date().toISOString(),
+      sessionsAnalyzed: totalSessions,
+      anomaliesFound: anomalies.length,
+    },
+  };
+}
+
+function buildMarkdownNarrative({ profile, block, currentWeek, sessionAnalysis, e1rmTrends, trends, anomalies, aggregates, nextBlockPrescribed }) {
+  const lines = [];
+  lines.push(`# AI-Block-Tuning -analyysi — ${block.prevBlock} → ${block.nextBlock} (vk ${currentWeek})`);
+  lines.push("");
+  lines.push(`**Generoitu**: ${new Date().toLocaleDateString("fi-FI")}`);
+  lines.push(`**Mesosykli**: streetlifting_16w, vk ${currentWeek}/16`);
+  lines.push(`**Atleettiprofile**: ${profile.bw} kg bw, K=${profile.calibration.kyykkyExtKg} kg, L=${profile.calibration.leukaExtKg} kg, D=${profile.calibration.dippiExtKg} kg`);
+  lines.push("");
+
+  lines.push(`## Edellisen blokin yhteenveto (${block.prevBlock}, vk ${block.prevWeeks.join("-")})`);
+  lines.push("");
+  lines.push(`- Sessioita kirjattu: **${aggregates.totalSessions}**`);
+  lines.push(`- Sarjoja yhteensä: **${aggregates.completedSets}**`);
+  if (aggregates.vxHitRate != null) {
+    lines.push(`- Vx-target-hit-rate (±1): **${aggregates.vxHitRate}%**`);
+  }
+  lines.push(`- Failure-tapauksia (V0 primary): **${aggregates.failureCount}**`);
+  lines.push("");
+
+  if (Object.keys(e1rmTrends).length > 0) {
+    lines.push("### e1RM-trendit per kisaliike");
+    lines.push("");
+    lines.push("| Liike | Lähtö | Loppu | Δ% |");
+    lines.push("|---|---|---|---|");
+    for (const [name, t] of Object.entries(e1rmTrends)) {
+      const arrow = t.deltaPct > 0 ? "📈" : t.deltaPct < 0 ? "📉" : "→";
+      lines.push(`| ${name} | ${t.first} kg | ${t.latest} kg | ${arrow} ${t.deltaPct >= 0 ? "+" : ""}${t.deltaPct}% |`);
+    }
+    lines.push("");
+  }
+
+  if (trends.hrv.length > 0 || trends.mpv.length > 0 || trends.bodyweight.length > 0) {
+    lines.push("### Recovery-/mittari-trendit");
+    lines.push("");
+    if (trends.hrv.length > 0) {
+      const hrvFirst = trends.hrv[0].value, hrvLast = trends.hrv[trends.hrv.length - 1].value;
+      const hrvDelta = hrvFirst > 0 ? Math.round(((hrvLast - hrvFirst) / hrvFirst) * 1000) / 10 : 0;
+      lines.push(`- **HRV**: ${trends.hrv.length} mittausta, ${hrvFirst.toFixed(1)} → ${hrvLast.toFixed(1)} (${hrvDelta >= 0 ? "+" : ""}${hrvDelta}%)`);
+    }
+    if (trends.mpv.length > 0) {
+      const mpvFirst = trends.mpv[0].value, mpvLast = trends.mpv[trends.mpv.length - 1].value;
+      const mpvDelta = mpvFirst > 0 ? Math.round(((mpvLast - mpvFirst) / mpvFirst) * 1000) / 10 : 0;
+      lines.push(`- **MPV** (yläraaja-readiness): ${trends.mpv.length} mittausta, ${mpvFirst.toFixed(2)} → ${mpvLast.toFixed(2)} m/s (${mpvDelta >= 0 ? "+" : ""}${mpvDelta}%)`);
+    }
+    if (trends.bodyweight.length > 0) {
+      const bwFirst = trends.bodyweight[0].value, bwLast = trends.bodyweight[trends.bodyweight.length - 1].value;
+      const bwDelta = Math.round((bwLast - bwFirst) * 10) / 10;
+      lines.push(`- **Bodyweight**: ${bwFirst} → ${bwLast} kg (${bwDelta >= 0 ? "+" : ""}${bwDelta} kg)`);
+    }
+    lines.push("");
+  }
+
+  if (anomalies.length > 0) {
+    lines.push("### Anomaliat / risk-flags");
+    lines.push("");
+    for (const a of anomalies.slice(0, 8)) {
+      if (a.type === "failure-primary") {
+        lines.push(`- 🔴 **Failure (V0)** vk ${a.week} ${a.day}: ${a.movement} prescribed Vx${a.prescribed.vx}, actual V0 — paino oli liian raskas`);
+      } else if (a.type === "vx-mismatch") {
+        const direction = a.vxDelta > 0 ? "raskaampaa kuin target" : "kevyempää kuin target";
+        lines.push(`- ⚠️ **Vx-mismatch** vk ${a.week} ${a.day}: ${a.movement} target Vx${a.prescribed.vx}, actual V${a.actual.actualVx} (${a.vxDelta > 0 ? "+" : ""}${a.vxDelta} delta — ${direction})`);
+      }
+    }
+    lines.push("");
+  }
+
+  lines.push(`## Seuraava blokki (${block.nextBlock}, vk ${block.nextWeeks.join("-")})`);
+  lines.push("");
+  lines.push("Suunniteltu rakenne (prescribed):");
+  lines.push("");
+  for (const wk of nextBlockPrescribed) {
+    lines.push(`### Vk ${wk.week}`);
+    for (const d of wk.days) {
+      const p = d.primary;
+      const b = d.backoff;
+      const t = d.topSet;
+      const parts = [];
+      if (p) parts.push(`Primary: ${p.defaultMovementName} ${p.sets}×${p.reps} V${p.targetVx} @${Math.round((p.loadPct || 0) * 100)}%`);
+      if (b) parts.push(`Backoff: ${b.sets}×${b.reps} @${Math.round((b.loadPct || 0) * 100)}%`);
+      if (t) parts.push(`Top: ${t.note || ""}`);
+      lines.push(`- ${d.label}: ${parts.join(" | ")}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("---");
+  lines.push("");
+  lines.push("**Ohje**: vie tämä paketti Claude AI:lle (Claude.ai) tai ChatGPT:lle. Paste:aa AI-prompt, joka sisältää koko datan + kysymykset. AI palauttaa A/B/C-kategorisoidut suositukset.");
+  return lines.join("\n");
+}
+
+function buildAiPrompt({ profile, block, currentWeek, json, markdown }) {
+  return `KONTEKSTI:
+Streetlifter, ${profile.bw} kg bw, 15+ v kokemus.
+Mesosykli: streetlifting_16w, currently vk ${currentWeek}/16.
+Block-transition: ${block.prevBlock} → ${block.nextBlock}.
+Kisapäivä: ${profile.competitionDate}.
+Tavoite: takakyykky 200+ kg muscle memory -palautuksena.
+
+PR-historia: ${profile.prs.map(p => `${p.movement} ${p.value} kg (${p.context})`).join(", ") || "ei kirjattu"}
+
+DATA (edellinen blokki + recovery-trendit + anomaliat + seuraava blokki suunniteltuna):
+
+${markdown}
+
+═══════════════════════════════════════════════════════════════════
+RAW JSON (tarkka data):
+═══════════════════════════════════════════════════════════════════
+
+\`\`\`json
+${JSON.stringify(json, null, 2)}
+\`\`\`
+
+═══════════════════════════════════════════════════════════════════
+TEHTÄVÄ:
+═══════════════════════════════════════════════════════════════════
+
+Analysoi edellisen blokin (${block.prevBlock}, vk ${block.prevWeeks.join("-")}) suoritus
+ja ehdota seuraavan blokin (${block.nextBlock}, vk ${block.nextWeeks.join("-")})
+optimointia atleettispesifisesti.
+
+KÄYTÄ:
+- Pelland 2024, Refalo 2023, Robinson 2025, Helms 2018, Tuchscherer RTS,
+  Israetel JTS/RP, Bruusgaard 2010, Sánchez-Moreno 2017/2020, Plews 2013
+- Streetlifting-no-evidence-guard: jos kysymys streetlifting-spesifi
+  (SSW/SLRY) ja peer-reviewed-data ei löydy → mainitse eksplisiittisesti
+
+VASTAA TÄSSÄ FORMAATISSA (atleetti vie suositukset eri kategorioihin):
+
+\`\`\`json
+{
+  "blockExecutionVerdict": {
+    "summary": "1-2 lausetta yleisarvio",
+    "progressionRate": "actual vs predicted (%)",
+    "recoveryStatus": "GREEN | YELLOW | RED",
+    "concerns": ["list of risk flags"]
+  },
+
+  "categoryA_appOverrides": [
+    {
+      "type": "movement_swap | load_calibration | bodyweight_update | extra_deload | accessory_drop",
+      "details": "exact UI action atleetti tekee",
+      "rationale": "1-2 lausetta + sitaatti",
+      "priority": "high | medium | low"
+    }
+  ],
+
+  "categoryB_codeChanges": [
+    {
+      "type": "loadPct_adjust | sets_reps_adjust | backoff_style | engine_param | new_movement",
+      "scope": "vk X-Y, päivä, slot",
+      "from": "current value",
+      "to": "proposed value",
+      "rationale": "perustelut + sitaatti",
+      "priority": "high | medium | low",
+      "claudeCodePromptHint": "valmis prompt minulle (Claude Code) toteutusta varten"
+    }
+  ],
+
+  "categoryC_athleteCoaching": [
+    {
+      "topic": "technique | recovery | mental | nutrition | risk-management",
+      "observation": "mitä datasta nähdään",
+      "advice": "konkreettinen toiminta atleetille",
+      "rationale": "perustelut"
+    }
+  ],
+
+  "criticalQuestions": [
+    "kysymyksiä joihin Claude haluaa atleetin vastaavan ennen finaalin lukitsemista"
+  ],
+
+  "citations": [
+    "Tekijä Vuosi — relevantti löydös"
+  ]
+}
+\`\`\`
+
+OUTPUT-VAATIMUKSET:
+- Ole spesifi (kg, %, sets/reps tarkasti — ei yleistasoisia neuvoja)
+- Erottele vakaa konsensus / aktiivinen debate / heuristiikka
+- Kategoria B: anna minulle (Claude Code) tarpeeksi tietoa toteutukseen
+  ilman lisäkysymyksiä
+- Älä ehdota muutoksia jotka ovat jo toteutettu (esim. v4.32.9 M14
+  topSingleFirst — tarkista että et päällekkäistä työtä)
+- Älä myöntäile — jos block-execution oli puutteellinen, sano se`;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════
 
@@ -3180,6 +3578,8 @@ export {
   hrvReadiness,
   varaReadiness,
   upperBodyMpvReadiness,
+  // v4.34.0 AI-Block-Tuning
+  generateBlockTuningPackage,
   combineReadiness,
   // Mesocycle
   getMesocycleWeek,

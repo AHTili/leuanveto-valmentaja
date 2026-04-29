@@ -777,6 +777,8 @@ import {
   computeStreetliftingOpenerStrategy,
   // v4.30.3: ennuste edistymis-näkymälle
   predictE1RMEndOfProgram, computeStreetliftingFinalProjection,
+  // v4.34.0 AI-Block-Tuning
+  generateBlockTuningPackage,
   REST_RECOMMENDATIONS,
   pickRestForExercise,
   DEFAULT_VARIANT_MODIFIERS,
@@ -5619,6 +5621,190 @@ function downloadFile(filename, content, mime) {
   URL.revokeObjectURL(url);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// v4.34.0 AI-BLOCK-TUNING — modal, clipboard, history
+// ═══════════════════════════════════════════════════════════════
+
+const BLOCK_TUNING_HISTORY_KEY = "leve-coach-block-tuning-history";
+const BLOCK_TUNING_HISTORY_MAX = 5;
+
+function loadBlockTuningHistory() {
+  try {
+    const raw = localStorage.getItem(BLOCK_TUNING_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveBlockTuningSnapshot(pkg) {
+  try {
+    const history = loadBlockTuningHistory();
+    history.unshift({
+      meta: pkg.meta,
+      markdown: pkg.markdown,
+      json: pkg.json,
+      prompt: pkg.prompt,
+      savedAt: new Date().toISOString(),
+    });
+    const trimmed = history.slice(0, BLOCK_TUNING_HISTORY_MAX);
+    localStorage.setItem(BLOCK_TUNING_HISTORY_KEY, JSON.stringify(trimmed));
+  } catch (e) {
+    console.warn("[BlockTuning] history save failed:", e);
+  }
+}
+
+function renderBlockTuningHistory() {
+  const container = document.getElementById("block-tuning-history");
+  if (!container) return;
+  const history = loadBlockTuningHistory();
+  if (history.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+  const items = history.map((h, i) => {
+    const date = h.savedAt ? new Date(h.savedAt).toLocaleString("fi-FI") : "?";
+    const trans = h.meta?.blockTransition || "?";
+    const wk = h.meta?.currentWeek || "?";
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border:1px solid var(--border);border-radius:6px;margin-top:6px;font-size:11px">
+      <div>
+        <div style="font-weight:600">Vk ${wk} · ${trans}</div>
+        <div class="muted">${date}</div>
+      </div>
+      <button class="btn btn-sm btn-outline" data-bt-history-idx="${i}" style="font-size:10px;padding:4px 8px">Avaa</button>
+    </div>`;
+  }).join("");
+  container.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--muted);margin-top:10px;margin-bottom:4px">📚 Historia (${history.length}/${BLOCK_TUNING_HISTORY_MAX})</div>${items}`;
+  // Bind history buttons
+  container.querySelectorAll("[data-bt-history-idx]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.getAttribute("data-bt-history-idx"));
+      const item = loadBlockTuningHistory()[idx];
+      if (item) renderBlockTuningModal(item);
+    });
+  });
+}
+
+function copyToClipboard(text, successMsg = "Kopioitu") {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      () => showToast(successMsg, "ok", 2000),
+      () => fallbackCopy(text, successMsg)
+    );
+  } else {
+    fallbackCopy(text, successMsg);
+  }
+}
+
+function fallbackCopy(text, successMsg) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); showToast(successMsg, "ok", 2000); }
+  catch (e) { showToast("Kopiointi epäonnistui — kopioi manuaalisesti", "bad"); }
+  document.body.removeChild(ta);
+}
+
+function renderBlockTuningModal(pkg) {
+  // Poista mahdollinen aiempi modal
+  document.querySelectorAll(".block-tuning-modal").forEach(el => el.remove());
+
+  const meta = pkg.meta || {};
+  const transition = meta.blockTransition || "?";
+  const wk = meta.currentWeek || "?";
+  const sessionsAnalyzed = meta.sessionsAnalyzed || 0;
+  const anomaliesFound = meta.anomaliesFound || 0;
+
+  const overlay = document.createElement("div");
+  overlay.className = "block-tuning-modal";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:12px";
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;max-width:900px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:16px;font-weight:700">🤖 AI-Block-Tuning -paketti</div>
+          <div class="muted" style="font-size:11px;margin-top:2px">Vk ${wk} · ${transition} · ${sessionsAnalyzed} sessiota analysoitu · ${anomaliesFound} anomaliaa</div>
+        </div>
+        <button id="bt-close" class="btn btn-sm btn-outline" style="padding:4px 12px">Sulje</button>
+      </div>
+
+      <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;gap:6px;overflow-x:auto">
+        <button class="btn btn-sm btn-outline bt-tab active" data-tab="prompt" style="font-size:11px">📋 AI-prompt (vie Claudelle)</button>
+        <button class="btn btn-sm btn-outline bt-tab" data-tab="markdown" style="font-size:11px">📖 Markdown (sinulle)</button>
+        <button class="btn btn-sm btn-outline bt-tab" data-tab="json" style="font-size:11px">🗂 JSON (raw)</button>
+      </div>
+
+      <div style="padding:12px 16px;flex:1;overflow-y:auto">
+        <div id="bt-tab-prompt" class="bt-content">
+          <div style="display:flex;gap:6px;margin-bottom:8px">
+            <button class="btn btn-sm btn-primary" id="bt-copy-prompt" style="font-size:11px">📋 Kopioi prompt leikepöydälle</button>
+            <button class="btn btn-sm btn-outline" id="bt-download-prompt" style="font-size:11px">⬇ Lataa .md</button>
+          </div>
+          <div class="muted" style="font-size:11px;margin-bottom:8px">
+            <b>Ohje</b>: kopioi tämä prompt ja vie Claudelle (claude.ai) tai ChatGPT:lle.
+            AI palauttaa block-tuning-suosituksia. <b>Kategoria A</b> = applaa UI:ssa.
+            <b>Kategoria B</b> = paste:aa Claude Codelle (minulle) toteuttavaksi.
+            <b>Kategoria C</b> = mentaalinen koutsaus (sisäistä).
+          </div>
+          <textarea readonly id="bt-prompt-text" style="width:100%;height:380px;font-family:monospace;font-size:10px;padding:8px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:6px;line-height:1.4;white-space:pre-wrap"></textarea>
+        </div>
+        <div id="bt-tab-markdown" class="bt-content" style="display:none">
+          <div style="display:flex;gap:6px;margin-bottom:8px">
+            <button class="btn btn-sm btn-primary" id="bt-copy-md" style="font-size:11px">📋 Kopioi markdown</button>
+            <button class="btn btn-sm btn-outline" id="bt-download-md" style="font-size:11px">⬇ Lataa .md</button>
+          </div>
+          <div class="muted" style="font-size:11px;margin-bottom:8px">Luettava narratiivi blokin suorituksesta. Voit lukea itse + tarvittaessa viedä ainoastaan tämän osan AI:lle (suppea analyysi).</div>
+          <textarea readonly id="bt-md-text" style="width:100%;height:380px;font-family:monospace;font-size:10px;padding:8px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:6px;line-height:1.4;white-space:pre-wrap"></textarea>
+        </div>
+        <div id="bt-tab-json" class="bt-content" style="display:none">
+          <div style="display:flex;gap:6px;margin-bottom:8px">
+            <button class="btn btn-sm btn-primary" id="bt-copy-json" style="font-size:11px">📋 Kopioi JSON</button>
+            <button class="btn btn-sm btn-outline" id="bt-download-json" style="font-size:11px">⬇ Lataa .json</button>
+          </div>
+          <div class="muted" style="font-size:11px;margin-bottom:8px">Raw-data sessiosta + trendeistä + anomalioista. Tarkkaa AI-analyysia varten — vie tämä jos AI tarvitsee tarkemmat luvut.</div>
+          <textarea readonly id="bt-json-text" style="width:100%;height:380px;font-family:monospace;font-size:10px;padding:8px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:6px;line-height:1.4;white-space:pre-wrap"></textarea>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // Set content
+  document.getElementById("bt-prompt-text").value = pkg.prompt || "";
+  document.getElementById("bt-md-text").value = pkg.markdown || "";
+  document.getElementById("bt-json-text").value = JSON.stringify(pkg.json, null, 2);
+
+  // Tab switching
+  overlay.querySelectorAll(".bt-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      overlay.querySelectorAll(".bt-tab").forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      const tabId = tab.getAttribute("data-tab");
+      overlay.querySelectorAll(".bt-content").forEach(c => c.style.display = "none");
+      document.getElementById(`bt-tab-${tabId}`).style.display = "block";
+    });
+  });
+
+  // Close button + click outside
+  document.getElementById("bt-close").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+  // Copy buttons
+  const dateStr = (meta.generatedAt || new Date().toISOString()).slice(0, 10);
+  const baseName = `leve-block-tuning-vk${wk}-${dateStr}`;
+  document.getElementById("bt-copy-prompt").addEventListener("click", () => copyToClipboard(pkg.prompt, "Prompt kopioitu — vie Claudelle"));
+  document.getElementById("bt-copy-md").addEventListener("click", () => copyToClipboard(pkg.markdown, "Markdown kopioitu"));
+  document.getElementById("bt-copy-json").addEventListener("click", () => copyToClipboard(JSON.stringify(pkg.json, null, 2), "JSON kopioitu"));
+  document.getElementById("bt-download-prompt").addEventListener("click", () => downloadFile(`${baseName}-prompt.md`, pkg.prompt, "text/markdown;charset=utf-8"));
+  document.getElementById("bt-download-md").addEventListener("click", () => downloadFile(`${baseName}-narrative.md`, pkg.markdown, "text/markdown;charset=utf-8"));
+  document.getElementById("bt-download-json").addEventListener("click", () => downloadFile(`${baseName}-data.json`, JSON.stringify(pkg.json, null, 2), "application/json"));
+}
+
 function dayOfWeekShort(iso) {
   if (!iso) return "";
   const d = ["Su","Ma","Ti","Ke","To","Pe","La"];
@@ -5995,6 +6181,37 @@ function renderSettingsView() {
         CSV: rivi per sarja (avaa Excelillä). Markdown-raportti vaatii "Yksittäinen ohjelma" -valinnan.
       </div>
     </div>
+
+    ${(() => {
+      // v4.34.0 AI-Block-Tuning -kortti — näkyy vain streetlifting_16w-mesosyklissä
+      const meso = state.mesocycle;
+      if (!meso || meso.type !== "streetlifting_16w") return "";
+      const rec = state.recommendation;
+      const wk = typeof rec?.weekNum === "number" ? rec.weekNum : null;
+      const deloadWeeks = [4, 8, 12];
+      const isDeloadWeek = wk && deloadWeeks.includes(wk);
+      const nextDeload = wk ? deloadWeeks.find(d => d > wk) : 4;
+      const blockMap = { 4: "Foundation → Strength", 8: "Strength → Intensity", 12: "Intensity → Peaking" };
+      const transition = isDeloadWeek ? blockMap[wk] : null;
+      return `<div class="card" style="border:1px solid rgba(99, 102, 241, 0.4); background: linear-gradient(135deg, rgba(99,102,241,0.04), rgba(168,85,247,0.04))">
+        <div class="card-title">🤖 AI-Block-Tuning <span style="font-size:10px;font-weight:400;color:var(--muted)">v4.34.0</span></div>
+        <div class="muted" style="font-size:12px;margin-bottom:10px;line-height:1.5">
+          Generoi rikas analyysipaketti AI:lle (Claude / ChatGPT) deload-viikon kalibroinnin jälkeen. AI palauttaa block-tuning-suosituksia kolmessa kategoriassa: <b>(A)</b> sovellus-tason muutokset (UI), <b>(B)</b> rakenteelliset muutokset (Claude Code), <b>(C)</b> mentaalinen koutsaus.
+        </div>
+        ${isDeloadWeek
+          ? `<div style="padding:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.4);border-radius:6px;margin-bottom:10px">
+              <div style="font-size:13px;font-weight:600;color:var(--ok)">✓ Vk ${wk} deload — AI-Block-Tuning aktiivinen</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">Block-transition: <b>${transition}</b></div>
+            </div>
+            <button class="btn btn-primary btn-full" id="btn-generate-block-tuning">🤖 Generoi AI-analyysipaketti</button>`
+          : `<div style="padding:10px;background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.3);border-radius:6px">
+              <div style="font-size:12px;color:var(--muted)">AI-Block-Tuning aktivoituu vain deload-viikoilla (vk 4, 8, 12 — block-transitiot).</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">Olet vk ${wk || "?"}/16. Seuraava deload: <b>vk ${nextDeload || "kisaviikko"}</b>.</div>
+            </div>`
+        }
+        <div id="block-tuning-history" style="margin-top:10px"></div>
+      </div>`;
+    })()}
 
     <div class="card">
       <div class="card-title">Diagnostiikka</div>
@@ -6843,6 +7060,40 @@ function bind() {
     downloadFile(`leve-raportti-${baseName}-${todayISO()}.md`, md, "text/markdown;charset=utf-8");
     showToast("Raportti ladattu", "ok");
   });
+
+  // v4.34.0: AI-Block-Tuning generaattori
+  const aiTuningBtn = $("#btn-generate-block-tuning");
+  if (aiTuningBtn) aiTuningBtn.addEventListener("click", async () => {
+    try {
+      const meso = state.mesocycle;
+      const rec = state.recommendation;
+      const wk = typeof rec?.weekNum === "number" ? rec.weekNum : null;
+      const pkg = generateBlockTuningPackage({
+        mesocycle: meso,
+        sessions: state.sessions,
+        allSets: state.allSets,
+        measurements: state.measurements || [],
+        prs: state.prs || [],
+        currentWeekNum: wk,
+        settings: state.settings,
+        decisionTraces: state.decisionTraces || [],
+      });
+      if (pkg.error) {
+        showToast(pkg.error, "warn", 5000);
+        return;
+      }
+      // Tallenna historiaan (localStorage)
+      saveBlockTuningSnapshot(pkg);
+      // Renderöi modal
+      renderBlockTuningModal(pkg);
+    } catch (e) {
+      console.error("[BlockTuning] error:", e);
+      showToast("Virhe analyysipaketin generoinnissa: " + (e.message || "tuntematon"), "bad");
+    }
+  });
+
+  // Renderöi historia (localStorage)
+  renderBlockTuningHistory();
 
   // Backup
   const exportBtn = $("#btn-export-backup");
