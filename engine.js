@@ -243,15 +243,105 @@ function velocityReadiness(todayVelocity, baselineValues, windowN = 10) {
 
 /**
  * Compute HRV readiness from Oura night HRV (already as lnRMSSD)
+ *
+ * v4.33.0 M20d: Rolling 7-päivän keskiarvo-vertailu (Plews 2013, Plews & Laursen 2017).
+ * Yksittäinen päivä-HRV on kohinaiseempi kuin rolling-keskiarvo. Vertaillaan TÄMÄN
+ * PÄIVÄN HRV vs viim. 7 päivän keskiarvoa (rolling-7) baseline-Median sijasta jos
+ * 7+ datapistettä saatavilla. Jos vähemmän, fallback baseline-vertailuun.
+ *
+ * Smallest worthwhile change ±0.5 SD viikkokeskiarvosta = optimi readiness-marker.
  */
 function hrvReadiness(todayLnRMSSD, baselineValues, windowN = 14) {
   if (todayLnRMSSD === null || todayLnRMSSD === undefined) {
     return { z: null, class: null, channel: "hrv" };
   }
+  // v4.33.0 M20d: Rolling 7-päivän keskiarvo (Plews 2013)
+  if (Array.isArray(baselineValues) && baselineValues.length >= 7) {
+    const last7 = baselineValues.slice(-7);
+    const rolling7Mean = last7.reduce((a, b) => a + b, 0) / last7.length;
+    // Käytetään koko baseline-windowin MAD-sigma:a varianssin estimaattina
+    const bl = computeBaseline(baselineValues, windowN);
+    if (bl) {
+      const z = zScore(todayLnRMSSD, rolling7Mean, bl.madSigma);
+      return {
+        z,
+        class: classifyReadinessZ(z),
+        channel: "hrv",
+        baseline: bl,
+        rolling7Mean,
+        method: "rolling7",
+      };
+    }
+  }
+  // Fallback: baseline median -vertailu (legacy)
   const bl = computeBaseline(baselineValues, windowN);
   if (!bl) return { z: null, class: null, channel: "hrv" };
   const z = zScore(todayLnRMSSD, bl.median, bl.madSigma);
-  return { z, class: classifyReadinessZ(z), channel: "hrv", baseline: bl };
+  return { z, class: classifyReadinessZ(z), channel: "hrv", baseline: bl, method: "baseline-median" };
+}
+
+/**
+ * v4.33.0 M20a: Yläraaja-readiness MPV warmup-singlessä @ 60-65% 1RM
+ *
+ * Sánchez-Moreno 2017 (IJSPP 12:1378) osoitti pull-up-spesifin load-velocity-relaation
+ * r = -0.96 ja stabiilin V-%1RM-suhteen 12 vk:n harjoittelun yli; Sánchez-Moreno 2020
+ * (JSCR 34:911) vahvisti VL-thresholdit (VL25, VL50). Sánchez-Medina &
+ * González-Badillo 2011 (MSSE 43:1725) osoittaa, että velocity loss korreloi
+ * voimakkaasti neuromuskulaarisen fatiguen kanssa.
+ *
+ * Käyttö: lisäpainoleuka warmup-single @ 60-65% 1RM aamulla MA + TO + LA.
+ * Vertaa tämän päivän MPV vs viim. 7 pv rolling-mediania.
+ *
+ * Kynnysarvot (heuristiset, johdettu Pareja-Blanco/González-Badillo VL-thresholdeista):
+ *   ≥ +3 %   → "Green light", top-set OK, harkitse +2.5 kg
+ *   −0..3 %  → Normaali, ohjelman mukaan
+ *   −3..−5 % → Pieni varovaisuus, ei testiyrityksiä
+ *   −5..−10% → Vähennä top-set 5-10 % (esim. 90 %→82.5 %), volume tai -1 setti
+ *   > −10 %  → Lepopäivä TAI kevyt tekniikkasessio @ 50 %
+ *   > −15 %  → Mahdollinen NFOR, review koko viikko
+ *
+ * Returns: { mpv, baseline7Mean, deltaPct, class: "GREEN"|"YELLOW"|"RED", message, recommendedLoadAdjust }
+ */
+function upperBodyMpvReadiness(todayMpv, recent7DaysMpv) {
+  if (todayMpv === null || todayMpv === undefined) {
+    return { mpv: null, baseline7Mean: null, deltaPct: null, class: null, message: "Ei MPV-dataa", recommendedLoadAdjust: 0 };
+  }
+  if (!Array.isArray(recent7DaysMpv) || recent7DaysMpv.length < 3) {
+    // Rakenna baseline ensin — alle 3 datapistettä ei riitä luotettavaan vertailuun
+    return { mpv: todayMpv, baseline7Mean: null, deltaPct: null, class: null, message: "Baseline rakentuu (3+ MPV-mittausta tarvitaan)", recommendedLoadAdjust: 0 };
+  }
+  const baseline7Mean = recent7DaysMpv.reduce((a, b) => a + b, 0) / recent7DaysMpv.length;
+  if (baseline7Mean <= 0) {
+    return { mpv: todayMpv, baseline7Mean, deltaPct: null, class: null, message: "Baseline ei luotettava (≤0)", recommendedLoadAdjust: 0 };
+  }
+  const deltaPct = ((todayMpv - baseline7Mean) / baseline7Mean) * 100;
+  let cls, message, recommendedLoadAdjust;
+  if (deltaPct >= 3) {
+    cls = "GREEN";
+    message = `MPV +${deltaPct.toFixed(1)}% baseline — Green light, top-set OK, harkitse +2.5 kg`;
+    recommendedLoadAdjust = 0.025;  // +2.5%
+  } else if (deltaPct >= -3) {
+    cls = "GREEN";
+    message = `MPV ${deltaPct.toFixed(1)}% baseline — Normaali, ohjelman mukaan`;
+    recommendedLoadAdjust = 0;
+  } else if (deltaPct >= -5) {
+    cls = "YELLOW";
+    message = `MPV ${deltaPct.toFixed(1)}% baseline — Pieni varovaisuus, ei testiyrityksiä`;
+    recommendedLoadAdjust = 0;
+  } else if (deltaPct >= -10) {
+    cls = "YELLOW";
+    message = `MPV ${deltaPct.toFixed(1)}% baseline — Vähennä top-set 5-10% (esim. 90% → 82.5%)`;
+    recommendedLoadAdjust = -0.075;  // -7.5%
+  } else if (deltaPct >= -15) {
+    cls = "RED";
+    message = `MPV ${deltaPct.toFixed(1)}% baseline — Lepopäivä TAI kevyt tekniikka @50%`;
+    recommendedLoadAdjust = -0.50;  // dramatic cut
+  } else {
+    cls = "RED";
+    message = `MPV ${deltaPct.toFixed(1)}% baseline — Mahdollinen NFOR, review koko viikko (Plews 2013)`;
+    recommendedLoadAdjust = -1.0;  // skip session
+  }
+  return { mpv: todayMpv, baseline7Mean, deltaPct, class: cls, message, recommendedLoadAdjust };
 }
 
 /**
@@ -3089,6 +3179,7 @@ export {
   velocityReadiness,
   hrvReadiness,
   varaReadiness,
+  upperBodyMpvReadiness,
   combineReadiness,
   // Mesocycle
   getMesocycleWeek,

@@ -5,7 +5,7 @@ import {
   median, mad, madSigma, zScore, avg, clamp, roundToHalf,
   e1rmSystem, e1rmExternal, e1rmAccessory, targetLoadFromE1RM,
   computeBaseline, classifyReadinessZ,
-  velocityReadiness, hrvReadiness, varaReadiness, combineReadiness,
+  velocityReadiness, hrvReadiness, varaReadiness, upperBodyMpvReadiness, combineReadiness,
   getMesocycleWeek, getWeekDef, deltaPctRaw,
   calibrateMesocycle,
   varaFeedback, varaTrendCorrection,
@@ -315,6 +315,32 @@ function testNewMovementInitialWeight() {
   assertClose(init, 70, 0.1, "New movement: 1RM 100 → aloituspaino 70 kg");
 }
 
+// v4.33.0 M20a: upperBodyMpvReadiness — Sánchez-Moreno 2017/2020
+function testUpperBodyMpvReadiness() {
+  // Insufficient baseline → null result
+  const r1 = upperBodyMpvReadiness(0.85, [0.84, 0.86]);  // <3 datapistettä
+  assertEqual(r1.class, null, "MPV: <3 baseline-datapistettä → null");
+
+  // Green light: +5% baseline
+  const baseline = [0.80, 0.81, 0.82, 0.81, 0.80, 0.82, 0.81]; // mean 0.81
+  const r2 = upperBodyMpvReadiness(0.85, baseline);
+  assertEqual(r2.class, "GREEN", "MPV +5% baseline → GREEN");
+  assert(r2.recommendedLoadAdjust === 0.025, "MPV GREEN +3%+ → +2.5% load adjust");
+
+  // Normal: -2% baseline
+  const r3 = upperBodyMpvReadiness(0.794, baseline);  // -2% deltaa
+  assertEqual(r3.class, "GREEN", "MPV -2% baseline → GREEN normaali");
+
+  // Yellow: -7% baseline
+  const r4 = upperBodyMpvReadiness(0.753, baseline);  // -7% deltaa
+  assertEqual(r4.class, "YELLOW", "MPV -7% baseline → YELLOW (vähennä top-set)");
+  assert(r4.recommendedLoadAdjust === -0.075, "MPV YELLOW -5..-10% → -7.5% adjust");
+
+  // Red: -12% baseline
+  const r5 = upperBodyMpvReadiness(0.713, baseline);  // -12% deltaa
+  assertEqual(r5.class, "RED", "MPV -12% baseline → RED (lepopäivä)");
+}
+
 function testBreakReturn() {
   // 7-13 days → -5%
   const b1 = breakAnalysis("2026-02-18", "2026-02-25");
@@ -466,6 +492,7 @@ export async function runTests() {
   testMovementProgressUpdate();
   testFailureReaction();
   testNewMovementInitialWeight();
+  testUpperBodyMpvReadiness();
   testBreakReturn();
   testMesocycleBreakReset();
   testVelocityLoss();
