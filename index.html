@@ -2748,9 +2748,34 @@ function renderActiveWorkout() {
   }
 
   // Load display
+  // v4.34.2: BW-näytön tarkennus — aiemmin loadKg===0 näytti aina "BW" + "kehonpaino",
+  // mikä oli väärä mm. Dumbbell pullover -liikkeelle (joka EI ole BW-liike, käsipaino
+  // valitsematta = 0 mutta ei "kehonpaino"). Nyt BW-näyttö triggeröityy vain kun
+  // liikkeen nimi on selvästi BW-only (BW dippi, Hollow body hold, L-sit hold,
+  // Räjähtävä leuka, Leuanveto (kehonpaino), Plank, Bird dog, Scapular pull-up jne.).
+  // Muille loadKg===0 → "0 kg" (= kuorma ei vielä valittu).
   const loadKg = currentSet.loadKg;
-  const loadBig = loadKg !== null && loadKg !== undefined ? (loadKg === 0 ? "BW" : String(loadKg)) : "–";
-  const loadUnit = loadKg === 0 ? "kehonpaino" : "kg lisäpainoa";
+  const isBwOnlyMovement = (() => {
+    const name = exercise.name || "";
+    if (/^BW /.test(name)) return true;
+    if (name === "Räjähtävä leuka") return true;
+    if (name === "Leuanveto (kehonpaino)") return true;
+    if (/Hollow body/i.test(name)) return true;
+    if (/L-sit/i.test(name)) return true;
+    if (/^Plank/i.test(name)) return true;
+    if (/^Bird dog/i.test(name)) return true;
+    if (/Scapular (pull-up|hang)/i.test(name)) return true;
+    if (/Wall sit/i.test(name)) return true;
+    if (/Hanging hold/i.test(name)) return true;
+    if (/Cossack/i.test(name)) return true;
+    return false;
+  })();
+  const loadBig = loadKg !== null && loadKg !== undefined
+    ? (loadKg === 0 ? (isBwOnlyMovement ? "BW" : "0") : String(loadKg))
+    : "–";
+  const loadUnit = loadKg === 0
+    ? (isBwOnlyMovement ? "kehonpaino" : "kg (paina muokkaa)")
+    : "kg lisäpainoa";
   const isLoadIncrease = exercise.progressSuggestion === "increase";
 
   // Rest time recommendation (compound accessories get longer rest than isolation)
@@ -2850,6 +2875,24 @@ function renderActiveWorkout() {
   const targetVx = currentSet.targetVx;
   const targetVxStr = targetVx !== null && targetVx !== undefined ? `V${targetVx}` : "—";
 
+  // v4.34.2: hold-tyyppisten liikkeiden tunnistus — Hollow body hold, L-sit hold,
+  // Plank, Wall sit jne. käyttävät SEKUNTEJA, ei toistoja. UI näyttää nyt "X s"
+  // näille. repScheme:n reps-arvo tulkitaan sekunteina näiden liikkeiden kohdalla
+  // (esim. foundation core-hollow reps:10 → "10 s" jos liike on Hollow body hold).
+  const isHoldMovement = (() => {
+    const name = exercise.name || "";
+    if (/Hollow body/i.test(name)) return true;
+    if (/L-sit/i.test(name)) return true;
+    if (/^Plank/i.test(name)) return true;
+    if (/Wall sit/i.test(name)) return true;
+    if (/Hanging hold/i.test(name)) return true;
+    if (/Pallof press hold/i.test(name)) return true;
+    if (/Scapular hang/i.test(name)) return true;
+    if (/dead hang/i.test(name)) return true;
+    return false;
+  })();
+  const repsUnit = isHoldMovement ? "s" : "toistoa";
+
   // v4.27.15 → v4.32.8: Kalibrointi 92%×3 V1 (low-rep e1RM-tarkkuus, DiStasio 2014)
   // korvasi vanhan AMRAP@85% × failure -protokollan.
   const isCalibrationSet = exercise.role === "calibration" || exercise.isCalibration === true;
@@ -2874,7 +2917,7 @@ function renderActiveWorkout() {
       </div>`
     : `<div class="target-row">
         <span class="label">🎯 Tavoite</span>
-        <span class="vals">${targetReps} toistoa · ${targetVxStr}</span>
+        <span class="vals">${targetReps} ${repsUnit} · ${targetVxStr}</span>
       </div>${vxExplainerHTML}`;
 
   // Work-set hero
@@ -2906,7 +2949,7 @@ function renderActiveWorkout() {
     <div class="load-edit-hint">Napauta lukua muokataksesi painoa</div>
     <div class="target-row">
       <span class="label">🎯 Tavoite</span>
-      <span class="vals">${targetReps} toistoa · kontrolloidusti</span>
+      <span class="vals">${targetReps} ${repsUnit} · kontrolloidusti</span>
     </div>
   </div>`;
   // HUOM: aiempi velocity-input viimeisessä lämppäsarjassa poistettu v4.21:ssä.
@@ -3019,10 +3062,17 @@ function renderActiveWorkout() {
   </div>`;
 
   // ── Utility row ──
+  // v4.34.2: Lisätty selvempi "✓ Liike valmis" -painike util-rivin loppuun.
+  // Käyttäjäpalaute v4.34.1 (TO-treeni): "lisää liike" -toiminnon kautta lisätyn
+  // liikkeen valmiiksi merkitseminen ei ollut intuitiivista — vaihtoehdot olivat
+  // "+ Lisäsarja" (lisää sarjoja) ja pieni ⏩-skip-ikoni topbar:issa. Selvä
+  // tekstipainike util-rivissä parantaa discoverabilityä. Liike valmis →
+  // kaikki keskeneräiset sarjat poistetaan ja siirrytään seuraavaan liikkeeseen.
   const utilRowHTML = `<div class="util-row">
     <button id="btn-add-set" title="Lisää sarja">+ Lisäsarja</button>
     ${canSwapVariant ? `<button id="btn-swap-variant" title="Vaihda variaatio">🔀 Variaatio</button>` : ""}
     <button id="btn-add-exercise" title="Lisää liike">+ Liike</button>
+    <button id="btn-finish-exercise" title="Merkitse liike valmiiksi ja siirry seuraavaan">✓ Liike valmis</button>
     ${velocityAllowedForThisSet ? `<button id="btn-velocity-toggle" title="Näytä velocity-syöttö">💎 Velocity</button>` : ""}
   </div>`;
 
@@ -7946,12 +7996,14 @@ function bindWorkoutEvents() {
       }
 
       // v4.32.0: käytä suositusta Vx + paino -arvoille (kun käyttäjä syötti vain sets+reps)
+      // v4.34.2: userAdded:true -lippu jotta UI voi tarjota selvemmän valmiiksi-merkinnän
       const newExercise = {
         movementId: m.movementId,
         name: m.name,
         category: m.category,
         originalCategory: m.category,
         role: "accessory",
+        userAdded: true,
         loadKg: sugg.loadKg,
         targetVx: sugg.targetVx,
         reps: sr.reps,
@@ -8022,12 +8074,29 @@ function bindWorkoutEvents() {
     }
   });
 
-  // Skip exercise
+  // Skip exercise (⏩ icon in topbar)
   const skipBtn = $("#btn-skip-exercise");
   if (skipBtn) skipBtn.addEventListener("click", () => {
     w.currentExerciseIdx++;
     w.currentSetIdx = 0;
     stopRestTimer();
+    render();
+  });
+
+  // v4.34.2: Liike valmis (selvä tekstipainike util-rivissä, sama logiikka kuin ⏩-skip).
+  // Käyttäjäpalaute v4.34.1: lisätyn liikkeen valmiiksi merkitseminen ei ollut
+  // intuitiivista. Tekstipainike on löydettävämpi kuin pieni emoji-ikoni topbarissa.
+  const finishExBtn = $("#btn-finish-exercise");
+  if (finishExBtn) finishExBtn.addEventListener("click", () => {
+    const exercise = w.exercises[w.currentExerciseIdx];
+    if (!exercise) return;
+    // Poista keskeneräiset sarjat (jotta yhteenvedoissa näkyy vain todelliset sarjat)
+    exercise.sets = exercise.sets.filter(s => s.completed);
+    w.currentExerciseIdx++;
+    w.currentSetIdx = 0;
+    stopRestTimer();
+    savePendingWorkoutLocal(state.workout);
+    showToast(`${exercise.name} merkitty valmiiksi`, "ok");
     render();
   });
 

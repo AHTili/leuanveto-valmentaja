@@ -1,5 +1,5 @@
 // engine.js — Computation engine: e1RM, baselines, readiness, recommend(), mesocycle, decisionTrace
-// LeVe AI v4.34.1 — engine logic (unchanged from v4.34.0, brand evolution only)
+// LeVe AI v4.34.2 — Lisätty LOAD_SANITY_WARNING-trace + console.warn jos primary-kuorma > 1.6× seed-arvo (TO-treenin kenttäpalaute: dippi 4×6×125 kg -anomalia ei toistettavissa tyhjästä DB:stä, mutta diagnostic surfaa ongelman jos toistuu).
 
 import {
   uid, todayISO, parseNumericInput,
@@ -1841,6 +1841,32 @@ async function recommend(options = {}) {
     targetVx,
     isBarbell,
   }, `Ehdotettu kuorma: +${targetExternalLoad} kg`);
+
+  // v4.34.2: Sanity diagnostic — primary-kuorman pitäisi tyypillisesti olla
+  // korkeintaan ~1.6× seed-arvo (loadPct × kalibrointi). Jos enemmän, jokin
+  // e1RM-ketjussa on pielessä: Vx-bias ylöspäin, väärä movement match,
+  // bodyweight-asetus pielessä, calibration manuaalisesti väärin syötetty.
+  // Käyttäjäpalaute v4.34.1 (TO-treeni): dippi 4×6 × 125 kg ehdotuksena vaikka
+  // calibration D=80 kg → odotettu @68.6% = 55 kg. Ei pystytty toistaa
+  // tyhjästä DB:stä, joten lisätty tämä diagnostic tunnistamaan tilanne kun
+  // se toistuu. Älä silmukoi tästä ulos — tämä on informational only,
+  // varsinainen kuorma palautetaan käyttäjälle muuttumattomana.
+  if (targetExternalLoad !== null && primarySlotMeta?.suggestedLoadKg) {
+    const seed = primarySlotMeta.suggestedLoadKg;
+    const ratio = seed > 0 ? targetExternalLoad / seed : null;
+    if (ratio !== null && ratio > 1.6) {
+      trace("LOAD_SANITY_WARNING", {},
+        { targetExternalLoad, seed, ratio: ratio.toFixed(2),
+          currentE1RMExternal: currentE1RMExternal?.toFixed(1),
+          primaryMovementName: primarySlotMeta.defaultMovementName,
+          recentTopSetsCount: recentTopSets.length,
+          e1rmSource },
+        `⚠ Primary-kuorma ${targetExternalLoad} kg on ${ratio.toFixed(1)}× seed-arvo (${seed} kg) — tarkista e1RM-historia ja kalibrointi (movement: ${primarySlotMeta.defaultMovementName})`);
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn(`[LeVe AI sanity] ${primarySlotMeta.defaultMovementName}: target ${targetExternalLoad} kg, seed ${seed} kg, ratio ${ratio.toFixed(2)}, e1RM_ext ${currentE1RMExternal?.toFixed(1) ?? "null"} kg, source ${e1rmSource}, top-sets ${recentTopSets.length} — investigate e1RM chain`);
+      }
+    }
+  }
 
   // 12. Set prescription
   let setCount;
