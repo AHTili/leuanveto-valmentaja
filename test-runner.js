@@ -281,15 +281,32 @@ function testMovementProgressUpdate() {
 }
 
 function testFailureReaction() {
-  // V0 on primary → -10%, reps -1
+  // v4.32.8: failureReaction nyt block-aware. Legacy default (ei blockPhase) = strength
+  // Strategia B = -5% drop (oli -10%, päivitetty Refalo 2023 mukaan).
   const reaction1 = failureReaction(70, 3, true, 1);
-  assertClose(reaction1.nextSetLoad, 63.0, 0.1, "Failure primary: 70 × 0.90 = 63.0 kg");
-  assertEqual(reaction1.nextSetReps, 2, "Failure primary: reps 3-1 = 2");
-  assert(!reaction1.shouldStop, "Failure: 1× → don't stop");
+  assertClose(reaction1.nextSetLoad, 66.5, 0.1, "Failure default (strength): 70 × 0.95 = 66.5 kg");
+  assertEqual(reaction1.nextSetReps, 2, "Failure: reps 3-1 = 2");
+  assert(!reaction1.shouldStop, "Failure: 1× strength → don't stop");
 
-  // 2× consecutive failure
+  // 2× consecutive failure → should stop
   const reaction2 = failureReaction(70, 3, true, 2);
-  assert(reaction2.shouldStop, "Failure: 2× consecutive → should stop");
+  assert(reaction2.shouldStop, "Failure: 2× consecutive strength → should stop");
+
+  // v4.32.8: Foundation V0 → Strategia A (säilytä kuorma, ensi vk -2.5%)
+  const foundationReaction = failureReaction(70, 3, true, 1, "foundation");
+  assertClose(foundationReaction.nextSetLoad, 70.0, 0.1, "Foundation V0: säilytä kuorma 70 kg");
+  assertEqual(foundationReaction.strategy, "A", "Foundation: Strategia A");
+  assert(foundationReaction.shouldStop, "Foundation V0: 1× → stop liike (ei sallita 2x)");
+
+  // v4.32.8: Intensity V0 → Strategia C (lopeta liike heti)
+  const intensityReaction = failureReaction(70, 3, true, 1, "intensity");
+  assert(intensityReaction.shouldStop, "Intensity V0 → stop heti (Tuchscherer 2-failure)");
+  assertEqual(intensityReaction.strategy, "C", "Intensity: Strategia C");
+
+  // v4.32.8: Peaking V0 → Strategia C
+  const peakingReaction = failureReaction(70, 1, true, 1, "peaking");
+  assert(peakingReaction.shouldStop, "Peaking V0 → stop heti, CNS-säästö");
+  assertEqual(peakingReaction.strategy, "C", "Peaking: Strategia C");
 }
 
 function testNewMovementInitialWeight() {

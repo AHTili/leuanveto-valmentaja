@@ -2848,20 +2848,32 @@ function renderActiveWorkout() {
   const targetVx = currentSet.targetVx;
   const targetVxStr = targetVx !== null && targetVx !== undefined ? `V${targetVx}` : "—";
 
-  // v4.27.15: Kalibrointi-AMRAP → renderöidään eri target-rivi (ei kiinteää
-  // reps-tavoitetta, sen sijaan "AMRAP → tekninen failure").
+  // v4.27.15 → v4.32.8: Kalibrointi 92%×3 V1 (low-rep e1RM-tarkkuus, DiStasio 2014)
+  // korvasi vanhan AMRAP@85% × failure -protokollan.
   const isCalibrationSet = exercise.role === "calibration" || exercise.isCalibration === true;
-  const amrapRange = exercise.amrapTargetRange;
-  const amrapRangeStr = Array.isArray(amrapRange) ? `${amrapRange[0]}–${amrapRange[1]}` : "4–8";
+  // v4.32.8: Vx-target-explainer (Tulkinta C — modern strength-doktriini).
+  // Näytetään primary/backoff/secondary-sloteille joissa on numeerinen Vx-target.
+  // Selvittää käyttäjälle: viim. sarja = target Vx, sarja 1 V4-V5 fresh = OK,
+  // V0 missä tahansa = block-spesifi reaktio (foundation: stop, strength: drop).
+  const showVxExplainer = !isCalibrationSet
+    && targetVx !== null && targetVx !== undefined && targetVx >= 0 && targetVx <= 5
+    && (exercise.role === "primary" || exercise.role === "backoff" || exercise.role === "secondary")
+    && (exercise.sets || 1) >= 2;  // näytetään vain monisarjaisille
+  const vxExplainerHTML = showVxExplainer
+    ? `<div class="vx-explainer" style="margin-top:6px;padding:6px 10px;background:rgba(99,102,241,0.06);border-left:2px solid rgba(99,102,241,0.4);border-radius:4px;font-size:10.5px;line-height:1.45;color:var(--muted)">
+        <div><b style="color:var(--text)">📐 Vx-tavoite tulkinta:</b> viim. sarja = V${targetVx}. Sama kuorma kaikissa sarjoissa.</div>
+        <div style="margin-top:2px">Sarja 1 V${Math.min(targetVx + 2, 5)}–V${Math.min(targetVx + 3, 5)} (fresh) = OK · viim. sarja V${targetVx} (target) · V0 missä tahansa = liian raskas, kirjaa rehellisesti.</div>
+      </div>`
+    : "";
   const targetRowHTML = isCalibrationSet
     ? `<div class="target-row">
-        <span class="label">🎯 AMRAP</span>
-        <span class="vals">→ tekninen failure · Vx 0 · odotettu ${amrapRangeStr} toistoa</span>
+        <span class="label">🎯 Kalibrointi</span>
+        <span class="vals">${targetReps} toistoa · ${targetVxStr} (RPE 8) · low-rep e1RM-tarkkuus</span>
       </div>`
     : `<div class="target-row">
         <span class="label">🎯 Tavoite</span>
         <span class="vals">${targetReps} toistoa · ${targetVxStr}</span>
-      </div>`;
+      </div>${vxExplainerHTML}`;
 
   // Work-set hero
   const heroHTML = isWarmupSet ? "" : `<div class="load-hero">
@@ -7353,14 +7365,17 @@ function bindWorkoutEvents() {
       currentSet.attemptedReps = null;
     }
 
-    // Failure reaction
+    // Failure reaction (v4.32.8: block-aware — phase parametri)
     if (selectedVara === 0) {
       const isPrimary = exercise.role === "primary";
       const consecutiveFailures = exercise.sets.slice(0, w.currentSetIdx + 1).filter(s => s.actualVx === 0).length;
-      const reaction = failureReaction(currentSet.loadKg || 0, currentSet.targetReps, isPrimary, consecutiveFailures);
+      // Block-phase haetaan rec:istä (recommend()-output) tai mesocyclen weekDef:istä
+      const weekNum = state.recommendation?.weekNum;
+      const blockPhase = weekNum ? phaseForWeek(weekNum) : null;
+      const reaction = failureReaction(currentSet.loadKg || 0, currentSet.targetReps, isPrimary, consecutiveFailures, blockPhase);
 
       if (reaction.shouldStop) {
-        showToast("2× failure — lopetatko tähän liikkeeseen?", "bad", 5000);
+        showToast(reaction.message || "Failure — lopetatko liikkeeseen?", "bad", 6000);
       } else {
         showToast(reaction.message, "warn");
       }

@@ -530,22 +530,45 @@ function varaTrendCorrection(recentTopSets, opts = {}) {
   ).slice(-6);
   if (withVara.length < 4) return 0;
 
+  // v4.32.8 (Phase 1 -tutkimuslöydös): straight-set-protokollissa Vx vaihtelee
+  // freshness-akselilla (esim. sarja 1 V5 fresh → sarja 5 V1 cumulative).
+  // Pelkkä mean overshoot voi johtaa harhaan jos sarjat raportoidaan ramp-pattern:nä
+  // (V5, V4, V2, V1, V0 → mean = -0.4 mutta sarja 5 V0 = liian raskas).
+  //
+  // RATKAISU: PAINOTETTU mean joka korostaa viim. session viim. sarjaa (modern
+  // strength-doktriini Tulkinta C: "viim. sarja = target Vx, V0 missä tahansa = warning").
+  // Painot: viimeinen sarja 2.0×, toiseksi viimeinen 1.5×, muut 1.0×.
+  // crushingStreak -säännös myös päivitetty: tarkista että viim. session viim. 3 sarjaa
+  // (ei 3 setin slice yli sessioiden) ovat consistently crushed.
   const overshoots = withVara.map((s) => s.targetVx - s.actualVx);
-  const meanOvr = avg(overshoots);
+  const weights = withVara.map((_, i) => {
+    const fromEnd = withVara.length - 1 - i;
+    if (fromEnd === 0) return 2.0;       // viim. sarja painoa eniten
+    if (fromEnd === 1) return 1.5;       // toiseksi viimeinen
+    return 1.0;
+  });
+  const weightedSum = overshoots.reduce((acc, ovr, i) => acc + ovr * weights[i], 0);
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const weightedMeanOvr = weightedSum / totalWeight;
 
-  // Consecutive crushing bonus: last 3 sets all actualVx >= targetVx+1
+  // V0 missä tahansa viim. 3 sarjassa = "warning" — älä accelerate
+  const last3HasFailure = withVara.slice(-3).some(s => s.actualVx === 0);
+
+  // Consecutive crushing: viim. 3 sarjaa kaikki crushed (actualVx >= targetVx+1)
   const last3 = withVara.slice(-3);
   const crushingStreak = last3.length === 3 && last3.every(s => (s.actualVx - s.targetVx) >= 1);
 
-  if (meanOvr < -0.5) {
-    // Crushed on average: accelerate
-    const base = clamp(Math.abs(meanOvr) * 0.015, 0, maxUp);
+  if (weightedMeanOvr < -0.5 && !last3HasFailure) {
+    // Crushed (painotettu): accelerate. Mutta EI accelerate jos viim. sarjoissa V0.
+    const base = clamp(Math.abs(weightedMeanOvr) * 0.015, 0, maxUp);
     const bonus = crushingStreak ? 0.010 : 0;
     return Math.min(base + bonus, maxUp);
   }
-  if (meanOvr > 0.5) {
-    // Struggled on average: hold back (conservative)
-    return clamp(-meanOvr * 0.008, -maxDown, 0);
+  if (weightedMeanOvr > 0.5 || last3HasFailure) {
+    // Struggled (painotettu) tai viim. sarjoissa V0: hold back.
+    // V0 viim. sarjoissa override aina hold-backiksi vaikka mean olisi kurssassa.
+    const adjustment = last3HasFailure ? -0.015 : clamp(-weightedMeanOvr * 0.008, -maxDown, 0);
+    return Math.max(adjustment, -maxDown);
   }
   return 0;
 }
@@ -658,23 +681,64 @@ function mesocycleBreakReset(mesocycle, skippedWeeks) {
 // FAILURE REACTION
 // ═══════════════════════════════════════════════════════════════
 
-function failureReaction(currentLoadKg, targetReps, isPrimary, consecutiveFailures) {
-  const nextSetLoad = roundToHalf(currentLoadKg * 0.90);
+// v4.32.8: failureReaction nyt block-aware. Vaiheen 1 syvätutkimuksen löydös
+// (ChatGPT + Claude + Refalo 2023):
+//   Foundation: Strategia A — säilytä kuorma, kirjaa V0, kevennä ENSI VIIKOLLE.
+//                Failure-protokolla EI kuulu foundation-blokkiin (24-48h recovery).
+//   Strength:   Strategia B — laske 5% seuraavaan sarjaan. Strength sietää failure-
+//                stimuluksen mutta loput sarjat tarvitsevat alennetun kuorman.
+//   Intensity:  Strategia C — lopeta liike (2-failure rule, Tuchscherer RTS).
+//                Intensity-V0 = CNS-signaali, säilytä recovery seuraaville päiville.
+//   Peaking:    Strategia C — lopeta liike. Peaking-V0 = punainen lippu.
+//
+// Block-aware-parametri valinnainen — vanhat kutsut (ilman blockPhase) saavat
+// legacy-Strategia-B:n (10% drop) yhteensopivuuden vuoksi.
+function failureReaction(currentLoadKg, targetReps, isPrimary, consecutiveFailures, blockPhase = null) {
+  // Block-aware reactions (v4.32.8)
+  if (blockPhase === "foundation") {
+    return {
+      nextSetLoad: currentLoadKg,  // säilytä kuorma — Strategia A
+      nextSetReps: isPrimary ? Math.max(targetReps - 1, 1) : targetReps,
+      shouldStop: consecutiveFailures >= 1,  // 1× V0 foundationissa = stop, EI sallita 2x
+      strategy: "A",
+      message: consecutiveFailures >= 1
+        ? "Foundation V0 → lopeta liike. Foundation EI ole failure-protokolla. Ensi viikolla -2.5 kg."
+        : "Foundation V0 → kirjaa, jatka samalla kuormalla loppuun. Ensi viikolla -2.5 kg.",
+      nextWeekLoadAdjust: -0.025,
+    };
+  }
+  if (blockPhase === "intensity" || blockPhase === "peaking") {
+    return {
+      nextSetLoad: currentLoadKg,  // ei merkitystä, lopetetaan
+      nextSetReps: 0,
+      shouldStop: true,             // Strategia C — lopeta heti
+      strategy: "C",
+      message: blockPhase === "peaking"
+        ? "Peaking V0 → STOP. CNS säilytetään kisaa varten. Älä jatka."
+        : "Intensity V0 → STOP liike. 2-failure rule (Tuchscherer RTS). Recovery seuraavalle päivälle.",
+      nextWeekLoadAdjust: blockPhase === "peaking" ? 0 : -0.05,
+    };
+  }
+  // Strength (default) — Strategia B (5% drop)
+  const nextSetLoad = roundToHalf(currentLoadKg * 0.95);  // v4.32.8: 10% → 5% (Refalo 2023)
   const nextSetReps = isPrimary ? Math.max(targetReps - 1, 1) : targetReps;
-
   if (consecutiveFailures >= 2) {
     return {
       nextSetLoad,
       nextSetReps,
       shouldStop: true,
-      message: "2× failure — lopetatko tähän liikkeeseen?",
+      strategy: "B",
+      message: "2× failure strengthissä — lopeta liike, palautuminen primaryksi.",
+      nextWeekLoadAdjust: -0.05,
     };
   }
   return {
     nextSetLoad,
     nextSetReps,
     shouldStop: false,
-    message: `Failure — seuraava sarja: ${nextSetLoad} kg`,
+    strategy: "B",
+    message: `Strength V0 → seuraava sarja ${nextSetLoad} kg (-5%, Refalo 2023).`,
+    nextWeekLoadAdjust: 0,
   };
 }
 
@@ -1293,35 +1357,41 @@ async function recommend(options = {}) {
     })
     .filter((v) => v !== null);
 
-  // v4.27.15: CALIBRATION OVERRIDE
+  // v4.27.15 → v4.32.8: CALIBRATION OVERRIDE
   //
-  // AMRAP-kalibrointisetti (setRole === "calibration", actualVx === 0) antaa
-  // Vx-biasista vapaan ground-truth-mittauksen e1RM:stä. Jos TOP-sarjoissa on
-  // viim. 3 setissä yksi tai useampi kalibrointi, override: käytä pelkästään
-  // kalibrointisettien mediaania (ohita Vx-kontaminoidut top-singlet).
+  // Kalibrointisetti (setRole === "calibration") antaa tarkkuus-prioritisoidun
+  // e1RM-mittauksen. Jos TOP-sarjoissa on viim. 3 setissä yksi tai useampi
+  // kalibrointi, override: käytä pelkästään kalibrointisettien mediaania
+  // (ohita Vx-kontaminoidut top-singlet).
+  //
+  // v4.32.8 PROTOKOLLAMUUTOS: AMRAP @85 % × failure (V0) → 92 % × 3 V1 (RPE 8).
+  //   Tarkkuusparannus DiStasio 2014 + Helms MASS 2023:
+  //   - Low-rep e1RM-tarkkuus ±2.7 kg vs AMRAP-extrapoloinnin ±5+ kg
+  //   - CNS-kuorma matalampi → deload-viikolla turvallisempi
+  //   - actualVx-fallback: ?? targetVx ?? 1 (yhdenmukainen e1RM-laskennan kanssa)
   //
   // Ikkunat:
   //   • Kalibrointi viim. 3 topissa → override (tuore kalibrointi hallitsee)
   //   • Vanhempi kalibrointi       → takaisin mediaaniin (strength changes
   //                                   drift + uutta data kertyy)
   //
-  // Miksi pelkkä Vx=0 ei riitä? Koska viim. 6 top-setin median sekoittaa
-  // kalibroinnin 5 muun (Vx-biasilla kontaminoidun) setin kanssa. Override
-  // antaa kalibroinnille sen ansaitseman "reset"-painon.
+  // Backward compat: vanhat V0-AMRAP-kalibroinnit toimivat edelleen
+  //   (s.actualVx === 0 → vara = 0 → puhdas Epley).
   const last3Sets = recentTopSets.slice(-3);
   const recentCalibSets = last3Sets.filter(s => s.setRole === "calibration");
   let currentE1RMSystem;
   let e1rmSource = "median";
   if (recentCalibSets.length > 0) {
     const calibE1rms = recentCalibSets.map(s => {
-      const vara = s.actualVx ?? 0;  // AMRAP = failure, Vx=0 oletus
+      // v4.32.8: fallback chain — actualVx (raportoitu) → targetVx (V1 uudessa, V0 vanhassa) → 1
+      const vara = s.actualVx ?? s.targetVx ?? 1;
       if (isBarbell) {
         return e1rmAccessory(s.externalLoadKg || 0, s.reps || 1, vara);
       }
       return e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || 1, vara);
     }).filter(v => v !== null);
     currentE1RMSystem = calibE1rms.length > 0 ? median(calibE1rms) : (e1rmValues.length > 0 ? median(e1rmValues) : null);
-    if (calibE1rms.length > 0) e1rmSource = `calibration (${recentCalibSets.length} AMRAP${recentCalibSets.length > 1 ? "s" : ""})`;
+    if (calibE1rms.length > 0) e1rmSource = `calibration (${recentCalibSets.length} setti${recentCalibSets.length > 1 ? "ä" : ""})`;
   } else {
     currentE1RMSystem = e1rmValues.length > 0 ? median(e1rmValues) : null;
   }
