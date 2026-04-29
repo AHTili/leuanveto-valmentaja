@@ -1,5 +1,5 @@
 // engine.js — Computation engine: e1RM, baselines, readiness, recommend(), mesocycle, decisionTrace
-// LeVe Coach v1.0.0
+// LeVe AI v4.34.1 — engine logic (unchanged from v4.34.0, brand evolution only)
 
 import {
   uid, todayISO, parseNumericInput,

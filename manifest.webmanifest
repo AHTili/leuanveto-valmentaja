@@ -1,7 +1,7 @@
 {
-  "name": "Lisäpainoleuanvedon optimointikone",
-  "short_name": "LeVe Coach",
-  "description": "Lisäpainoleuanvedon adaptiivinen voimavalmennusjärjestelmä",
+  "name": "LeVe AI — henkilökohtainen tekoälyvalmentaja",
+  "short_name": "LeVe AI",
+  "description": "Voimaurheilun adaptiivinen tekoälypohjainen valmennusalusta — leuanveto, voimanosto, streetlifting",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait",

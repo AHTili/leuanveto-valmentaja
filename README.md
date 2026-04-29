@@ -1,20 +1,37 @@
-# LeVe Coach — Lisäpainoleuanvedon optimointikone
+# LeVe AI — henkilökohtainen tekoälyvalmentaja voimaurheiluun
 
-Tuotantolaatuinen lisäpainoleuanvedon voimaohjelmointisovellus yhdelle eliittitason harjoittelijalle. Toimii henkilökohtaisena voimavalmentajana joka ohjaa päivittäistä harjoittelua deterministisesti ja tieteellisesti.
+**Pioneer-versio henkilökohtaisesta AI-pohjaisesta voimavalmennuksesta.** Sovellus on rakennettu tekoälyä hyödyntäen ja se sisältää AI-Block-Tuning -ominaisuuden joka tarjoaa atleetille deload-pohjaisen analyysipaketin Claude/ChatGPT-syvätutkimukseen — mahdollistaen elite-tasoisen valmennuksen ilman henkilökohtaisen valmentajan kuukausimaksua.
+
+Atleetti toimii pilottina paradigmalle jossa jokainen voimaurheilija saa AI-tehosteisen valmennuksen omaan tarpeeseen kalibroituna. Alkuperäinen "LeVe Coach" (Leuanveto + Valmentaja) on kasvanut käsittämään koko voimaurheilun — leuanvedon, voimanoston, streetliftingin.
 
 ## Ominaisuudet
 
-- **Mesosyklimoottori**: 4 viikon adaptiivinen mesosykli (Adaptaatio → Loading → Overreach → Deload)
-- **Vara-järjestelmä (Vx)**: Korvaa RIR:n — etäisyys failureen V0–V5
-- **Readiness 2/3-sääntö**: Velocity + HRV + Vara, velocity veto -mekanismilla
-- **Recommend()-moottori**: Deterministinen kuormasuositus e1RM:stä taaksepäin laskettuna
-- **Tukiliikkeiden progressio**: Automaattinen painoehdotus, stagnaatiotunnistus
-- **OVR Velocity -tuki**: Manuaalinen velocity-syöttö readiness-testiin ja työsarjoihin
-- **Oura HRV -integraatio**: RMSSD ms → lnRMSSD automaattisesti
-- **Cap-only -periaate**: Readiness rajoittaa mutta ei pakota
-- **DecisionTrace**: Täysi audit-ketju jokaisesta suosituksesta
+### Voimaurheilun ohjelmointi
+- **Mesosyklimoottori**: 4-blokkinen (Foundation → Strength → Intensity → Peaking)
+- **Streetlifting 16w-ohjelma**: kisaliikkeet MU + Lisäpainoleuka + Lisäpainodippi + Takakyykky
+- **Block-aware progressio**: phaseVariants per accessory-slot, automaattinen kalibrointi
+- **Sub-PR muscle memory -konteksti**: huomioi atleetin aiemman kokemuksen
+
+### Tekoäly + tutkimuspohja
+- **🤖 AI-Block-Tuning** (v4.34.0+): rikas analyysipaketti deload-viikoilla → atleetti vie Claudelle/ChatGPT:lle → palauttaa A/B/C-kategorisoituja suosituksia
+- **Pelland 2024, Helms 2018, Tuchscherer RTS, Refalo 2023, Sánchez-Moreno 2017** -pohjaiset suositukset
+- **Streetlifting-no-evidence-guard**: AI:n täytyy mainita aukot peer-review-aineistossa
+- **Calibration-protokolla**: 92%×3 V1 (DiStasio 2014 low-rep e1RM-tarkkuus)
+
+### Tekninen valmennus-infra
+- **Vara-järjestelmä (Vx)**: Korvaa RIR:n — V0-V5
+- **Readiness 2/3-sääntö**: Velocity + HRV + Vara, velocity veto
+- **Rolling 7-pv HRV** (v4.33.0): Plews 2013 -pohjainen
+- **MPV-readiness** (v4.33.0): Sánchez-Moreno 2017 pull-up-spesifi load-velocity
+- **Block-aware failureReaction**: Strategia A (foundation) / B (strength) / C (intensity)
+- **Recommend()-moottori**: Deterministinen kuormasuositus e1RM:stä
+- **Tendin-prehab-protokollat**: 8 min yläraaja + 9 min alaraaja (Cools/Reinold/Tyler/McGill/Boren)
+
+### Käyttöinfra
 - **Offline-first PWA**: Toimii ilman verkkoyhteyttä
 - **Dark theme**: Optimoitu salikäyttöön
+- **DecisionTrace**: Täysi audit-ketju jokaisesta suosituksesta
+- **Auto-rebuild**: PROGRAM_BUILD_VERSION-bumpilla ohjelmamuutokset näkyvät heti, edistys säilyy
 
 ## Asennus
 

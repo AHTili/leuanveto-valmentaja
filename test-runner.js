@@ -1,4 +1,4 @@
-// test-runner.js — Golden fixture tests for LeVe Coach
+// test-runner.js — Golden fixture tests for LeVe AI
 // Activated via ?test=1 or Diagnostics → "Aja testit"
 
 import {
@@ -475,7 +475,7 @@ export async function runTests() {
   _failed = 0;
   _results = [];
 
-  console.log("=== LeVe Coach Test Suite ===");
+  console.log("=== LeVe AI Test Suite ===");
 
   testMath();
   testZClassification();
@@ -509,7 +509,7 @@ export async function runTests() {
   const container = document.getElementById("app") || document.body;
   const html = `
     <div style="max-width:600px;margin:20px auto;padding:16px;font-family:system-ui;background:#0b1220;color:#e8eefc">
-      <h1 style="font-size:20px">LeVe Coach — Testit</h1>
+      <h1 style="font-size:20px">LeVe AI — Testit</h1>
       <div style="font-size:24px;font-weight:700;margin:12px 0;color:${_failed === 0 ? '#22c55e' : '#ef4444'}">
         ${_failed === 0 ? '✓ Kaikki testit läpi' : `✗ ${_failed} testiä epäonnistui`}
       </div>
