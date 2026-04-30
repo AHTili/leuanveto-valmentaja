@@ -1,5 +1,5 @@
 // engine.js — Computation engine: e1RM, baselines, readiness, recommend(), mesocycle, decisionTrace
-// LeVe AI v4.34.10 — engine logic muuttumaton (data.js v4.34.10: lähteet poistettu kaikkien päivien warmup-arrayista, MA/TI/TO/LA käytännönohjeet imperatiivina, lisätty Joey Banded Posterior Shoulder Mobilization TO-prehabiin).
+// LeVe AI v4.34.11 — engine logic muuttumaton (index.html v4.34.11-muutokset: backfill vs plan-override -valinta + dayAlreadyDone ei blokkaa plan-override-sessioilla).
 
 import {
   uid, todayISO, parseNumericInput,

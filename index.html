@@ -2281,7 +2281,13 @@ function renderDashboard() {
   // v4.32.2 (bugi): jos plan-override on aktiivinen (käyttäjä klikkasi "Vaihda päivä"),
   // CTA aktivoidaan vaikka tänään olisi tehty oma plani — käyttäjä haluaa nyt eri päivän
   // plania tehdä. Aiemmin disabled CTA jätti käyttäjän jumiin override-tilaan.
-  const todaySession = (state.sessions || []).find(s => (s.dateISO || "") === today);
+  // v4.34.11 (KÄYTTÄJÄPALAUTE): plan-override-sessio (käyttäjä teki tänään mennyttä päivän
+  // plania) EI saa blokata oman päivän todellista treeniä. Käyttäjä raportoi: täytti TODAY:nä
+  // Ma-päivän plania → CTA lukittui "TÄNÄÄN TEHTY" → ei voinut tehdä todellista TO-treeniä.
+  // Korjaus: jos session.isPlanOverride === true, sitä EI lasketa "oman päivän tehdyksi".
+  const todaySession = (state.sessions || []).find(s =>
+    (s.dateISO || "") === today && !s.isPlanOverride
+  );
   const dayAlreadyDone = !!todaySession && !state.planOverrideDateISO;
   const ctaLabel = dayAlreadyDone
     ? "✅ TÄNÄÄN TEHTY"
@@ -6438,9 +6444,12 @@ function bind() {
   });
 
   // Plan override: "Vaihda päivä" → modaali viikon muista päivistä
-  // v4.34.8 (laajennettu): jos chosen date on ennen mesocycle.startDateISO:a (out-of-range),
-  // tarjotaan sama auto-fix kuin backfill-polulla — säädä startDateISO most-recent-MA:han.
-  // Tämä korjaa käyttäjäpalauten "Plani vaihdettu mutta etusivu näyttää 'Ei ohjelmaa tänään'".
+  // v4.34.11 (KÄYTTÄJÄPALAUTE): selkeä ero plan-override vs backfill, kun käyttäjä
+  // valitsee menneen päivän. Käyttäjän raportoima ongelma: "täytin Ma:n tänään
+  // (Vaihda päivä → Ma) → CTA lukittui 'TÄNÄÄN TEHTY' → en voinut tehdä TO-treeniä".
+  // Korjaus: kun chosen.dateISO < today, kysytään käyttäjältä:
+  //   - BACKFILL: session.dateISO = chosen.dateISO (treeni KIRJATAAN menneenä päivänä)
+  //   - PLAN-OVERRIDE: session.dateISO = today (treeni TEHDÄÄN tänään, plan toiselta päivältä)
   const planOverrideBtn = $("#btn-plan-override");
   if (planOverrideBtn) planOverrideBtn.addEventListener("click", async () => {
     if (state.workout) {
@@ -6465,7 +6474,33 @@ function bind() {
       try { await createPreRebuildSnapshot(`pre-startdate-fix-planoverride-${start}-to-${snapped}`); } catch (e) {}
       state.mesocycle.startDateISO = snapped;
       await saveMesocycle(state.mesocycle);
-      // Jatketaan plan-overrideen — startDateISO on nyt säädetty
+    }
+
+    // v4.34.11: jos chosen.dateISO on MENNYT (< today), kysy backfill vs plan-override
+    const today = todayISO();
+    if (choice.dateISO < today) {
+      const intentIdx = await showListModal(
+        `${choice.label} — mitä haluat tehdä?`,
+        [
+          { icon: "🕑", label: "Kirjaa MENNEEN PÄIVÄN treeni (backfill)", desc: `Treeni tallennetaan ${choice.dateISO}-päivälle, EI tänään. TO-treeni pysyy tekemättä tänään.` },
+          { icon: "🔀", label: "Tee TÄNÄÄN tämän päivän plani", desc: `Treeni tallennetaan tänään (${today}), planSourceDateISO ${choice.dateISO}. CTA lukittuu kun valmis.` },
+          { icon: "✗", label: "Peruuta", desc: "Ei muutoksia" },
+        ]
+      );
+      if (intentIdx === 2 || intentIdx === null) return;
+      if (intentIdx === 0) {
+        // BACKFILL — käytä startWorkout(backfillDateISO) -polkua
+        try {
+          await startWorkout(choice.dateISO);
+          state.view = "workout";
+          render();
+        } catch (e) {
+          console.error("Backfill startWorkout failed:", e);
+          showToast("Virhe: treeniä ei voitu käynnistää", "bad");
+        }
+        return;
+      }
+      // intentIdx === 1 → plan-override (jatka alle)
     }
 
     try {
