@@ -747,6 +747,8 @@ import {
   getSettings, saveSettings,
   exportFullBackup, importFullBackup,
   getBackupStatus, getAllBackupSnapshots, createBackupSnapshot, restoreFromSnapshot,
+  // v4.34.6: persistent storage + pre-rebuild snapshot + Monday snap
+  requestPersistentStorage, createPreRebuildSnapshot, snapToMostRecentMonday, maybeCreateWeeklyBackup,
   parseCSV, importHistoricalCSV,
   getMovementProgress, getAllMovementProgress, saveMovementProgress,
   getTracesForRec,
@@ -851,6 +853,32 @@ const state = {
 
 async function init() {
   await initDB();
+  // v4.34.6: PERSISTENT STORAGE -pyyntö heti init:n alussa.
+  // Selain merkitsee storagen pysyväksi → "Clear browsing data" EI vaikuta automaattisesti.
+  // Vain "Site settings → Clear & reset" pyyhkii (eksplisiittinen toimi).
+  // Tämä ratkaisee v4.34.5-tilanteen perusssyyn (selainhistorian tyhjennys pyyhki IDB:n).
+  try {
+    const persistResult = await requestPersistentStorage();
+    state._persistentStorage = persistResult;
+    if (persistResult.granted) {
+      console.info(`[LeVe] ✓ Persistent storage active — IDB selviytyy 'Clear browsing data' -toiminnosta`);
+    } else if (persistResult.supported) {
+      console.warn("[LeVe] ⚠ Persistent storage NOT granted — selain voi pyyhkiä datan automaattisesti. Asenna PWA:ksi parantaaksesi suojausta.");
+    }
+  } catch (e) {
+    console.error("[LeVe] requestPersistentStorage failed:", e);
+  }
+  // v4.34.6: STARTUP SNAPSHOT — jos viim. snapshot >24h sitten, tee uusi heti.
+  // Tämä korvaa weekly-cyklin ja varmistaa että jokainen sovelluskerta tuottaa
+  // ainakin yhden snapshotin per päivä.
+  try {
+    const newSnap = await maybeCreateWeeklyBackup();  // funktio nimi legacy, toimii nyt päivittäin
+    if (newSnap) {
+      console.info(`[LeVe] ✓ Daily startup snapshot created (${Math.round(newSnap.sizeBytes / 1024)} KB)`);
+    }
+  } catch (e) {
+    console.error("[LeVe] startup snapshot failed:", e);
+  }
   // v4.26.0: backup-status dashboard-indikaattoria varten
   state.backupStatus = await getBackupStatus();
   state.settings = await getSettings();
@@ -873,6 +901,14 @@ async function init() {
         state.mesocycle.programVersion !== PROGRAM_BUILD_VERSION) {
       const oldVersion = state.mesocycle.programVersion || "ennen-v4.30.2";
       console.info(`[LeVe] Mesocycle program version mismatch: ${oldVersion} → ${PROGRAM_BUILD_VERSION}. Rebuilding weekPlans, säilytetään edistys.`);
+      // v4.34.6: PRE-REBUILD SNAPSHOT — varmistus että rebuild EI VOI rikkoa mitään.
+      // Ennen weekPlans-rakenteen korvaamista, tallenna täysi snapshot recovery-pisteeksi.
+      // Tämän puuttuminen oli yksi syy v4.34.5-tilanteen päättymiseen datakatoon.
+      try {
+        await createPreRebuildSnapshot(`pre-rebuild-${oldVersion}-to-${PROGRAM_BUILD_VERSION}`);
+      } catch (e) {
+        console.warn("[LeVe] Pre-rebuild snapshot epäonnistui (jatketaan rebuildilla):", e);
+      }
       state.mesocycle = rebuildStreetlifting16WMesocycle(state.mesocycle);
       await saveMesocycle(state.mesocycle);
       // Toast näytetään checkPendingWorkoutRecoveryn jälkeen jotta UI on valmis.
@@ -6134,6 +6170,19 @@ function renderSettingsView() {
       </div>
     </div>
 
+    ${state.mesocycle?.type === "streetlifting_16w" ? `<div class="card">
+      <div class="card-title">📅 Mesocycle-aloituspäivä</div>
+      <div class="muted" style="font-size:12px;margin-bottom:10px">Ohjelman ensimmäisen viikon maanantain päivämäärä. Auto-snappaa lähimpään edelliseen maanantaihin (pl. tänään jos tänään on maanantai). Tarvitaan jos haluat backfillata menneitä päiviä — niiden täytyy osua mesocyclen viikkoihin 1-16.</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="flex:1;font-size:13px">Aloituspäivä (MA)</span>
+        <input type="date" id="set-meso-startdate" value="${state.mesocycle.startDateISO || ''}" style="min-height:38px;font-size:14px">
+      </div>
+      <button class="btn btn-sm btn-outline" id="btn-save-meso-startdate" style="margin-top:4px">📅 Päivitä aloituspäivä (auto-snap MA)</button>
+      <div class="muted" style="font-size:11px;margin-top:8px">
+        💡 Esim. jos tänään on torstai 30.4.2026 ja haluat backfillata tämän viikon MA + TI -treenit, aseta tähän 2026-04-27 (= maanantai). Auto-snap varmistaa että lopullinen arvo on aina maanantai.
+      </div>
+    </div>` : ""}
+
     <div class="card">
       <div class="card-title">Kisaliikkeiden 1RM (kalibrointi)</div>
       <div class="muted" style="font-size:12px;margin-bottom:10px">Nykyinen 1RM kullekin kisaliikkeelle. Käytetään streetlifting_16w-mesosyklin kuormalaskentaan (kaikki loadingsit ovat % tästä luvusta). Päivitä aina kun 1RM muuttuu — seuraava sessio käyttää uutta arvoa automaattisesti.</div>
@@ -7059,6 +7108,36 @@ function bind() {
       $$("[data-density]").forEach(b => b.classList.toggle("active", b.dataset.density === mode));
       applyDensityClass();
     });
+  });
+
+  // v4.34.6: Mesocycle startDateISO adjust
+  // Backfill-bugin korjaus: jos käyttäjä loi mesocyclen torstaina, tämän viikon MA + TI
+  // putoavat vk 0:aan ja saavat "ei ohjelmaa". Tämä UI antaa siirtää startDateISO:n
+  // edelliseen maanantaiin → kaikki tämän viikon päivät pääsevät vk 1:een.
+  const saveMesoStartDateBtn = $("#btn-save-meso-startdate");
+  if (saveMesoStartDateBtn) saveMesoStartDateBtn.addEventListener("click", async () => {
+    const inputDate = $("#set-meso-startdate")?.value;
+    if (!inputDate || !state.mesocycle || state.mesocycle.type !== "streetlifting_16w") {
+      showToast("Päivämäärä puuttuu tai mesocycle ei ole streetlifting", "warn");
+      return;
+    }
+    // Auto-snap most-recent-Monday
+    const snapped = snapToMostRecentMonday(inputDate);
+    if (snapped !== inputDate) {
+      const ok = confirm(`Aloituspäivä siirretään lähimpään edelliseen maanantaihin: ${inputDate} → ${snapped}. Jatka?`);
+      if (!ok) return;
+    }
+    // Pre-change snapshot turvallisuussyistä
+    try {
+      await createPreRebuildSnapshot(`pre-startdate-change-${state.mesocycle.startDateISO}-to-${snapped}`);
+    } catch (e) {
+      console.warn("Pre-startdate-change snapshot failed:", e);
+    }
+    state.mesocycle.startDateISO = snapped;
+    await saveMesocycle(state.mesocycle);
+    await computeRecommendation();
+    showToast(`✓ Aloituspäivä päivitetty: ${snapped}. Backfill toimii nyt menneille MA/TI/TO/LA-päiville.`, "ok", 5000);
+    render();
   });
 
   // Export scope — näytä/piilota alueet
