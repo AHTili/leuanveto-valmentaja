@@ -4928,19 +4928,25 @@ async function openSessionDetail(sessionId) {
 
 /**
  * Kerää mesosyklin mennet suunnitellut päivät joiden plan on toteutumatta.
- * Käyttää samaa logiikkaa kuin findMissedPriorSessions: "toteutettu" =
- * session.planSourceDateISO osoittaa tähän päivään (tai vanhoilla
- * sessioilla dateISO). Käytetään history-näkymän "+ Lisää mennyt treeni" -polussa.
- * @param {number} daysBack — oletus 28 (4 viikkoa)
+ * v4.34.8 KÄYTTÄJÄPALAUTE: backfill ei toiminut kun mesosykli oli "ei ohjelmaa tänään"
+ * -tilassa (mesocycle.startDateISO oli today, edellisen 7 päivän päivät putosivat ulos
+ * weekNum=null -takia). Korjaus: palautetaan KAIKKI viimeisen 7 päivän päivät, status-
+ * lipulla ("planned" / "out-of-range" / "no-mesocycle"). Modaali näyttää molemmat
+ * kategoriat → out-of-range-päivien klikki tarjoaa auto-fix-säädön.
+ *
+ * Käyttäjäpalaute (suora lainaus): "ohjelmassa tulisi kyetä lisäämään edellisen 7
+ * päivän treenit, mikäli on unohtunut. muuta tämä ominaisuus jotta ei lukisi 'ei
+ * ohjelmaa tänään'"
+ *
+ * @param {number} daysBack — oletus 7 (= viimeinen viikko, käyttäjäpalauten mukaan)
  */
-function collectAllMissedDays(daysBack = 28) {
-  if (!state.mesocycle) return [];
+function collectAllMissedDays(daysBack = 7) {
   const executedPlans = new Set();
   for (const s of state.sessions) {
     const planISO = s.planSourceDateISO || s.dateISO;
     if (planISO) executedPlans.add(planISO);
   }
-  const skipped = new Set(state.mesocycle.skippedDays || []);
+  const skipped = new Set(state.mesocycle?.skippedDays || []);
   const today = todayISO();
   const base = new Date(today);
   const out = [];
@@ -4950,13 +4956,27 @@ function collectAllMissedDays(daysBack = 28) {
     const iso = date.toISOString().slice(0, 10);
     if (executedPlans.has(iso)) continue;
     if (skipped.has(iso)) continue;
-    const weekNum = getMesocycleWeek(state.mesocycle, iso);
-    if (weekNum === null) continue;
     const dow = date.getDay() || 7;
+    // v4.34.8: AINA palautetaan päivä — status kertoo onko mesosyklissä vai ei
+    if (!state.mesocycle) {
+      out.push({ dateISO: iso, dayOfWeek: dow, weekNum: null, dayType: null, dayLabel: null, status: "no-mesocycle" });
+      continue;
+    }
+    const weekNum = getMesocycleWeek(state.mesocycle, iso);
+    if (weekNum === null) {
+      // Päivä on mesosyklin ulkopuolella (ennen alkua tai jälkeen lopun)
+      out.push({ dateISO: iso, dayOfWeek: dow, weekNum: null, dayType: null, dayLabel: null, status: "out-of-range" });
+      continue;
+    }
     const weekPlan = state.mesocycle.weekPlans?.find(w => w.week === weekNum);
     const dayPlan = weekPlan?.days?.find(x => x.dayOfWeek === dow);
-    if (!dayPlan) continue;
-    out.push({ dateISO: iso, dayOfWeek: dow, weekNum, dayType: dayPlan.dayType, dayLabel: dayPlan.label || null });
+    if (!dayPlan) {
+      // Mesosyklin sisällä mutta tälle dayOfWeek:lle ei ole suunniteltu day plania
+      // (esim. KE/PE/SU streetlifting_16w:ssä)
+      out.push({ dateISO: iso, dayOfWeek: dow, weekNum, dayType: null, dayLabel: null, status: "no-day-plan" });
+      continue;
+    }
+    out.push({ dateISO: iso, dayOfWeek: dow, weekNum, dayType: dayPlan.dayType, dayLabel: dayPlan.label || null, status: "planned" });
   }
   return out;
 }
@@ -6450,26 +6470,80 @@ function bind() {
   });
 
   // History view: "+ Lisää mennyt treeni"
+  // v4.34.8: KÄYTTÄJÄPALAUTE — backfill-toiminto näyttää AINA viimeisen 7 päivän treenit,
+  // myös ne jotka ovat mesosyklin ulkopuolella. Out-of-range-päivät klikatessa ehdotetaan
+  // mesosyklin aloituspäivän siirto taaksepäin (auto-fix). "Ei ohjelmaa tänään" -tilan
+  // poistamiseksi.
   const backfillPastBtn = $("#btn-backfill-past");
   if (backfillPastBtn) backfillPastBtn.addEventListener("click", async () => {
     if (state.workout) {
       showToast("Keskeneräinen treeni — tallenna tai hylkää ensin", "warn");
       return;
     }
-    const missed = collectAllMissedDays(28);
+    const missed = collectAllMissedDays(7);  // viim. 7 päivää käyttäjäpalauten mukaan
     if (missed.length === 0) {
-      showToast("Ei tekemättömiä suunniteltuja päiviä (4 vk)", "");
+      showToast("Ei tekemättömiä päiviä (7 pv)", "");
       return;
     }
     const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
-    const options = missed.map(m => ({
-      icon: "🕑",
-      label: `${dayNames[m.dayOfWeek]} ${m.dateISO.slice(5).replace("-", ".")} · ${stripRedundantDayPrefix(m.dayLabel) || dayTypeLabel(m.dayType)}`,
-      desc: `Vk ${m.weekNum}`,
-    }));
-    const idx = await showListModal("Lisää mennyt treeni", options);
+    const options = missed.map(m => {
+      const dayLabel = `${dayNames[m.dayOfWeek]} ${m.dateISO.slice(5).replace("-", ".")}`;
+      if (m.status === "planned") {
+        return {
+          icon: "🕑",
+          label: `${dayLabel} · ${stripRedundantDayPrefix(m.dayLabel) || dayTypeLabel(m.dayType)}`,
+          desc: `Vk ${m.weekNum} · suunniteltu`,
+        };
+      }
+      // out-of-range / no-mesocycle / no-day-plan
+      const reasonText = m.status === "out-of-range" ? "Ulkopuolella mesosykliä — säädä aloituspäivä"
+        : m.status === "no-mesocycle" ? "Ei mesosykliä — aloita mesosykli ensin"
+        : "Ei suunniteltua plania tällä viikonpäivällä";
+      return {
+        icon: "⚠",
+        label: `${dayLabel} · ad-hoc`,
+        desc: reasonText,
+      };
+    });
+    const idx = await showListModal("Lisää mennyt treeni — viim. 7 pv", options);
     if (idx === null || idx < 0 || idx >= missed.length) return;
-    const iso = missed[idx].dateISO;
+    const chosen = missed[idx];
+    const iso = chosen.dateISO;
+
+    // v4.34.8: jos päivä on out-of-range (ennen mesosyklin alkua), tarjoa auto-fix
+    if (chosen.status === "out-of-range" && state.mesocycle) {
+      const start = state.mesocycle.startDateISO;
+      // Snap most-recent-Monday from chosen date itself (so it lands in week 1)
+      const snappedToMonday = snapToMostRecentMonday(iso);
+      const fixIdx = await showListModal(
+        `Päivä ${iso} on ennen mesosyklin alkua (${start})`,
+        [
+          { icon: "✓", label: `Säädä mesosyklin aloituspäivä → ${snappedToMonday}`, desc: `Sallii backfillin tälle päivälle (auto-snap MA)` },
+          { icon: "✗", label: "Peruuta", desc: "Ei muutoksia" },
+        ]
+      );
+      if (fixIdx !== 0) return;
+      // Pre-change snapshot
+      try { await createPreRebuildSnapshot(`pre-startdate-fix-${start}-to-${snappedToMonday}`); } catch (e) {}
+      state.mesocycle.startDateISO = snappedToMonday;
+      await saveMesocycle(state.mesocycle);
+      await computeRecommendation();
+      showToast(`✓ Aloituspäivä → ${snappedToMonday}. Käynnistä treeni uudelleen valikosta.`, "ok", 5000);
+      render();
+      return;
+    }
+
+    if (chosen.status === "no-mesocycle") {
+      showToast("Aloita ensin mesosykli (Sykli → Vaihda ohjelma)", "warn", 5000);
+      return;
+    }
+
+    if (chosen.status === "no-day-plan") {
+      showToast(`${dayNames[chosen.dayOfWeek]} ei ole suunniteltu treenipäivä — valitse mesosyklin sisältä`, "warn", 5000);
+      return;
+    }
+
+    // chosen.status === "planned" → käynnistä workout normaalisti
     try {
       await startWorkout(iso);
       state.view = "workout";

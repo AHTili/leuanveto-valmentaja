@@ -1,5 +1,5 @@
 // engine.js — Computation engine: e1RM, baselines, readiness, recommend(), mesocycle, decisionTrace
-// LeVe AI v4.34.7 — engine logic muuttumaton (data.js + index.html varsinaiset v4.34.7-muutokset: orphan-mesocycle cleanup "Vaihda ohjelma" -toiminnon yhteydessä).
+// LeVe AI v4.34.8 — engine logic muuttumaton (index.html varsinainen v4.34.8-muutos: collectAllMissedDays palauttaa AINA viim. 7 pv, backfill auto-fix out-of-range-päiville).
 
 import {
   uid, todayISO, parseNumericInput,
