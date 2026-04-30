@@ -1,5 +1,5 @@
 // engine.js — Computation engine: e1RM, baselines, readiness, recommend(), mesocycle, decisionTrace
-// LeVe AI v4.34.8 — engine logic muuttumaton (index.html varsinainen v4.34.8-muutos: collectAllMissedDays palauttaa AINA viim. 7 pv, backfill auto-fix out-of-range-päiville).
+// LeVe AI v4.34.9 — engine logic muuttumaton (index.html + sw.js v4.34.9-muutokset: PWA SW update-banner "Lataa nyt" -nappi joka pakottaa skipWaiting → reload).
 
 import {
   uid, todayISO, parseNumericInput,

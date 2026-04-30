@@ -9020,23 +9020,59 @@ function checkUrlParams() {
 // ═══════════════════════════════════════════════════════════════
 
 if ("serviceWorker" in navigator) {
+  // v4.34.9: Päivitysprosessin parannus — uusi SW jää WAITING-tilaan kunnes pää-säie
+  // pakottaa skipWaiting:in. Aiemmin käyttäjän piti sulkea sovellus täysin että uusi
+  // versio aktivoitui (PWA tab-näkymä, sulje + avaa), mikä oli huono UX. Nyt:
+  // 1. Kun uusi SW on tilassa "installed" + vanha SW yhä controllerina → näytä banner
+  // 2. Banneri "🔄 Uusi versio v4.34.9 saatavilla — Lataa nyt"
+  // 3. Klikkaus → postMessage SKIP_WAITING → SW aktivoituu → controllerchange → reload
+  let _waitingSW = null;
+  function showUpdateBanner() {
+    if (document.getElementById("update-banner")) return;
+    const banner = document.createElement("div");
+    banner.id = "update-banner";
+    banner.style.cssText = "position:fixed;bottom:80px;left:8px;right:8px;background:var(--acc, #6366f1);color:white;padding:12px 16px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10000;display:flex;align-items:center;gap:10px;font-size:14px";
+    banner.innerHTML = `<div style="flex:1"><b>🔄 Uusi versio saatavilla</b><div style="font-size:12px;opacity:0.9;margin-top:2px">Päivitykset latautuvat napsauttamalla.</div></div><button id="btn-update-now" style="background:white;color:var(--acc,#6366f1);border:none;padding:8px 14px;border-radius:6px;font-weight:600;cursor:pointer">Lataa nyt</button>`;
+    document.body.appendChild(banner);
+    document.getElementById("btn-update-now").addEventListener("click", () => {
+      if (_waitingSW) {
+        _waitingSW.postMessage({ type: "SKIP_WAITING" });
+        document.getElementById("btn-update-now").textContent = "Päivitetään...";
+        document.getElementById("btn-update-now").disabled = true;
+      }
+    });
+  }
+
   navigator.serviceWorker.register("sw.js").then(reg => {
     // Check for updates every 60 seconds
     setInterval(() => reg.update(), 60000);
+    // v4.34.9: jos rekisteröinnin yhteydessä on JO waiting-SW, näytä banneri heti
+    if (reg.waiting && navigator.serviceWorker.controller) {
+      _waitingSW = reg.waiting;
+      showUpdateBanner();
+    }
     reg.addEventListener("updatefound", () => {
       const newSW = reg.installing;
       if (!newSW) return;
       newSW.addEventListener("statechange", () => {
+        if (newSW.state === "installed" && navigator.serviceWorker.controller) {
+          // v4.34.9: uusi SW on installed mutta WAITING — näytä päivitysbanneri
+          _waitingSW = newSW;
+          showUpdateBanner();
+        }
         if (newSW.state === "activated" && navigator.serviceWorker.controller) {
-          // New version activated — reload to get fresh code
+          // SW aktivoitui (joko skipWaiting tai natural takeover)
           showToast("Uusi versio ladattu — päivitetään...", "ok", 2000);
           setTimeout(() => location.reload(), 1500);
         }
       });
     });
   }).catch(() => {});
-  // Also reload if controller changes (another tab triggered update)
+  // controllerchange = uusi SW otti hallinnan → reload jotta uusi koodi käytössä
+  let _reloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (_reloading) return;
+    _reloading = true;
     location.reload();
   });
 }

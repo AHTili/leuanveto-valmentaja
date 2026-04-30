@@ -1,8 +1,16 @@
 // sw.js — Service Worker (offline-first, cache-first)
-// LeVe AI v4.34.8
+// LeVe AI v4.34.9
 
-const APP_VERSION = "4.34.8";
+const APP_VERSION = "4.34.9";
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
+
+// v4.34.9: Kuuntele SKIP_WAITING-message-eventtia, jolla pää-säie voi pakottaa
+// uuden SW:n aktivoitumisen heti (update-bannerin "Lataa nyt" -nappi käyttää tätä).
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
 
 const CORE_ASSETS = [
   "./",
