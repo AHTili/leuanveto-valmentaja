@@ -749,6 +749,8 @@ import {
   getBackupStatus, getAllBackupSnapshots, createBackupSnapshot, restoreFromSnapshot,
   // v4.34.6: persistent storage + pre-rebuild snapshot + Monday snap
   requestPersistentStorage, createPreRebuildSnapshot, snapToMostRecentMonday, maybeCreateWeeklyBackup,
+  // v4.34.7: orphan-mesocycle cleanup
+  cleanupOrphanMesocycles,
   parseCSV, importHistoricalCSV,
   getMovementProgress, getAllMovementProgress, saveMovementProgress,
   getTracesForRec,
@@ -6722,6 +6724,16 @@ function bind() {
         state.settings.bodyweightKg = cal.bwKg;
         await saveSettings(state.settings);
       }
+      // v4.34.7: poista orphan-mesosyklit (esim. autocreated default-mesosykli) jotta
+      // getActiveMesocycle ei voi sotkea toistuvia init()-kutsuja. Sessio-mesosyklit säilyvät.
+      try {
+        const cleanup = await cleanupOrphanMesocycles(slMeso.mesocycleId);
+        if (cleanup.deleted > 0) {
+          console.info(`[LeVe] Vaihda ohjelma: poistettu ${cleanup.deleted} orphan-mesosyklia (default/jäänne ilman session-historiaa)`);
+        }
+      } catch (e) {
+        console.warn("[LeVe] cleanupOrphanMesocycles failed (jatketaan):", e);
+      }
       await computeRecommendation();
       showToast("🏋️ Streetlifting 16 vk aloitettu!", "ok", 4000);
       render();
@@ -6760,6 +6772,13 @@ function bind() {
     }
     await saveMesocycle(meso);
     state.mesocycle = meso;
+    // v4.34.7: cleanup orphan mesocycles (sama logiikka kuin streetlifting + custom + peaking)
+    try {
+      const cleanup = await cleanupOrphanMesocycles(meso.mesocycleId);
+      if (cleanup.deleted > 0) {
+        console.info(`[LeVe] Vaihda ohjelma: poistettu ${cleanup.deleted} orphan-mesosyklia`);
+      }
+    } catch (e) { console.warn("cleanupOrphanMesocycles failed:", e); }
     await computeRecommendation();
     showToast(`${template.icon} ${template.label} aloitettu!`, "ok", 3000);
     render();

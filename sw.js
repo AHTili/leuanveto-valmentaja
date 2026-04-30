@@ -1,7 +1,7 @@
 // sw.js — Service Worker (offline-first, cache-first)
-// LeVe AI v4.34.6
+// LeVe AI v4.34.7
 
-const APP_VERSION = "4.34.6";
+const APP_VERSION = "4.34.7";
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
 
 const CORE_ASSETS = [
