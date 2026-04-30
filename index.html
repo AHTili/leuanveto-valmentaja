@@ -6438,6 +6438,9 @@ function bind() {
   });
 
   // Plan override: "Vaihda päivä" → modaali viikon muista päivistä
+  // v4.34.8 (laajennettu): jos chosen date on ennen mesocycle.startDateISO:a (out-of-range),
+  // tarjotaan sama auto-fix kuin backfill-polulla — säädä startDateISO most-recent-MA:han.
+  // Tämä korjaa käyttäjäpalauten "Plani vaihdettu mutta etusivu näyttää 'Ei ohjelmaa tänään'".
   const planOverrideBtn = $("#btn-plan-override");
   if (planOverrideBtn) planOverrideBtn.addEventListener("click", async () => {
     if (state.workout) {
@@ -6446,6 +6449,25 @@ function bind() {
     }
     const choice = await showPlanOverrideModal();
     if (!choice) return;
+
+    // v4.34.8: jos chosen date on ENNEN mesocycle.startDateISO:a → tarjoa auto-fix
+    if (state.mesocycle?.startDateISO && choice.dateISO < state.mesocycle.startDateISO) {
+      const start = state.mesocycle.startDateISO;
+      const snapped = snapToMostRecentMonday(choice.dateISO);
+      const fixIdx = await showListModal(
+        `Päivä ${choice.dateISO} on ennen mesosyklin alkua (${start})`,
+        [
+          { icon: "✓", label: `Säädä mesosyklin aloituspäivä → ${snapped}`, desc: "Sallii planin lataamisen tälle päivälle (auto-snap MA)" },
+          { icon: "✗", label: "Peruuta", desc: "Ei muutoksia" },
+        ]
+      );
+      if (fixIdx !== 0) return;
+      try { await createPreRebuildSnapshot(`pre-startdate-fix-planoverride-${start}-to-${snapped}`); } catch (e) {}
+      state.mesocycle.startDateISO = snapped;
+      await saveMesocycle(state.mesocycle);
+      // Jatketaan plan-overrideen — startDateISO on nyt säädetty
+    }
+
     try {
       state.planOverrideDateISO = choice.dateISO;
       await computeRecommendation(choice.dateISO);
