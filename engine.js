@@ -1,5 +1,5 @@
 // engine.js — Computation engine: e1RM, baselines, readiness, recommend(), mesocycle, decisionTrace
-// LeVe AI v4.34.4 — engine logic muuttumaton (data.js varsinaiset v4.34.4-muutokset: Owen Gayle Powell Raise + Trap 3 Raise stabilizer-rotaatio LA-päivälle, 3 uutta PRESET_MOVEMENTS + MOVEMENT_DESCRIPTIONS).
+// LeVe AI v4.34.5 — engine logic muuttumaton (data.js varsinaiset v4.34.5-muutokset: TO warmupArr BW dippi -volyymi 6×kasvatettu chest-activation-pump:in lisäämiseksi, atleetin TO-palaute "voima riittää, tekniikka ei → paikat eivät lämmenneet sarjoihin").
 
 import {
   uid, todayISO, parseNumericInput,
