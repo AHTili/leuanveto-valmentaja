@@ -1,5 +1,5 @@
 // engine.js — Computation engine: e1RM, baselines, readiness, recommend(), mesocycle, decisionTrace
-// LeVe AI v4.34.9 — engine logic muuttumaton (index.html + sw.js v4.34.9-muutokset: PWA SW update-banner "Lataa nyt" -nappi joka pakottaa skipWaiting → reload).
+// LeVe AI v4.34.10 — engine logic muuttumaton (data.js v4.34.10: lähteet poistettu kaikkien päivien warmup-arrayista, MA/TI/TO/LA käytännönohjeet imperatiivina, lisätty Joey Banded Posterior Shoulder Mobilization TO-prehabiin).
 
 import {
   uid, todayISO, parseNumericInput,

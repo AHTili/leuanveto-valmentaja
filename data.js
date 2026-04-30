@@ -13,7 +13,7 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
-const PROGRAM_BUILD_VERSION = "4.34.9";
+const PROGRAM_BUILD_VERSION = "4.34.10";
 
 // ── Store names ──
 const STORES = {
@@ -4045,24 +4045,25 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // Tyler 2010 + Decker 1999 + ElMaraghy 2012). Atleetin tendin-riski-historia
     // (olkapää/kyynärpää/rinta-insertio vihoittelee ilman lämmittelyä) edellyttää
     // strukturoitu warmup. Track B Q-B2 -syvätutkimuksen Claude-suositus.
+    // v4.34.10: Lähteet pois sulkeista. Käytännön ohjeet, lyhyet imperatiivit.
     const warmupArr = phase === "peaking" ? MA_WARMUP_PEAKING : [
-      // 1. Cardio-priming (60-90s) — McGowan 2015 lihaslämpötila +1-2°C
-      { name: "Hyppynaru / Cardio-ergo", desc: "60-90 s @ RPE 4 — lihaslämpö + veren virtaus" },
-      // 2. T-spine + scap mobility (60s) — Cools 2014/2015: T-spine ext. parantaa GH-ROM, vähentää RC-kompensaatiota
-      { name: "Cat-camel + T-spine ext (foam roller) + scap wall slides", desc: "6 + 8/puoli + 8 — T-spine + scap mobility (Cools 2014/2015)" },
-      // 3. Posterior capsule + pec minor stretch (60s) — Manske 2010, Wilk 2013
-      { name: "Cross-body stretch + pec minor corner stretch", desc: "2×30 s + 30 s/puoli — posterior capsule + pec minor (Manske 2010)" },
-      // 4. Side-lying ER (Reinold 2004: infraspinatus 62% MVIC, korkein 7 ER-variantista)
-      { name: "Side-lying ER (pyyhe kainalossa)", desc: "1×12-15, 2-4 kg KB tai band — RC-aktivaatio (Reinold 2004)" },
-      // 5. Prone Y / full can (Reinold 2007: supraspinatus 82% MVIC, full can > empty can)
-      { name: "Prone Y / Full can", desc: "1×10 hidas, 1-2 kg — supraspinatus, full can subakromiaalisen kompression välttämiseksi (Reinold 2007)" },
-      // 6. Serratus aktivaatio (Decker 1999: serratus >75% MVIC; Cools 2014: dyskinesia → vammat)
-      { name: "Serratus punch + wall slide protraction", desc: "1×10 band — serratus anterior (Decker 1999)" },
-      // 7. Tyler twist + reverse Tyler (Tyler 2010: VAS -81%, voima +72% epicondylosis; Holshouser 2020 distal biceps)
-      { name: "Tyler twist + reverse Tyler", desc: "1×10-12 (Flexbar) — distal biceps + lateral epicondylitis prehab (Tyler 2010, Holshouser 2020)" },
+      // 1. Yleislämmittely — verenkierto käyntiin
+      { name: "Hyppynaru / käsiergometri", desc: "60-90 s reipas tahti — kunnes hengitys nousee" },
+      // 2. T-rangan liikkuvuus + scap mobility
+      { name: "Cat-camel + T-rangan ojennus (foam roller) + scap wall slides", desc: "6 toistoa + 8/puoli + 8 — avaa rintaranka ja lapaluut" },
+      // 3. Posterior capsule + pec minor mobility
+      { name: "Cross-body stretch + pec minor doorway stretch", desc: "2×30 s + 30 s/puoli — venytä takaolkapää + pec minor (kainalon edessä)" },
+      // 4. RC-aktivaatio: ulkokierto kainalo tuettuna
+      { name: "Side-lying ulkokierto (pyyhe kainalossa)", desc: "1×12-15, 2-4 kg KB tai band — kiertäjäkalvosin lämpiäväksi" },
+      // 5. Supraspinatus
+      { name: "Prone Y / Full can", desc: "1×10 hidas, 1-2 kg — peukalo ylöspäin, käsivarsi Y-asennossa" },
+      // 6. Serratus aktivaatio
+      { name: "Serratus punch + wall slide protraction", desc: "1×10 band — työnnä lapaluut eteen yläasennossa" },
+      // 7. Distal biceps + kyynärpää-prehab
+      { name: "Tyler twist + reverse Tyler (Flexbar)", desc: "1×10-12 — kyynärpään ja distal bicepsin prehab" },
       // 8. Liike-spesifit primerit
       { name: "BW-leuka (kevyt) + Räjähtävä leuka BW", desc: "1×5 + 1×3 — liikemallin herätys + max-nopeus neural primer" },
-      // 9. Spesifinen ramp-up (Tillin & Bishop 2009 PAP)
+      // 9. Spesifinen ramp-up
       { name: "Warmup ramp (primary)", desc: "40% × 5 · 55% × 3 · 70% × 2 · 85% × 1 → workset" },
     ];
     return { dayOfWeek:1, dayType:"heavy", label:label || "MA — Leuka + Selkä",
@@ -4144,20 +4145,21 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // Boren 2011 + Distefano 2009 + Reiman 2014 + Rio 2015). Track B Q-B2 -syvätutkimuksen
     // Claude-suositus. Reisi-atrofian rebuild + spinal stiffness + glute aktivaatio
     // ennen raskasta kyykkyä.
+    // v4.34.10: Lähteet pois sulkeista. Käytännön ohjeet.
     const warmupArr = phase === "peaking" ? TI_WARMUP_PEAKING : [
-      // 1. Cardio-priming (90s) — McGowan 2015
-      { name: "Pyörä / reipas kävely", desc: "90 s @ RPE 4 — lihaslämpö + veren virtaus" },
-      // 2. Mobility (60s) — Behm 2016: dynaaminen ven. +1.3% suoritus
-      { name: "Leg swing + Hip 90/90 + Cossack squat", desc: "10/jalka eteen + 10 sivuttain + 30 s/puoli + 5/puoli — lonkka-mobiliteetti + adduktorit" },
-      // 3. McGill Big 3 lite (90s) — McGill 2002/2015: spinal stiffness raskaaseen kyykkyyn
-      { name: "McGill Big 3 lite (curl-up + side bridge + bird dog)", desc: "3×10 s + 2×10 s/puoli + 2×10 s/puoli — spinal stability (McGill 2002)" },
-      // 4. Glute aktivaatio (90s) — Boren 2011 clamshell 77% MVIC GMed; Distefano 2009 SL squat 59% MVIC GMax
-      { name: "Banded clamshell + SL glute bridge + lateral walk", desc: "12/p + 8/p (2s pause) + 10/suunta — glute medius + max (Boren 2011)" },
-      // 5. Quad re-aktivaatio (90s) — atrofian jälkeen tarvitaan motor unit recruitment
-      { name: "BW squat (3s alas, 1s pohja) + reverse lunge", desc: "10 + 6/p — quad-aktivaatio + motor pattern (heuristinen atrophy-rebuild)" },
-      // 6. Spanish squat isometric (90s) — Rio 2015: analgeesia patellar tendon
-      { name: "Spanish squat (banded) — isometric", desc: "2×30-45 s, band polven takana — patellar tendon analgeesia (Rio 2015, kokeile 2-3 vk responder/non-responder)" },
-      // 7. Spesifinen squat ramp-up (Tillin & Bishop 2009 PAP, atrofia → +1-2 lisäramp-sarjaa)
+      // 1. Yleislämmittely
+      { name: "Pyörä / reipas kävely", desc: "90 s reipas tahti — kunnes hengitys nousee" },
+      // 2. Lonkka-mobiliteetti
+      { name: "Leg swing + Hip 90/90 + Cossack squat", desc: "10/jalka eteen + 10 sivuttain + 30 s/puoli + 5/puoli — avaa lonkka + adduktorit" },
+      // 3. Core stability (McGill Big 3 lite)
+      { name: "Curl-up + side bridge + bird dog", desc: "3×10 s + 2×10 s/puoli + 2×10 s/puoli — selkärangan stabiliteetti raskaaseen kyykkyyn" },
+      // 4. Glute aktivaatio
+      { name: "Banded clamshell + SL glute bridge + lateral walk", desc: "12/p + 8/p (2 s pause) + 10/suunta — pakara-aktivaatio (medius + max)" },
+      // 5. Quad re-aktivaatio + motor pattern
+      { name: "BW squat (3 s alas, 1 s pohja) + reverse lunge", desc: "10 + 6/p — quad herätä + kyykkypattern" },
+      // 6. Polvi-prehab (jos tarpeen)
+      { name: "Spanish squat (banded) — isometric", desc: "2×30-45 s, band polven takana — polvi/patellar tendon prehab (kokeile 2-3 vk, responsi yksilöllinen)" },
+      // 7. Spesifinen squat ramp
       { name: "Warmup ramp (primary)", desc: `35% × 5 · 50% × 3 · 65% × 2 · 78% × 1${topPct ? " · 88% × 1" : ""} → workset` },
     ];
     return { dayOfWeek:2, dayType:"heavy", label:label || "TI — Kyykky + Alavartalo",
@@ -4282,43 +4284,44 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // FIX v4.34.5: BW dippi -volyymi 3-7×kasvatettu (oli 1×3 slow ecc = 3 reps, nyt 2×8
     // standard tempo + 1×3 slow ecc = 19 reps), eksplisiittinen "rinnan pumppaus" -fokus,
     // extended ramp 30%×8 alkuun standardin 40-55-70-85% rinnalle (= +8 reps lisä-pumpissa).
+    // v4.34.10: Lähteet pois sulkeista. Käytännön ohjeet — yksiselitteiset imperatiivit.
+    // Lisätty Joey Seyforth Banded Posterior Shoulder Mobilization (joint decompression).
     const warmupArr = phase === "peaking" ? TO_WARMUP_PEAKING : (isIntensityWeek ? [
-      // INTENSITY-vaiheen versio (~7-9 min): pidä aktivaatio + SA/LT priming + PNF.
-      // BW dippi -volyymi maltillinen CNS-konservaation takia mutta enemmän kuin v4.34.4.
-      { name: "Hyppynaru / shadow boxing / käsiergometri", desc: "90 s — perfusion + dynaaminen GH ROM (Soltani 2025: dynamic > static)" },
-      { name: "Belly-press isometric (subscap upper)", desc: "2×10 s — kämmen vatsaan, kyynärpää eteenpäin, paina ilman ranteen flexiota (Tokish 2003)" },
-      { name: "Side-lying IR @ 90° abd", desc: "1×10/puoli, 3-3 tempo, kevyt vastus — subscap selektiivinen aktivaatio (Decker 2003: SSC 62% MVIC)" },
-      { name: "Push-up plus", desc: "1×8 + 1 s end-range protraction hold — SA aktivaatio (Park & Hwang 2019: 50-80% MVIC)" },
-      { name: "Doorway PNF (pec sternal head)", desc: "2 reps × 5 s contract / 15 s relax / 60° + 120° abd — pec mobility ilman pec minor / capsule-overstretchiä" },
-      { name: "🎯 BW dippi PUMP-set (chest-activation)", desc: "1×6 standard tempo (2 s alas, 1 s pause, normaali ylös). FOCUS forward lean 30-45° + RINNAN aktivaatio — varmista rinta pumppaa lämpimäksi ennen kuormaa. v4.34.5 atleetin TO-palaute: 'paikat eivät lämmenneet sarjoihin' = tämä elementti ratkaisee." },
-      { name: "BW dippi slow eccentric", desc: "1×3, 5 s lasku, 1 s pause alapositiossa — neural primer + capsule capacity (pump-setin JÄLKEEN, koska tämä on capsule-spesifi kun rinta on jo lämmin)" },
-      { name: "Warmup ramp (primary)", desc: "30% × 8 (pump) → 50% × 5 → 70% × 3 → 85% × 1 → workset (v4.34.5: lisätty 30%×8 alkuun pump-setiksi)" },
+      // INTENSITY-vaiheen versio (~7-9 min)
+      { name: "Hyppynaru / shadow boxing / käsiergometri", desc: "90 s reipas tahti — kunnes hengitys nousee" },
+      { name: "Belly-press isometric (subscap)", desc: "2×10 s — kämmen vatsaan, kyynärpää eteenpäin, paina ilman ranteen koukistusta. Anterior cuff aktivaatio." },
+      { name: "Side-lying IR @ 90° abd", desc: "1×10/puoli, 3 s alas + 3 s ylös, 2-4 kg KB — kierrä kämmen kohti vartaloa kainalo 90° auki. Subscap selektiivinen herätys." },
+      { name: "Push-up plus", desc: "1×8 + 1 s pause yläasennossa, työnnä lapaluut eteen — serratus-aktivaatio" },
+      { name: "Doorway PNF (pec sternal)", desc: "2 reps × 5 s puristus / 15 s rentous, 60° + 120° kainalon avaus — pec mobility ilman capsule-overstretchiä (älä yli 150°)" },
+      { name: "🎯 BW dippi PUMP-set (chest-activation)", desc: "1×6 standard tempo (2 s alas, 1 s pause, normaali ylös). FOKUS: forward lean 30-45° + RINNAN aktivaatio — varmista rinta pumppaa lämpimäksi ennen kuormaa." },
+      { name: "BW dippi slow eccentric", desc: "1×3, 5 s lasku, 1 s pause alapositiossa — neural primer pumppi-setin jälkeen" },
+      { name: "Warmup ramp (primary)", desc: "30% × 8 (pump) → 50% × 5 → 70% × 3 → 85% × 1 → workset" },
     ] : [
-      // FOUNDATION + STRENGTH täysi versio (~10-13 min v4.34.5:ssa, oli 8-12 min):
-      // 0-2 min: PERFUSION (RAISE-framework, Jeffreys; Soltani 2025)
-      { name: "Shadow boxing / hyppynaru / arm circles", desc: "90 s, kevyt-kohtalainen syke — perfusion + dynaaminen GH ROM (ei staattista venytystä)" },
-      // 2-3 min: SUBSCAP-AKTIVAATIO (anterior cuff — KEY LISÄYS v4.34.3:ssa)
-      { name: "Belt-squeeze belly-press isometric", desc: "2×10 s belt-squeeze — upper subscap (Tokish 2003, Kim & Park 2025)" },
-      { name: "Lift-off prep", desc: "1×10 s — kämmen alaselän päälle, nosta käsi 5 cm irti selästä, pidä — lower subscap" },
-      // 3-4 min: SUBSCAP-AKTIVAATIO @ 90° abd (selektiivinen vs. perinteinen IR @ 0°)
-      { name: "Side-lying IR @ 90° abd", desc: "1×10/puoli, 3-3 tempo, 2-4 kg KB — upper SSC 62% MVIC, lower SSC 50% MVIC, matala pec/lat (Decker 2003 — KORVAA v4.34.2:n ulkokierto-band:in)" },
-      // 4-5 min: SA + LT PRIMING (dipin alapositio-spesifi)
-      { name: "Push-up plus", desc: "1×8 + 1 s end-range protraction hold — SA 50-80% MVIC, optimi SA:UT-suhde (Park & Hwang 2019)" },
-      { name: "Wall slide foam-rollerilla", desc: "1×8 — SA + LT samanaikainen aktivaatio (Hwang 2024)" },
-      // 5-6 min: PEC STERNAL HEAD -MOBILITY (NOT pec minor — atleetin pec minor on jo lyhentynyt voimanostotaustasta)
-      { name: "Doorway PNF pec stretch", desc: "2 reps × 5 s contract / 15 s relax / 60° + 120° abduction (EI yli 150°) — pec sternal head fokus, PNF-muoto vähentää voimadekrementtiä vs. pitkä staattinen (Reiner 2023, Warneke 2024)" },
-      // 6-8 min: LOADED MOBILITY (anterior capsule capacity rakentuu vain kuormassa)
-      { name: "Half-kneeling KB armbar", desc: "2 reps/puoli, ≥30 s tension under tension, 8-12 kg — SA 37%, LT 21%, UT 18% MVIC (Caravan 2018, Tarpada 2014). Loaded GH mobility ER + flexion -asennossa." },
-      // 8-10 min: BW DIPPI CHEST-ACTIVATION PUMP — KESKEINEN v4.34.5 LISÄYS
-      // Atleetin TO-palaute: "kevyt kehopainodippi oli liian vähän, paikat eivät lämmenneet sarjoihin"
-      // + "voima riittää, tekniikka ei → pumppi pitää tulla oikeisiin kohtiin"
-      { name: "🎯 BW dippi PUMP-set 2×8 (chest-activation, KEYNOTE)", desc: "2×8 standard tempo (2 s alas, 1 s pause alapositiossa, normaali ylös). 90 s lepo settien välissä. KRIITTINEN FOKUS: forward lean 30-45° KOKO ajan, rinta menee tankoja kohti — TUNNE pec sternal head -aktivaatio (rinta pumppautuu lämpimäksi). Jos pump tulee etudeltaan + tricepsiin = tekniikka ei ole vielä oikein, tee 1 LISÄ-set focus rinta-fokuksella ENNEN kuormaa. v4.34.5: tämä on lämmittelyn keskein elementti — 'paikkojen on oltava lämpimät sarjoihin' (atleetin TO-palaute)." },
-      // 10-11 min: SPESIFI NEURAL PRIMING (pump-setin jälkeen)
-      { name: "BW dippi slow eccentric", desc: "1×3, 5 s lasku, 1 s pause alapositiossa — neural primer + capsule capacity (Liu 2025, Vetter 2022). Pump-setin JÄLKEEN, koska tämä on capsule-spesifi kun rinta on jo lämmin." },
-      // 11-13 min: EXTENDED RAMP-UP — 30%×8 lisätty pump-volyymina
-      { name: "Warmup ramp (primary)", desc: "30% × 8 (pump-volyymi) → 45% × 5 → 60% × 3 → 75% × 2 → 85% × 1 → workset. v4.34.5: lisätty 30%×8 alkuun = lisä-pump-volyymia rinnassa ennen worksetejä." },
+      // FOUNDATION + STRENGTH täysi versio (~10-13 min)
+      // 0-2 min: PERFUSION
+      { name: "Shadow boxing / hyppynaru / arm circles", desc: "90 s reipas tahti — verenkierto käyntiin, ei staattista venytystä" },
+      // 2-3 min: SUBSCAPULARIS-AKTIVAATIO (anterior cuff)
+      { name: "Belt-squeeze belly-press isometric", desc: "2×10 s — kämmen vatsaan + kyynärpää eteenpäin + paina vatsaan ranne neutraalina. Upper subscap." },
+      { name: "Lift-off prep", desc: "1×10 s — kämmen alaselän päälle, nosta käsi 5 cm irti selästä, pidä. Lower subscap." },
+      // 3-4 min: SUBSCAPULARIS @ 90° abd
+      { name: "Side-lying IR @ 90° abd", desc: "1×10/puoli, 3 s alas + 3 s ylös, 2-4 kg KB — kierrä kämmen kohti vartaloa kainalo 90° auki. Selektiivisempi kuin tavallinen ulkokierto." },
+      // 4-5 min: SERRATUS + LOWER TRAP PRIMING
+      { name: "Push-up plus", desc: "1×8 + 1 s pause yläasennossa — työnnä lapaluut TÄYDESTI eteen. Serratus 50-80% aktivaatio." },
+      { name: "Wall slide foam-rollerilla", desc: "1×8 — selkä seinään, kädet 'W'-asennossa, slide ylös 'Y':ksi pitäen kädet seinässä. Serratus + lower trap samanaikainen herätys." },
+      // 5-6 min: BANDED POSTERIOR SHOULDER MOBILIZATION (Joey Seyforth, joint decompression)
+      { name: "Banded posterior shoulder mob", desc: "1×15 — band ankkuroitu olkapään tasolle takaa, kierretty etu-olkapään ympärille kainalon lähelle. Astu eteenpäin tensionsiin, tee kevyitä chest press -liikkeitä. Tunne nivelen avautuminen takaa, älä pakota." },
+      // 6-7 min: PEC STERNAL HEAD MOBILITY (PNF, ei pitkä staattinen)
+      { name: "Doorway PNF pec stretch", desc: "2 reps × 5 s puristus / 15 s rentous, kainalo 60° auki + sama 120° auki — älä yli 150° (capsule-overstretch). Pec sternal head fokus." },
+      // 7-9 min: LOADED MOBILITY
+      { name: "Half-kneeling KB armbar", desc: "2 reps/puoli, ≥30 s tension hallittu, 8-12 kg — toispolviseisontaan, KB suoraan ylös, kallista ylävartaloa hitaasti taakse. Olkapää lukossa, kahvasta tiukka ote." },
+      // 9-11 min: 🎯 BW DIPPI CHEST-ACTIVATION PUMP — KESKEINEN ELEMENTTI
+      { name: "🎯 BW dippi PUMP-set 2×8 (chest-activation, KEYNOTE)", desc: "2×8 standard tempo (2 s alas, 1 s pause alapositiossa, normaali ylös). Lepo 90 s settien välissä. KRIITTINEN FOKUS: forward lean 30-45° KOKO ajan, rinta menee tankoja kohti — TUNNE pec sternal head -aktivaatio (rinta pumppautuu lämpimäksi). Jos pump tulee etudeltaan + tricepsiin = tee 1 LISÄ-set rinta-fokuksella ENNEN kuormaa. Sääntö: paikkojen on oltava lämpimät sarjoihin." },
+      // 11-12 min: NEURAL PRIMING
+      { name: "BW dippi slow eccentric", desc: "1×3, 5 s lasku, 1 s pause alapositiossa — pump-setin JÄLKEEN, koska tämä on capsule-spesifi kun rinta on jo lämmin" },
+      // 12-13 min: EXTENDED RAMP
+      { name: "Warmup ramp (primary)", desc: "30% × 8 (pump) → 45% × 5 → 60% × 3 → 75% × 2 → 85% × 1 → workset. 30%×8 = lisä-pump-volyymia rinnassa ennen worksetejä." },
       // 13+ (optional): PAPE
-      { name: "PAPE 6 s isohold (optional)", desc: "1 set @ sticking-point-syvyydessä, 80%+ 1RM, 6-8 min lepo ennen worksetiä — moderate PAPE-efekti ES=0.31 (Garbisu-Hualde 2023, Dobbs 2022 meta). Skip jos sotkee timingin." },
+      { name: "PAPE 6 s isohold (optional)", desc: "1 set @ sticking-point-syvyydessä, 80%+ 1RM, 6-8 min lepo ennen worksetiä. Skip jos sotkee timingin." },
     ]);
     return { dayOfWeek:4, dayType:"heavy", label:label || "TO — Dippi + Työntö",
       warmup: warmupArr,
@@ -4640,28 +4643,29 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // kuin TO-prehab. MU vaatii erityisesti subscap + scapular control (false grip
     // -veto + transition-vaihe rasittavat anteriorista capsulea), joten subscap-
     // aktivaatio on kriittinen.
+    // v4.34.10: Lähteet pois sulkeista. Käytännön ohjeet.
     return { dayOfWeek:6, dayType:"volume", label:label || "LA — Muscle-up + Kevyt",
       warmup: [
-        // 1. Perfusion (dynaaminen, ei staattinen)
-        { name: "Shadow boxing / hyppynaru / arm circles", desc: "90 s — perfusion + dynaaminen GH ROM" },
-        // 2. Subscap-aktivaatio (anterior cuff)
-        { name: "Belly-press isometric + lift-off prep", desc: "2×10 s belt-squeeze + 1×10 s lift-off — subscap upper + lower (Tokish 2003)" },
-        // 3. Side-lying IR @ 90° abd (selektiivinen subscap)
-        { name: "Side-lying IR @ 90° abd", desc: "1×10/puoli, 3-3 tempo, 2-4 kg — upper SSC 62% MVIC (Decker 2003)" },
-        // 4. SA + LT priming
-        { name: "Push-up plus + wall slide", desc: "1×8 + 1×8 — SA 50-80% MVIC + SA/LT samanaikainen (Park & Hwang 2019)" },
-        // 5. MU-spesifi: false grip hang + scapular pull-up
+        // 1. Yleislämmittely
+        { name: "Shadow boxing / hyppynaru / arm circles", desc: "90 s reipas tahti — verenkierto käyntiin" },
+        // 2. Subscap-aktivaatio
+        { name: "Belly-press isometric + lift-off prep", desc: "2×10 s belt-squeeze + 1×10 s lift-off — anterior cuff (subscap upper + lower)" },
+        // 3. Subscap @ 90° abd
+        { name: "Side-lying IR @ 90° abd", desc: "1×10/puoli, 3 s alas + 3 s ylös, 2-4 kg — kainalo 90° auki, kierrä kämmen kohti vartaloa" },
+        // 4. Serratus + lower trap
+        { name: "Push-up plus + wall slide", desc: "1×8 + 1×8 — yläasennossa lapaluut eteen + wall slide W→Y-asentoon" },
+        // 5. MU-spesifi
         { name: "Scapular pull-up + False Grip hang", desc: "2×10 + 3×20 s — lapa-aktivaatio + ranteet MU:n false grip -tukeen" },
-        // 6. Distal biceps prehab MU-vetoon
-        { name: "Tyler twist + reverse Tyler", desc: "1×10-12 (Flexbar) — distal biceps + epicondylitis prehab" },
-        // 7. Alaraaja-elementit fsWeek:n takia (squat-päivä)
+        // 6. Kyynärpää-prehab MU-vetoon
+        { name: "Tyler twist + reverse Tyler (Flexbar)", desc: "1×10-12 — distal biceps + kyynärpää-prehab" },
+        // 7. Alaraaja-elementit (jos LA-kyykkypäivä)
         ...(fsWeek ? [
           { name: "Hip 90/90 + Cossack squat", desc: "30 s/puoli + 5/puoli — lonkka-mobiliteetti 2. kyykkyä varten" },
-          { name: "Banded clamshell + glute bridge", desc: "12/p + 8/p — glute aktivaatio" },
+          { name: "Banded clamshell + glute bridge", desc: "12/p + 8/p — pakara-aktivaatio" },
         ] : []),
-        // 8. MU-neural-primer
-        { name: "Räjähtävä leuka BW", desc: "3×3 — max-nopeus, MU-vedon RFD-primer" },
-        // 9. Liikekohtaiset rampit
+        // 8. MU neural-primer
+        { name: "Räjähtävä leuka BW", desc: "3×3 — max-nopeus, MU-vedon räjähtävyys" },
+        // 9. Squat ramp (jos LA-kyykkypäivä)
         ...(fsWeek ? [{ name: `${fsWeek.movement ?? "Paused squat"}-lämmittely`, desc: "Ks. slotin warmupSets — ennen MU:ta" }] : []),
       ],
       slots };
