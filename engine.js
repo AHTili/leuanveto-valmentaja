@@ -1,5 +1,5 @@
 // engine.js — Computation engine: e1RM, baselines, readiness, recommend(), mesocycle, decisionTrace
-// LeVe AI v4.34.2 — Lisätty LOAD_SANITY_WARNING-trace + console.warn jos primary-kuorma > 1.6× seed-arvo (TO-treenin kenttäpalaute: dippi 4×6×125 kg -anomalia ei toistettavissa tyhjästä DB:stä, mutta diagnostic surfaa ongelman jos toistuu).
+// LeVe AI v4.34.3 — engine logic muuttumaton v4.34.2:sta (data.js + index.html ovat varsinaiset v4.34.3-muutokset: dippi-prehab + olkapääkivun ratkaisu + 7 tekniikka-cuet + 2 uutta accessory-slotia).
 
 import {
   uid, todayISO, parseNumericInput,
