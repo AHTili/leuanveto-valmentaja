@@ -583,6 +583,8 @@
     .pill-ticker .pill { flex: 1 1 0; min-width: 44px; height: 22px; border-radius: 11px; background: var(--card2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--muted); cursor: pointer; transition: all .15s; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pill-ticker .pill.done { background: transparent; border-color: var(--ok); color: var(--ok); }
     .pill-ticker .pill.done::before { content: "✓ "; font-weight: 800; }
+    .pill-ticker .pill.skipped { background: transparent; border-color: var(--warn); color: var(--warn); opacity: 0.7; text-decoration: line-through; }
+    .pill-ticker .pill.skipped::before { content: "⏭ "; font-weight: 800; }
     .pill-ticker .pill.active { background: var(--acc); border-color: var(--acc); color: #fff; flex: 2 1 0; }
 
     /* Exercise head */
@@ -2665,6 +2667,11 @@ function renderWorkoutSetup() {
 function renderWorkoutWarmupIntro() {
   const w = state.workout;
   const items = w.warmupProtocol || [];
+  // v4.34.12: per-elementti skip-mahdollisuus. Kun käyttäjä klikkaa "⏭"
+  // elementin vieressä, se merkitään yliviivatuksi mutta lämmittely jatkuu.
+  // Skipped-tila tallentuu w.warmupSkipped:iin (Set jossa item-indeksit).
+  if (!w.warmupSkipped) w.warmupSkipped = [];
+  const skippedSet = new Set(w.warmupSkipped);
   return `<div class="fade-in">
     <div class="flex-between mb">
       <div class="muted">Yleislämmittely</div>
@@ -2672,18 +2679,23 @@ function renderWorkoutWarmupIntro() {
     </div>
     <div class="card">
       <div class="card-title">🔥 Lämmittely ennen treeniä</div>
-      <div class="muted" style="font-size:12px;margin-bottom:10px">Suorita seuraavat liikkeet rauhassa. Tämä valmistaa kehon päivän treeniin.</div>
-      ${items.map((it, i) => `
-        <div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--border)">
+      <div class="muted" style="font-size:12px;margin-bottom:10px">Suorita seuraavat liikkeet rauhassa. Voit ohittaa yksittäisiä elementtejä ⏭-painikkeella.</div>
+      ${items.map((it, i) => {
+        const isSkipped = skippedSet.has(i);
+        const lineThrough = isSkipped ? "text-decoration:line-through;opacity:0.5;color:var(--warn)" : "";
+        return `
+        <div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--border);align-items:center">
           <div style="font-weight:700;color:var(--acc);min-width:22px">${i + 1}.</div>
-          <div style="flex:1">
+          <div style="flex:1;${lineThrough}">
             <div style="font-weight:600">${it.name}</div>
             <div class="muted" style="font-size:12px">${it.desc || ""}</div>
           </div>
-        </div>`).join("")}
+          <button class="icon-btn" data-warmup-skip-toggle="${i}" title="${isSkipped ? "Palauta" : "Ohita tämä elementti"}" style="font-size:14px;padding:6px 10px;background:transparent;border:1px solid var(--border)">${isSkipped ? "↩" : "⏭"}</button>
+        </div>`;
+      }).join("")}
     </div>
     <button class="btn btn-full btn-ok btn-big mt" id="btn-warmup-protocol-done">✓ Lämmittely tehty — aloita liikkeet</button>
-    <button class="btn btn-outline btn-full mt" id="btn-skip-warmup-protocol" style="font-size:13px">⏩ Ohita yleislämmittely</button>
+    <button class="btn btn-outline btn-full mt" id="btn-skip-warmup-protocol" style="font-size:13px">⏩ Ohita yleislämmittely (kaikki)</button>
   </div>`;
 }
 
@@ -2829,12 +2841,22 @@ function renderActiveWorkout() {
   const completedWorkSets = exercise.sets.filter(s => s.completed && !s.isWarmup);
 
   // ── Pill ticker (replaces scroll-x exercise chips) ──
+  // v4.34.12: skipped-tila erottuu (jos kaikki työsarjat skipped tai mix skipped+done
+  // ilman ainoatakaan completed = käytännössä skipattu liike kokonaan).
   const pillsHTML = w.exercises.map((ex, i) => {
-    const done = ex.sets.every(s => s.completed);
+    const workSets = ex.sets.filter(s => !s.isWarmup);
+    const allFinished = ex.sets.every(s => s.completed || s.skipped);
+    const anyCompleted = workSets.some(s => s.completed);
+    const anySkipped = workSets.some(s => s.skipped);
+    const fullySkipped = anyCompleted === false && anySkipped === true;
     const active = i === currentExIdx;
-    const cls = active ? "active" : done ? "done" : "";
+    let cls = active ? "active" : "";
+    if (!active) {
+      if (fullySkipped) cls = "skipped";
+      else if (allFinished && anyCompleted) cls = "done";
+    }
     const name = (ex.name || "").split(" ")[0] || ex.name || "?";
-    return `<div class="pill ${cls}" data-jump-idx="${i}" title="${ex.name || ""}">${name}</div>`;
+    return `<div class="pill ${cls}" data-jump-idx="${i}" title="${ex.name || ""}${fullySkipped ? " (ohitettu)" : ""}">${name}</div>`;
   }).join("");
 
   // ── Exercise head ──
@@ -3059,18 +3081,24 @@ function renderActiveWorkout() {
   </div>`;
 
   // ── Completed list (click to edit, v4.22 #9) ──
-  // Jokainen completed-row on nyt klikattava → avaa edit-modaalin. Käytetään
-  // exercise.sets[]:in alkuperäistä indeksiä (ei completedWorkSets-järjestystä)
-  // jotta dataa päivitetään oikealla paikalla.
-  const completedIndices = [];
+  // v4.34.12: skipped-setit näkyvät listalla "⏭ Ohitettu" -merkinnällä, eivät
+  // sekoitu completed-setteihin. Tämä erottelu auttaa käyttäjää muistamaan
+  // jälkeenpäin oliko sarja skipattu tarkoituksella vai unohdettu.
+  const completedAndSkippedIndices = [];
   exercise.sets.forEach((s, i) => {
-    if (s.completed && !s.isWarmup) completedIndices.push(i);
+    if ((s.completed || s.skipped) && !s.isWarmup) completedAndSkippedIndices.push(i);
   });
-  const completedListHTML = completedWorkSets.length === 0 ? "" : `<div class="completed-list">
-    ${completedWorkSets.map((s, i) => {
+  const allFinishedWorkSets = exercise.sets.filter(s => (s.completed || s.skipped) && !s.isWarmup);
+  const completedListHTML = allFinishedWorkSets.length === 0 ? "" : `<div class="completed-list">
+    ${allFinishedWorkSets.map((s, i) => {
+      const origIdx = completedAndSkippedIndices[i];
+      if (s.skipped) {
+        return `<div class="row" style="opacity:0.6;text-decoration:line-through;color:var(--warn)">
+          <span class="done-mark">⏭</span><b>S${i + 1}</b> · Ohitettu
+        </div>`;
+      }
       const vel = s.velocity ? ` · ${s.velocity.toFixed(2)} m/s` : "";
       const attempted = s.attemptedReps ? ` (yritetty ${s.attemptedReps})` : "";
-      const origIdx = completedIndices[i];
       return `<div class="row completed-row-editable" data-edit-set-idx="${origIdx}" title="Napauta muokataksesi">
         <span class="done-mark">✓</span><b>S${i + 1}</b> · ${s.loadKg ?? "–"}kg × ${s.reps ?? "?"}${attempted} · V${s.actualVx ?? "?"}${vel}
         <span class="completed-edit-hint">✎</span>
@@ -3106,14 +3134,14 @@ function renderActiveWorkout() {
   </div>`;
 
   // ── Utility row ──
-  // v4.34.2: Lisätty selvempi "✓ Liike valmis" -painike util-rivin loppuun.
-  // Käyttäjäpalaute v4.34.1 (TO-treeni): "lisää liike" -toiminnon kautta lisätyn
-  // liikkeen valmiiksi merkitseminen ei ollut intuitiivista — vaihtoehdot olivat
-  // "+ Lisäsarja" (lisää sarjoja) ja pieni ⏩-skip-ikoni topbar:issa. Selvä
-  // tekstipainike util-rivissä parantaa discoverabilityä. Liike valmis →
-  // kaikki keskeneräiset sarjat poistetaan ja siirrytään seuraavaan liikkeeseen.
+  // v4.34.12: Lisätty "⏭ Ohita sarja" -nappi (työsarjoille). Tallentaa setin
+  // skipped:true-lipulla ja siirtyy seuraavaan sarjaan. Eri kuin V0/failure —
+  // skipattu sarja merkitsee että käyttäjä ei yrittänyt sitä, ei että se
+  // epäonnistui.
+  // v4.34.2: "✓ Liike valmis" -painike util-rivin loppuun.
   const utilRowHTML = `<div class="util-row">
     <button id="btn-add-set" title="Lisää sarja">+ Lisäsarja</button>
+    ${!isWarmupSet ? `<button id="btn-skip-set" title="Ohita tämä sarja (kirjaa skipatuksi)">⏭ Ohita sarja</button>` : ""}
     ${canSwapVariant ? `<button id="btn-swap-variant" title="Vaihda variaatio">🔀 Variaatio</button>` : ""}
     <button id="btn-add-exercise" title="Lisää liike">+ Liike</button>
     <button id="btn-finish-exercise" title="Merkitse liike valmiiksi ja siirry seuraavaan">✓ Liike valmis</button>
@@ -4840,6 +4868,15 @@ async function openSessionDetail(sessionId) {
         ${exNote ? `<div style="background:rgba(139,92,246,0.06);border-left:2px solid var(--acc);padding:6px 8px;margin-bottom:6px;border-radius:4px;font-size:12px;line-height:1.4;color:var(--text)">📝 ${exNote.replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div>` : ""}
         <div style="display:flex;flex-direction:column;gap:4px">
           ${movSets.map((s, i) => {
+            // v4.34.12: skipped-setit näkyvät yliviivattuna "Ohitettu"-merkinnällä
+            if (s.setRole === "skipped") {
+              return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--card2);border-radius:var(--radius-sm);font-size:12px;opacity:0.6;text-decoration:line-through;color:var(--warn)">
+                <span style="min-width:16px">⏭</span>
+                <span style="font-weight:600">Ohitettu</span>
+                <span class="muted" style="font-size:10px;flex:1">tgt ${s.targetReps ?? "?"}${s.targetVx != null ? `×V${s.targetVx}` : ""}</span>
+                <button class="btn btn-sm btn-outline" data-delete-hist-set="${s.setId}" style="font-size:10px;padding:2px 6px;min-height:24px">🗑</button>
+              </div>`;
+            }
             const vxTxt = s.actualVx != null ? `V${s.actualVx}` : "V?";
             const tgtTxt = s.targetReps != null || s.targetVx != null
               ? `<span class="muted" style="font-size:10px">tgt ${s.targetReps ?? "?"}×V${s.targetVx ?? "?"}</span>`
@@ -8303,24 +8340,93 @@ function bindWorkoutEvents() {
     }
   });
 
+  // v4.34.12: helper — onko keskeneräisiä työsarjoja jotka eivät ole skipattuja
+  function hasIncompleteWorkSets(exercise) {
+    if (!exercise) return false;
+    return exercise.sets.some(s => !s.completed && !s.skipped && !s.isWarmup);
+  }
+
+  // v4.34.12: helper — laske completed + skipped + remaining työsarjat
+  function getWorkSetCounts(exercise) {
+    if (!exercise) return { completed: 0, skipped: 0, remaining: 0, total: 0 };
+    const work = exercise.sets.filter(s => !s.isWarmup);
+    return {
+      completed: work.filter(s => s.completed).length,
+      skipped: work.filter(s => s.skipped).length,
+      remaining: work.filter(s => !s.completed && !s.skipped).length,
+      total: work.length,
+    };
+  }
+
   // Skip exercise (⏩ icon in topbar)
+  // v4.34.12: confirmation-dialog jos olet vielä työsarjoissa (estää vahinkoja)
   const skipBtn = $("#btn-skip-exercise");
-  if (skipBtn) skipBtn.addEventListener("click", () => {
+  if (skipBtn) skipBtn.addEventListener("click", async () => {
+    const exercise = w.exercises[w.currentExerciseIdx];
+    if (!exercise) return;
+    const counts = getWorkSetCounts(exercise);
+    // Confirmation jos sarjoja vielä jäljellä
+    if (counts.remaining > 0 && counts.completed > 0) {
+      const idx = await showListModal(
+        `${exercise.name} — olet tehnyt ${counts.completed}/${counts.total} sarjaa`,
+        [
+          { icon: "⏭", label: "Ohita loput sarjat (merkitse skipatuiksi)", desc: `${counts.remaining} sarjaa skipataan, jo tehdyt säilyvät` },
+          { icon: "⏩", label: "Hyppää suoraan seuraavaan liikkeeseen (älä merkitse)", desc: "Tehdyt sarjat säilyvät, loput jäävät epäselviksi" },
+          { icon: "✗", label: "Peruuta", desc: "Pysy tässä liikkeessä" },
+        ]
+      );
+      if (idx === 2 || idx === null) return;
+      if (idx === 0) {
+        // Merkitse loput skipatuiksi
+        exercise.sets.forEach(s => {
+          if (!s.completed && !s.skipped && !s.isWarmup) {
+            s.skipped = true;
+            s.reps = null; s.actualVx = null;
+          }
+        });
+      }
+    }
     w.currentExerciseIdx++;
     w.currentSetIdx = 0;
     stopRestTimer();
+    savePendingWorkoutLocal(state.workout);
     render();
   });
 
-  // v4.34.2: Liike valmis (selvä tekstipainike util-rivissä, sama logiikka kuin ⏩-skip).
-  // Käyttäjäpalaute v4.34.1: lisätyn liikkeen valmiiksi merkitseminen ei ollut
-  // intuitiivista. Tekstipainike on löydettävämpi kuin pieni emoji-ikoni topbarissa.
+  // v4.34.2: Liike valmis (selvä tekstipainike util-rivissä).
+  // v4.34.12: confirmation jos sarjoja vielä jäljellä.
   const finishExBtn = $("#btn-finish-exercise");
-  if (finishExBtn) finishExBtn.addEventListener("click", () => {
+  if (finishExBtn) finishExBtn.addEventListener("click", async () => {
     const exercise = w.exercises[w.currentExerciseIdx];
     if (!exercise) return;
-    // Poista keskeneräiset sarjat (jotta yhteenvedoissa näkyy vain todelliset sarjat)
-    exercise.sets = exercise.sets.filter(s => s.completed);
+    const counts = getWorkSetCounts(exercise);
+    // Confirmation jos sarjoja vielä jäljellä
+    if (counts.remaining > 0 && counts.completed > 0) {
+      const idx = await showListModal(
+        `${exercise.name} — olet tehnyt ${counts.completed}/${counts.total} sarjaa`,
+        [
+          { icon: "✓", label: `Valmis — riittää ${counts.completed}/${counts.total} sarjaa`, desc: `Loput ${counts.remaining} sarjaa poistuu listalta (et tehnyt niitä)` },
+          { icon: "⏭", label: "Ohita loput sarjat (merkitse skipatuiksi)", desc: `${counts.remaining} sarjaa kirjataan skipatuksi historiaan` },
+          { icon: "✗", label: "Peruuta", desc: "Pysy tässä liikkeessä" },
+        ]
+      );
+      if (idx === 2 || idx === null) return;
+      if (idx === 1) {
+        // Skipataan loput, ei poisteta
+        exercise.sets.forEach(s => {
+          if (!s.completed && !s.skipped && !s.isWarmup) {
+            s.skipped = true;
+            s.reps = null; s.actualVx = null;
+          }
+        });
+      } else {
+        // idx === 0: poista keskeneräiset (vanha "Liike valmis" -käyttäytyminen)
+        exercise.sets = exercise.sets.filter(s => s.completed || s.skipped);
+      }
+    } else {
+      // Ei sarjoja tehty, ei jäljellä — vain poista keskeneräiset
+      exercise.sets = exercise.sets.filter(s => s.completed || s.skipped);
+    }
     w.currentExerciseIdx++;
     w.currentSetIdx = 0;
     stopRestTimer();
@@ -8329,11 +8435,44 @@ function bindWorkoutEvents() {
     render();
   });
 
+  // v4.34.12: Skip-set explicit — kirjaa skipped:true ilman reps/Vx
+  const skipSetBtn = $("#btn-skip-set");
+  if (skipSetBtn) skipSetBtn.addEventListener("click", () => {
+    const exercise = w.exercises[w.currentExerciseIdx];
+    const currentSet = exercise?.sets[w.currentSetIdx];
+    if (!currentSet) return;
+    currentSet.skipped = true;
+    currentSet.completed = false;
+    currentSet.reps = null;
+    currentSet.actualVx = null;
+    currentSet.velocity = null;
+    w.currentSetIdx++;
+    selectedReps = null;
+    selectedVara = null;
+    stopRestTimer();
+    savePendingWorkoutLocal(state.workout);
+    showToast("Sarja ohitettu", "warn", 2000);
+    render();
+  });
+
   // Warmup protocol done / skip
   const wupDoneBtn = $("#btn-warmup-protocol-done");
   if (wupDoneBtn) wupDoneBtn.addEventListener("click", () => {
     w.warmupProtocolDone = true;
     render();
+  });
+  // v4.34.12: per-elementti skip-toggle yleislämmittelyssä
+  $$("[data-warmup-skip-toggle]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.dataset.warmupSkipToggle);
+      if (!w.warmupSkipped) w.warmupSkipped = [];
+      const set = new Set(w.warmupSkipped);
+      if (set.has(idx)) set.delete(idx);
+      else set.add(idx);
+      w.warmupSkipped = [...set];
+      savePendingWorkoutLocal(state.workout);
+      render();
+    });
   });
   const wupSkipBtn = $("#btn-skip-warmup-protocol");
   if (wupSkipBtn) wupSkipBtn.addEventListener("click", () => {
@@ -8823,7 +8962,36 @@ async function saveWorkoutToDb(sessionNotes = "") {
 
   for (const exercise of w.exercises) {
     for (const s of exercise.sets) {
-      if (!s.completed || s.isWarmup) continue;
+      if (s.isWarmup) continue;
+      // v4.34.12: skipped-setit tallennetaan setRole="skipped" jotta historiassa
+      // näkyy "Ohitettu" eikä "ei tehty". reps/Vx/load null koska ei yritetty.
+      if (s.skipped) {
+        sets.push({
+          setId: uid(),
+          sessionId: w.sessionId,
+          movementId: exercise.movementId,
+          variantId: variantCache[exercise.variantName] || null,
+          setRole: "skipped",
+          externalLoadKg: null,
+          reps: null,
+          targetReps: s.targetReps,
+          targetVx: s.targetVx,
+          actualVx: null,
+          velocityMean: null,
+          velocityPeak: null,
+          velocityRep1: null,
+          velocityLossPercent: null,
+          tempo: null,
+          restSec: null,
+          attemptedReps: null,
+          deviceMeta: null,
+          manualOverride: null,
+          timestamp: new Date().toISOString(),
+          exerciseNote: exercise.exerciseNote || null,
+        });
+        continue;
+      }
+      if (!s.completed) continue;
       // v4.27.15: "calibration"-rooli → setRole "calibration" (engine laskee
       // näille puhtaan Epleyn ja override:aa e1RM:n; ks. computeMovementProgress).
       const savedSetRole = exercise.role === "primary" ? "top"
