@@ -1064,7 +1064,13 @@ function hadFailureLastSession(recentTopSets) {
 //   4. Ankkuri = RASKAIN median-load näistä → estää deload/test-session
 //      vetämästä cappia keinotekoisesti alas
 //
-// Returns: { medianLoad, medianVx, fromSessions } tai null jos ei dataa.
+// v4.34.14: Palautetaan myös LAST-session-profiili. Kutsuva koodi voi ottaa
+// MIN(heaviest × cap, last × cap_per_session) → estää historia-PR-bounce-back-ongelman:
+// jos atleetilla on vanhoja korkeita kuormia mutta viim. sessio oli paljon kevyempi,
+// vanha "heaviest" sallisi takaisinpalaamisen lähelle PR-tasoja yhdessä viikossa
+// vaikka edellinen sessio osoitti aktuaalisen tason olevan matalampi.
+//
+// Returns: { medianLoad, medianVx, fromSessions, lastSession: { medianLoad, medianVx } } tai null.
 
 function computeRateLimitAnchor(recentTopSets) {
   if (!recentTopSets || recentTopSets.length === 0) return null;
@@ -1103,10 +1109,13 @@ function computeRateLimitAnchor(recentTopSets) {
 
   // Ankkuri = raskain median-load → deload/test-sessio ei vedä cappia alas
   const anchor = profiles.reduce((best, p) => p.medianLoad > best.medianLoad ? p : best);
+  // Last-session-profiili — taso josta atleetti on viimeksi nostanut
+  const last = profiles[profiles.length - 1];
   return {
     medianLoad: anchor.medianLoad,
     medianVx: anchor.medianVx,
     fromSessions: profiles.length,
+    lastSession: { medianLoad: last.medianLoad, medianVx: last.medianVx },
   };
 }
 
@@ -1675,19 +1684,32 @@ async function recommend(options = {}) {
       //      deloadin kevein setti → cap sulkeutuu vääristyneelle tasolle).
       //
       // Käyttäjä voi aina manuaalisesti nostaa — tämä on vain *suositus*-cap.
+      // v4.34.14: DUAL-ANCHOR — käytä MIN(heaviest × cap, last × cap) jotta
+      // historia-PR-bounce-back estyy. Esim. atleetin vanha 65 kg session +6%
+      // ei saa nostaa kuormaa 73 kg:aan jos viim. sessio oli 58 kg V3 → tällöin
+      // last-anchor cappaa kuorman 58 × 1.06 ≈ 61.5 kg:aan. Foundation-rebuild-vaihe
+      // ja periodisoitu progression saa siten vastata viim. todellista tasoa.
       const anchor = computeRateLimitAnchor(recentTopSets);
       if (anchor) {
         const newVx = targetVx ?? 2;
         const vxDelta = newVx - anchor.medianVx;  // positiivinen = helpompi
         const weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
-        const capped = anchor.medianLoad * (1 + weeklyCap);
+        const cappedHeaviest = anchor.medianLoad * (1 + weeklyCap);
+        // Last-session-cappi (omat säännöt — Vx-delta lasketaan last-session-Vx:ää vasten)
+        const lastVxDelta = newVx - anchor.lastSession.medianVx;
+        const lastWeeklyCap = lastVxDelta >= 2 ? 0.15 : lastVxDelta >= 1 ? 0.10 : 0.06;
+        const cappedLast = anchor.lastSession.medianLoad * (1 + lastWeeklyCap);
+        // MIN molemmista — konservatiivisempi voittaa
+        const capped = Math.min(cappedHeaviest, cappedLast);
+        const cappedBy = cappedLast < cappedHeaviest ? "last-session" : "heaviest-median";
         if (targetExternalLoad > capped) {
           const original = targetExternalLoad;
           targetExternalLoad = roundToHalf(capped);
           trace("PROGRESSION_RATE_LIMIT", { targetExternalLoad: original },
             { targetExternalLoad, anchorLoad: anchor.medianLoad, anchorVx: anchor.medianVx,
-              newVx, weeklyCap, fromSessions: anchor.fromSessions },
-            `Rate-limit: ${original} → ${targetExternalLoad} kg (ankkuri ${anchor.medianLoad.toFixed(1)} kg × Vx ${anchor.medianVx.toFixed(1)}, ${anchor.fromSessions} sessiosta, max +${(weeklyCap*100).toFixed(0)} % kun Vx ${vxDelta >= 0 ? "helpottuu +"+vxDelta.toFixed(1) : vxDelta.toFixed(1)+" vaikeutuu"})`);
+              lastLoad: anchor.lastSession.medianLoad, lastVx: anchor.lastSession.medianVx,
+              newVx, weeklyCap, lastWeeklyCap, cappedBy, fromSessions: anchor.fromSessions },
+            `Rate-limit (${cappedBy}): ${original} → ${targetExternalLoad} kg (heaviest ${anchor.medianLoad.toFixed(1)}@V${anchor.medianVx.toFixed(1)} +${(weeklyCap*100).toFixed(0)}% = ${cappedHeaviest.toFixed(1)} | last ${anchor.lastSession.medianLoad.toFixed(1)}@V${anchor.lastSession.medianVx.toFixed(1)} +${(lastWeeklyCap*100).toFixed(0)}% = ${cappedLast.toFixed(1)})`);
         }
       }
     } else if (primarySlotMeta?.suggestedLoadKg) {
@@ -1804,10 +1826,16 @@ async function recommend(options = {}) {
             .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
           const selfAnchor = computeRateLimitAnchor(selfSets);
           if (selfAnchor) {
+            // v4.34.14: dual-anchor — sama logiikka kuin primary-haarassa
             const newVx = slot.targetVx ?? 2;
             const vxDelta = newVx - selfAnchor.medianVx;
             const weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
-            const capped = selfAnchor.medianLoad * (1 + weeklyCap);
+            const cappedHeaviest = selfAnchor.medianLoad * (1 + weeklyCap);
+            const lastVxDelta = newVx - selfAnchor.lastSession.medianVx;
+            const lastWeeklyCap = lastVxDelta >= 2 ? 0.15 : lastVxDelta >= 1 ? 0.10 : 0.06;
+            const cappedLast = selfAnchor.lastSession.medianLoad * (1 + lastWeeklyCap);
+            const capped = Math.min(cappedHeaviest, cappedLast);
+            const cappedBy = cappedLast < cappedHeaviest ? "last-session" : "heaviest-median";
             if (baseLoad > capped) {
               const original = baseLoad;
               baseLoad = roundToHalf(capped);
@@ -1816,10 +1844,12 @@ async function recommend(options = {}) {
                 { resolvedLoadKg: baseLoad,
                   anchorLoad: selfAnchor.medianLoad,
                   anchorVx: selfAnchor.medianVx,
-                  newVx, weeklyCap,
+                  lastLoad: selfAnchor.lastSession.medianLoad,
+                  lastVx: selfAnchor.lastSession.medianVx,
+                  newVx, weeklyCap, lastWeeklyCap, cappedBy,
                   fromSessions: selfAnchor.fromSessions,
                   slotMovement: slot.defaultMovementName },
-                `${slot.defaultMovementName} rate-limit: ${original} → ${baseLoad} kg (ankkuri ${selfAnchor.medianLoad.toFixed(1)} kg × Vx ${selfAnchor.medianVx.toFixed(1)}, ${selfAnchor.fromSessions} sessiosta)`);
+                `${slot.defaultMovementName} rate-limit (${cappedBy}): ${original} → ${baseLoad} kg (heaviest ${selfAnchor.medianLoad.toFixed(1)}@V${selfAnchor.medianVx.toFixed(1)} +${(weeklyCap*100).toFixed(0)}% = ${cappedHeaviest.toFixed(1)} | last ${selfAnchor.lastSession.medianLoad.toFixed(1)}@V${selfAnchor.lastSession.medianVx.toFixed(1)} +${(lastWeeklyCap*100).toFixed(0)}% = ${cappedLast.toFixed(1)})`);
             }
           }
         }
@@ -3632,6 +3662,8 @@ export {
   // Recommend
   recommend,
   recommendPeaking,
+  // v4.34.14: rate-limit-anchor exposed for tests + diagnostics
+  computeRateLimitAnchor,
   // Variant periodization
   DEFAULT_VARIANT_MODIFIERS,
   getDefaultVariantForDayType,

@@ -118,6 +118,15 @@
       transform: scale(0.95);
     }
     .set-btn-vara { font-size: 15px; }
+    /* v4.34.14: touch-action: manipulation kaikkiin interaktiivisiin elementteihin.
+       Korjaa Android Chrome -nappitarkkuusongelman jossa double-tap-zoom-detection
+       viivästytti tap-eventia ja sotki click-koordinaatteja. Käyttäjäpalaute LA-
+       treenistä: "täytyi painaa n. sentin napin yläpuolelta että osui nappiin". */
+    button, .pill, .load-display, .reps-row button, .vara-row button,
+    .set-btn, [role="button"], a.btn, label.btn, input[type="button"] {
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
     /* ── Readiness indicator ── */
     .readiness-dot {
       width: 14px; height: 14px; border-radius: 50%; display: inline-block;

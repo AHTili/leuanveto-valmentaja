@@ -152,6 +152,13 @@ const PRESET_MOVEMENTS = [
   // Half-kneeling KB Bottoms-Up Press = subscap + SA + RC sequencing pakottaa anterior-stabilizers-koordinaatioon
   // matalalla kuormalla. Sijoitettu vertikaalityöntöön koska kuorma menee yläspäin (vrt OHP).
   { name: "Half-kneeling KB bottoms-up press", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  // v4.34.14: Owen Gayle (winningstrength) cable-variantti shoulder stabilizers -työhön
+  // streetlifting-spesifisti. Korvaa KB BUP:in atleeteille joilla ei ole kahvakuulaa.
+  { name: "Half-kneeling cable OHP", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  // v4.34.14: Half Turkish Get-up — selältä kyljelle DB extended overhead. Owen Gayle:n
+  // shoulder stabilizer + dippi-spesifi tukiliike. Olkapään asento-stabilointi kuormalla
+  // koko liikeradan yli — täydentää horisontaalia push-volyymiä loaded scapular control:lla.
+  { name: "Half Turkish Get-up (DB)", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
   // v4.34.3: SA + LT priming. Push-up plus = SA 50-80% MVIC (Park & Hwang 2019).
   { name: "Push-up plus", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
   // v4.34.3: Loaded GH mobility — SA 37%, LT 21%, UT 18% MVIC (Caravan 2018, Tarpada 2014).
@@ -255,6 +262,10 @@ const PRESET_MOVEMENTS = [
   { name: "Paused squat", category: "alaraaja", isPrimary: false, isPreset: true },
   // v4.27.20: Etukyykky (suomenkielinen) — laDay fsWeek default foundation/strength vaiheissa
   { name: "Etukyykky", category: "alaraaja", isPrimary: false, isPreset: true },
+  // v4.34.14: EZ-tanko declined-penkkipunnerrus — käyttäjän gym-spesifi laite + tanko.
+  // Klassinen dippi-tukiliike: sama kuormavektori kuin dipissä (alas + ulos rinnan tasolle),
+  // EZ-tanko vähentää kyynärpään ulkokierto-stressiä vs suora tanko. Triceps-dominantti.
+  { name: "Decline penkkipunnerrus (EZ-tanko)", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
   // ─── Alaraaja-variantit (v4.27.1) — maaveto/kyykky-spesifiset tukiliikkeet
   //     räätälöityyn ohjelmageneraattoriin. COMPLEMENT/SECONDARY-rooleihin alaraaja-primaryille.
   { name: "Romanian DL",       category: "alaraaja", isPrimary: false, isPreset: true },
@@ -408,6 +419,18 @@ const MOVEMENT_DESCRIPTIONS = {
   "Dippilaite (plate-loaded)": { howTo: "Vipuvarsilaite levypainoilla. Istu/asetu laitteen mukaiseen asentoon, paina kahvat alas hallitusti (eccentric 2–3 s), nosta ylös kontrolloidusti. ROM rajattu laitteen mukaan → alkukulman riski (kylmä RC + pec extended) on pienempi kuin tankodipissä. Hyvä volyymi-accessory päädippiin tai turvallisempi vaihtoehto kun olkapää on herkillä.", cue: "Älä jätä alapositioon roikkumaan — kontrolloitu lasku ja kontrolloitu nousu" },
   // v4.34.3: Dippi-spesifit anterior-stabilizer + mobility-accessoryt (Track C deep research).
   "Half-kneeling KB bottoms-up press": { howTo: "Toispolviseisontaan, KB pohjat-ylöspäin (bottoms-up) rack-asennossa, kahvasta lujasti puristaen. Työnnä yläspäin kontrolloidusti, lukitus, alas. Bottoms-up-asento PAKOTTAA subscapularis + serratus anterior + RC -sekvenssin koordinoimaan — anterior stabilizers -bias täydentää face pull + ulkokierto -volyymia (jotka kohdistuvat vain posteriorisesti). Half-kneeling = stabiili pohja + irradiation cue. 12–20 kg kohtalainen — bottoms-up-balansi tärkeämpi kuin paino.", cue: "Pohja täytyy pysyä taivaalla pystyssä — jos KB kallistuu, kuorma on liian raskas. Hengitä ulos lukituksessa, hengitä sisään alapositioossa." },
+  "Half-kneeling cable OHP": {
+    howTo: "OWEN GAYLE -TYYLIN SHOULDER STABILIZER (winningstrength). Vaihtoehto KB BUP:ille kun kahvakuulaa ei ole. ASETUS: (1) Toispolviseisontaan kaapelipylvääseen sivuttain — työskentelevä käsi on KAUEMPANA pylväästä, etupuolella oleva polvi vastakkaisella puolella (oikea käsi → vasen polvi etupuolella). (2) Kaapelin korkeus matalalla (lattiataso tai sen lähellä). D-handle. (3) Aloitusasento: käsi kyljen vieressä, kämmen sisäänpäin, kyynärpää koukussa rack-tasolle (kuin OHP-startti). LIIKE: (4) Työnnä kättä DIAGONAALISTI ylös ja hieman kaapelin suuntaan — käsi loppuasennossa suoraan ylhäällä, peukalo taakse, hartia lukossa (ei shrug). (5) 1 s pause yläpositiossa. (6) Lasku 2-3 s kontrolloidusti. KUORMA: 5–12 kg riittää — fokus stabiloinnissa ei voimassa. Kaapelin kulma luo unstable-load-stimuluksen samalla tavalla kuin KB:n bottoms-up — anterior cuff + SA + RC -koordinaatio.",
+    cue: "Vartalo pysyy paikallaan — ei lähde mukaan rotaatioon. Hartia EI nouse korviin. Toispolviseisonnan etupolvi vastakkaisella puolella vakauttaa lonkasta. Kaapelin tension pidetään koko ROMin yli — älä päästä kättä romahtamaan."
+  },
+  "Half Turkish Get-up (DB)": {
+    howTo: "OWEN GAYLE -TYYLIN SHOULDER STABILIZER + DIPPI-TUKILIIKE. Selältä kyljelle, käsipaino ojennettuna ylhäällä koko liikeradan ajan. ASETUS: (1) Selinmakuulla, työskentelevä käsi pitää käsipainoa SUORANA YLHÄÄLLÄ (käsi täysin ojennettuna, peukalo taakse). (2) Saman puolen polvi koukussa, jalkapohja lattialla. (3) Vastakkainen käsi sivulla 45° vartalosta lattialla. LIIKE: (4) Nojaa vastakkaiseen kyynärpäähän ja vie ylävartalo ylös 45° kulmaan — KÄSIPAINO PYSYY TÄYSIN YLHÄÄLLÄ koko liikkeen ajan, silmät seuraavat painoa. (5) Jatka kämmenelle (suora käsi tukena). (6) Tässä on kyljellään-asento, käsipaino edelleen suoraan ylhäällä. (7) 1 s pause kyljellään-asennossa. (8) Lasku takaisin selinmakuulle KONTROLLOIDUSTI 3 s, käsipaino pysyy ylhäällä koko ajan. KUORMA: 8–16 kg riittää — fokus stabiloinnissa, ei voimassa. Vahvistaa rotator cuff + scapular stability + serratus anteriorin koordinointia kuormalla — täydentää dippi-lockoutin olkapään stabilointia loaded scapular control:lla.",
+    cue: "KÄSIPAINO EI LIIKU — pysyy täysin pystysuorana ylhäällä koko liikkeen ajan. Silmät seuraavat painoa, hartia LUKOSSA (ei shrug). Jos käsi heilahtaa = kuorma liian raskas. Hidas hengitys koko liikkeen yli."
+  },
+  "Decline penkkipunnerrus (EZ-tanko)": {
+    howTo: "DIPPI-TUKILIIKE — sama kuormavektori kuin dipissä, EZ-tanko vähentää kyynärpään ulkokierto-stressiä vs suora tanko. ASETUS: (1) Decline-penkki kallistettuna 15-30° alaspäin, jalat lukittuna penkin yläosaan. (2) EZ-tanko (käyrä) tankotelineestä — ote kapeahko (kämmenet hieman sisäänpäin EZ:n kahvojen mukaan), ranteet neutraalisti. (3) Tanko alarintaan (ei navalle, ei rinnan keskelle — DIPPI-spesifi vektori = alarinta). LIIKE: (4) Kontrolloitu lasku 2 s, kyynärpäät 30-45° tucked vartaloa kohti (EI flared 60°+). (5) Tanko koskettaa alarintaa kevyesti — 0.5 s paussi. (6) Räjähtävä työntö ylös, ei lockoutia EI hyperextensiota olkapäissä. KUORMA: triceps + alarinta dominantti — voi olla 60-80% horisontaalipenkki-1RM:stä. EVIDENSSI: declined-vektori siirtää ärsykkeen alarintaan + tricepsiin — sama biomekaaninen profiili kuin dippi-lockoutilla.",
+    cue: "Tanko ALARINTAAN, ei navalle. EZ-tangon käyrä antaa ranteille 5-10° kulman, mikä vähentää kyynärpää-stressiä. Forward-lean-vektori — kuvittele että teet dippiä makuullasi. Jalat lukossa = ei lonkka-pumppausta."
+  },
   "Push-up plus": { howTo: "Punnerrusasento. Tee normaali punnerrus, ja yläpositiossa työnnä lapaluut TÄYDELLISESTI eteenpäin (protraction) — selkä pyöristyy hieman, lapaluut leviävät sivuille. 1 s pause yläpositiossa täydessä protractionissa. Aktivoi serratus anterior 50–80% MVIC (Park & Hwang 2019), kriittinen scapular control liike dipin alapositioon valmistautumiseen.", cue: "Yläpositiossa 'työnnä maa pois alta' — lapaluut leviävät, ribs down. Älä shrug-aktiivota, lapaluiden alaosa pysyy alhaalla." },
   "Half-kneeling KB armbar": { howTo: "Toispolviseisontaan, KB ylöspäin straight-arm (kuin OHP-lukitus), kahvasta hartia lukittuna alaspäin. Kallista ylävartaloa hitaasti taakse niin että kuormakättinen olkapää menee horizontal abduction + ER -asentoon, mutta kahva pysyy SUORAAN ylöspäin (osoittaa kattoa). 30 s tension under tension. SA 37%, LT 21% (Caravan 2018) — loaded GH mobility joka rakentaa anterior capsule capacityä spesifissä asennossa. Käytä 8–12 kg kohtalainen.", cue: "Olkapää lukossa — älä päästä kättä romahtamaan eteen. Hidas hengitys, älä holdaa hengitystä." },
   // v4.34.4: Powell Raise + Trap 3 Raise — Owen Gayle (winningstrength) streetlifting-spesifit
@@ -695,7 +718,14 @@ const ACCESSORY_SLOT_CATALOG = {
     function: "Muscle-up -transition, false grip + räjähtävä veto",
     rationale: "MU:n kriittisin kohta: veto loppuu ja siirrytään työntöön. Hypertrofiassa false grip row (volyymi), voimablokissa band-MU (koko liikerata kevyemmällä), peakingissä räjähtävä leuka (nopeus).",
     phaseVariants: {
-      foundation: ["False grip row", "Leuanveto chest-to-bar"],
+      // v4.34.14: Weighted inverted row oletus foundationissa.
+      // Edellinen v4.34.13: chest-to-bar oletus → mutta DUPLIKOI MA:n pull-volume-slottia
+      // (foundation: ["Leuanveto chest-to-bar", ...] data.js:462). Käyttäjäpalaute LA-treenin
+      // jälkeen: "chest to bar taitaa jo olla maanantain treenissä, joten siksi ei ehkä paras".
+      // Weighted inverted row = horisontaaliveto = todellisin row-pattern ilman renkaita
+      // (matala tanko Smith-koneella tai squat rackissa lantion korkeudella, lisäpaino vyötärölle).
+      // Säilyttää slotin alkuperäisen funktion (false grip row -volyymi) ringeittä.
+      foundation: ["Weighted inverted row", "False grip row", "Leuanveto chest-to-bar"],
       strength:   ["Band-assisted muscle-up", "False grip row"],
       intensity:  ["Band-assisted muscle-up", "Räjähtävä leuka"],
       peaking:    ["Räjähtävä leuka"],
@@ -4047,24 +4077,26 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // strukturoitu warmup. Track B Q-B2 -syvätutkimuksen Claude-suositus.
     // v4.34.10: Lähteet pois sulkeista. Käytännön ohjeet, lyhyet imperatiivit.
     const warmupArr = phase === "peaking" ? MA_WARMUP_PEAKING : [
+      // v4.34.14: desc-kentät laajennettu numeroituihin suoritusohjeisiin (Option C)
+      // — atleetti voi suorittaa lämmittelyn ilman youtube-hakua treenin aikana.
       // 1. Yleislämmittely — verenkierto käyntiin
-      { name: "Hyppynaru / käsiergometri", desc: "60-90 s reipas tahti — kunnes hengitys nousee" },
+      { name: "Hyppynaru / käsiergometri", desc: "60-90 s reipas tahti. (1) Hyppynaru tai käsiergometri kunnes hengitys nousee. (2) Yhdistä lonkka-pyörittelyt 5/suunta + olkapää-pyörittelyt 10/suunta liikkuessa. Tavoite: verenkierto + nivelneste käyntiin, EI staattista venytystä." },
       // 2. T-rangan liikkuvuus + scap mobility
-      { name: "Cat-camel + T-rangan ojennus (foam roller) + scap wall slides", desc: "6 toistoa + 8/puoli + 8 — avaa rintaranka ja lapaluut" },
+      { name: "Cat-camel + T-rangan ojennus + scap wall slides", desc: "RINTARANGAN MOBILISOINTI ENNEN VETOA. CAT-CAMEL: (1) Polvi-kämmen-asentoon. (2) Pyöristä selkä ylös (cat) — leuka rintaan, lavat erilleen. (3) Notkista alas (camel) — lavat yhteen, katse ylös. 6 syklis. T-RANGAN OJENNUS FOAM ROLLERILLA: (4) Asetu selinmakuulle, foam roller poikittain rintarangan alla (rintarangan keskeltä). (5) Kädet niskan tukena, anna ylävartalon notkahtaa rollerin yli — älä pakota. (6) 8 toistoa per puoli (siirrä rolleria pari kertaa eri kohtiin). SCAP WALL SLIDES: (7) Selkä seinää vasten, kyynärpäät + ranteet seinässä W-asennossa. (8) Liu'uta käsivarret ylös Y-asentoon, lavat alhaalla + lähekkäin. 8 toistoa." },
       // 3. Posterior capsule + pec minor mobility
-      { name: "Cross-body stretch + pec minor doorway stretch", desc: "2×30 s + 30 s/puoli — venytä takaolkapää + pec minor (kainalon edessä)" },
+      { name: "Cross-body stretch + pec minor doorway stretch", desc: "OLKAPÄÄN POSTERIOR + ANTERIOR -VENYTYKSET. CROSS-BODY: (1) Vie työskentelevä käsi suoraksi vartalon eteen vastakkaiselle puolelle. (2) Vastakkainen käsi vetää sitä lähemmäksi rintaa kunnes tunnet venytyksen TAKAOLKAPÄÄSSÄ. (3) Pidä 30 s. Toista molemmilla käsillä. PEC MINOR DOORWAY: (4) Seiso ovenkarmin kohdalla. (5) Aseta kyynärvarsi karmiin niin että kyynärpää on hartian tasolla, kainalo 90° auki. (6) Astele eteenpäin niin että rintakehä venyy — venytys tuntuu KAINALON ETUOSASSA (pec minor). (7) Pidä 30 s per puoli." },
       // 4. RC-aktivaatio: ulkokierto kainalo tuettuna
-      { name: "Side-lying ulkokierto (pyyhe kainalossa)", desc: "1×12-15, 2-4 kg KB tai band — kiertäjäkalvosin lämpiäväksi" },
+      { name: "Side-lying ulkokierto (pyyhe kainalossa)", desc: "INFRASPINATUS + TERES MINOR -AKTIVAATIO. (1) Asetu kyljellesi lattialle, alavartalo suorana. (2) Aseta TAITELTU PYYHE työskentelevän käsivarren ja kyljen väliin (kyynärpään kohdalle) — pitää kainalon hieman avattuna eikä prässää käsivartta vartaloa vasten. (3) Yläkäsi: kyynärpää 90° koukussa, kämmen alas kohti vatsaa. Pidä 2-4 kg käsipaino tai band-vastus. (4) Kierrä kämmen ulos kohti kattoa hitaasti 2 s, pidä yläasennossa 1 s. (5) Lasku 2 s takaisin alas. (6) 12-15 toistoa. Vaihda puoli. Cue: kyynärpää PYSYY kyljen vieressä, vain käsivarsi rotatoituu." },
       // 5. Supraspinatus
-      { name: "Prone Y / Full can", desc: "1×10 hidas, 1-2 kg — peukalo ylöspäin, käsivarsi Y-asennossa" },
+      { name: "Prone Y / Full can", desc: "SUPRASPINATUS + LOWER TRAP -AKTIVAATIO. PRONE Y: (1) Asetu vatsalleen penkille tai isolle pallolle. (2) Käsivarret riippumassa lattiaa kohti, peukalot YLÖSPÄIN. (3) Nosta molemmat käsivarret Y-asentoon (kapealla kulmalla yli pään), pidä peukalot ylöspäin. (4) 10 toistoa hitaasti, 1-2 kg käsipainot. FULL CAN VAIHTOEHTO seisten: (5) Käsivarsi suoraksi sivulle 30° vartalosta eteen (ei suoraan sivulle), peukalo ylöspäin. (6) Nosta käsivarsi olkapään tasolle hitaasti. (7) 1-2 kg käsipaino, 10 toistoa per puoli." },
       // 6. Serratus aktivaatio
-      { name: "Serratus punch + wall slide protraction", desc: "1×10 band — työnnä lapaluut eteen yläasennossa" },
+      { name: "Serratus punch + wall slide protraction", desc: "SERRATUS ANTERIOR -AKTIVAATIO. (1) Aseta kuminauha kahden käden väliin tai kiinnitä se kiinteään pintaan rintakehän tasolle. (2) Kädet eteen suorina, hartia-leveydellä. (3) TYÖNNÄ käsiä eteen niin että lavat liikkuvat ETEENPÄIN (protraction) — ylävartalo ei käännyy, vain lavat liikkuvat. (4) 1 s pause täydessä protraktiossa — tunne lavat 'leviävät' selässä. (5) Kontrolloitu palautus. (6) 10 toistoa." },
       // 7. Distal biceps + kyynärpää-prehab
-      { name: "Tyler twist + reverse Tyler (Flexbar)", desc: "1×10-12 — kyynärpään ja distal bicepsin prehab" },
+      { name: "Rannekäännöt (kevyt) — kyynärpää-prehab", desc: "DISTAL BICEPS + EXTENSOR-BALANSI. Vaihtoehto Flexbarille: (1) Tartu kevyeen käsipainoon (2-5 kg) tai vesipulloon. (2) Käsivarsi penkillä/reidellä, ranne reunan yli. (3) WRIST CURL: kämmen YLÖS, koukista ranne pohjaan ja takaisin — 12 toistoa. (4) REVERSE WRIST CURL: kämmen ALAS, ojenna ranne ylös ja takaisin — 12 toistoa. Molemmilla käsillä. Vaihtoehto ilman painoja: (5) Wrist circles 30 s/suunta + sormien pumppaus 30 s. Cue: hidas ja kontrolloitu — fokus liikeradassa, ei painossa." },
       // 8. Liike-spesifit primerit
-      { name: "BW-leuka (kevyt) + Räjähtävä leuka BW", desc: "1×5 + 1×3 — liikemallin herätys + max-nopeus neural primer" },
+      { name: "BW-leuka (kevyt) + Räjähtävä leuka BW", desc: "LIIKEMALLIN HERÄTYS + NEURAL PRIMER. (1) BW-LEUKA: hartialeveydellä myötäote, 5 kontrolloitua toistoa, ei lähelle failurea — tämä on AKTIVAATIO ei volume. (2) Lepo 60 s. (3) RÄJÄHTÄVÄ LEUKA: täysi hangi, vedä MAKSIMI NOPEUDELLA leuka tangon yli. (4) Lasku KONTROLLOIDUSTI 1-2 s. (5) Pieni paussi pohjalla, sitten seuraava räjähtävä veto. 3 toistoa. KESKEYTÄ heti jos nopeus laskee — primer ei volume." },
       // 9. Spesifinen ramp-up
-      { name: "Warmup ramp (primary)", desc: "40% × 5 · 55% × 3 · 70% × 2 · 85% × 1 → workset" },
+      { name: "Warmup ramp (primary)", desc: "PRIMARYN LIIKE-SPESIFI RAMP. Worksetin painosta laskettuna: (1) 40% × 5 toistoa — liikemallin herätys. (2) 55% × 3 toistoa — kuorman tuntu. (3) 70% × 2 toistoa — neural primer. (4) 85% × 1 toisto — work-load preview. (5) Lepo 90 s, sitten 1. workset. Lepo settien välissä 60-120 s ramp-vaiheessa, 3-5 min ennen ensimmäistä worksetia." },
     ];
     return { dayOfWeek:1, dayType:"heavy", label:label || "MA — Leuka + Selkä",
       warmup: warmupArr,
@@ -4147,20 +4179,21 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // ennen raskasta kyykkyä.
     // v4.34.10: Lähteet pois sulkeista. Käytännön ohjeet.
     const warmupArr = phase === "peaking" ? TI_WARMUP_PEAKING : [
+      // v4.34.14: desc-kentät laajennettu numeroituihin suoritusohjeisiin (Option C).
       // 1. Yleislämmittely
-      { name: "Pyörä / reipas kävely", desc: "90 s reipas tahti — kunnes hengitys nousee" },
+      { name: "Pyörä / reipas kävely", desc: "90 s reipas tahti. (1) Kuntopyörä matalalla vastuksella TAI reipas kävely. (2) Yhdistä lonkka-pyörittelyt 5/suunta + nilkkojen pumppaus. (3) Lopeta kun hengitys nousee + alavartalo lämmin. Tavoite: verenkierto + nivelneste käyntiin, EI staattista venytystä." },
       // 2. Lonkka-mobiliteetti
-      { name: "Leg swing + Hip 90/90 + Cossack squat", desc: "10/jalka eteen + 10 sivuttain + 30 s/puoli + 5/puoli — avaa lonkka + adduktorit" },
+      { name: "Leg swing + Hip 90/90 + Cossack squat", desc: "LONKKA + ADDUKTORIT. LEG SWING: (1) Tartu kiinteään tukeen toisella kädellä. (2) Heiluta toista jalkaa eteen-taakse 10 toistoa, käytä koko ROM. (3) Vaihda sivuttain 10 toistoa. Vaihda puoli. HIP 90/90: (4) Istu lattialle, etujalka 90° kulmassa edessä, takajalka 90° kulmassa sivussa. (5) Kallista ylävartaloa eteen kohti etujalkaa kunnes tunnet venytyksen pakaran yläosassa. (6) Pidä 30 s. Vaihda puoli. COSSACK SQUAT: (7) Seiso jalat leveässä haara-asennossa. (8) Siirrä paino TOISELLE jalalle, polvi koukistuu, toinen jalka pysyy SUORANA + kantapää maassa. (9) Mene niin alas kuin nivelliikkuvuus sallii. (10) Nouse kontrolloidusti. 5 toistoa per puoli." },
       // 3. Core stability (McGill Big 3 lite)
-      { name: "Curl-up + side bridge + bird dog", desc: "3×10 s + 2×10 s/puoli + 2×10 s/puoli — selkärangan stabiliteetti raskaaseen kyykkyyn" },
+      { name: "Curl-up + side bridge + bird dog", desc: "MCGILL BIG 3 — SELKÄRANGAN STABILITEETTI. CURL-UP: (1) Selinmakuulla, toinen polvi koukussa, toinen jalka suorana. (2) Aseta kädet alaselän taakse tueksi. (3) Nosta pää + hartiat 10 cm irti lattiasta — ei pyöristä rintarankaa, vain kohdista lyhyt isometria. (4) Pidä 10 s. 3 toistoa. SIDE BRIDGE: (5) Kyljellään, kyynärvarsi tukena, vartalo suorana. (6) Nosta lonkka ylös niin että vartalo muodostaa suoran linjan. (7) Pidä 10 s. 2 toistoa per puoli. BIRD DOG: (8) Polvi-kämmen-asentoon. (9) Ojenna vastakkainen käsi + jalka suoraksi (oikea käsi + vasen jalka). (10) Pidä 10 s, vartalo täysin paikallaan. (11) Vaihda puoli. 2 toistoa per puoli." },
       // 4. Glute aktivaatio
-      { name: "Banded clamshell + SL glute bridge + lateral walk", desc: "12/p + 8/p (2 s pause) + 10/suunta — pakara-aktivaatio (medius + max)" },
+      { name: "Banded clamshell + SL glute bridge + lateral walk", desc: "PAKARA-AKTIVAATIO (medius + max). CLAMSHELL: (1) Asetu kyljellesi, polvet 90° koukussa, kantapäät yhdessä. (2) Aseta resistanssikuminauha polvien ympärille (jos saatavilla). (3) Avaa polvet niin että ylempi polvi nousee, kantapäät PYSYVÄT yhdessä. (4) 12 toistoa per puoli. SL GLUTE BRIDGE: (5) Selinmakuulla, toinen polvi koukussa, toinen jalka SUORANA YLHÄÄLLÄ. (6) Nosta lantio ylös aktivoimalla pakara, 2 s pause yläasennossa. (7) 8 toistoa per puoli. LATERAL WALK: (8) Kuminauha polvien ympärille, puolikyykky-asento. (9) Astele sivulle pieniä askelia 10 askelta — kuminauha pysyy kireänä koko ajan. (10) Vaihda suunta." },
       // 5. Quad re-aktivaatio + motor pattern
-      { name: "BW squat (3 s alas, 1 s pohja) + reverse lunge", desc: "10 + 6/p — quad herätä + kyykkypattern" },
+      { name: "BW squat (3 s alas, 1 s pohja) + reverse lunge", desc: "QUAD HERÄTYS + KYYKKYPATTERN. BW SQUAT: (1) Seiso jalat hartialeveydellä, varpaat hieman ulospäin. (2) Lasku 3 s — hidasta tarkoituksellisesti, tunne quad-aktivaatio. (3) 1 s paussi pohjalla — pidä rinta auki, polvi varpaiden suuntaan. (4) Räjähtävä nousu. (5) 10 toistoa. REVERSE LUNGE: (6) Astele toisella jalalla TAAKSEPÄIN. (7) Lasku kunnes etureisi melkein vaakatasossa, takapolvi lähellä lattiaa (ei kosketa). (8) Nouse takaisin etujalalla. (9) 6 toistoa per puoli. Cue: paino etujalalla, takajalka vain tasapainoa varten." },
       // 6. Polvi-prehab (jos tarpeen)
-      { name: "Spanish squat (banded) — isometric", desc: "2×30-45 s, band polven takana — polvi/patellar tendon prehab (kokeile 2-3 vk, responsi yksilöllinen)" },
+      { name: "Spanish squat (banded) — isometric", desc: "POLVI / PATELLAR TENDON PREHAB. (1) Kiinnitä paksu kuminauha kiinteään pisteeseen polven korkeudelle (esim. squat rack). (2) Aseta kuminauha polven taakse, seiso noin metrin etäisyydellä ankkurista, kuminauha kireällä. (3) Mene PUOLIKYYKKY-ASENTOON niin että polvet ovat 90° kulmassa, vartalo PYSTYSSÄ (ei kalteva). (4) Kuminauhan veto polven takana pakottaa quadit tekemään isometrisen työn. (5) Pidä 30-45 s. 2 settiä, 60 s lepo. Cue: paino kantapäillä, polvet varpaiden suuntaan. Vaihtoehto ilman bandia: SKIP tai tee 2×30 s wall sit." },
       // 7. Spesifinen squat ramp
-      { name: "Warmup ramp (primary)", desc: `35% × 5 · 50% × 3 · 65% × 2 · 78% × 1${topPct ? " · 88% × 1" : ""} → workset` },
+      { name: "Warmup ramp (primary)", desc: `PRIMARYN LIIKE-SPESIFI RAMP. Worksetin painosta laskettuna: (1) 35% × 5 toistoa — liikemallin herätys, hidas tempo. (2) 50% × 3 toistoa — kuorman tuntu, paussi pohjalla. (3) 65% × 2 toistoa — neural primer. (4) 78% × 1 toisto — work-load preview.${topPct ? " (5) 88% × 1 toisto — top single primer." : ""} Lepo 60-120 s ramp-vaiheessa, 3-5 min ennen ensimmäistä worksetia.` },
     ];
     return { dayOfWeek:2, dayType:"heavy", label:label || "TI — Kyykky + Alavartalo",
       warmup: warmupArr,
@@ -4287,33 +4320,34 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // v4.34.10: Lähteet pois sulkeista. Käytännön ohjeet — yksiselitteiset imperatiivit.
     // Lisätty Joey Seyforth Banded Posterior Shoulder Mobilization (joint decompression).
     const warmupArr = phase === "peaking" ? TO_WARMUP_PEAKING : (isIntensityWeek ? [
+      // v4.34.14: desc-kentät laajennettu numeroituihin suoritusohjeisiin (Option C).
       // INTENSITY-vaiheen versio (~7-9 min)
-      { name: "Hyppynaru / shadow boxing / käsiergometri", desc: "90 s reipas tahti — kunnes hengitys nousee" },
-      { name: "Belly-press isometric (subscap)", desc: "2×10 s — kämmen vatsaan, kyynärpää eteenpäin, paina ilman ranteen koukistusta. Anterior cuff aktivaatio." },
-      { name: "Side-lying IR @ 90° abd", desc: "1×10/puoli, 3 s alas + 3 s ylös, 2-4 kg KB — kierrä kämmen kohti vartaloa kainalo 90° auki. Subscap selektiivinen herätys." },
-      { name: "Push-up plus", desc: "1×8 + 1 s pause yläasennossa, työnnä lapaluut eteen — serratus-aktivaatio" },
-      { name: "Doorway PNF (pec sternal)", desc: "2 reps × 5 s puristus / 15 s rentous, 60° + 120° kainalon avaus — pec mobility ilman capsule-overstretchiä (älä yli 150°)" },
-      { name: "🎯 BW dippi PUMP-set (chest-activation)", desc: "1×6 standard tempo (2 s alas, 1 s pause, normaali ylös). FOKUS: forward lean 30-45° + RINNAN aktivaatio — varmista rinta pumppaa lämpimäksi ennen kuormaa." },
-      { name: "BW dippi slow eccentric", desc: "1×3, 5 s lasku, 1 s pause alapositiossa — neural primer pumppi-setin jälkeen" },
-      { name: "Warmup ramp (primary)", desc: "30% × 8 (pump) → 50% × 5 → 70% × 3 → 85% × 1 → workset" },
+      { name: "Hyppynaru / shadow boxing / käsiergometri", desc: "90 s reipas tahti. (1) Hyppynaru tai shadow boxing — kunnes hengitys nousee. (2) Käsipyörittelyt eteenpäin 10 + taaksepäin 10. Tavoite: verenkierto + hartiat lämpimäksi." },
+      { name: "Belly-press isometric (subscap)", desc: "ANTERIOR CUFF AKTIVAATIO. (1) Aseta kämmen vatsaan, kyynärpää suoraan eteenpäin. (2) Paina vatsaan ranne NEUTRAALINA (ei koukistu). (3) 10 s puristus, 5 s lepo. (4) 2 settiä molemmilla käsillä. Cue: hartia EI nouse korviin." },
+      { name: "Side-lying IR @ 90° abd", desc: "SUBSCAP SELEKTIIVINEN HERÄTYS. (1) Asetu kyljellesi, yläkäden kainalo 90° auki, kyynärpää 90° koukussa, kämmen alas. (2) 2-4 kg KB. (3) Kierrä kämmen ylös kohti kattoa 3 s, 1 s pause. (4) Lasku 3 s. (5) 10 toistoa. Vaihda puoli." },
+      { name: "Push-up plus", desc: "SERRATUS AKTIVAATIO. (1) Punnerrusasento. (2) Tee normaali punnerrus alas + ylös. (3) Yläpositiossa työnnä lapaluut TÄYDESTI eteen, lavat leviävät. (4) 1 s pause. (5) 8 toistoa." },
+      { name: "Doorway PNF (pec sternal)", desc: "PEC MOBILITY ilman capsule-overstretchiä. (1) Ovenkarmilla, kyynärvarsi karmissa hartian tasolla, kainalo 60° auki. (2) Astu eteenpäin → venytys rinnassa. (3) Paina karmia 5 s (isometric), rentoudu 15 s syvempään. (4) 2 toistoa. (5) Toista kainalo 120° — sama. ÄLÄ yli 150°." },
+      { name: "🎯 BW dippi PUMP-set (chest-activation)", desc: "INTENSITY-PUMP. (1) Tankodippi BW (lisäpaino 0). (2) 6 toistoa standard tempo: 2 s alas, 1 s pause alapositiossa, normaali ylös. (3) FOKUS: forward lean 30-45° KOKO ajan, rinta menee tankoja kohti. (4) Varmista että RINTA pumppaa lämpimäksi ennen kuormaa — jos pump tulee etudeltaan + tricepsiin = lisää 1 setti rinta-fokuksella." },
+      { name: "BW dippi slow eccentric", desc: "NEURAL PRIMER pumppi-setin JÄLKEEN. (1) BW tankodippi. (2) 3 toistoa, 5 s lasku, 1 s pause alapositiossa, normaali ylös. (3) Kontrolloitu — fokus capsule-spesifissä eccentric-laskussa kun rinta on jo lämmin." },
+      { name: "Warmup ramp (primary)", desc: "PRIMARYN LIIKE-SPESIFI RAMP. Worksetin painosta laskettuna: 30% × 8 (pump) → 50% × 5 → 70% × 3 → 85% × 1 → workset. Lepo 60-90 s settien välissä, 3 min ennen 1. worksetia." },
     ] : [
       // FOUNDATION + STRENGTH täysi versio (~10-13 min)
       // 0-2 min: PERFUSION
-      { name: "Shadow boxing / hyppynaru / arm circles", desc: "90 s reipas tahti — verenkierto käyntiin, ei staattista venytystä" },
+      { name: "Shadow boxing / hyppynaru / arm circles", desc: "90 s reipas tahti. (1) Hyppynaru tai shadow boxing 60 s — kunnes hengitys nousee. (2) Käsipyörittelyt eteenpäin 10 + taaksepäin 10. (3) Lopeta kun hartiat tuntuvat lämpimältä. Tavoite: verenkierto + nivelneste käyntiin, EI staattista venytystä." },
       // 2-3 min: SUBSCAPULARIS-AKTIVAATIO (anterior cuff)
-      { name: "Belt-squeeze belly-press isometric", desc: "2×10 s — kämmen vatsaan + kyynärpää eteenpäin + paina vatsaan ranne neutraalina. Upper subscap." },
-      { name: "Lift-off prep", desc: "1×10 s — kämmen alaselän päälle, nosta käsi 5 cm irti selästä, pidä. Lower subscap." },
+      { name: "Belt-squeeze belly-press isometric", desc: "UPPER SUBSCAP -AKTIVAATIO. (1) Aseta kämmen vatsaan, kyynärpää suoraan eteenpäin (ei sivulle). (2) Paina vatsaan kuin pumppaisit ilmapatjaa, ranne PYSYY NEUTRAALINA (ei koukistu). (3) 10 s puristus, 5 s lepo, toista. 2 settiä molemmilla käsillä. Cue: hartia EI nouse korviin, kaikki paine tulee subscap-lihaksesta." },
+      { name: "Lift-off prep", desc: "LOWER SUBSCAP -AKTIVAATIO. (1) Aseta kämmen alaselän päälle (käsi taakse). (2) Nosta käsi 5 cm IRTI selästä (lift-off). (3) Pidä 10 s. (4) Toista 1 setti molemmilla käsillä. Cue: liike pieni mutta tarkka — fokus subscap-lihaksen alaosassa, ei hartioiden kohotuksessa." },
       // 3-4 min: SUBSCAPULARIS @ 90° abd
-      { name: "Side-lying IR @ 90° abd", desc: "1×10/puoli, 3 s alas + 3 s ylös, 2-4 kg KB — kierrä kämmen kohti vartaloa kainalo 90° auki. Selektiivisempi kuin tavallinen ulkokierto." },
+      { name: "Side-lying IR @ 90° abd", desc: "SUBSCAP SELEKTIIVINEN HERÄTYS. (1) Asetu kyljellesi lattialle, alavartalo suorana. (2) Yläkäsi: kainalo 90° auki vartalosta, kyynärpää 90° koukussa, kämmen alas kohti lattiaa. (3) Pidä 2-4 kg käsipaino tai band-vastus. (4) Kierrä kämmen YLÖS kohti kattoa hitaasti 3 s, pidä yläasennossa 1 s. (5) Lasku 3 s takaisin alas. (6) 10 toistoa. Vaihda puoli. Cue: kyynärpää PYSYY paikallaan, vain käsivarsi rotatoituu — selektiivisempi kuin tavallinen ulkokierto." },
       // 4-5 min: SERRATUS + LOWER TRAP PRIMING
-      { name: "Push-up plus", desc: "1×8 + 1 s pause yläasennossa — työnnä lapaluut TÄYDESTI eteen. Serratus 50-80% aktivaatio." },
-      { name: "Wall slide foam-rollerilla", desc: "1×8 — selkä seinään, kädet 'W'-asennossa, slide ylös 'Y':ksi pitäen kädet seinässä. Serratus + lower trap samanaikainen herätys." },
+      { name: "Push-up plus", desc: "SERRATUS ANTERIOR -AKTIVAATIO. (1) Tavallinen punnerrusasento. (2) Tee normaali punnerrus alas + ylös. (3) YLÄPOSITIOSSA työnnä lapaluut TÄYDELLISESTI eteen — selkä pyöristyy hieman, lavat leviävät sivuille. (4) 1 s pause yläasennossa täydessä protractionissa. (5) 8 toistoa. Cue: 'työnnä maa pois alta', ribs down. Serratus 50-80% MVIC -aktivaatio." },
+      { name: "Wall slide foam-rollerilla", desc: "SERRATUS + LOWER TRAP SAMANAIKAINEN HERÄTYS. (1) Selkä seinää vasten, jalat 30 cm seinästä. (2) Aseta foam roller käsivarsien välissä rintatason kohdalle (jos ei rolleria, käytä pelkät käsivarret). (3) Käsivarret 'W'-asennossa, kyynärpäät + ranteet seinässä. (4) Liu'uta käsivarret ylös 'Y'-asentoon, KÄDET PYSYVÄT seinässä koko ajan. (5) 1 s paussi 'Y'-asennossa, lavat alhaalla + lähekkäin. (6) Lasku takaisin 'W'-asentoon. (7) 8 toistoa. Cue: jos kädet irtoavat seinästä, ROM on liian suuri — pidä yhteyttä." },
       // 5-6 min: BANDED POSTERIOR SHOULDER MOBILIZATION (Joey Seyforth, joint decompression)
-      { name: "Banded posterior shoulder mob", desc: "1×15 — band ankkuroitu olkapään tasolle takaa, kierretty etu-olkapään ympärille kainalon lähelle. Astu eteenpäin tensionsiin, tee kevyitä chest press -liikkeitä. Tunne nivelen avautuminen takaa, älä pakota." },
+      { name: "Banded posterior shoulder mob", desc: "JOINT DECOMPRESSION (Joey Seyforth). (1) Ankkuroi paksu kuminauha olkapään tasolle takaa (esim. squat rack). (2) Kierrä kuminauha etu-olkapään ympärille kainalon lähelle. (3) Astu eteenpäin niin että kuminauha vetää olkapäätä TAAKSE — tunne nivelen avautuminen takaa. (4) Tässä asennossa tee kevyitä chest press -liikkeitä eteenpäin (kädet eteen + takaisin), 15 toistoa. (5) Älä pakota — fokus on nivelen joint decompressionissa, ei voimatyössä." },
       // 6-7 min: PEC STERNAL HEAD MOBILITY (PNF, ei pitkä staattinen)
-      { name: "Doorway PNF pec stretch", desc: "2 reps × 5 s puristus / 15 s rentous, kainalo 60° auki + sama 120° auki — älä yli 150° (capsule-overstretch). Pec sternal head fokus." },
+      { name: "Doorway PNF pec stretch", desc: "PEC STERNAL HEAD MOBILITY. (1) Seiso ovenkarmin kohdalla. (2) Aseta kyynärvarsi karmiin niin että kyynärpää on hartian tasolla, kainalo 60° auki vartalosta. (3) Astu eteenpäin kunnes tunnet venytyksen rinnassa. (4) PNF-protokolla: paina kättä karmia vasten 5 s (isometrinen contraction), sitten rentoudu 15 s syvempään venytykseen. (5) 2 toistoa. (6) Toista kainalo 120° auki — sama protokolla. ÄLÄ koskaan yli 150° (capsule-overstretch-riski). Fokus pec sternal head -lihaksessa." },
       // 7-9 min: LOADED MOBILITY
-      { name: "Half-kneeling KB armbar", desc: "2 reps/puoli, ≥30 s tension hallittu, 8-12 kg — toispolviseisontaan, KB suoraan ylös, kallista ylävartaloa hitaasti taakse. Olkapää lukossa, kahvasta tiukka ote." },
+      { name: "Half-kneeling KB armbar", desc: "LOADED GH MOBILITY (SA + LT aktivointi). (1) Toispolviseisontaan, esim. oikea polvi alhaalla, vasen jalka edessä. (2) Tartu KB:n kahvaan oikealla kädellä, työnnä KB suoraan ylös (kuin OHP-lukitus). KB pohjat-ylöspäin, kahva tiukasti puristettuna. (3) Olkapää LUKOSSA alaspäin koko liikkeen ajan. (4) Kallista ylävartaloa hitaasti TAAKSE niin että kuormakättinen olkapää menee horizontal abduction + ulkokierto -asentoon. (5) Kahva pysyy SUORAAN ylöspäin (osoittaa kattoa). (6) Pidä ≥30 s tension under tension. (7) 2 toistoa per puoli. KUORMA: 8-12 kg." },
       // 9-11 min: 🎯 BW DIPPI CHEST-ACTIVATION PUMP — KESKEINEN ELEMENTTI
       { name: "🎯 BW dippi PUMP-set 2×8 (chest-activation, KEYNOTE)", desc: "2×8 standard tempo (2 s alas, 1 s pause alapositiossa, normaali ylös). Lepo 90 s settien välissä. KRIITTINEN FOKUS: forward lean 30-45° KOKO ajan, rinta menee tankoja kohti — TUNNE pec sternal head -aktivaatio (rinta pumppautuu lämpimäksi). Jos pump tulee etudeltaan + tricepsiin = tee 1 LISÄ-set rinta-fokuksella ENNEN kuormaa. Sääntö: paikkojen on oltava lämpimät sarjoihin." },
       // 11-12 min: NEURAL PRIMING
@@ -4494,8 +4528,11 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     slots.push(
       slotAccessory("mu-transition", "vertikaaliveto", "Leuanveto chest-to-bar",
         { sets: isSkill ? 4 : 4, reps: isSkill ? 3 : 5, targetVx: 3,
+          // v4.34.14: note tehty liike-agnostiseksi (foundation-default vaihtui
+          // Weighted inverted row -liikkeeksi, alkuperäinen note oli chest-to-bar-spesifi).
+          // resolveAccessorySlot poimii varsinaisen liikkeen phaseVariants[idx]:stä.
           note: isSkill
-            ? "Transition-veto chest-to-bar — räjähtävä, 4×3 neural primer MU:n vedolle (M4: rakenteellinen, ei enää vapaatekstinä muNotessa)"
+            ? "MU-transition primer — räjähtävä, 4×3 neural primer MU:n vedolle. Foundation-vaiheen oletus = Weighted inverted row (matala tanko, lisäpaino vyötärölle, false grip jos mahdollista)."
             : "Kevyt — nopeus" })
     );
     // v4.31.0: pull-vertical-explosive aktivoituu nyt skill-vaiheen lisäksi
@@ -4557,16 +4594,19 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       const trap3TargetKg = Math.max(7, Math.round(D * 0.125 / 0.5) * 0.5);
 
       if (isSkill || fsPhase === "foundation" || fsPhase === null || fsPhase === undefined) {
-        // FOUNDATION: KB BUP (anterior subscap) + Trap 3 Raise familiarization
+        // FOUNDATION: Cable OHP (anterior subscap) + Trap 3 Raise familiarization
+        // v4.34.14: Half-kneeling KB BUP → Half-kneeling cable OHP. Atleetilla ei ole
+        // kahvakuulaa; cable-variantti (Owen Gayle, winningstrength) tuottaa saman
+        // anterior-stabilizer-stimuluksen unstable-tension-mekaniikalla.
         slots.push({
           role: "accessory",
           category: "vertikaalityöntö",
-          defaultMovementName: "Half-kneeling KB bottoms-up press",
+          defaultMovementName: "Half-kneeling cable OHP",
           slotId: "anterior-stabilizer-bup",
           sets: 2, reps: 6,
-          targetVx: 4, suggestedLoadKg: 14,
+          targetVx: 4, suggestedLoadKg: 8,
           velocityStop: null, allowVelocityInput: false,
-          note: "Foundation anterior-stabilizer — pohja-ylöspäin KB rack-asennossa, kontrolloitu työntö ylös. 12-16 kg. Subscap + SA + RC -koordinaatio (täydentää posterior-fokussissia Powell/Trap 3 -liikkeitä). Tempo 2-1-1-1. Lepo 60-90 s puolien välissä.",
+          note: "Foundation anterior-stabilizer — kaapelipylvään matala-asetus, toispolviseisontaan, single-arm OHP diagonaalisesti ylös. 5-12 kg. Subscap + SA + RC -koordinaatio (täydentää posterior-fokussissia Powell/Trap 3 -liikkeitä). Tempo 2-1-1-2. Lepo 60-90 s puolien välissä. Vaihtoehto kun KB ei käytössä.",
         });
         // Trap 3 Raise familiarization — 1 painoluokka kevyempi kuin target, opetellaan motor pattern
         const trap3FamKg = Math.max(7, trap3TargetKg - 2.5);
@@ -4625,12 +4665,50 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
           note: `Intensity maintenance @ ${trap3TargetKg} kg/puoli — säilytä motor pattern + structural balance. Vähemmän volyymia (2×6 vs strength-vaiheen 2×8) koska intensity-vaiheessa CNS-kuorma comp-liikkeissä on korkea. Tempo 2-1-3-0.`,
         });
       }
+
+      // v4.34.14: PHASE-ROTAATIO ANTERIOR-STABILIZER-SLOTILLE.
+      // Foundation: Cable OHP (yllä, anterior-stabilizer-bup -slotissa).
+      // Strength + Intensity: Half Turkish Get-up (DB) — Owen Gayle -tyylin loaded
+      // scapular control + RC-stabilointi kuormalla. Täydentää Powell Raise + Trap 3
+      // -posterior-fokuksia anteriorisella + GH-stability-stimuluksella. Käyttäjäpalaute
+      // LA-treenistä: Cable OHP foundationissa, Half TGU strengthissä+ rotaation kautta.
+      if (fsPhase === "strength" || fsPhase === "intensity") {
+        slots.push({
+          role: "accessory",
+          category: "vertikaalityöntö",
+          defaultMovementName: "Half Turkish Get-up (DB)",
+          slotId: "anterior-stabilizer-tgu",
+          sets: 2, reps: 4,  // 4 toistoa per puoli — kuormatettu liike, hidas
+          targetVx: 4, suggestedLoadKg: 12,  // 8-16 kg DB
+          velocityStop: null, allowVelocityInput: false,
+          note: `${fsPhase === "strength" ? "Strength" : "Intensity"} anterior-stabilizer + GH stability. Selältä → kyljelle, DB suoraan ylhäällä koko liikkeen ajan. 8-16 kg käsipaino. Loaded scapular control + RC + serratus -koordinaatio kuormalla — täydentää Powell + Trap 3 -posterior-fokusta. Tempo: 2 s ylös, 1 s pause, 3 s alas. Lepo 60-90 s puolien välissä. Vahvistaa MU-transition + dippi-lockout -olkapään stabilointia.`,
+        });
+      }
     }
 
     slots.push(
       dipSupport,
       ...mixAcc()
     );
+
+    // v4.34.14: Decline penkkipunnerrus EZ-tangolla — käyttäjän gym-spesifi
+    // dippi-tukiliike LA-päivällä. Sama kuormavektori kuin dipissä (alas + ulos
+    // alarintaan), EZ-tanko vähentää kyynärpään ulkokierto-stressiä. Käyttäjä-
+    // palaute LA-treenistä: "tein tätä 3×6 80 kg V3 lauantaina, sillä oletin
+    // liikkeen olevan hyvä tukiliike dippiin". Lisätään foundation/strength/
+    // intensity-phase. Peaking pois (taper).
+    if (!isPeakingLA) {
+      slots.push({
+        role: "accessory",
+        category: "horisontaalityöntö",
+        defaultMovementName: "Decline penkkipunnerrus (EZ-tanko)",
+        slotId: "dip-support-decline",
+        sets: 3, reps: 6,
+        targetVx: 3, suggestedLoadKg: 80,  // käyttäjän raportoima 3×6×80 V3 lauantaina
+        velocityStop: null, allowVelocityInput: false,
+        note: "Decline-penkki kallistettuna 15-30° alaspäin, EZ-tanko (käyrä) kapeahkolla otteella. Tanko ALARINTAAN (ei navalle), kyynärpäät 30-45° tucked vartaloa kohti. Sama kuormavektori kuin dipissä → triceps + alarinta -dominantti. Tempo 2-0.5-1-1. Lepo 90-120 s. EZ-tangon käyrä antaa ranteille 5-10° kulman → vähentää kyynärpää-stressiä vs suora tanko.",
+      });
+    }
 
     // Mahdollinen "finisher"-override (vk 15 käyttää minimiä)
     if (finisher === "minimal") {
@@ -4646,25 +4724,27 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // v4.34.10: Lähteet pois sulkeista. Käytännön ohjeet.
     return { dayOfWeek:6, dayType:"volume", label:label || "LA — Muscle-up + Kevyt",
       warmup: [
+        // v4.34.14: desc-kentät laajennettu numeroituihin suoritusohjeisiin (Option C)
+        // — atleetti voi suorittaa lämmittelyn ilman youtube-hakua treenin aikana.
         // 1. Yleislämmittely
-        { name: "Shadow boxing / hyppynaru / arm circles", desc: "90 s reipas tahti — verenkierto käyntiin" },
+        { name: "Shadow boxing / hyppynaru / arm circles", desc: "90 s reipas tahti. (1) Hyppynaru tai shadow boxing 60 s — kunnes hengitys nousee. (2) Käsipyörittelyt eteenpäin 10 + taaksepäin 10. (3) Lonkka-pyörittelyt 5/suunta. Tavoite: verenkierto + nivelneste käyntiin, EI staattista venytystä." },
         // 2. Subscap-aktivaatio
-        { name: "Belly-press isometric + lift-off prep", desc: "2×10 s belt-squeeze + 1×10 s lift-off — anterior cuff (subscap upper + lower)" },
+        { name: "Belly-press isometric + lift-off prep", desc: "ANTERIOR CUFF (subscap upper + lower). BELLY-PRESS: (1) Aseta kämmen vatsaan, kyynärpää suoraan eteenpäin. (2) Paina vatsaan kuin pumppaisit ilmapatjaa, ranne PYSYY NEUTRAALINA (ei koukistu). (3) 10 s puristus, 5 s lepo, toista. 2 settiä molemmilla käsillä. LIFT-OFF PREP: (4) Aseta kämmen alaselän päälle (= taakse). (5) Nosta käsi 5 cm irti selästä, pidä 10 s. 1 setti molemmilla. Cue: hartia EI nouse korviin." },
         // 3. Subscap @ 90° abd
-        { name: "Side-lying IR @ 90° abd", desc: "1×10/puoli, 3 s alas + 3 s ylös, 2-4 kg — kainalo 90° auki, kierrä kämmen kohti vartaloa" },
+        { name: "Side-lying IR @ 90° abd", desc: "SUBSCAP SELEKTIIVINEN HERÄTYS. (1) Asetu kyljellesi lattialle, alavartalo suorana. (2) Yläkäsi: kainalo 90° auki vartalosta, kyynärpää 90° koukussa, kämmen alas kohti lattiaa. (3) Pidä 2-4 kg käsipaino. (4) Kierrä kämmen YLÖS kohti kattoa hitaasti 3 s, pidä yläasennossa 1 s. (5) Lasku 3 s takaisin alas. (6) 10 toistoa. Vaihda puoli. Cue: kyynärpää PYSYY paikallaan, vain käsivarsi rotatoituu." },
         // 4. Serratus + lower trap
-        { name: "Push-up plus + wall slide", desc: "1×8 + 1×8 — yläasennossa lapaluut eteen + wall slide W→Y-asentoon" },
+        { name: "Push-up plus + wall slide", desc: "PUSH-UP PLUS: (1) Tavallinen punnerrusasento. (2) Tee normaali punnerrus alas + ylös. (3) YLÄPOSITIOSSA työnnä lapaluut TÄYDELLISESTI eteen — selkä pyöristyy hieman, lapaluut leviävät sivuille. 1 s pause yläasennossa täydessä protractionissa. 8 toistoa. WALL SLIDE: (4) Selkä seinää vasten, kyynärpäät + ranteet seinässä, käsivarret W-asennossa. (5) Liu'uta käsiä ylös Y-asentoon (käsivarret suoraksi viistosti ylös), pidä lapaluut alhaalla + lähekkäin. (6) Lasku takaisin W-asentoon. 8 toistoa." },
         // 5. MU-spesifi
-        { name: "Scapular pull-up + False Grip hang", desc: "2×10 + 3×20 s — lapa-aktivaatio + ranteet MU:n false grip -tukeen" },
+        { name: "Scapular pull-up + False Grip hang", desc: "SCAPULAR PULL-UP: (1) Roiku tangossa myötäotteella, käsivarret SUORINA. (2) Aktivoi vain lapaluut — vedä lapaluut alas (depression) ilman että kyynärpäät koukistuvat, koko vartalo nousee 2-3 cm. (3) Lasku takaisin täyteen hangiin. (4) 10 toistoa, 2 settiä. FALSE GRIP HANG: (5) Vie ranteet TANGON YLÄPUOLELLE (kämmenet osoittavat taakse, rystyset kohti kattoa). (6) Roiku 20 s. 3 settiä. Cue: ranteet pysyvät tangon päällä koko hangin ajan — tämä valmistaa MU:n transition-vaiheen." },
         // 6. Kyynärpää-prehab MU-vetoon
-        { name: "Tyler twist + reverse Tyler (Flexbar)", desc: "1×10-12 — distal biceps + kyynärpää-prehab" },
+        { name: "Rannekäännöt (kevyt) — kyynärpää-prehab", desc: "DISTAL BICEPS + EXTENSOR-BALANSI. Vaihtoehto Flexbarille: (1) Tartu kevyeen käsipainoon (2-5 kg) tai vesipulloon. (2) Käsivarsi penkillä/reidellä, ranne reunan yli. (3) WRIST CURL: kämmen YLÖS, koukista ranne pohjaan ja takaisin — 12 toistoa. (4) REVERSE WRIST CURL: kämmen ALAS, ojenna ranne ylös ja takaisin — 12 toistoa. Molemmilla käsillä. Vaihtoehto ilman painoja: (5) Wrist circles 30 s/suunta + sormien pumppaus 30 s. Cue: hidas ja kontrolloitu — fokus liikeradassa, ei painossa." },
         // 7. Alaraaja-elementit (jos LA-kyykkypäivä)
         ...(fsWeek ? [
-          { name: "Hip 90/90 + Cossack squat", desc: "30 s/puoli + 5/puoli — lonkka-mobiliteetti 2. kyykkyä varten" },
-          { name: "Banded clamshell + glute bridge", desc: "12/p + 8/p — pakara-aktivaatio" },
+          { name: "Hip 90/90 + Cossack squat", desc: "LONKKA-MOBILITEETTI 2. KYYKKYÄ VARTEN. HIP 90/90: (1) Istu lattialle, etujalka 90° kulmassa edessä, takajalka 90° kulmassa sivussa. (2) Kallista ylävartaloa eteen kohti etujalkaa kunnes tunnet venytyksen pakaran yläosassa. (3) Pidä 30 s. Vaihda puoli. COSSACK SQUAT: (4) Seiso jalat leveässä haara-asennossa. (5) Siirrä paino TOISELLE jalalle, polvi koukistuu, toinen jalka pysyy SUORANA + kantapää maassa. (6) Mene niin alas kuin nivelliikkuvuus sallii. (7) Nouse kontrolloidusti. 5 toistoa per puoli." },
+          { name: "Banded clamshell + glute bridge", desc: "PAKARA-AKTIVAATIO. CLAMSHELL: (1) Asetu kyljellesi, polvet 90° koukussa, kantapäät yhdessä. (2) Aseta resistanssikuminauha polvien ympärille (jos saatavilla). (3) Avaa polvet niin että ylempi polvi nousee ylös, kantapäät PYSYVÄT yhdessä. (4) 12 toistoa per puoli, 2 s pause yläasennossa. GLUTE BRIDGE: (5) Selinmakuulla, polvet koukussa, jalat lattialla. (6) Nosta lantio ylös aktivoimalla pakarat ensin (ei alaselkää). (7) 1 s pause yläasennossa. 8 toistoa." },
         ] : []),
         // 8. MU neural-primer
-        { name: "Räjähtävä leuka BW", desc: "3×3 — max-nopeus, MU-vedon räjähtävyys" },
+        { name: "Räjähtävä leuka BW", desc: "MU-VEDON RÄJÄHTÄVYYS-PRIMER. (1) Tartu tankoon myötäotteella hartioiden leveydeltä. (2) Aloita täydestä hangista. (3) VEDÄ MAKSIMI NOPEUDELLA — tavoite: leuka tangon yli mahdollisimman nopeasti. (4) Lasku KONTROLLOIDUSTI 1-2 s (ei pudota). (5) Pieni paussi pohjalla, sitten seuraava räjähtävä veto. 3 toistoa per setti, 3 settiä, 60-90 s lepo. KESKEYTÄ heti jos nopeus laskee — tämä ei ole volyymisarja, vaan nopeusprimer." },
         // 9. Squat ramp (jos LA-kyykkypäivä)
         ...(fsWeek ? [{ name: `${fsWeek.movement ?? "Paused squat"}-lämmittely`, desc: "Ks. slotin warmupSets — ennen MU:ta" }] : []),
       ],
@@ -4867,9 +4947,14 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // hybridi A→B (vk 1-2 säilytä backoff reisi-rebuild, vk 3+ siirry intensiteetti-
     // painotteiseen, backoff vähenee).
     //
+    // v4.34.14: Foundation-progression pehmennetty atleetin palautteen perusteella.
+    // Edellinen (v4.32.9 M17): 68.6 → 74.3 → 80% (+5.7pp + 5.7pp/vk = liian aggressiivinen).
+    // Foundation = volyymi-rebuild + neural reintro, EI intensiteetti-spurtti. ~+2.5pp/vk
+    // sopii hypertrofia-foundationiin paremmin (Mike Israetel volume-block-suositus).
+    //
     // Vk 1: 4×6 V3 @68.6% RPE 6-7 + reg backoff 3×7 @55% (reisi-rebuild + neural reintro)
-    // Vk 2: 4×6 V3 @74.3% RPE 7   + reg backoff 3×7 @58% (volume + intensifikaatio)
-    // Vk 3: 4×5 V3 @80% RPE 7.5-8 + reg backoff 2×6 @63% (siirtymä, backoff vähenee)
+    // Vk 2: 4×6 V3 @71%   RPE 7   + reg backoff 3×7 @58% (volume + lievä intensifikaatio)
+    // Vk 3: 4×5 V3 @75%   RPE 7.5 + reg backoff 2×6 @61% (siirtymä, backoff vähenee)
     //
     // RPE-kalibrointi: jos vk 3 RPE 6.5-7 → vk 4 +5-7 kg yli suunnitelman. Jos RPE 8.5+ → pidä load tai laske 2.5 kg.
     { week:1, days:[
@@ -4880,18 +4965,18 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       laDay("LA — MU skill + tekninen takakyykky (eksentrinen + transition + räjähtävä)", 0, 5, null, null, FS.w1),
     ]},
     { week:2, days:[
-      // v4.32.9 M17: 5×6 V3 @68% → 4×6 V3 @74.3% (sets-drop 5→4, intensiteetti +5.7pp)
-      maDay("MA — Vastaote-leuanveto 4×6 @74.3%", 4,6,3, 0.743, null, null, undefined, undefined, "foundation", "Vastaote-leuanveto", false, false, true),
-      tiDay("TI — Kyykky 4×6 @74.3% RPE 7",       4,6,3, 0.743, null, undefined, tiBackoffRegular(0.58)),
-      toDay("TO — Dippi 4×6 @74.3%",              4,6,3, 0.743, null, null, pushAccPrehab()),
+      // v4.34.14: 74.3% → 71% (Foundation-progressionin pehmennys, ~+2.4pp vk 1:stä)
+      maDay("MA — Vastaote-leuanveto 4×6 @71%", 4,6,3, 0.71, null, null, undefined, undefined, "foundation", "Vastaote-leuanveto", false, false, true),
+      tiDay("TI — Kyykky 4×6 @71% RPE 7",       4,6,3, 0.71, null, undefined, tiBackoffRegular(0.58)),
+      toDay("TO — Dippi 4×6 @71%",              4,6,3, 0.71, null, null, pushAccPrehab()),
       laDay("LA — MU skill + tekninen takakyykky", 0, 5, null, null, FS.w2),
     ]},
     { week:3, days:[
-      // v4.32.9 M17: 5×6 V2 @72% → 4×5 V3 @80% (reps-drop 6→5, intensiteetti +8pp, backoff 3×7→2×6)
-      maDay("MA — Vastaote-leuanveto 4×5 @80%", 4,5,3, 0.80, null, null, undefined, undefined, "foundation", "Vastaote-leuanveto", false, false, true),
-      // Backoff: 2×6 @63% (vähennetty 3×7→2×6 — siirtymä intensifikaatioon, hybridi A→B vk 3)
-      tiDay("TI — Kyykky 4×5 @80% RPE 7.5-8",  4,5,3, 0.80, null, undefined, { style: "regular", pct: 0.63, sets: 2, reps: 6, targetVx: 4, note: "Hybridi A→B siirtymä — backoff vähennetty 3×7→2×6, intensifikaatio alkaa" }),
-      toDay("TO — Dippi 4×5 @80%",             4,5,3, 0.80, null, null, pushAccPrehab()),
+      // v4.34.14: 80% → 75% (Foundation-progressionin pehmennys, ~+4pp vk 2:sta)
+      maDay("MA — Vastaote-leuanveto 4×5 @75%", 4,5,3, 0.75, null, null, undefined, undefined, "foundation", "Vastaote-leuanveto", false, false, true),
+      // Backoff: 2×6 @61% (vähennetty 3×7→2×6 — siirtymä intensifikaatioon, hybridi A→B vk 3)
+      tiDay("TI — Kyykky 4×5 @75% RPE 7.5",  4,5,3, 0.75, null, undefined, { style: "regular", pct: 0.61, sets: 2, reps: 6, targetVx: 4, note: "Hybridi A→B siirtymä — backoff vähennetty 3×7→2×6, intensifikaatio alkaa" }),
+      toDay("TO — Dippi 4×5 @75%",             4,5,3, 0.75, null, null, pushAccPrehab()),
       laDay("LA — MU: ENSIMMÄINEN STRICT 🎯 + tekninen takakyykky", 0, 5, "🎯 Tavoite: ensimmäinen puhdas strict muscle-up (eksentrinen → full MU)", null, FS.w3),
     ]},
     { week:4, days:[
