@@ -1555,6 +1555,65 @@ async function recommend(options = {}) {
         { e1rmExternal: currentE1RMExternal, ceiling: ceiling_ext, source: ceilingSource },
         `e1RM ${original.toFixed(1)} kg → ${currentE1RMExternal.toFixed(1)} kg (cap: ${ceilingSource})`);
     }
+
+    // v4.34.17 FIX #5: E1RM FLOOR CAP (symmetrinen ceiling cap:n kanssa).
+    // Käyttäjäpalaute TI-pilotista: Epley + Vara ALIMITTAA squat-1RM:n korkeilla
+    // toistoilla (4×6 V3 → e1RM 156 kg vs todellinen PR 175 kg = -11 %). Tämä
+    // aiheuttaa ohjelman load-DROPin viikkojen välillä:
+    //   Vk 1: 4×6×120 V3 (planned 120 = 0.686 × 175)
+    //   Vk 2: 0.71 × computed e1RM 156 = 111 kg (vs intent 0.71 × 175 = 124 kg)
+    //   = -9 kg DROP vk 1:stä, vaikka Vx-tavoite sama V3 ja kuorman pitäisi nousta.
+    // Erityisen tärkeä squat/dippi-tyyppisille barbell-/external-only-laskennoille
+    // (kaava ilman BW-additiota) joissa Epley-curve flatterua nopeammin kuin
+    // pull-upissa (jossa BW lisää effective mass-arvoa).
+    //
+    // Logiikka (symmetrinen ceiling-capin kanssa):
+    //   1. Cal-historia → floor = MIN(cal-derived) × 0.95 (validated alaraja)
+    //   2. Ei cal:ia    → floor = initialPR × 0.95 (seed alaraja)
+    //   3. Jos computed < floor → cap UP — älä luota Epley-aliarvioon ilman cal-validointia
+    if (currentE1RMExternal !== null && primaryMovementId) {
+      const allCalSetsForFloor = topSets.filter(s => s.setRole === "calibration");
+      const recentCalForFloor = allCalSetsForFloor.slice(-3);
+      let floor_ext = null;
+      let floorSource = null;
+
+      if (recentCalForFloor.length > 0) {
+        const calE1RMsFloor = recentCalForFloor.map(s => {
+          const cv = s.actualVx ?? s.targetVx ?? 1;
+          const e1rmSys = isBarbell
+            ? e1rmAccessory(s.externalLoadKg || 0, s.reps || 1, cv)
+            : e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || 1, cv);
+          return isBarbell ? e1rmSys : (e1rmSys - bodyweightKg);
+        }).filter(v => v !== null);
+        if (calE1RMsFloor.length > 0) {
+          floor_ext = Math.min(...calE1RMsFloor) * 0.95;
+          floorSource = `cal-derived (min ${Math.min(...calE1RMsFloor).toFixed(1)} × 0.95)`;
+        }
+      }
+
+      if (floor_ext === null) {
+        const cfgFloor = mesocycle?.streetliftingConfig?.calibration || {};
+        const movNameFloor = primarySlotMeta?.defaultMovementName;
+        const initialPRFloor = movNameFloor === "Lisäpainoleuanveto" ? cfgFloor.leukaExtKg
+                             : movNameFloor === "Lisäpainodippi"     ? cfgFloor.dippiExtKg
+                             : movNameFloor === "Takakyykky"          ? cfgFloor.kyykkyExtKg
+                             : null;
+        if (initialPRFloor && initialPRFloor > 0) {
+          floor_ext = initialPRFloor * 0.95;
+          floorSource = `${movNameFloor} PR ${initialPRFloor} × 0.95`;
+        }
+      }
+
+      if (floor_ext !== null && currentE1RMExternal < floor_ext) {
+        const originalLow = currentE1RMExternal;
+        currentE1RMExternal = floor_ext;
+        currentE1RMSystem = isBarbell ? floor_ext : (floor_ext + bodyweightKg);
+        trace("E1RM_DEFLATION_CAP",
+          { e1rmExternal: originalLow },
+          { e1rmExternal: currentE1RMExternal, floor: floor_ext, source: floorSource },
+          `e1RM ${originalLow.toFixed(1)} kg → ${currentE1RMExternal.toFixed(1)} kg (floor: ${floorSource} — Epley-aliarviosuoja)`);
+      }
+    }
   }
 
   trace("E1RM_COMPUTED", {}, {

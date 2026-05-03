@@ -667,16 +667,16 @@ const ACCESSORY_SLOT_CATALOG = {
   },
   "knee-unilateral": {
     function: "Yksijalkaisuus, asymmetrian hallinta",
-    rationale: "Korjaa oikea/vasen-epäsymmetriaa, stabiloi lantio. v4.32.9 M18: drop intensityssä (Pelland 2024 PUOS, ~2 direct sets/sessio strengthille). Pudotetaan peakingissä (vk 13-16) CNS-säästön vuoksi — kisakyykky tarvitsee kaiken palautumisen.",
+    rationale: "Korjaa oikea/vasen-epäsymmetriaa, stabiloi lantio. v4.32.9 M18: drop intensityssä (Pelland 2024 PUOS, ~2 direct sets/sessio strengthille). v4.34.17: DROPPED foundation + strength (Doc 3 -suositus + atleetin hyväksyntä TI-pilotin perusteella): 5→4 alaraaja-accessoryslottia foundation-blokissa, voimakehityksen diminishing returns yli 3 fractional sarjaa per liike per viikko (Pelland 2024). Atleetin TI-volyymi laskee ~21→18 sarjaan/sessio.",
     phaseVariants: {
-      foundation: ["Bulgarian split squat", "Front-foot elevated split squat"],
-      strength:   ["Bulgarian split squat"],
+      foundation: [],   // v4.34.17: dropped (Doc 3 vol-leikkaus, TI-volyymi 21→18 sarjaa)
+      strength:   [],   // v4.34.17: dropped — Pelland 2024 strength PUOS ~2 direct sets/sessio
       intensity:  [],   // v4.32.9 M18: drop intensity (Pelland PUOS, MA primary @85-90% riittää)
       peaking:    [],
     },
     repScheme: {
-      foundation: { sets: 3, reps: 10, targetVx: null },
-      strength:   { sets: 3, reps: 8, targetVx: null },
+      foundation: null,  // v4.34.17: dropped
+      strength:   null,  // v4.34.17: dropped
       intensity:  null,  // v4.32.9 M18: dropped
       peaking:    null,
     },
