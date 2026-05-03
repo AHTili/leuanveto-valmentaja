@@ -7632,12 +7632,10 @@ async function startWorkout(backfillDateISO = null) {
         // Apply variant load modifier (with athlete overrides)
         const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
         loadKg = roundToHalf(rec.targetExternalLoad * (1 + vMod));
-      } else if ((isBackoff || isSecondary) && typeof slot.resolvedLoadKg === "number") {
+      } else if ((isBackoff || isSecondary || slot.role === "calibration") && typeof slot.resolvedLoadKg === "number") {
         // v4.27.13: Engine-resolvoitu loadPct-kuorma backoff/secondary-slotille.
-        // Primaryn rate-limit on jo säteillyt tähän (sama-liike-slotti) TAI slot
-        // on resolvoitu cross-reference-liikkeen e1RM:stä (esim. etukyykky →
-        // Takakyykky). UI ei enää laske primary × 0.85 -arvoa eikä lue
-        // MovementProgressia — kumpikin ohitti ohjelman loadPct-intentin.
+        // v4.34.15: Lisätty calibration-rooli — cal-päivän slotit saavat nyt loadPct-resolution
+        // engineltä (Fix #2: cal-load = pct × current e1RM, capped PR × 1.025).
         const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
         loadKg = roundToHalf(slot.resolvedLoadKg * (1 + vMod));
       } else if (isBackoff && rec.targetExternalLoad !== null) {

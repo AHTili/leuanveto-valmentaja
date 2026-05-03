@@ -1493,9 +1493,69 @@ async function recommend(options = {}) {
   } else {
     currentE1RMSystem = e1rmValues.length > 0 ? median(e1rmValues) : null;
   }
-  const currentE1RMExternal = currentE1RMSystem !== null
+  let currentE1RMExternal = currentE1RMSystem !== null
     ? (isBarbell ? currentE1RMSystem : Math.max(0, currentE1RMSystem - bodyweightKg))
     : null;
+
+  // v4.34.15 FIX #1: E1RM-INFLAATION CAP — Epley + Vara -kaava ylimitatoi 1RM:n
+  // varsinkin korkeilla toistoilla (V3+ × 6 reps → +20 % seedista yhden session perusteella).
+  // Käyttäjäpalaute simulaatiosta: "vk 1 e1RM 106 vs todellinen ~89 — vk 8 cal yli PR".
+  //
+  // Logiikka:
+  //   1. Jos kalibrointi-setti on viim. 12 setissä → ceiling = cal-derived e1RM × 1.05
+  //      (cal on validoitu mittaus, salli max +5 % parannus seuraavaan caliin asti)
+  //   2. Muuten käytä mesocyclen streetliftingConfig.calibration.leukaExtKg × 1.10
+  //      (ei vielä validoitu mittausta, salli max +10 % seedistä)
+  //   3. Jos ei kumpaakaan, ei capata (legacy-yhteensopivuus)
+  //
+  // Cap pätee vain kun currentE1RMExternal > ceiling. Alaspäin ei capata
+  // (oikea heikkous-signaali pitää näkyä rate-limit-anchorissa, ei piilottaa).
+  if (currentE1RMExternal !== null && primaryMovementId) {
+    const allCalSets = topSets.filter(s => s.setRole === "calibration");
+    const recentCalForCeiling = allCalSets.slice(-3); // viim. 3 cal-settiä
+    let ceiling_ext = null;
+    let ceilingSource = null;
+
+    if (recentCalForCeiling.length > 0) {
+      // Käytä viim. cal-setin e1RM:ää × 1.05
+      const calE1RMs = recentCalForCeiling.map(s => {
+        const cv = s.actualVx ?? s.targetVx ?? 1;
+        const e1rmSys = isBarbell
+          ? e1rmAccessory(s.externalLoadKg || 0, s.reps || 1, cv)
+          : e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || 1, cv);
+        return isBarbell ? e1rmSys : (e1rmSys - bodyweightKg);
+      }).filter(v => v !== null);
+      if (calE1RMs.length > 0) {
+        ceiling_ext = Math.max(...calE1RMs) * 1.05;
+        ceilingSource = `cal-derived (max ${Math.max(...calE1RMs).toFixed(1)} × 1.05)`;
+      }
+    }
+
+    if (ceiling_ext === null) {
+      // Ei cal-historiaa → käytä konfiguroitu PR × 1.10
+      const cfg = mesocycle?.streetliftingConfig?.calibration || {};
+      // Map movement → config key (Lisäpainoleuanveto → leukaExtKg, etc.)
+      const movName = primarySlotMeta?.defaultMovementName;
+      const initialPR = movName === "Lisäpainoleuanveto" ? cfg.leukaExtKg
+                      : movName === "Lisäpainodippi"     ? cfg.dippiExtKg
+                      : movName === "Takakyykky"          ? cfg.kyykkyExtKg
+                      : null;
+      if (initialPR && initialPR > 0) {
+        ceiling_ext = initialPR * 1.10;
+        ceilingSource = `${movName} PR ${initialPR} × 1.10`;
+      }
+    }
+
+    if (ceiling_ext !== null && currentE1RMExternal > ceiling_ext) {
+      const original = currentE1RMExternal;
+      currentE1RMExternal = ceiling_ext;
+      currentE1RMSystem = isBarbell ? ceiling_ext : (ceiling_ext + bodyweightKg);
+      trace("E1RM_INFLATION_CAP",
+        { e1rmExternal: original },
+        { e1rmExternal: currentE1RMExternal, ceiling: ceiling_ext, source: ceilingSource },
+        `e1RM ${original.toFixed(1)} kg → ${currentE1RMExternal.toFixed(1)} kg (cap: ${ceilingSource})`);
+    }
+  }
 
   trace("E1RM_COMPUTED", {}, {
     e1rmSystem: currentE1RMSystem?.toFixed(1),
@@ -1683,33 +1743,44 @@ async function recommend(options = {}) {
       //      vetävän cappia alas (ongelma v4.27.12:ssa: viim. setti voi olla
       //      deloadin kevein setti → cap sulkeutuu vääristyneelle tasolle).
       //
-      // Käyttäjä voi aina manuaalisesti nostaa — tämä on vain *suositus*-cap.
-      // v4.34.14: DUAL-ANCHOR — käytä MIN(heaviest × cap, last × cap) jotta
-      // historia-PR-bounce-back estyy. Esim. atleetin vanha 65 kg session +6%
-      // ei saa nostaa kuormaa 73 kg:aan jos viim. sessio oli 58 kg V3 → tällöin
-      // last-anchor cappaa kuorman 58 × 1.06 ≈ 61.5 kg:aan. Foundation-rebuild-vaihe
-      // ja periodisoitu progression saa siten vastata viim. todellista tasoa.
+      // v4.34.15 FIX: DUAL-ANCHOR + DELOAD-AWARE LOGIC.
+      // v4.34.14:n MIN(heaviest, last) -dual-anchor rikkoi post-deload-viikot:
+      // jos last-session = deload (V4-V5 kevyttä), uusi raskas viikko (V1) sai capin
+      // 50 × 1.06 = 53 kg vaikka heaviest oli 78 V1 cal. Korjaus:
+      //   - lastVxDelta < 0 (uusi sarja VAIKEAMPI kuin viime) → IGNORE last-anchor.
+      //     Last-sessio oli helpompi (deload), ei relevantti rajoitin.
+      //   - lastVxDelta >= 0 (sama tai helpompi Vx) → käytä MIN molemmista.
+      //     Tällöin last-anchor estää historia-PR-bounce-back-ongelman.
       const anchor = computeRateLimitAnchor(recentTopSets);
       if (anchor) {
         const newVx = targetVx ?? 2;
-        const vxDelta = newVx - anchor.medianVx;  // positiivinen = helpompi
+        const vxDelta = newVx - anchor.medianVx;
         const weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
         const cappedHeaviest = anchor.medianLoad * (1 + weeklyCap);
-        // Last-session-cappi (omat säännöt — Vx-delta lasketaan last-session-Vx:ää vasten)
+
         const lastVxDelta = newVx - anchor.lastSession.medianVx;
-        const lastWeeklyCap = lastVxDelta >= 2 ? 0.15 : lastVxDelta >= 1 ? 0.10 : 0.06;
-        const cappedLast = anchor.lastSession.medianLoad * (1 + lastWeeklyCap);
-        // MIN molemmista — konservatiivisempi voittaa
+        const useLastAnchor = lastVxDelta >= 0;  // KRIITTINEN — vain jos sama/helpompi
+        let cappedLast = Infinity;
+        let lastWeeklyCap = null;
+        if (useLastAnchor) {
+          lastWeeklyCap = lastVxDelta >= 2 ? 0.15 : lastVxDelta >= 1 ? 0.10 : 0.06;
+          cappedLast = anchor.lastSession.medianLoad * (1 + lastWeeklyCap);
+        }
+
         const capped = Math.min(cappedHeaviest, cappedLast);
-        const cappedBy = cappedLast < cappedHeaviest ? "last-session" : "heaviest-median";
+        const cappedBy = !useLastAnchor ? "heaviest-only (last was easier=deload)"
+                       : cappedLast < cappedHeaviest ? "last-session" : "heaviest-median";
         if (targetExternalLoad > capped) {
           const original = targetExternalLoad;
           targetExternalLoad = roundToHalf(capped);
+          const lastNote = useLastAnchor
+            ? `last ${anchor.lastSession.medianLoad.toFixed(1)}@V${anchor.lastSession.medianVx.toFixed(1)} +${(lastWeeklyCap*100).toFixed(0)}% = ${cappedLast.toFixed(1)}`
+            : `last @V${anchor.lastSession.medianVx.toFixed(1)} (helpompi → ohitettu)`;
           trace("PROGRESSION_RATE_LIMIT", { targetExternalLoad: original },
             { targetExternalLoad, anchorLoad: anchor.medianLoad, anchorVx: anchor.medianVx,
               lastLoad: anchor.lastSession.medianLoad, lastVx: anchor.lastSession.medianVx,
-              newVx, weeklyCap, lastWeeklyCap, cappedBy, fromSessions: anchor.fromSessions },
-            `Rate-limit (${cappedBy}): ${original} → ${targetExternalLoad} kg (heaviest ${anchor.medianLoad.toFixed(1)}@V${anchor.medianVx.toFixed(1)} +${(weeklyCap*100).toFixed(0)}% = ${cappedHeaviest.toFixed(1)} | last ${anchor.lastSession.medianLoad.toFixed(1)}@V${anchor.lastSession.medianVx.toFixed(1)} +${(lastWeeklyCap*100).toFixed(0)}% = ${cappedLast.toFixed(1)})`);
+              newVx, weeklyCap, lastWeeklyCap, cappedBy, useLastAnchor, fromSessions: anchor.fromSessions },
+            `Rate-limit (${cappedBy}): ${original} → ${targetExternalLoad} kg (heaviest ${anchor.medianLoad.toFixed(1)}@V${anchor.medianVx.toFixed(1)} +${(weeklyCap*100).toFixed(0)}% = ${cappedHeaviest.toFixed(1)} | ${lastNote})`);
         }
       }
     } else if (primarySlotMeta?.suggestedLoadKg) {
@@ -1781,6 +1852,47 @@ async function recommend(options = {}) {
       if (slot.role === "primary") continue;
       if (slot.loadPct === undefined || slot.loadPct === null || slot.loadPct <= 0) continue;
 
+      // v4.34.15 FIX #2: CALIBRATION-SLOT RESOLVER + PR-CAP.
+      // Cal-päivissä ei ole primary-slottia (kaikki role:"calibration"), joten Haara A ei laukea.
+      // Cal-load = pct × currentE1RMExternal (jos sama liike) JA capattu PR × 1.025 (turva).
+      // Fix #1 (e1RM-inflaatiocap) on jo rajoittanut currentE1RMExternalia, joten cal-load
+      // on luonnollisesti turvarajoissa, mutta lisätään silti eksplisiittinen PR-cap defenseksi.
+      if (slot.role === "calibration" &&
+          !slot.loadPctReferenceMovementName &&
+          slot.defaultMovementName) {
+        // Etsi tämän liikkeen oma e1RM (ei välttämättä primaryMovementId)
+        const calMovName = slot.defaultMovementName;
+        const cfg = mesocycle?.streetliftingConfig?.calibration || {};
+        const initialPR = calMovName === "Lisäpainoleuanveto" ? cfg.leukaExtKg
+                        : calMovName === "Lisäpainodippi"     ? cfg.dippiExtKg
+                        : calMovName === "Takakyykky"          ? cfg.kyykkyExtKg
+                        : null;
+        // Jos cal-liike == primary-liike (joka ohjaa currentE1RMExternalia), käytä sitä
+        let calBaseE1RM = null;
+        if (primaryMovementName === calMovName && currentE1RMExternal !== null) {
+          calBaseE1RM = currentE1RMExternal;
+        } else if (initialPR && initialPR > 0) {
+          // Muuten käytä konfiguroitu PR (cal-liike voi olla eri kuin primary tällä päivällä)
+          calBaseE1RM = initialPR;
+        }
+        if (calBaseE1RM !== null) {
+          let calLoad = calBaseE1RM * slot.loadPct;
+          // PR-cap: cal-load ei koskaan yli PR × 1.025 (max +2.5 kg uutta ennätystä testissä)
+          let prCapped = false;
+          if (initialPR && calLoad > initialPR * 1.025) {
+            calLoad = initialPR * 1.025;
+            prCapped = true;
+          }
+          slot.resolvedLoadKg = roundToHalf(Math.max(0, calLoad));
+          trace("SLOT_LOAD_RESOLVED_CAL",
+            { slotRole: slot.role, slotMovement: calMovName },
+            { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct,
+              baseE1RM: calBaseE1RM.toFixed(1), PR: initialPR, prCapped },
+            `${calMovName} cal: ${(slot.loadPct*100).toFixed(0)}% × ${calBaseE1RM.toFixed(1)} kg = ${slot.resolvedLoadKg} kg${prCapped ? ` (PR-cap = ${initialPR}×1.025)` : ""}`);
+          continue;
+        }
+      }
+
       // Haara A: slot jakaa primaryn liikkeen → käytä session-effective-e1RM
       if (!slot.loadPctReferenceMovementName &&
           sessionEffectiveE1RM !== null &&
@@ -1826,19 +1938,28 @@ async function recommend(options = {}) {
             .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
           const selfAnchor = computeRateLimitAnchor(selfSets);
           if (selfAnchor) {
-            // v4.34.14: dual-anchor — sama logiikka kuin primary-haarassa
+            // v4.34.15: deload-aware dual-anchor (sama korjaus kuin primary-haarassa)
             const newVx = slot.targetVx ?? 2;
             const vxDelta = newVx - selfAnchor.medianVx;
             const weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
             const cappedHeaviest = selfAnchor.medianLoad * (1 + weeklyCap);
             const lastVxDelta = newVx - selfAnchor.lastSession.medianVx;
-            const lastWeeklyCap = lastVxDelta >= 2 ? 0.15 : lastVxDelta >= 1 ? 0.10 : 0.06;
-            const cappedLast = selfAnchor.lastSession.medianLoad * (1 + lastWeeklyCap);
+            const useLastAnchor = lastVxDelta >= 0;
+            let cappedLast = Infinity;
+            let lastWeeklyCap = null;
+            if (useLastAnchor) {
+              lastWeeklyCap = lastVxDelta >= 2 ? 0.15 : lastVxDelta >= 1 ? 0.10 : 0.06;
+              cappedLast = selfAnchor.lastSession.medianLoad * (1 + lastWeeklyCap);
+            }
             const capped = Math.min(cappedHeaviest, cappedLast);
-            const cappedBy = cappedLast < cappedHeaviest ? "last-session" : "heaviest-median";
+            const cappedBy = !useLastAnchor ? "heaviest-only (last was easier=deload)"
+                           : cappedLast < cappedHeaviest ? "last-session" : "heaviest-median";
             if (baseLoad > capped) {
               const original = baseLoad;
               baseLoad = roundToHalf(capped);
+              const lastNote = useLastAnchor
+                ? `last ${selfAnchor.lastSession.medianLoad.toFixed(1)}@V${selfAnchor.lastSession.medianVx.toFixed(1)} +${(lastWeeklyCap*100).toFixed(0)}% = ${cappedLast.toFixed(1)}`
+                : `last @V${selfAnchor.lastSession.medianVx.toFixed(1)} (helpompi → ohitettu)`;
               trace("PROGRESSION_RATE_LIMIT_CROSSREF",
                 { resolvedLoadKg: original },
                 { resolvedLoadKg: baseLoad,
@@ -1846,10 +1967,10 @@ async function recommend(options = {}) {
                   anchorVx: selfAnchor.medianVx,
                   lastLoad: selfAnchor.lastSession.medianLoad,
                   lastVx: selfAnchor.lastSession.medianVx,
-                  newVx, weeklyCap, lastWeeklyCap, cappedBy,
+                  newVx, weeklyCap, lastWeeklyCap, cappedBy, useLastAnchor,
                   fromSessions: selfAnchor.fromSessions,
                   slotMovement: slot.defaultMovementName },
-                `${slot.defaultMovementName} rate-limit (${cappedBy}): ${original} → ${baseLoad} kg (heaviest ${selfAnchor.medianLoad.toFixed(1)}@V${selfAnchor.medianVx.toFixed(1)} +${(weeklyCap*100).toFixed(0)}% = ${cappedHeaviest.toFixed(1)} | last ${selfAnchor.lastSession.medianLoad.toFixed(1)}@V${selfAnchor.lastSession.medianVx.toFixed(1)} +${(lastWeeklyCap*100).toFixed(0)}% = ${cappedLast.toFixed(1)})`);
+                `${slot.defaultMovementName} rate-limit (${cappedBy}): ${original} → ${baseLoad} kg (heaviest ${selfAnchor.medianLoad.toFixed(1)}@V${selfAnchor.medianVx.toFixed(1)} +${(weeklyCap*100).toFixed(0)}% = ${cappedHeaviest.toFixed(1)} | ${lastNote})`);
             }
           }
         }
@@ -2261,6 +2382,9 @@ function resolveAccessorySlot(slot, ctx = {}) {
     sets:    phaseRep?.sets    ?? slot.sets    ?? 3,
     reps:    phaseRep?.reps    ?? slot.reps    ?? 8,
     targetVx: phaseRep?.targetVx ?? slot.targetVx ?? null,
+    // v4.34.16: phaseRep.loadPct välitetään resolvoituun slottiin → loadPct-resolver
+    // applioi sessionEffectiveE1RM × loadPct (Branch A) jos slot.defaultMovementName === primary.
+    loadPct: phaseRep?.loadPct ?? slot.loadPct ?? null,
     note: phaseRep?.note || slot.note || reason,
     source,
     variantIndex: idx,
@@ -2288,6 +2412,8 @@ function resolveDayPlanSlots(dayPlan, ctx) {
       sets: r.sets,
       reps: r.reps,
       targetVx: r.targetVx,
+      // v4.34.16: kopio loadPct resolvoituun slottiin (jos phaseRep määritteli)
+      ...(r.loadPct !== null && r.loadPct !== undefined ? { loadPct: r.loadPct } : {}),
       note: r.note || slot.note,
       _resolvedFrom: { slotId: slot.slotId, source: r.source, variantIndex: r.variantIndex,
                       availableVariants: r.availableVariants, slotFunction: r.slotFunction },

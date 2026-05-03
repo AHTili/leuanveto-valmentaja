@@ -479,18 +479,24 @@ const ACCESSORY_SLOT_CATALOG = {
   // Kompromissi aiemman duplikointi-poiston (v4.31.2 Räjähtävä leuka MA:lta pois) ja
   // nykyisen tarpeen välillä: chest-to-bar ON eri liike kuin Räjähtävä → ei duplikointia.
   "pull-volume": {
-    function: "Volyymi-leuanveto chest-to-bar — MA-päivän 2. veto",
-    rationale: "Chest-to-bar volyymi-veto MA-päivän leuka-primaryn perään. Klassinen volyymi + ROM-stimulus 3×5 V3 raskaammalla otteella — eri tarkoitus kuin LA:n Räjähtävä leuka (RFD-spesifi 3×3 V4 BW). Yhdessä antaa täydellisen frekvenssirakenteen: MA volyymi → LA RFD, ei duplikointia. Foundation/strength täysi volyymi, intensity kevyempi taperia kohti, peaking pois (taper).",
+    function: "Loaded volume-leuka — MA:n 2. vetosarja, eri intensiteettizona",
+    rationale: "v4.34.16 ELIITTI-INTENSIFIKAATIO: BW chest-to-bar oli aiemmin oletus, mutta atleetin profiililla (94 kg PR, 10v fokusoivaa leukatreeniä) BW = V8-V10 = ei stimulus. Korvattu loaded comp lift volume-työllä, joka käyttää eri Vx/intensiteettizonan kuin primary → täydentää, ei duplikoi. Esim. primary 4×6@71% V3 + pull-volume 3×6@55% V4 = sekä volyymi-stimulus että lokaali stretchattu volume-shock. Doc 1 #8 (Owen Gayle WPU-käytännöt): chest-to-bar weighted explosive 3×3-5 OR weighted comp lift volume-sarjat. Foundation/strength täysi volyymi, intensity kevyempi taperia kohti, peaking pois. Variant-swap: chest-to-bar (BW + ROM-fokus) saatavilla manuaalisena swap-vaihtoehtona.",
     phaseVariants: {
-      foundation: ["Leuanveto chest-to-bar", "Lisäpainoleuanveto"],
-      strength:   ["Leuanveto chest-to-bar", "Lisäpainoleuanveto"],
-      intensity:  ["Leuanveto chest-to-bar"],
+      // v4.34.16: oletus = Lisäpainoleuanveto (loaded comp lift) jakaa primary-e1RM-historian
+      // → Branch A loadPct-resolver käyttää sessionEffectiveE1RM × loadPct.
+      // Chest-to-bar säilytetty alternatiivina manuaalista swap-toimintoa varten.
+      foundation: ["Lisäpainoleuanveto", "Leuanveto chest-to-bar"],
+      strength:   ["Lisäpainoleuanveto", "Leuanveto chest-to-bar"],
+      intensity:  ["Lisäpainoleuanveto"],
       peaking:    [],
     },
     repScheme: {
-      foundation: { sets: 3, reps: 5, targetVx: 3, note: "Chest-to-bar 3×5 V3 — volyymi + ROM, MA-päivän 2. leuka" },
-      strength:   { sets: 3, reps: 5, targetVx: 3, note: "Chest-to-bar 3×5 V3 — volyymi-veto" },
-      intensity:  { sets: 3, reps: 4, targetVx: 3, note: "Chest-to-bar 3×4 — kevyempi taperia kohti" },
+      // v4.34.16: loadPct lisätty repScheme-tasolle. resolveAccessorySlot välittää sen
+      // resolvoituun slottiin → existing loadPct-resolver applioi sessionEffectiveE1RM × loadPct.
+      // Eri Vx/intensiteetti kuin primary (V3/71%) → toinen stimulus-zona, ei duplikointia.
+      foundation: { sets: 3, reps: 6, targetVx: 4, loadPct: 0.55, note: "Loaded volume @ 55% V4 — eri intensiteetti-zona kuin primary V3" },
+      strength:   { sets: 3, reps: 5, targetVx: 3, loadPct: 0.60, note: "Loaded volume @ 60% V3" },
+      intensity:  { sets: 3, reps: 4, targetVx: 2, loadPct: 0.65, note: "Loaded volume @ 65% V2 — kevyempi taperia kohti" },
     },
   },
   "pull-horizontal-heavy": {
@@ -4957,23 +4963,28 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // Vk 3: 4×5 V3 @75%   RPE 7.5 + reg backoff 2×6 @61% (siirtymä, backoff vähenee)
     //
     // RPE-kalibrointi: jos vk 3 RPE 6.5-7 → vk 4 +5-7 kg yli suunnitelman. Jos RPE 8.5+ → pidä load tai laske 2.5 kg.
+    // v4.34.15: Vastaote-leuanveto → Lisäpainoleuanveto unifikaatio.
+    // Atleetin palaute: "vastaote ja lisäpainoleuanveto ovat sama liike". Käytännössä
+    // kisaleuka tehdään vastaotteella, joten erillinen "Vastaote-leuanveto" -liike +
+    // variantScale 1.05 oli vääräpaikkainen. Yhtenäistetty Lisäpainoleuanvetoon → e1RM-
+    // historia jatkuu saumattomasti vk 1 → vk 4 deload → vk 8 cal → ... ilman variantti-
+    // resetiä joka aiheutti vk 9 erosion-spiralin.
     { week:1, days:[
-      // v4.32.9 M17: 4×6 V3 @65% → 4×6 V3 @68.6% (atleetin nykyinen RPE 6-7 -taso)
-      maDay("MA — Vastaote-leuanveto 4×6 @68.6%", 4,6,3, 0.686, null, null, undefined, undefined, "foundation", "Vastaote-leuanveto", false, false, true),
+      maDay("MA — Lisäpainoleuanveto 4×6 @68.6%", 4,6,3, 0.686, null, null, undefined, undefined, "foundation", null, false, false, true),
       tiDay("TI — Kyykky 4×6 @68.6% RPE 6-7",     4,6,3, 0.686, null, undefined, tiBackoffRegular(0.55)),
       toDay("TO — Dippi 4×6 @68.6%",              4,6,3, 0.686, null, null, pushAccPrehab()),
       laDay("LA — MU skill + tekninen takakyykky (eksentrinen + transition + räjähtävä)", 0, 5, null, null, FS.w1),
     ]},
     { week:2, days:[
       // v4.34.14: 74.3% → 71% (Foundation-progressionin pehmennys, ~+2.4pp vk 1:stä)
-      maDay("MA — Vastaote-leuanveto 4×6 @71%", 4,6,3, 0.71, null, null, undefined, undefined, "foundation", "Vastaote-leuanveto", false, false, true),
+      maDay("MA — Lisäpainoleuanveto 4×6 @71%", 4,6,3, 0.71, null, null, undefined, undefined, "foundation", null, false, false, true),
       tiDay("TI — Kyykky 4×6 @71% RPE 7",       4,6,3, 0.71, null, undefined, tiBackoffRegular(0.58)),
       toDay("TO — Dippi 4×6 @71%",              4,6,3, 0.71, null, null, pushAccPrehab()),
       laDay("LA — MU skill + tekninen takakyykky", 0, 5, null, null, FS.w2),
     ]},
     { week:3, days:[
       // v4.34.14: 80% → 75% (Foundation-progressionin pehmennys, ~+4pp vk 2:sta)
-      maDay("MA — Vastaote-leuanveto 4×5 @75%", 4,5,3, 0.75, null, null, undefined, undefined, "foundation", "Vastaote-leuanveto", false, false, true),
+      maDay("MA — Lisäpainoleuanveto 4×5 @75%", 4,5,3, 0.75, null, null, undefined, undefined, "foundation", null, false, false, true),
       // Backoff: 2×6 @61% (vähennetty 3×7→2×6 — siirtymä intensifikaatioon, hybridi A→B vk 3)
       tiDay("TI — Kyykky 4×5 @75% RPE 7.5",  4,5,3, 0.75, null, undefined, { style: "regular", pct: 0.61, sets: 2, reps: 6, targetVx: 4, note: "Hybridi A→B siirtymä — backoff vähennetty 3×7→2×6, intensifikaatio alkaa" }),
       toDay("TO — Dippi 4×5 @75%",             4,5,3, 0.75, null, null, pushAccPrehab()),
@@ -5001,15 +5012,32 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // v4.28.0 (L1/M3): TI backoff = Paused squat 2s (sticking-point, strength-spec).
     //                  MA backoff grip-variation = Myötäoteveto (hauis-overload, strength-rotation).
     //                  TO backoff = Kapea ote -dippi (ojentaja-overload, strength-spec).
+    // v4.34.15: ME-ROTAATIO POISTETTU strength-blokista (vk 5-7).
+    // Atleetin palaute: "varmista että vk 5/6/7 variaatiovaihtelu on loogista vk 16
+    // suorituskykyyn nähden" + "vastaote ja lisäpainoleuanveto ovat sama liike".
+    //
+    // Aiempi rotaatio: vk 5-6 Paused pull-up, vk 7 Tempo pull-up. Ongelmat:
+    //   1. Jokainen variantti-vaihto resetoi e1RM-historian (engine ei jaa)
+    //   2. Kokeneelle atleetille (PR 94 kg) varianttirotaatio ei tuo lisäarvoa
+    //      kisaspesifisyyteen — Westside-tyylin ME-rotaatio toimii AINOASTAAN
+    //      ei-kisablokeissa (off-season), ei kisapiikkivaiheessa
+    //   3. Tempo pull-up (3 s eccentric) on capacity-stimulus, ei 1RM-spesifi
+    //   4. 3 eri varianttia 3 viikossa = liian nopea rotaatio (tyypillinen 3-4 vk/variantti)
+    //
+    // KORJAUS vk 5-7: kaikki Lisäpainoleuanveto, jatkuva intensiteettiprogressionn.
+    // Tämä mahdollistaa e1RM:n täyden akkumulaation foundationista (vk 1-3) → strength
+    // (vk 5-7) → cal (vk 8) saumattomasti, mikä parantaa vk 9-16 peakingia merkittävästi.
+    //
+    // Jos halutaan lockout-spesifiä työtä, lisätään 1 BACKOFF-slot Paused pull-up:lla
+    // strength-blokin sisällä — ei korvata päärekistöä.
     { week:5, days:[
-      // v4.30.0: ME-rotaatio vk 5-6 = Paused pull-up (lockout-statiikka) + Heavy negative -overload (1×/vk).
-      maDay("MA — Paused pull-up 4×4 @75 %",  4,4,2, 0.75, 0.65, null, undefined, "myotaote", "strength", "Paused pull-up", true, false, true),
+      maDay("MA — Lisäpainoleuanveto 4×4 @75 %",  4,4,2, 0.75, 0.65, null, undefined, "myotaote", "strength", null, true, false, true),
       tiDay("TI — Kyykky 4×4 @75%",       4,4,2, 0.75, null, undefined, tiBackoffPaused(0.60)),
       toDay("TO — Dippi 4×4 @75%",        4,4,2, 0.75, 0.65, null, undefined, "kapea"),
       laDay("LA — MU +2.5 kg + paused squat", 2.5, 3, "Ensimmäinen painolla (+2.5 kg) — jos strict puhdas", 2, FS.w5),
     ]},
     { week:6, days:[
-      maDay("MA — Paused pull-up 4×4 @78 %",  4,4,2, 0.78, 0.65, null, undefined, "myotaote", "strength", "Paused pull-up", true, false, true),
+      maDay("MA — Lisäpainoleuanveto 4×4 @78 %",  4,4,2, 0.78, 0.65, null, undefined, "myotaote", "strength", null, true, false, true),
       tiDay("TI — Kyykky 4×4 @78%",       4,4,2, 0.78, null, undefined, tiBackoffPaused(0.62)),
       toDay("TO — Dippi 4×4 @78%",        4,4,2, 0.78, 0.65, null, undefined, "kapea"),
       laDay("LA — MU +2.5–5 kg + paused squat", 2.5, 3, "+2.5 kg (tai +5 jos edellinen meni hyvin)", 2, FS.w6),
@@ -5018,8 +5046,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       // v4.28.0 (H4): Vk 7 top single @88% POISTETTU kaikilta kolmelta — strength-blokin
       // piikki on volyymi-intensiteetti 4×4@82 (26 reps), ei near-max-test. Top @88%
       // oli duplikaatti vk 8 välitestille @92%. Vähentää near-max-sessioita 5→4 (vk 7–12).
-      // v4.30.0: ME-rotaatio vk 7 = Tempo pull-up (3-4 s eccentric volyymi) + Heavy negative -overload.
-      maDay("MA — Tempo pull-up 4×4 @82 %",   4,4,2, 0.82, 0.68, null, undefined, "myotaote", "strength", "Tempo pull-up", true, false, true),
+      maDay("MA — Lisäpainoleuanveto 4×4 @82 %",   4,4,2, 0.82, 0.68, null, undefined, "myotaote", "strength", null, true, false, true),
       tiDay("TI — Kyykky 4×4 @82%", 4,4,2, 0.82, null, undefined, tiBackoffPaused(0.66)),
       toDay("TO — Dippi 4×4 @82%",  4,4,2, 0.82, 0.68, null, undefined, "kapea"),
       laDay("LA — MU +5 kg + paused squat",      5, 3, "+5 kg — raskas viikko", 2, FS.w7),
