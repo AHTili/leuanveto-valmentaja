@@ -13,7 +13,7 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
-const PROGRAM_BUILD_VERSION = "4.34.18";
+const PROGRAM_BUILD_VERSION = "4.34.19";
 
 // ── Store names ──
 const STORES = {
@@ -3769,7 +3769,12 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   const lowerAcc = () => [
     slotAccessory("hip-hinge",                  "alaraaja", "Romanian DL",             { sets:3, reps:8,  note:"RDL — hamstring eccentric, ei lattiasta DL (CNS-säästö raskaan kyykyn jälkeen)" }),
     slotAccessory("knee-dominant-accessory",    "alaraaja", "Jalkaprässi",             { sets:3, reps:10 }),
-    slotAccessory("knee-unilateral",            "alaraaja", "Bulgarian split squat",   { sets:3, reps:10 }),
+    // v4.34.18: knee-unilateral (Bulgarian split squat) -slot POISTETTU kokonaan
+    // (ei vain catalog-tyhjennys v4.34.17:ssä). Aiemmin slot luotiin täällä, vaikka catalog
+    // phaseVariants oli tyhjä → resolver pudotti runtime-ajossa, mutta UI-previewit (program
+    // overview, ⚙ Vaihda päivä, treenin esikatselu) näyttivät RAW-slotit. Käyttäjäpalaute
+    // 2026-05-03: "bulgarian split squat näkyi vielä vk 2 treenissä". Korjaus: slot ei luoda
+    // ollenkaan → ei näy missään näkymässä.
     slotAccessory("hamstring-isolation",        "alaraaja", "Leg curl",                { sets:3, reps:12 }),
     // v4.27.17: Pohkeenkohotus 5. slotiksi — nilkan jäykkyys kyykyn lockoutiin (230 kg+ rakenne)
     // v4.32.8: foundation V3→V1, reps 15→12 — phaseVariants on autoritatiivinen catalog:ssa,
