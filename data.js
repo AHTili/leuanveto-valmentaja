@@ -13,7 +13,7 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
-const PROGRAM_BUILD_VERSION = "4.34.20";
+const PROGRAM_BUILD_VERSION = "4.34.21";
 
 // ── Store names ──
 const STORES = {
@@ -4963,11 +4963,15 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // Foundation = volyymi-rebuild + neural reintro, EI intensiteetti-spurtti. ~+2.5pp/vk
     // sopii hypertrofia-foundationiin paremmin (Mike Israetel volume-block-suositus).
     //
-    // Vk 1: 4×6 V3 @68.6% RPE 6-7 + reg backoff 3×7 @55% (reisi-rebuild + neural reintro)
-    // Vk 2: 4×6 V3 @71%   RPE 7   + reg backoff 3×7 @58% (volume + lievä intensifikaatio)
-    // Vk 3: 4×5 V3 @75%   RPE 7.5 + reg backoff 2×6 @61% (siirtymä, backoff vähenee)
+    // Vk 1: 4×6 V3 @68.6% + reg backoff 3×7 @55% (reisi-rebuild + neural reintro)
+    // Vk 2: 4×6 V3 @71%   + reg backoff 3×7 @58% (volume + lievä intensifikaatio)
+    // Vk 3: 4×5 V3 @75%   + reg backoff 2×6 @61% (siirtymä, backoff vähenee)
     //
-    // RPE-kalibrointi: jos vk 3 RPE 6.5-7 → vk 4 +5-7 kg yli suunnitelman. Jos RPE 8.5+ → pidä load tai laske 2.5 kg.
+    // v4.34.21: RPE-merkinnät poistettu päivien otsikoista — Vx (Vara) on engineen
+    // implementoitu autoreguloiva mittari, RPE oli päällekkäinen subjektiivinen label
+    // joka aiheutti hämmennystä (V3 = strict RPE 7, mutta label sanoi vk 1 "RPE 6-7"
+    // joka ehdotti hieman löysempää otetta — engine ei välitä RPE:stä, joten label
+    // oli vain pedagoginen vihje muscle-memory-atleetille). Vx on objective + autoreguloiva.
     // v4.34.15: Vastaote-leuanveto → Lisäpainoleuanveto unifikaatio.
     // Atleetin palaute: "vastaote ja lisäpainoleuanveto ovat sama liike". Käytännössä
     // kisaleuka tehdään vastaotteella, joten erillinen "Vastaote-leuanveto" -liike +
@@ -4976,14 +4980,14 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // resetiä joka aiheutti vk 9 erosion-spiralin.
     { week:1, days:[
       maDay("MA — Lisäpainoleuanveto 4×6 @68.6%", 4,6,3, 0.686, null, null, undefined, undefined, "foundation", null, false, false, true),
-      tiDay("TI — Kyykky 4×6 @68.6% RPE 6-7",     4,6,3, 0.686, null, undefined, tiBackoffRegular(0.55)),
+      tiDay("TI — Kyykky 4×6 @68.6%",             4,6,3, 0.686, null, undefined, tiBackoffRegular(0.55)),
       toDay("TO — Dippi 4×6 @68.6%",              4,6,3, 0.686, null, null, pushAccPrehab()),
       laDay("LA — MU skill + tekninen takakyykky (eksentrinen + transition + räjähtävä)", 0, 5, null, null, FS.w1),
     ]},
     { week:2, days:[
       // v4.34.14: 74.3% → 71% (Foundation-progressionin pehmennys, ~+2.4pp vk 1:stä)
       maDay("MA — Lisäpainoleuanveto 4×6 @71%", 4,6,3, 0.71, null, null, undefined, undefined, "foundation", null, false, false, true),
-      tiDay("TI — Kyykky 4×6 @71% RPE 7",       4,6,3, 0.71, null, undefined, tiBackoffRegular(0.58)),
+      tiDay("TI — Kyykky 4×6 @71%",             4,6,3, 0.71, null, undefined, tiBackoffRegular(0.58)),
       toDay("TO — Dippi 4×6 @71%",              4,6,3, 0.71, null, null, pushAccPrehab()),
       laDay("LA — MU skill + tekninen takakyykky", 0, 5, null, null, FS.w2),
     ]},
@@ -4991,7 +4995,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       // v4.34.14: 80% → 75% (Foundation-progressionin pehmennys, ~+4pp vk 2:sta)
       maDay("MA — Lisäpainoleuanveto 4×5 @75%", 4,5,3, 0.75, null, null, undefined, undefined, "foundation", null, false, false, true),
       // Backoff: 2×6 @61% (vähennetty 3×7→2×6 — siirtymä intensifikaatioon, hybridi A→B vk 3)
-      tiDay("TI — Kyykky 4×5 @75% RPE 7.5",  4,5,3, 0.75, null, undefined, { style: "regular", pct: 0.61, sets: 2, reps: 6, targetVx: 4, note: "Hybridi A→B siirtymä — backoff vähennetty 3×7→2×6, intensifikaatio alkaa" }),
+      tiDay("TI — Kyykky 4×5 @75%",          4,5,3, 0.75, null, undefined, { style: "regular", pct: 0.61, sets: 2, reps: 6, targetVx: 4, note: "Hybridi A→B siirtymä — backoff vähennetty 3×7→2×6, intensifikaatio alkaa" }),
       toDay("TO — Dippi 4×5 @75%",             4,5,3, 0.75, null, null, pushAccPrehab()),
       laDay("LA — MU: ENSIMMÄINEN STRICT 🎯 + tekninen takakyykky", 0, 5, "🎯 Tavoite: ensimmäinen puhdas strict muscle-up (eksentrinen → full MU)", null, FS.w3),
     ]},
