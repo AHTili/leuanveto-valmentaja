@@ -6319,6 +6319,15 @@ function renderSettingsView() {
           <button class="btn btn-sm btn-outline" id="btn-manual-snapshot">📦 Luo snapshot nyt</button>
         </div>
       </div>
+      <div id="force-rebuild-section" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">🔧 Pakota mesocycle-rebuild</div>
+        <div class="muted" style="font-size:11px;margin-bottom:8px">
+          Rakentaa nykyisen streetlifting_16w-mesocyclen UUDESTAAN nykyisestä catalog-versiosta. Käytä tätä jos auto-rebuild ei laukea (esim. backup-restore palautti vanhan version, tai catalogissa on uusia poistoja jotka eivät näy ohjelmassa). Pre-rebuild snapshot luodaan automaattisesti varmuuskopioksi. Edistys + treenihistoria säilyy.
+        </div>
+        <div class="btn-group mt">
+          <button class="btn btn-sm btn-outline" id="btn-force-rebuild" style="border-color:var(--warn);color:var(--warn)">🔧 Pakota rebuild nyt</button>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -7516,6 +7525,46 @@ function bind() {
       showToast("Snapshotin luonti epäonnistui", "bad");
       manualSnapBtn.disabled = false;
       manualSnapBtn.textContent = "📦 Luo snapshot nyt";
+    }
+  });
+
+  // v4.34.20: Pakota mesocycle-rebuild — manuaalinen ohitus auto-rebuildin tilalle
+  // jos versiot eivät triggeröi (esim. backup-restore palautti vanhan version,
+  // tai catalog-poistot eivät näy ohjelmassa). Pre-rebuild-snapshot luodaan
+  // automaattisesti varmuuskopioksi. Edistys + treenihistoria säilyy.
+  const forceRebuildBtn = $("#btn-force-rebuild");
+  if (forceRebuildBtn) forceRebuildBtn.addEventListener("click", async () => {
+    if (!state.mesocycle || state.mesocycle.type !== "streetlifting_16w") {
+      showToast("Pakota rebuild toimii vain streetlifting_16w -mesosyklillä", "warn", 4000);
+      return;
+    }
+    if (!confirm(
+      "Pakota mesocycle-rebuild?\n\n" +
+      "Tämä rakentaa nykyisen streetlifting_16w-ohjelman UUDESTAAN catalog-version mukaan. " +
+      "Treenihistoria + sarjat + edistys SÄILYY. Vain ohjelman rakenne (slotit, accessoryt) päivittyy.\n\n" +
+      "Pre-rebuild snapshot luodaan automaattisesti varmuuskopioksi.\n\n" +
+      "Jatketaanko?"
+    )) return;
+    forceRebuildBtn.disabled = true;
+    forceRebuildBtn.textContent = "Rebuildataan…";
+    try {
+      const oldVersion = state.mesocycle.programVersion || "unknown";
+      // Pre-rebuild snapshot
+      try {
+        await createPreRebuildSnapshot(`force-rebuild-${oldVersion}-to-${PROGRAM_BUILD_VERSION}`);
+      } catch (e) {
+        console.warn("[ForceRebuild] Pre-rebuild snapshot failed:", e);
+      }
+      // Force rebuild
+      state.mesocycle = rebuildStreetlifting16WMesocycle(state.mesocycle);
+      await saveMesocycle(state.mesocycle);
+      showToast(`✓ Rebuild onnistui (${oldVersion} → ${PROGRAM_BUILD_VERSION}). Sovellus ladataan uudelleen…`, "ok", 3000);
+      setTimeout(() => location.reload(), 2000);
+    } catch (err) {
+      console.error("[ForceRebuild] error:", err);
+      showToast("Rebuild epäonnistui: " + (err.message || "tuntematon"), "bad", 5000);
+      forceRebuildBtn.disabled = false;
+      forceRebuildBtn.textContent = "🔧 Pakota rebuild nyt";
     }
   });
 
