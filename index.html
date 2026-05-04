@@ -9003,9 +9003,13 @@ async function saveWorkoutToDb(sessionNotes = "") {
       targetReps: null,
       targetVx: null,
       actualVx: null,
+      // v4.34.23: kentän nimet ovat legacy. Enode mittaa kaikki 3 toistoa, ja
+      // computePrimerComplete-handler ottaa Math.max(...vals) = NOPEIN toisto.
+      // Tämä on Sánchez-Moreno 2017 -metodologian mukaan oikea VBT-mittari
+      // (peak rep velocity, ei rep 1). velocityRep1-kenttä säilytetty backward-compat:lla.
       velocityMean: w.primer.best,
-      velocityPeak: null,
-      velocityRep1: w.primer.best,      // käytetään velocityReadiness-baselinessa
+      velocityPeak: w.primer.best,      // v4.34.23: täytetään peak-arvo eksplisiittisesti
+      velocityRep1: w.primer.best,      // legacy — sisältää best-of-N velocityn (ei pelkkää rep 1:tä)
       velocityLossPercent: null,
       tempo: null,
       restSec: null,

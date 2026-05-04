@@ -13,7 +13,7 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
-const PROGRAM_BUILD_VERSION = "4.34.22";
+const PROGRAM_BUILD_VERSION = "4.34.23";
 
 // ── Store names ──
 const STORES = {
@@ -543,10 +543,12 @@ const ACCESSORY_SLOT_CATALOG = {
       peaking:    ["Face pull"],
     },
     repScheme: {
-      foundation: { sets: 3, reps: 15, targetVx: null },
-      strength:   { sets: 3, reps: 12, targetVx: null },
-      intensity:  { sets: 2, reps: 12, targetVx: null },
-      peaking:    { sets: 2, reps: 15, targetVx: null },
+      // v4.34.23: Vx-tavoite V4 (control-fokus, ei failure-zona — McGill 2010 -konsensus,
+      // posterior balance ei hyödy lähellä failurea, vaan kontrolloidusta ROM-laajuudesta)
+      foundation: { sets: 3, reps: 15, targetVx: 4 },
+      strength:   { sets: 3, reps: 12, targetVx: 4 },
+      intensity:  { sets: 2, reps: 12, targetVx: 4 },
+      peaking:    { sets: 2, reps: 15, targetVx: 4 },
     },
   },
   "bicep-chain": {
@@ -559,10 +561,12 @@ const ACCESSORY_SLOT_CATALOG = {
       peaking:    ["Hauiskääntö käsipainot"],
     },
     repScheme: {
-      foundation: { sets: 3, reps: 12, targetVx: null },
-      strength:   { sets: 3, reps: 10, targetVx: null },
-      intensity:  { sets: 2, reps: 10, targetVx: null },
-      peaking:    { sets: 2, reps: 12, targetVx: null },
+      // v4.34.23: Vx-tavoite V2 foundation (Doc 2: 12 reps isolaatio = lähempänä failurea
+      // recruitement-edut), V2 strength (raskaampi kuorma), V3 intensity (volume), V3 peaking (taper)
+      foundation: { sets: 3, reps: 12, targetVx: 2 },
+      strength:   { sets: 3, reps: 10, targetVx: 2 },
+      intensity:  { sets: 2, reps: 10, targetVx: 3 },
+      peaking:    { sets: 2, reps: 12, targetVx: 3 },
     },
   },
 
@@ -593,7 +597,8 @@ const ACCESSORY_SLOT_CATALOG = {
       peaking:    ["Shoulder press laite"],
     },
     repScheme: {
-      foundation: { sets: 3, reps: 8, targetVx: null },
+      // v4.34.23: foundation Vx-tavoite V3 (oli null) — 8 reps OHP isolaatio, V3 = volume-zone
+      foundation: { sets: 3, reps: 8, targetVx: 3 },
       strength:   { sets: 3, reps: 6, targetVx: 3 },
       intensity:  { sets: 3, reps: 5, targetVx: 2 },
       peaking:    { sets: 2, reps: 8, targetVx: 4 },
@@ -609,10 +614,11 @@ const ACCESSORY_SLOT_CATALOG = {
       peaking:    ["Tricep pushdown"],
     },
     repScheme: {
-      foundation: { sets: 3, reps: 12, targetVx: null },
-      strength:   { sets: 3, reps: 8, targetVx: null },
-      intensity:  { sets: 3, reps: 8, targetVx: null },
-      peaking:    { sets: 2, reps: 12, targetVx: null },
+      // v4.34.23: tricep-lockout Vx-tavoitteet (oli null) — Doc 2: isolaatio ojentajalle V2-V3
+      foundation: { sets: 3, reps: 12, targetVx: 3 },
+      strength:   { sets: 3, reps: 8, targetVx: 2 },
+      intensity:  { sets: 3, reps: 8, targetVx: 2 },
+      peaking:    { sets: 2, reps: 12, targetVx: 4 },
     },
   },
   "shoulder-isolation": {
@@ -625,10 +631,11 @@ const ACCESSORY_SLOT_CATALOG = {
       peaking:    ["Sivunosto"],
     },
     repScheme: {
-      foundation: { sets: 3, reps: 15, targetVx: null, note: "Lean-away asento — stretch-mediated hypertrofia (Maeo 2022)" },
-      strength:   { sets: 4, reps: 10, targetVx: 4, note: "Raskaampi kuorma — mekaaninen jännitys" },
-      intensity:  { sets: 2, reps: 12, targetVx: null, note: "Drop-set viim. sarjassa — metabolinen stimulus pienellä fatiikka-budjetilla" },
-      peaking:    { sets: 2, reps: 15, targetVx: null, note: "Maintenance — vain aktivaatio" },
+      // v4.34.23: shoulder-isolation Vx-tavoitteet — Doc 4: stretch-mediated lähellä failurea (V1-V2)
+      foundation: { sets: 3, reps: 15, targetVx: 1, note: "Lean-away asento — stretch-mediated hypertrofia, V1 = lähellä failurea (Maeo 2022 + Doc 4)" },
+      strength:   { sets: 4, reps: 10, targetVx: 2, note: "Raskaampi kuorma — mekaaninen jännitys" },
+      intensity:  { sets: 2, reps: 12, targetVx: 1, note: "Drop-set viim. sarjassa — metabolinen stimulus pienellä fatiikka-budjetilla" },
+      peaking:    { sets: 2, reps: 15, targetVx: 4, note: "Maintenance — vain aktivaatio, ei failure" },
     },
   },
 
@@ -643,7 +650,8 @@ const ACCESSORY_SLOT_CATALOG = {
       peaking:    ["Hip thrust"],
     },
     repScheme: {
-      foundation: { sets: 3, reps: 8, targetVx: null, note: "RDL — eccentric-fokus, ei lattiasta" },
+      // v4.34.23: hip-hinge foundation Vx (oli null) — RDL eccentric V3 volume-zone
+      foundation: { sets: 3, reps: 8, targetVx: 3, note: "RDL — eccentric-fokus, ei lattiasta" },
       strength:   { sets: 3, reps: 6, targetVx: 3, note: "RDL — hamstring loaded koko liikkeen ajan" },
       intensity:  { sets: 3, reps: 5, targetVx: 2, note: "RDL — CNS-säästö raskaan kyykyn jälkeen" },
       peaking:    { sets: 2, reps: 8, targetVx: 4, note: "Hip thrust — glute taper" },
@@ -659,8 +667,9 @@ const ACCESSORY_SLOT_CATALOG = {
       peaking:    ["Jalkaprässi"],
     },
     repScheme: {
-      foundation: { sets: 3, reps: 10, targetVx: null },
-      strength:   { sets: 3, reps: 8, targetVx: null },
+      // v4.34.23: knee-dominant Vx-tavoitteet (oli null) — Doc 2: 10 reps quad-isolaatio V3, 8 reps V2-V3
+      foundation: { sets: 3, reps: 10, targetVx: 3 },
+      strength:   { sets: 3, reps: 8, targetVx: 2 },
       intensity:  { sets: 3, reps: 6, targetVx: 2 },
       peaking:    { sets: 2, reps: 10, targetVx: 4 },
     },
@@ -691,7 +700,8 @@ const ACCESSORY_SLOT_CATALOG = {
       peaking:    ["Leg curl"],
     },
     repScheme: {
-      foundation: { sets: 3, reps: 12, targetVx: null, note: "Kontrolloitu eksentrinen — base volume" },
+      // v4.34.23: hamstring-isolation foundation Vx V3 (oli null) — leg curl 12 reps volume-zone
+      foundation: { sets: 3, reps: 12, targetVx: 3, note: "Kontrolloitu eksentrinen — base volume V3" },
       strength:   { sets: 3, reps: 6,  targetVx: 3, note: "Eksentrinen 3–4 s lasku — hamstring-specific strength (slider curl = regressio jos Nordic liian raskas)" },
       intensity:  { sets: 3, reps: 6,  targetVx: 3, note: "Eksentrinen fokus — säilytä strength-adaptaatiot" },
       peaking:    { sets: 2, reps: 12, targetVx: 4, note: "Kevyt maintenance — ei eksentristä fatiikkaa peakingissa" },

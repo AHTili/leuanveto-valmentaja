@@ -315,33 +315,46 @@ function upperBodyMpvReadiness(todayMpv, recent7DaysMpv) {
     return { mpv: todayMpv, baseline7Mean, deltaPct: null, class: null, message: "Baseline ei luotettava (≤0)", recommendedLoadAdjust: 0 };
   }
   const deltaPct = ((todayMpv - baseline7Mean) / baseline7Mean) * 100;
-  let cls, message, recommendedLoadAdjust;
+  // v4.34.23 KORJAUS — käyttäjäpalaute: aiemmat thresholds olivat liian aggressiivisia.
+  // -15 % MPV-laskulla load -50 % (= 26.75 kg V3 atleetille jolla 50 kg = V1) oli naurettava.
+  // Tutkimuspohja: Pareja-Blanco/Sánchez-Medina puhuvat WITHIN-SET velocity loss -kynnyksistä
+  // (VL15-25), EI day-to-day baseline-drift:istä. Day-to-day variabiliteetti ±3-5 % on luonnostaan,
+  // joten -15 % on iso mutta ei "skip session". Plews 2013 + Holmes 2021 -tasoiset realistiset rajat.
+  // Lisäksi: load-adjustment EI saa kerrata plan-percentageja kun atleete on muuten työkuntoinen —
+  // sen sijaan käytetään VX-BUMPIA (V3 → V4) kompensaationa, ei radikaalia load-pudotusta.
+  let cls, message, recommendedLoadAdjust, recommendedVxBump;
   if (deltaPct >= 3) {
     cls = "GREEN";
     message = `MPV +${deltaPct.toFixed(1)}% baseline — Green light, top-set OK, harkitse +2.5 kg`;
     recommendedLoadAdjust = 0.025;  // +2.5%
+    recommendedVxBump = 0;
   } else if (deltaPct >= -3) {
     cls = "GREEN";
     message = `MPV ${deltaPct.toFixed(1)}% baseline — Normaali, ohjelman mukaan`;
     recommendedLoadAdjust = 0;
-  } else if (deltaPct >= -5) {
+    recommendedVxBump = 0;
+  } else if (deltaPct >= -7) {
     cls = "YELLOW";
     message = `MPV ${deltaPct.toFixed(1)}% baseline — Pieni varovaisuus, ei testiyrityksiä`;
     recommendedLoadAdjust = 0;
-  } else if (deltaPct >= -10) {
+    recommendedVxBump = 0;
+  } else if (deltaPct >= -12) {
     cls = "YELLOW";
-    message = `MPV ${deltaPct.toFixed(1)}% baseline — Vähennä top-set 5-10% (esim. 90% → 82.5%)`;
-    recommendedLoadAdjust = -0.075;  // -7.5%
-  } else if (deltaPct >= -15) {
+    message = `MPV ${deltaPct.toFixed(1)}% baseline — Vähennä top-set 7.5%`;
+    recommendedLoadAdjust = -0.075;
+    recommendedVxBump = 0;
+  } else if (deltaPct >= -18) {
     cls = "RED";
-    message = `MPV ${deltaPct.toFixed(1)}% baseline — Lepopäivä TAI kevyt tekniikka @50%`;
-    recommendedLoadAdjust = -0.50;  // dramatic cut
+    message = `MPV ${deltaPct.toFixed(1)}% baseline — Vähennä load 15% + Vx +1 (esim. V3 → V4)`;
+    recommendedLoadAdjust = -0.15;  // v4.34.23: oli -0.50, korjattu -0.15
+    recommendedVxBump = 1;          // v4.34.23: kompensaatio Vx-bumpilla
   } else {
     cls = "RED";
-    message = `MPV ${deltaPct.toFixed(1)}% baseline — Mahdollinen NFOR, review koko viikko (Plews 2013)`;
-    recommendedLoadAdjust = -1.0;  // skip session
+    message = `MPV ${deltaPct.toFixed(1)}% baseline — Vähennä load 25% + Vx +1, harkitse skip jos < -25%`;
+    recommendedLoadAdjust = -0.25;  // v4.34.23: oli -1.0 (skip), korjattu -0.25
+    recommendedVxBump = 1;
   }
-  return { mpv: todayMpv, baseline7Mean, deltaPct, class: cls, message, recommendedLoadAdjust };
+  return { mpv: todayMpv, baseline7Mean, deltaPct, class: cls, message, recommendedLoadAdjust, recommendedVxBump };
 }
 
 /**
