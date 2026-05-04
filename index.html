@@ -629,6 +629,8 @@
     .load-hero .prev-ghost .vals { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; margin-top: 2px; }
     .load-hero .prev-ghost .vals b { color: var(--txt); }
     .load-hero .prev-ghost .mark { color: var(--ok); font-size: 14px; flex-shrink: 0; }
+    .load-hero .prev-ghost-clickable { transition: background 0.12s, border-color 0.12s; }
+    .load-hero .prev-ghost-clickable:active { background: rgba(79,140,255,0.08); border-color: var(--acc); }
     .load-hero .target-row { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-sm); background: rgba(79,140,255,0.08); border: 1px solid rgba(79,140,255,0.2); font-size: 12px; position: relative; z-index: 1; }
     .load-hero .target-row .label { color: var(--acc); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px; }
     .load-hero .target-row .vals { font-weight: 700; letter-spacing: -0.2px; font-variant-numeric: tabular-nums; }
@@ -2726,6 +2728,52 @@ function computePriorSet(movementId, excludeSessionId) {
   return candidates[0];
 }
 
+// v4.34.24: täydellinen edellisen session yhteenveto liikkeestä — näyttää KAIKKI sarjat,
+// ei vain viimeinen. Käyttäjäpalaute: "Voisiko liikekohtaisiset muistiinpanot näkyä
+// edellisistä treenistä treenin aikana? Ehkä jopa fiksu katsaus aikaisempiin treeneihin?"
+function computePriorSessionSummary(movementId, excludeSessionId) {
+  if (!movementId) return null;
+  const completedSets = state.allSets
+    .filter(s => s.movementId === movementId && !s.isWarmup && s.completed)
+    .filter(s => {
+      const sess = state.sessions.find(x => x.sessionId === s.sessionId);
+      return sess && sess.sessionId !== excludeSessionId;
+    });
+  if (!completedSets.length) return null;
+  // Ryhmitä sessionId:n mukaan, etsi uusin
+  const sessionMap = {};
+  for (const s of completedSets) {
+    if (!sessionMap[s.sessionId]) sessionMap[s.sessionId] = [];
+    sessionMap[s.sessionId].push(s);
+  }
+  const sessions = Object.entries(sessionMap)
+    .map(([sid, sets]) => ({
+      sessionId: sid,
+      dateISO: state.sessions.find(x => x.sessionId === sid)?.dateISO || "",
+      sets: sets.sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || "")),
+    }))
+    .sort((a, b) => b.dateISO.localeCompare(a.dateISO));
+  const latestSession = sessions[0];
+  const sets = latestSession.sets;
+  // Tunnista heaviest setti (max load × reps tonnage proxy)
+  const heaviest = sets.reduce((max, s) => {
+    const tonn = (s.externalLoadKg || 0) * (s.reps || 0);
+    const maxTonn = (max?.externalLoadKg || 0) * (max?.reps || 0);
+    return tonn > maxTonn ? s : max;
+  }, sets[0]);
+  // Tunnista yhdenmukainen kuorma (kaikki sets sama load) vs. vaihteleva
+  const loads = sets.map(s => s.externalLoadKg);
+  const uniformLoad = loads.every(l => l === loads[0]);
+  return {
+    dateISO: latestSession.dateISO,
+    setCount: sets.length,
+    sets,
+    heaviest,
+    uniformLoad,
+    avgLoad: loads.reduce((a,b) => a + b, 0) / loads.length,
+  };
+}
+
 function priorSetDaysAgoLabel(priorSet) {
   if (!priorSet) return "";
   const sess = state.sessions.find(x => x.sessionId === priorSet.sessionId);
@@ -2738,6 +2786,116 @@ function priorSetDaysAgoLabel(priorSet) {
   if (days < 14) return `${days} pv sitten`;
   const weeks = Math.round(days / 7);
   return `${weeks} vk sitten`;
+}
+
+// v4.34.24: Effort-score laskee sarjan suhteellisen rasituksen yhdistäen
+// load × reps × Vx-painokerroin. Tonnage (load×reps) on raaka volyymi mutta
+// Vx kertoo todellisesta intensiteetistä — sama tonnage V0:lla on RIIPPUMATTA
+// kovempaa kuin V4:llä. Kerroin: V0 = 1.10 (failure, max), V5 = 0.85 (fresh).
+// Käytetään trend-vertailussa (tämän session target vs. edellinen heaviest).
+function effortScore(loadKg, reps, vx) {
+  const l = loadKg ?? 0;
+  const r = reps ?? 0;
+  const v = (vx === null || vx === undefined) ? 3 : vx;
+  const intensityFactor = 1.10 - (v * 0.05);
+  return l * r * intensityFactor;
+}
+
+// v4.34.24: Hae N viimeisintä sessiota joissa tämä liike on tehty,
+// uusin ensin. Käyttöä: prior-sessions-modal näyttää 3 viim. sessiota
+// per-sarja-detaljilla.
+function computeRecentSessionsForMovement(movementId, excludeSessionId, n = 3) {
+  if (!movementId) return [];
+  const completed = state.allSets
+    .filter(s => s.movementId === movementId && !s.isWarmup && s.completed)
+    .filter(s => s.sessionId !== excludeSessionId);
+  if (!completed.length) return [];
+  const sessionMap = {};
+  for (const s of completed) {
+    if (!sessionMap[s.sessionId]) sessionMap[s.sessionId] = [];
+    sessionMap[s.sessionId].push(s);
+  }
+  return Object.entries(sessionMap)
+    .map(([sid, sets]) => ({
+      sessionId: sid,
+      dateISO: state.sessions.find(x => x.sessionId === sid)?.dateISO || "",
+      sets: sets.sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || "")),
+    }))
+    .sort((a, b) => b.dateISO.localeCompare(a.dateISO))
+    .slice(0, n);
+}
+
+// v4.34.24: Modal näyttää viim. 3 session per-sarja-detaljit (kuorma×toistot×Vx, pvm).
+// Avataan klikkaamalla prev-ghost-laatikkoa workout-näkymässä.
+function openPriorSessionsModal(movementId, excludeSessionId, movementName) {
+  const sessions = computeRecentSessionsForMovement(movementId, excludeSessionId, 3);
+  closeModal();
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  if (!sessions.length) {
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">📊 ${movementName || "Liike"} — historia</div>
+        <div style="padding:16px 4px;color:var(--muted);font-size:13px">Ei aikaisempia treenejä tästä liikkeestä.</div>
+        <button class="btn btn-outline btn-full" data-modal-cancel>Sulje</button>
+      </div>`;
+  } else {
+    const sessionsHTML = sessions.map(sess => {
+      const days = (() => {
+        const today = new Date();
+        const then = new Date(sess.dateISO);
+        const d = Math.max(0, Math.round((today - then) / (24 * 3600 * 1000)));
+        if (d === 0) return "tänään";
+        if (d === 1) return "eilen";
+        if (d < 14) return `${d} pv sitten`;
+        return `${Math.round(d / 7)} vk sitten`;
+      })();
+      // Päivämäärä formatoituna
+      const dateLabel = (() => {
+        if (!sess.dateISO) return "";
+        const dt = new Date(sess.dateISO);
+        return dt.toLocaleDateString("fi-FI", { day: "numeric", month: "numeric", year: "2-digit" });
+      })();
+      // Per-sarja-rivit
+      const setsHTML = sess.sets.map((s, i) => {
+        const loadStr = s.externalLoadKg !== null && s.externalLoadKg !== undefined
+          ? `${s.externalLoadKg} kg`
+          : "BW";
+        const repsStr = s.reps ?? "?";
+        const vxStr = s.actualVx !== null && s.actualVx !== undefined ? `V${s.actualVx}` : "V?";
+        const velStr = s.velocity ? ` · ${s.velocity.toFixed(2)} m/s` : "";
+        const noteStr = s.notes ? ` · ✏️ ${s.notes}` : "";
+        return `<div style="display:flex;justify-content:space-between;padding:6px 8px;border-radius:4px;background:${i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent'};font-size:12px">
+          <span style="color:var(--muted);width:32px">S${i + 1}</span>
+          <span style="flex:1"><b>${loadStr} × ${repsStr}</b> · ${vxStr}${velStr}</span>
+        </div>${noteStr ? `<div style="padding:2px 8px 6px 40px;font-size:11px;color:var(--muted);font-style:italic">${noteStr.replace(' · ✏️ ', '✏️ ')}</div>` : ""}`;
+      }).join("");
+      // Session-tason effort-summa
+      const sessEffort = sess.sets.reduce((sum, s) => sum + effortScore(s.externalLoadKg, s.reps, s.actualVx), 0);
+      return `<div style="margin-bottom:14px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card2)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+          <div>
+            <div style="font-weight:700;font-size:13px">${dateLabel}</div>
+            <div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:0.3px">${days}</div>
+          </div>
+          <div style="font-size:11px;color:var(--muted)">Effort: <b style="color:var(--fg)">${Math.round(sessEffort)}</b></div>
+        </div>
+        ${setsHTML}
+      </div>`;
+    }).join("");
+    overlay.innerHTML = `
+      <div class="modal-sheet" style="max-height:85vh">
+        <div class="modal-handle"></div>
+        <div class="modal-title">📊 ${movementName || "Liike"} — viim. ${sessions.length} treeniä</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.4">Effort = Σ(load × reps × Vx-painokerroin). Korkeampi = kovempi sessio.</div>
+        ${sessionsHTML}
+        <button class="btn btn-outline btn-full" style="margin-top:8px" data-modal-cancel>Sulje</button>
+      </div>`;
+  }
+  overlay.querySelector("[data-modal-cancel]").addEventListener("click", closeModal);
+  overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
+  document.body.appendChild(overlay);
 }
 
 function renderActiveWorkout() {
@@ -2922,28 +3080,100 @@ function renderActiveWorkout() {
       deltaChipHTML = `<span class="delta-chip${cls}">${sign}${absStr} kg vs. ${priorSetDaysAgoLabel(priorSet)}</span>`;
     }
   }
-  // In-session previous set (for S2+, show last completed work set); for S1, show prior-session summary if available
+  // v4.34.24 (B-osio täydennetty): prev-ghost näyttää SEKÄ in-session edellisen sarjan
+  // ETTÄ edellisen treenin koko yhteenvedon trend-indikaattorilla. Klikkaamalla edellistä
+  // kertaa → modal viim. 3 session per-sarja-detaljilla. Trend lasketaan effortScorella
+  // (load × reps × Vx-painokerroin), ei pelkällä load-erotuksella.
   let prevGhostHTML = "";
   if (!isWarmupSet) {
     const lastInSession = completedWorkSets[completedWorkSets.length - 1];
+    const priorSummary = computePriorSessionSummary(exercise.movementId, w.sessionId);
+
+    // Osa 1: Edellinen sarja tänään (vain S2+)
+    let lastInSessionHTML = "";
     if (lastInSession) {
       const vel = lastInSession.velocity ? ` · ${lastInSession.velocity.toFixed(2)} m/s` : "";
-      prevGhostHTML = `<div class="prev-ghost">
+      lastInSessionHTML = `<div class="prev-ghost">
         <div>
           <div class="label">Edellinen sarja tänään</div>
           <div class="vals"><b>${lastInSession.loadKg ?? "–"}kg × ${lastInSession.reps ?? "?"}</b> · V${lastInSession.actualVx ?? "?"}${vel}</div>
         </div>
         <div class="mark">✓</div>
       </div>`;
-    } else if (priorSet) {
-      const vel = priorSet.velocity ? ` · ${priorSet.velocity.toFixed(2)} m/s` : "";
-      prevGhostHTML = `<div class="prev-ghost">
-        <div>
-          <div class="label">Edellinen kerta · ${priorSetDaysAgoLabel(priorSet)}</div>
-          <div class="vals"><b>${priorSet.loadKg ?? "–"}kg × ${priorSet.reps ?? "?"}</b> · V${priorSet.actualVx ?? "?"}${vel}</div>
+    }
+
+    // Osa 2: Edellinen kerta (KOKO yhteenveto + trend, klikattava → modal)
+    let priorSessionHTML = "";
+    if (priorSummary) {
+      const daysAgo = (() => {
+        const today = new Date();
+        const then = new Date(priorSummary.dateISO);
+        const days = Math.max(0, Math.round((today - then) / (24 * 3600 * 1000)));
+        if (days === 0) return "tänään";
+        if (days === 1) return "eilen";
+        if (days < 14) return `${days} pv sitten`;
+        return `${Math.round(days / 7)} vk sitten`;
+      })();
+      let summaryText;
+      if (priorSummary.uniformLoad && priorSummary.heaviest.externalLoadKg !== null) {
+        const vxList = priorSummary.sets.map(s => `V${s.actualVx ?? "?"}`).join("/");
+        const repsAllSame = priorSummary.sets.every(s => s.reps === priorSummary.sets[0].reps);
+        const repsLabel = repsAllSame
+          ? `${priorSummary.setCount}×${priorSummary.sets[0].reps}`
+          : priorSummary.sets.map(s => s.reps).join("/");
+        summaryText = `<b>${repsLabel} @ ${priorSummary.heaviest.externalLoadKg ?? "BW"}${priorSummary.heaviest.externalLoadKg ? "kg" : ""}</b> · ${vxList}`;
+      } else {
+        const setsStr = priorSummary.sets.slice(0, 4).map(s =>
+          `${s.externalLoadKg ?? "BW"}${s.externalLoadKg ? "" : ""}×${s.reps ?? "?"}V${s.actualVx ?? "?"}`
+        ).join(" · ");
+        const moreCount = priorSummary.setCount > 4 ? ` +${priorSummary.setCount - 4}` : "";
+        summaryText = `<b>${setsStr}${moreCount}</b>`;
+      }
+      // Trend-indikaattori: effortScore (load × reps × Vx-painokerroin) -vertailu.
+      // Nykyinen target vs. edellisen session heaviest setti. ↑ jos ratio > 1.02,
+      // ↓ jos < 0.98, → muuten. Tämä on plan-vs-actual ennakkoarvio: jos targetVx
+      // saavutetaan sellaisenaan, mitä effort-erotus on aikaisempaan.
+      let trendIcon = "";
+      let trendTitle = "";
+      if (loadKg !== null && loadKg !== undefined
+          && priorSummary.heaviest.externalLoadKg !== null
+          && targetReps !== null && targetReps !== undefined && targetReps !== "?") {
+        const curEffort = effortScore(loadKg, targetReps, targetVx);
+        const priorEffort = effortScore(
+          priorSummary.heaviest.externalLoadKg,
+          priorSummary.heaviest.reps,
+          priorSummary.heaviest.actualVx
+        );
+        if (priorEffort > 0) {
+          const ratio = curEffort / priorEffort;
+          const pct = Math.round((ratio - 1) * 100);
+          if (ratio > 1.02) {
+            trendIcon = `<span style="color:var(--ok);font-size:14px;font-weight:700">↑</span>`;
+            trendTitle = `+${pct}% effort vs. edellinen`;
+          } else if (ratio < 0.98) {
+            trendIcon = `<span style="color:var(--warn);font-size:14px;font-weight:700">↓</span>`;
+            trendTitle = `${pct}% effort vs. edellinen`;
+          } else {
+            trendIcon = `<span style="color:var(--muted);font-size:14px;font-weight:700">→</span>`;
+            trendTitle = `~sama effort vs. edellinen`;
+          }
+        }
+      }
+      // Klikattava: data-prior-sessions sisältää movementId:n, click-handler avaa modalin
+      const safeName = (exercise.name || "").replace(/"/g, '&quot;');
+      priorSessionHTML = `<div class="prev-ghost prev-ghost-clickable" data-prior-sessions="${exercise.movementId}" data-prior-name="${safeName}" title="${trendTitle || 'Avaa historia'}" style="cursor:pointer;${lastInSessionHTML ? 'margin-top:4px' : ''}">
+        <div style="flex:1;min-width:0">
+          <div class="label">Edellinen kerta · ${daysAgo} <span style="color:var(--dim);font-size:9px">· napauta historia</span></div>
+          <div class="vals" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${summaryText}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          ${trendIcon}
+          <span style="color:var(--dim);font-size:14px">›</span>
         </div>
       </div>`;
     }
+
+    prevGhostHTML = lastInSessionHTML + priorSessionHTML;
   }
 
   const targetReps = currentSet.targetReps ?? "?";
@@ -7963,6 +8193,15 @@ function bindWorkoutEvents() {
         render();
       }
     }
+  });
+
+  // v4.34.24: prev-ghost (Edellinen kerta) klikkaus → modal viim. 3 session detaljilla
+  $$("[data-prior-sessions]").forEach(el => {
+    el.addEventListener("click", () => {
+      const movementId = el.getAttribute("data-prior-sessions");
+      const movementName = el.getAttribute("data-prior-name") || "Liike";
+      openPriorSessionsModal(movementId, w.sessionId, movementName);
+    });
   });
 
   // Next set
