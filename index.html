@@ -772,6 +772,7 @@ import {
   VARIANT_DAY_TYPE_MAP, ACCESSORY_SLOT_CATALOG, MOVEMENT_DESCRIPTIONS,
   validateVelocity, validateLoad, validateReps, validateHRV, validateBodyweight,
   isVelocityTypo,
+  isIsolationMovement,
 } from "./data.js";
 
 import {
@@ -8228,13 +8229,20 @@ function bindWorkoutEvents() {
     }
 
     // Failure reaction (v4.32.8: block-aware — phase parametri)
+    // v4.34.25: + isolation-luokitus (estää yli-suojaus hauis/pohje/sivunostossa)
     if (selectedVara === 0) {
       const isPrimary = exercise.role === "primary";
       const consecutiveFailures = exercise.sets.slice(0, w.currentSetIdx + 1).filter(s => s.actualVx === 0).length;
       // Block-phase haetaan rec:istä (recommend()-output) tai mesocyclen weekDef:istä
       const weekNum = state.recommendation?.weekNum;
       const blockPhase = weekNum ? phaseForWeek(weekNum) : null;
-      const reaction = failureReaction(currentSet.loadKg || 0, currentSet.targetReps, isPrimary, consecutiveFailures, blockPhase);
+      // v4.34.25: tunnista isolation-liikkeet (hauis/pohje/sivunosto/leg curl/scapular/core)
+      // jotta last-set V0 EI laukaise -2.5% ensi vk:lle. Hypertrofian normaali stimulus.
+      const isIsolation = isIsolationMovement(exercise.category);
+      const workSets = exercise.sets.filter(s => !s.isWarmup);
+      const currentWorkSetIdx = workSets.findIndex(s => s === currentSet);
+      const isLastSet = currentWorkSetIdx >= 0 && currentWorkSetIdx === workSets.length - 1;
+      const reaction = failureReaction(currentSet.loadKg || 0, currentSet.targetReps, isPrimary, consecutiveFailures, blockPhase, { isIsolation, isLastSet });
 
       if (reaction.shouldStop) {
         showToast(reaction.message || "Failure — lopetatko liikkeeseen?", "bad", 6000);

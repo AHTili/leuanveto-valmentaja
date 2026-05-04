@@ -16,6 +16,9 @@ import {
   weeklyStimulus, checkStagnation,
   speedDayLoad,
   ouraHRVtoLnRMSSD,
+  computeLoadVelocityProfile,
+  MOVEMENT_MVT,
+  recommend,
 } from "./engine.js";
 
 import {
@@ -307,6 +310,39 @@ function testFailureReaction() {
   const peakingReaction = failureReaction(70, 1, true, 1, "peaking");
   assert(peakingReaction.shouldStop, "Peaking V0 → stop heti, CNS-säästö");
   assertEqual(peakingReaction.strategy, "C", "Peaking: Strategia C");
+
+  // v4.34.25: ISOLATION-LIIKKEIDEN YLI-SUOJAUKSEN KORJAUS.
+  // Käyttäjäpalaute 2026-05-04: Hauiskääntö 3×12×16 V3/V2/V0 tauoilla 1 min →
+  // engine laukaisi -2.5% ensi viikolle vaikka V0 viimeisessä isolation-sarjassa
+  // on hypertrofian normaali stimulus (RP/Israetel/Helms/Schoenfeld -konsensus).
+  // Engine = valmentaja, ei nanny. Isolation last-set V0 EI laukaise adjustia.
+  //
+  // Kutsumalli: failureReaction(loadKg, targetReps, isPrimary, consecutiveFailures, blockPhase, opts)
+  // jossa opts = { isIsolation: bool, isLastSet: bool }.
+  //
+  // Skenaario A: Foundation isolation last-set V0 → ei kevennystä, sarja loppuu joka tapauksessa
+  const isoLastSetA = failureReaction(16, 12, false, 1, "foundation", { isIsolation: true, isLastSet: true });
+  assertEqual(isoLastSetA.strategy, "ISO-NORMAL", "Isolation last-set V0: Strategia ISO-NORMAL");
+  assertEqual(isoLastSetA.nextWeekLoadAdjust, 0, "Isolation last-set V0: EI ensi vk:n kevennystä");
+  assertClose(isoLastSetA.nextSetLoad, 16.0, 0.01, "Isolation last-set V0: säilytä kuorma");
+  assert(isoLastSetA.shouldStop, "Isolation last-set V0: stop (sarja loppuu joka tapauksessa)");
+
+  // Skenaario B: Strength-blokin isolation last-set V0 → sama logiikka
+  const isoLastSetB = failureReaction(16, 12, false, 1, "strength", { isIsolation: true, isLastSet: true });
+  assertEqual(isoLastSetB.strategy, "ISO-NORMAL", "Isolation strength last-set V0: ISO-NORMAL");
+  assertEqual(isoLastSetB.nextWeekLoadAdjust, 0, "Isolation strength last-set V0: ei kevennystä");
+
+  // Skenaario C: Isolation MID-set V0 (esim. 2/3 sarjassa) → -5% loppusarjoihin, ei ensi vk:n kevennystä
+  const isoMidSet = failureReaction(16, 12, false, 1, "foundation", { isIsolation: true, isLastSet: false });
+  assertEqual(isoMidSet.strategy, "ISO-MID", "Isolation mid-set V0: Strategia ISO-MID");
+  assertClose(isoMidSet.nextSetLoad, 15.0, 0.5, "Isolation mid-set V0: -5% loppusarjoihin (16×0.95=15.2→15)");
+  assertEqual(isoMidSet.nextWeekLoadAdjust, 0, "Isolation mid-set V0: ei ensi vk:n kevennystä");
+
+  // Skenaario D: PRIMARY-liikkeen V0 säilyttää nykyisen logiikan (ei muutosta)
+  // (sama kuin foundationReaction yllä — varmistus että isolation-haara ei riko primarya)
+  const primaryRefoundation = failureReaction(70, 3, true, 1, "foundation", { isIsolation: false, isLastSet: true });
+  assertEqual(primaryRefoundation.strategy, "A", "Primary foundation V0 ennallaan: Strategia A");
+  assertEqual(primaryRefoundation.nextWeekLoadAdjust, -0.025, "Primary foundation V0: -2.5% ensi vk (säilyy)");
 }
 
 function testNewMovementInitialWeight() {
@@ -336,9 +372,12 @@ function testUpperBodyMpvReadiness() {
   assertEqual(r4.class, "YELLOW", "MPV -7% baseline → YELLOW (vähennä top-set)");
   assert(r4.recommendedLoadAdjust === -0.075, "MPV YELLOW -5..-10% → -7.5% adjust");
 
-  // Red: -12% baseline
-  const r5 = upperBodyMpvReadiness(0.713, baseline);  // -12% deltaa
-  assertEqual(r5.class, "RED", "MPV -12% baseline → RED (lepopäivä)");
+  // v4.34.23: Realistic MPV thresholds (käyttäjäpalaute: 0.78→0.66 ei perusteltua tekniikkatreeniä).
+  // Uudet thresholdit: -7..-12% = YELLOW (-7.5% load), -12..-18% = RED (-15% load), <-18% = RED (-25%).
+  // Red: -15% baseline
+  const r5 = upperBodyMpvReadiness(0.689, baseline);  // -15% deltaa (sisällä RED -12..-18% -haaraan)
+  assertEqual(r5.class, "RED", "MPV -15% baseline → RED (-15% load adjust)");
+  assert(r5.recommendedLoadAdjust === -0.15, "MPV RED -12..-18% → -15% load adjust");
 }
 
 function testBreakReturn() {
@@ -376,6 +415,81 @@ function testVelocityLoss() {
   assertClose(vl, 20, 0.1, "VL%: (0.50-0.40)/0.50 = 20%");
 
   assertEqual(velocityLossPercent(null, 0.4), null, "VL%: null rep1 → null");
+}
+
+// v4.34.25: LV cross-check matemaattisen virheen korjaus.
+// Pre-v4.34.25 bug: e1rmCrossCheck = systemLoad / loadPct = systemLoad /
+// (systemLoad/maxLoad) = maxLoad jokaiselle pisteelle. Regressio ei vaikuttanut.
+// Diagnostic-trace VBT_E1RM_CROSSCHECK oli pseudosignaali joka kertoi aina maxLoad-bw.
+//
+// Korjaus: käytä regressiota oikeasti. Liike-spesifi MVT (Minimum Velocity Threshold)
+// kertoo missä velocityssa 1RM löytyy. Kaava: load@1RM = systemLoad @ velocity=MVT.
+// Regressio: velocity = slope × loadPct + intercept → loadPct@MVT = (MVT - intercept)/slope.
+// Lopullinen 1RM = systemLoad / (loadPct@MVT / 1.0) palautetaan ankkurikohdasta.
+//
+// Lähteet: Sánchez-Moreno 2017 (pull-up MVT ≈ 0.23 m/s),
+//          Pareja-Blanco/González-Badillo (bench MVT ≈ 0.17, squat ≈ 0.30, DL ≈ 0.14).
+function testLoadVelocityProfile() {
+  // MOVEMENT_MVT-vakion olemassaolo
+  assert(MOVEMENT_MVT && typeof MOVEMENT_MVT === "object", "MOVEMENT_MVT-vakio on määritelty");
+  assert(MOVEMENT_MVT["Lisäpainoleuanveto"] === 0.23, "MVT pull-up = 0.23 m/s (Sánchez-Moreno 2017)");
+  assert(MOVEMENT_MVT["Penkkipunnerrus"] === 0.17, "MVT bench = 0.17 m/s (Pareja-Blanco)");
+  assert(MOVEMENT_MVT["Takakyykky"] === 0.30, "MVT back squat = 0.30 m/s");
+
+  // Synteettinen LV-data: pull-up, BW 90 kg, atleetin tunnettu 1RM-piste = 90+95=185 kg @ MVT 0.23.
+  // Generoidaan 3 ankkuripistettä kuvitteellisesta lineaarisesta LV-suhteesta:
+  // Kun load = 60kg ext (sys 150), v = 0.65; load = 75kg (sys 165), v = 0.45; load = 85kg (sys 175), v = 0.31.
+  // Lineaarinen ekstrapolointi MVT 0.23:een → ennustaa systemLoad ≈ 185 → e1RM ext ≈ 95 kg.
+  const sets = [
+    { externalLoadKg: 60, velocityMean: 0.65, dateISO: "2026-04-01" },
+    { externalLoadKg: 75, velocityMean: 0.45, dateISO: "2026-04-08" },
+    { externalLoadKg: 85, velocityMean: 0.31, dateISO: "2026-04-15" },
+  ];
+  const result = computeLoadVelocityProfile(sets, 90, {
+    isBarbell: false,
+    currentE1RMExternal: 90,
+    movementName: "Lisäpainoleuanveto",
+  });
+
+  assert(result.n === 3, "LV-profiili: 3 ankkuripistettä");
+  assert(result.slope !== null && result.intercept !== null, "LV-profiili: regressio laskettu");
+  assert(result.v1rmEstimate !== null && result.v1rmEstimate > 0, "v1rmEstimate ≠ null");
+
+  // KRITTINEN: e1rmCrossCheck ≠ pelkkä maxLoad (sys 175) - bw (90) = 85.
+  // Jos cross-check on edelleen degeneroitunut, tämä assertio epäonnistuu.
+  assert(result.e1rmCrossCheck !== 85, "e1rmCrossCheck EI ole pelkkä maxLoad-bw (degeneroitunut)");
+
+  // Odotettu cross-check on ekstrapolaatio MVT 0.23:een → ~95 kg ext.
+  // Hyväksyntäalue ±10 kg koska synteettinen data on kohinaista.
+  assertClose(result.e1rmCrossCheck, 95, 10, "LV cross-check ekstrapoloi MVT 0.23 → ≈95 kg ext");
+
+  // Edge case: tuntematon liike → fallback (käytetään default MVT 0.30 tai palauta null)
+  const resultUnknown = computeLoadVelocityProfile(sets, 90, {
+    isBarbell: false,
+    currentE1RMExternal: 90,
+    movementName: "TuntematonLiike",
+  });
+  // Tärkeintä että ei kraashaa eikä degeneroidu; palaute joko null tai järkevä luku
+  assert(resultUnknown.e1rmCrossCheck === null || (resultUnknown.e1rmCrossCheck > 50 && resultUnknown.e1rmCrossCheck < 200),
+    "Tuntematon liike: cross-check joko null tai järkevä haarukka");
+
+  // Edge case: 2 ankkuripistettä → regressio toimii mutta varovasti
+  const setsTwo = sets.slice(0, 2);
+  const result2 = computeLoadVelocityProfile(setsTwo, 90, {
+    isBarbell: false,
+    currentE1RMExternal: 90,
+    movementName: "Lisäpainoleuanveto",
+  });
+  assert(result2.n === 2, "LV-profiili: 2 pistettä toimii");
+
+  // Edge case: 1 ankkuripiste → ei regressiota, palauta null cross-check
+  const setsOne = sets.slice(0, 1);
+  const result1 = computeLoadVelocityProfile(setsOne, 90, {
+    isBarbell: false,
+    currentE1RMExternal: 90,
+    movementName: "Lisäpainoleuanveto",
+  });
+  assert(result1.e1rmCrossCheck === null, "1 piste: cross-check null (ei regressiota)");
 }
 
 function testValidators() {
@@ -445,6 +559,165 @@ function testCalibration() {
   assertClose(cal2.adjustment, -0.01, 0.001, "Calibration: too heavy → -1%");
 }
 
+// ═══════════════════════════════════════════════════════════════
+// SCENARIO TESTS for recommend() — v4.34.25
+// ═══════════════════════════════════════════════════════════════
+//
+// Skenaariotestit suojaavat 985-rivisen recommend()-funktion regressioilta.
+// Strategia: ohitetaan IDB-haut options-parametreilla (allMovements, allSets,
+// sessions, settings, mesocycle, readiness) jotta testit ovat itsenäisiä.
+// Kukin testi rakentaa minimum-viable-ctx:n + assertoi traces[]:n + outputin.
+// Käytetään createDefaultMesocycle:a (4-vk simppeli) jotta weekPlans-rakenne
+// on hallittavissa.
+
+const PRIMARY_MOV_ID = "test-primary-leuka";
+const MOCK_MOVEMENTS = [
+  { movementId: PRIMARY_MOV_ID, name: "Lisäpainoleuanveto", category: "vertikaaliveto", isPrimary: true, isPreset: true, isCompetitionLift: true, loadType: "system" },
+];
+
+function makeRecommendCtx(overrides = {}) {
+  const startDateISO = overrides.startDateISO || "2026-01-05"; // monday
+  const dateISO = overrides.dateISO || startDateISO;
+  const meso = createDefaultMesocycle(startDateISO);
+  return {
+    settings: overrides.settings || { bodyweightKg: 91 },
+    bodyweightKg: overrides.bodyweightKg || 91,
+    dateISO,
+    mesocycle: overrides.mesocycle || meso,
+    allMovements: overrides.allMovements || MOCK_MOVEMENTS,
+    allSets: overrides.allSets || [],
+    sessions: overrides.sessions || [],
+    readiness: overrides.readiness || {
+      combined: "GREEN", capLevel: 0,
+      channels: {
+        velocity: { class: "GREEN", z: 0.1 },
+        hrv: { class: "GREEN", z: 0.2 },
+        vara: { class: "GREEN", z: null, meanOvershoot: 0 },
+      },
+    },
+    primaryMovementId: overrides.primaryMovementId || PRIMARY_MOV_ID,
+    dryRun: true,
+  };
+}
+
+function hasTrace(rec, ruleId) {
+  return rec.traces && rec.traces.some(t => t.ruleId === ruleId);
+}
+
+async function scenario(name, fn) {
+  try {
+    await fn();
+  } catch (e) {
+    _failed++;
+    _results.push({ name: `Scenario: ${name}`, pass: false, details: `THREW: ${e.message}` });
+    console.error(`SCENARIO THREW: ${name} — ${e.message}`);
+  }
+}
+
+async function testRecommendScenarios() {
+  // S1: Vk 1 MA, GREEN, ei historiaa → palauttaa target loadin > 0, ei error
+  await scenario("vk 1 MA GREEN fresh-start", async () => {
+    const ctx = makeRecommendCtx({ dateISO: "2026-01-05" });
+    const rec = await recommend(ctx);
+    assert(!rec.error, "S1: ei error-flaggia GREEN-fresh-startissa");
+    assertEqual(rec.weekNum, 1, "S1: weekNum = 1");
+    assert(rec.dayPlan, "S1: dayPlan olemassa");
+    assert(rec.dayType === "heavy", "S1: vk 1 MA = heavy day");
+    assert(typeof rec.targetExternalLoad === "number" || rec.targetExternalLoad === null,
+      "S1: targetExternalLoad on numero tai null (riippuu seedauksesta)");
+  });
+
+  // S2: Vk 2 MA, RED+RED → CAP_RED tracessa, deltaPct ≤ 0
+  await scenario("vk 2 MA RED+RED → CAP_RED", async () => {
+    const ctx = makeRecommendCtx({
+      dateISO: "2026-01-12",
+      readiness: {
+        combined: "RED", capLevel: 2,
+        channels: {
+          velocity: { class: "RED", z: -1.5 },
+          hrv: { class: "RED", z: -1.2 },
+          vara: { class: "GREEN", z: null, meanOvershoot: 0 },
+        },
+      },
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error, "S2: ei error-flaggia RED-skenaariossa");
+    assert(hasTrace(rec, "CAP_RED"), "S2: CAP_RED-trace olemassa");
+    assert((rec.deltaPct ?? 0) <= 0, "S2: deltaPct ≤ 0 (cap-only RED) — got " + rec.deltaPct);
+  });
+
+  // S3: Vk 2 MA, 1 RED + 1 YELLOW → CAP_YELLOW (vel veto + 1 YELLOW = YELLOW total)
+  await scenario("vk 2 MA RED+YELLOW → cap aktivoituu", async () => {
+    const ctx = makeRecommendCtx({
+      dateISO: "2026-01-12",
+      readiness: {
+        combined: "YELLOW", capLevel: 1,
+        channels: {
+          velocity: { class: "RED", z: -1.5 },
+          hrv: { class: "YELLOW", z: -0.7 },
+          vara: { class: "GREEN", z: null, meanOvershoot: 0 },
+        },
+      },
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error, "S3: ei error-flaggia YELLOW-cap-skenaariossa");
+    assert(hasTrace(rec, "CAP_YELLOW") || hasTrace(rec, "CAP_RED"),
+      "S3: CAP_YELLOW tai CAP_RED -trace olemassa (cap aktivoitu)");
+  });
+
+  // S4: Vk 4 MA = Deload → deltaPctBase on -25%
+  await scenario("vk 4 MA Deload → negatiivinen delta", async () => {
+    const ctx = makeRecommendCtx({ dateISO: "2026-01-26" });
+    const rec = await recommend(ctx);
+    assert(!rec.error, "S4: ei error-flaggia deload-vk:lla");
+    assertEqual(rec.weekNum, 4, "S4: weekNum = 4");
+    // Deload: deltaPctBase = -0.25, voi tulla rate-limit cap mutta lopullinen delta < 0
+    assert(rec.deltaPct === undefined || rec.deltaPct < 0,
+      "S4: deload-deltaPct < 0 (jos laskettu) — got " + rec.deltaPct);
+  });
+
+  // S5: Päivämäärä ennen mesosyklin alkua → error: "before-start"
+  await scenario("date ennen meso-startia → error before-start", async () => {
+    const ctx = makeRecommendCtx({
+      startDateISO: "2026-01-05",
+      dateISO: "2025-12-29", // ennen alkua
+    });
+    const rec = await recommend(ctx);
+    assertEqual(rec.error, "before-start", "S5: error = before-start");
+    assert(hasTrace(rec, "MESOCYCLE_BEFORE_START"), "S5: MESOCYCLE_BEFORE_START -trace");
+    assertEqual(rec.targetExternalLoad, null, "S5: targetExternalLoad null");
+  });
+
+  // S6: Tauko 14 pv ennen tätä päivää → BREAK-tyyppinen modifier
+  await scenario("tauko 14 pv → BREAK_MODIFIER", async () => {
+    // Luodaan yksi sessio 14 pv sitten, ei muuta
+    const oldSession = {
+      sessionId: "sess-old",
+      dateISO: "2025-12-29",
+      completed: true,
+    };
+    const oldSet = {
+      setId: "old-set-1",
+      sessionId: "sess-old",
+      movementId: PRIMARY_MOV_ID,
+      externalLoadKg: 50, reps: 5, actualVx: 2,
+      completed: true, isWarmup: false,
+      timestamp: "2025-12-29T17:00:00Z",
+    };
+    const ctx = makeRecommendCtx({
+      dateISO: "2026-01-12", // 14 pv myöhemmin = ma vk 2
+      sessions: [oldSession],
+      allSets: [oldSet],
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error, "S6: ei error-flaggia tauko-skenaariossa");
+    // BREAK_MODIFIER tai BREAK_RETURN tai vastaava trace
+    const breakTrace = rec.traces.find(t => /BREAK/i.test(t.ruleId));
+    assert(breakTrace !== undefined, "S6: jokin BREAK-trace olemassa (" +
+      rec.traces.map(t => t.ruleId).filter(r => /BREAK|MESOCYCLE/.test(r)).join(",") + ")");
+  });
+}
+
 async function testBackupRoundtrip() {
   // This test requires IndexedDB — skip if not available
   try {
@@ -496,11 +769,13 @@ export async function runTests() {
   testBreakReturn();
   testMesocycleBreakReset();
   testVelocityLoss();
+  testLoadVelocityProfile();
   testValidators();
   testParseNumeric();
   testTypoDetection();
   testMesocycleWeek();
   testCalibration();
+  await testRecommendScenarios();
   await testBackupRoundtrip();
 
   console.log(`\n=== Results: ${_passed} passed, ${_failed} failed ===`);

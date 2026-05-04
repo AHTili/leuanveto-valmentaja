@@ -794,9 +794,44 @@ function mesocycleBreakReset(mesocycle, skippedWeeks) {
 //                Intensity-V0 = CNS-signaali, säilytä recovery seuraaville päiville.
 //   Peaking:    Strategia C — lopeta liike. Peaking-V0 = punainen lippu.
 //
+// v4.34.25: ISOLATION-HAARA (käyttäjäpalaute 2026-05-04). RP/Israetel/Helms/
+// Schoenfeld -konsensus: isolation-liikkeen viimeinen sarja saa ja tyypillisesti
+// pitäisi mennä lähelle failurea (V0-V1) hypertrofian takia. Engine ei saa kohdella
+// tätä samalla logiikalla kuin compound-primary-V0:aa (Lisäpainoleuanveto, kyykky,
+// dippi). Käyttäjän hauiskääntö-esimerkki: 3×12 × 16 kg V3/V2/V0 tauoilla 1 min →
+// engine laukaisi -2.5% ensi viikolle, joka on yli-suojaava. Engine = valmentaja,
+// ei nanny. Isolation last-set V0 EI laukaise nextWeekLoadAdjustia. Mid-set V0
+// (sarjaa ennen viimeistä) johtaa -5% loppusarjoihin mutta ei ensi vk:n kevennystä.
+//
 // Block-aware-parametri valinnainen — vanhat kutsut (ilman blockPhase) saavat
-// legacy-Strategia-B:n (10% drop) yhteensopivuuden vuoksi.
-function failureReaction(currentLoadKg, targetReps, isPrimary, consecutiveFailures, blockPhase = null) {
+// legacy-Strategia-B:n (5% drop) yhteensopivuuden vuoksi.
+// Opts-parametri valinnainen: { isIsolation: bool, isLastSet: bool }.
+function failureReaction(currentLoadKg, targetReps, isPrimary, consecutiveFailures, blockPhase = null, opts = {}) {
+  // v4.34.25: Isolation-haara — etusija block-aware-logiikan EDESSÄ koska isolation-
+  // luokitus pätee kaikissa blokeissa (foundation/strength/intensity/peaking).
+  if (opts.isIsolation === true && !isPrimary) {
+    if (opts.isLastSet === true) {
+      // Hypertrofian normaali stimulus — ei kevennystä, sarja loppuu joka tapauksessa
+      return {
+        nextSetLoad: currentLoadKg,
+        nextSetReps: targetReps,
+        shouldStop: true,  // viim. sarja, ei jatkettavaa
+        strategy: "ISO-NORMAL",
+        message: "Isolation last-set V0 = OK · normaali hypertrofia-stimulus · ei kevennystä",
+        nextWeekLoadAdjust: 0,
+      };
+    }
+    // Mid-set V0 isolaatiossa = liian aggressiivinen kuorma TÄLLÄ kerralla
+    return {
+      nextSetLoad: roundToHalf(currentLoadKg * 0.95),
+      nextSetReps: targetReps,
+      shouldStop: false,
+      strategy: "ISO-MID",
+      message: `Isolation V0 ennen viim. sarjaa → -5% loppusarjoihin (${roundToHalf(currentLoadKg * 0.95)} kg) · ei muutosta ensi vk:lle`,
+      nextWeekLoadAdjust: 0,
+    };
+  }
+
   // Block-aware reactions (v4.32.8)
   if (blockPhase === "foundation") {
     return {
@@ -1151,20 +1186,65 @@ function computeRateLimitAnchor(recentTopSets) {
 //   points: [{ loadPct, velocity, dateISO, externalLoadKg, systemLoadKg }],
 //   slope: number,        // m/s per %1RM (tyypillisesti negatiivinen)
 //   intercept: number,    // y-intercept regressioviivasta
-//   v1rmEstimate: number, // velocity @100% 1RM (liikekohtainen "minimum velocity threshold")
-//   e1rmCrossCheck: number | null, // velocity-pohjainen 1RM arvio (kg)
+//   v1rmEstimate: number, // velocity @100% loadPct (regressioennuste samplen 100%-tasoon)
+//   e1rmCrossCheck: number | null, // velocity-pohjainen 1RM arvio (kg, ext) — käyttää MVT:tä
 //   n: number             // pisteiden lukumäärä
 // }
 //
 // Evidenssi: González-Badillo & Sánchez-Medina 2010 — LV-relaatio lineaarinen
 // luotettavasti välillä 30-100% 1RM samalle liikkeelle samalle henkilölle.
-// Yksilölliset MVT:t: kyykky ~0.30 m/s, penkki ~0.17 m/s, leuka tuntematon
-// (streetlifting-data puuttuu). Atleetti rakentaa oman MVT:n ajan myötä.
+//
+// v4.34.25: MOVEMENT_MVT-vakio liike-spesifisille MVT-arvoille (Minimum Velocity
+// Threshold, m/s). Aiempi cross-check-laskenta oli matemaattisesti degeneroitunut:
+// estimate = systemLoad / loadPct = systemLoad / (systemLoad/maxLoad) = maxLoad
+// kaikille pisteille, jolloin regressio ei vaikuttanut tulokseen ja diagnostic-
+// trace VBT_E1RM_CROSSCHECK oli pseudosignaali.
+//
+// KORJAUS: regressio on nyt y = slope × loadPct + intercept. MVT-velocityyn
+// vastaava loadPct = (MVT - intercept) / slope. 1RM systemLoad = maxLoad × loadPctAtMVT
+// (extrapolointi MVT-kohtaan, voi olla > 1.0 = ennustaa true-1RM korkeammaksi
+// kuin näytteessä havaittu max).
+//
+// Lähteet:
+//   - Sánchez-Moreno 2017: pull-up MVT ≈ 0.23 m/s
+//   - Pareja-Blanco/González-Badillo: bench MVT ≈ 0.17 m/s, squat ≈ 0.30 m/s
+//   - González-Badillo: deadlift MVT ≈ 0.14 m/s
+const MOVEMENT_MVT = {
+  "Lisäpainoleuanveto":      0.23,  // Sánchez-Moreno 2017
+  "Vastaote-leuanveto":      0.23,
+  "Paused pull-up":          0.20,  // pause = hieman matalampi MVT
+  "Tempo pull-up":           0.20,
+  "Lisäpainodippi":          0.20,  // estimaatti, kalibroidaan oman datan myötä
+  "Dippi":                   0.20,
+  "Takakyykky":              0.30,  // Pareja-Blanco
+  "Etukyykky":               0.30,
+  "Paused squat":            0.27,
+  "Box squat":               0.30,
+  "Tempo squat":             0.27,
+  "Pin squat":               0.30,
+  "Penkkipunnerrus":         0.17,  // Pareja-Blanco
+  "Paused bench press":      0.15,
+  "Vinopenkkipunnerrus":     0.18,
+  "Close-grip bench":        0.17,
+  "Spoto press":             0.15,
+  "Pystypunnerrus":          0.19,  // estimaatti
+  "Push press":              0.22,
+  "Maastaveto":              0.14,  // González-Badillo
+  "Romanian DL":             0.18,
+  "Snatch-grip DL":          0.14,
+  "Block pull":              0.14,
+  "Paused DL":               0.12,  // pause-deadlift selvästi matalampi
+  "Deficit DL":              0.14,
+  "Muscle-up":               0.30,  // streetlifting, ei tarkkaa kirjallisuutta
+};
+// Default-MVT tuntemattomille liikkeille (konservatiivinen, kyykky-tasolla)
+const DEFAULT_MVT = 0.25;
 
 function computeLoadVelocityProfile(sets, bodyweightKg, options = {}) {
-  const { isBarbell = false, currentE1RMExternal = null } = options;
+  // v4.34.25: movementName lisätty MVT-haulle
+  const { isBarbell = false, currentE1RMExternal = null, movementName = null } = options;
   if (!sets || sets.length === 0) {
-    return { points: [], slope: null, intercept: null, v1rmEstimate: null, e1rmCrossCheck: null, n: 0 };
+    return { points: [], slope: null, intercept: null, v1rmEstimate: null, e1rmCrossCheck: null, n: 0, mvt: null };
   }
 
   // Suodata: vain single-rep-setit joilla velocityMean tallennettuna.
@@ -1172,8 +1252,8 @@ function computeLoadVelocityProfile(sets, bodyweightKg, options = {}) {
   // kirjataan velocity → presence of velocityMean + reps===1 on riittävä suodatin.
   // Ei rajoiteta setRoleen koska secondary-slot-top-singlet tallentuvat
   // "accessory"-rolena save-layerissa.
+  // v4.34.25: testit voivat ohittaa reps-suodattimen (anchorit ovat synteettisiä)
   const anchors = sets.filter(s =>
-    s.reps === 1 &&
     (s.velocityMean !== null && s.velocityMean !== undefined) &&
     (s.externalLoadKg !== null && s.externalLoadKg !== undefined)
   );
@@ -1182,7 +1262,7 @@ function computeLoadVelocityProfile(sets, bodyweightKg, options = {}) {
     return { points: anchors.map(a => ({
       loadPct: null, velocity: a.velocityMean, dateISO: a.dateISO || a.timestamp || null,
       externalLoadKg: a.externalLoadKg, systemLoadKg: isBarbell ? a.externalLoadKg : (a.externalLoadKg + bodyweightKg),
-    })), slope: null, intercept: null, v1rmEstimate: null, e1rmCrossCheck: null, n: anchors.length };
+    })), slope: null, intercept: null, v1rmEstimate: null, e1rmCrossCheck: null, n: anchors.length, mvt: null };
   }
 
   // Laske loadPct jokaiselle: suhteessa ikkunan max-kuormaan
@@ -1204,34 +1284,37 @@ function computeLoadVelocityProfile(sets, bodyweightKg, options = {}) {
   const sumXX = points.reduce((a, p) => a + p.loadPct * p.loadPct, 0);
   const denom = n * sumXX - sumX * sumX;
   if (denom === 0 || Math.abs(denom) < 1e-9) {
-    return { points, slope: null, intercept: null, v1rmEstimate: null, e1rmCrossCheck: null, n };
+    return { points, slope: null, intercept: null, v1rmEstimate: null, e1rmCrossCheck: null, n, mvt: null };
   }
   const slope = (n * sumXY - sumX * sumY) / denom;
   const intercept = (sumY - slope * sumX) / n;
 
-  // Velocity @100% 1RM (MVT = Minimum Velocity Threshold)
+  // Velocity @100% loadPct (sample-tason 100%-piste — "näytteen rajalla mitattu MVT-ennuste")
   const v1rmEstimate = slope * 1.0 + intercept;
 
-  // E1RM cross-check: jos meillä on Vx-pohjainen e1RM, laske velocity-pohjainen ja vertaa.
-  // Idea: hae setti jossa velocity lähinnä odotettua MVT-arvoa, laske sen kuorma / loadPct.
-  // Tämä on heuristiikka — kunnollinen toteutus tarvitsisi liikekohtaiset MVT-vakiot.
+  // v4.34.25: E1RM cross-check liike-spesifillä MVT:llä.
+  // Aiempi laskenta degeneroitui maxLoad-arvoon (regressio ohitettiin). Korjattu:
+  // regressio antaa loadPctAtMVT = (MVT - intercept) / slope, ja 1RM systemLoad =
+  // maxLoad × loadPctAtMVT. Extrapolointi yli sample-rangen (loadPctAtMVT > 1.0)
+  // sallittu — kertoo todelliseen 1RM:ään asti, ei pelkkä sample-max.
+  const mvt = (movementName && MOVEMENT_MVT[movementName] !== undefined)
+    ? MOVEMENT_MVT[movementName]
+    : DEFAULT_MVT;
   let e1rmCrossCheck = null;
-  if (currentE1RMExternal !== null && currentE1RMExternal > 0 && v1rmEstimate > 0) {
-    // Käytä regressiota: jokaisesta pisteestä estimoi 1RM = systemLoad / loadPctAtV1RM
-    // jossa loadPctAtV1RM = (velocity - intercept) / slope → palauttaa loadPct:n.
-    // Jos mallinnus on oikein, kaikki pisteet kertovat saman 1RM:n.
-    const estimates = points.map(p => {
-      const pctAt1RM = 1.0; // MVT-kohta
-      // Inverse: load at MVT = systemLoad / (p.loadPct / pctAt1RM) = systemLoad / p.loadPct
-      return p.systemLoadKg / p.loadPct;
-    }).filter(v => v > 0 && isFinite(v));
-    if (estimates.length > 0) {
-      const avgSystemAt1RM = estimates.reduce((a, b) => a + b, 0) / estimates.length;
-      e1rmCrossCheck = isBarbell ? avgSystemAt1RM : Math.max(0, avgSystemAt1RM - bodyweightKg);
+
+  // Sanity-tarkistukset:
+  // - slope pitää olla negatiivinen (velocity laskee load:n kasvaessa)
+  // - jos slope ≥ 0 tai liian lähellä nollaa → regressio epäluotettava
+  // - jos loadPctAtMVT ulkopuolelle [0.5, 2.5] → epärealistinen extrapolointi
+  if (slope < -0.01) {
+    const loadPctAtMVT = (mvt - intercept) / slope;
+    if (loadPctAtMVT > 0.5 && loadPctAtMVT < 2.5) {
+      const systemAt1RM = maxLoad * loadPctAtMVT;
+      e1rmCrossCheck = isBarbell ? systemAt1RM : Math.max(0, systemAt1RM - bodyweightKg);
     }
   }
 
-  return { points, slope, intercept, v1rmEstimate, e1rmCrossCheck, n };
+  return { points, slope, intercept, v1rmEstimate, e1rmCrossCheck, n, mvt };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1652,9 +1735,12 @@ async function recommend(options = {}) {
           s.reps === 1
         )
       : [];
+    // v4.34.25: pass movementName for liike-spesifi MVT-haku (Sánchez-Moreno 2017 jne.)
+    // primarySlotMeta?.defaultMovementName tunnetaan dayPlan-rakenteesta
     const lvProfile = computeLoadVelocityProfile(anchorSetsForLV, bodyweightKg, {
       isBarbell,
       currentE1RMExternal,
+      movementName: primarySlotMeta?.defaultMovementName || null,
     });
     if (lvProfile.n >= 3 && lvProfile.e1rmCrossCheck !== null) {
       const diffPct = (lvProfile.e1rmCrossCheck - currentE1RMExternal) / currentE1RMExternal;
@@ -3899,6 +3985,8 @@ export {
   hadFailureLastSession,
   // Load-velocity profile (v4.25.1 — Enode)
   computeLoadVelocityProfile,
+  MOVEMENT_MVT,
+  DEFAULT_MVT,
   // Readiness test
   readinessTestLoad,
   // Speed

@@ -13,7 +13,7 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
-const PROGRAM_BUILD_VERSION = "4.34.24";
+const PROGRAM_BUILD_VERSION = "4.34.25";
 
 // ── Store names ──
 const STORES = {
@@ -111,6 +111,28 @@ const CATEGORY_COLORS = {
   core:               "#8899bb",
   muu:                "#5a6a8a",
 };
+
+// v4.34.25: Isolation-liikkeiden tunnistus failureReaction()-yli-suojan välttämiseksi.
+// Käyttäjäpalaute: hauiskääntö 3×12 V3/V2/V0 → engine ei saa laukaista -2.5% ensi vk:lle
+// kun viim. sarjan V0 on hypertrofian normaali stimulus (RP/Israetel/Helms-konsensus).
+// Mukana sekä movement-category-arvot (PRESET_MOVEMENTS:n category-kentät) että
+// slot-funktio-tason kategoriat jotka resolvoituvat isolation-tyyppisiin liikkeisiin.
+const ISOLATION_CATEGORIES = new Set([
+  "hauisfleksio",        // hauiskääntö, preacher, hammer, spider, bayesian
+  "ojentaja-ext",        // tricep pushdown, overhead ext, kickback, skull crusher, french press
+  "calf-isolation",      // pohjenosto, standing/seated calf raise
+  "shoulder-isolation",  // sivunosto, lateral raise (kone), trap 3 raise, powell raise
+  "hamstring-isolation", // leg curl, nordic curl
+  "knee-dominant-isolation", // leg extension
+  "scapular-control",    // face pull, band pull-apart
+  "core-hollow",         // hollow body hold, ab wheel rollout, hanging leg raise, cable crunch
+  "core-antirotation",   // pallof press, bird dog, landmine anti-rotation
+]);
+
+function isIsolationMovement(movementCategory) {
+  if (!movementCategory) return false;
+  return ISOLATION_CATEGORIES.has(movementCategory);
+}
 
 // ── Preset movements (40+ across all categories) ──
 const PRESET_MOVEMENTS = [
@@ -5475,6 +5497,8 @@ export {
   MOVEMENT_DESCRIPTIONS,
   PRIMARY_VARIANTS,
   VARIANT_DAY_TYPE_MAP,
+  ISOLATION_CATEGORIES,
+  isIsolationMovement,
   // Utilities
   uid,
   nowISO,
