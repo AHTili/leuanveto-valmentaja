@@ -810,15 +810,29 @@ function mesocycleBreakReset(mesocycle, skippedWeeks) {
 function failureReaction(currentLoadKg, targetReps, isPrimary, consecutiveFailures, blockPhase = null, opts = {}) {
   // v4.34.25: Isolation-haara — etusija block-aware-logiikan EDESSÄ koska isolation-
   // luokitus pätee kaikissa blokeissa (foundation/strength/intensity/peaking).
+  // v4.34.28: Multi-set V0 -tunnistus (cowork-audit kohta 4.4 vaihtoehto c).
+  // opts.previousSetVxs = [V0, V0, V0] → kun 2+ peräkkäistä V0 isolaatiossa,
+  // ISO-NORMAL palauttaa lisäkentässä warning. Engine ei pakota mitään, mutta
+  // atleetti näkee soft-varoituksen "kuorma todennäköisesti liian raskas tällä
+  // kertaa". Ei nanny — atleetin valinta säilyy.
   if (opts.isIsolation === true && !isPrimary) {
+    const prevVxs = Array.isArray(opts.previousSetVxs) ? opts.previousSetVxs : [];
+    const consecutiveV0Count = prevVxs.filter(v => v === 0).length + 1; // +1 = nyt V0
+    const multiSetV0Warning = consecutiveV0Count >= 2
+      ? `⚠ ${consecutiveV0Count}/${prevVxs.length + 1} sarjaa V0 — kuorma todennäköisesti liian raskas tällä kerralla. Harkitse -2.5 kg seuraavalle sessiolle (atleetin valinta).`
+      : null;
     if (opts.isLastSet === true) {
       // Hypertrofian normaali stimulus — ei kevennystä, sarja loppuu joka tapauksessa
+      const baseMessage = "Isolation last-set V0 = OK · normaali hypertrofia-stimulus · ei kevennystä";
       return {
         nextSetLoad: currentLoadKg,
         nextSetReps: targetReps,
         shouldStop: true,  // viim. sarja, ei jatkettavaa
         strategy: "ISO-NORMAL",
-        message: "Isolation last-set V0 = OK · normaali hypertrofia-stimulus · ei kevennystä",
+        message: multiSetV0Warning
+          ? `${baseMessage}\n${multiSetV0Warning}`
+          : baseMessage,
+        warning: multiSetV0Warning,  // erillinen kenttä UI:lle (banner-render)
         nextWeekLoadAdjust: 0,
       };
     }
@@ -829,6 +843,7 @@ function failureReaction(currentLoadKg, targetReps, isPrimary, consecutiveFailur
       shouldStop: false,
       strategy: "ISO-MID",
       message: `Isolation V0 ennen viim. sarjaa → -5% loppusarjoihin (${roundToHalf(currentLoadKg * 0.95)} kg) · ei muutosta ensi vk:lle`,
+      warning: multiSetV0Warning,
       nextWeekLoadAdjust: 0,
     };
   }
@@ -1139,10 +1154,15 @@ function computeRateLimitAnchor(recentTopSets) {
   // Ota viim. 3 sessiota
   const recentSessionIds = sessionOrder.slice(-3);
 
-  // Kustakin sessiosta: median load + median Vx (suodata häiriöt)
+  // v4.34.28: Cal-sessioiden suodatus lastSession-haaraa varten (cowork-audit kohta 2.2 #2).
+  // Aiempi bug: vk 4/8/12 cal-sessio (V1 @92%×3) tunnistettiin "raskaaksi sessioksi" ja
+  // lastSession.medianVx = 1 → seuraava raskas-päivä target-Vx 2 = lastVxDelta +1 →
+  // useLastAnchor=true → rate-limit cap liian tiukka cal-vk:n jälkeen. Korjaus:
+  // tunnistetaan cal-sessiot per-profiili, ja last-haku ohittaa ne.
   const profiles = [];
   for (const sid of recentSessionIds) {
-    const sets = (sessionGroups.get(sid) || []).filter(s =>
+    const sessSets = sessionGroups.get(sid) || [];
+    const sets = sessSets.filter(s =>
       (s.externalLoadKg || 0) > 0 &&
       s.setRole !== "readiness_test" &&
       s.actualVx !== 0  // Vx0 = failure, ei käytetä ankkurina
@@ -1151,20 +1171,29 @@ function computeRateLimitAnchor(recentTopSets) {
     const medianLoad = median(sets.map(s => s.externalLoadKg));
     const vxVals = sets.map(s => s.actualVx ?? s.targetVx ?? 2).filter(v => v !== null && v !== undefined);
     const medianVx = vxVals.length ? median(vxVals) : 2;
-    profiles.push({ sessionId: sid, medianLoad, medianVx });
+    // Cal-sessio jos vähintään 50% setistä on cal-rolea (deload+cal-päivä on hybridi:
+    // muutama V4 deload-sarja + cal-sarja; cal dominoi merkitykseltään)
+    const calSets = sessSets.filter(s => s.setRole === "calibration");
+    const isCalibrationSession = calSets.length > 0 && calSets.length >= sets.length * 0.5;
+    profiles.push({ sessionId: sid, medianLoad, medianVx, isCalibrationSession });
   }
 
   if (profiles.length === 0) return null;
 
-  // Ankkuri = raskain median-load → deload/test-sessio ei vedä cappia alas
+  // Ankkuri = raskain median-load näistä → deload/test-sessio ei vedä cappia alas.
+  // Cal-sessiot SISÄLTYVÄT heaviest-anchoriin (cal-load voi legitimiivistä olla raskain).
   const anchor = profiles.reduce((best, p) => p.medianLoad > best.medianLoad ? p : best);
-  // Last-session-profiili — taso josta atleetti on viimeksi nostanut
-  const last = profiles[profiles.length - 1];
+  // Last-session-profiili — käytä viim. EI-cal-sessiota (cal-vk on hybridi joka
+  // vääristää lastVxDelta-laskennan: V1 cal → V2 raskas = +1 vaikka kuorma laskee).
+  const nonCalProfiles = profiles.filter(p => !p.isCalibrationSession);
+  const last = nonCalProfiles.length > 0
+    ? nonCalProfiles[nonCalProfiles.length - 1]
+    : profiles[profiles.length - 1];
   return {
     medianLoad: anchor.medianLoad,
     medianVx: anchor.medianVx,
     fromSessions: profiles.length,
-    lastSession: { medianLoad: last.medianLoad, medianVx: last.medianVx },
+    lastSession: { medianLoad: last.medianLoad, medianVx: last.medianVx, isCalibration: last.isCalibrationSession === true },
   };
 }
 
@@ -1316,6 +1345,112 @@ function computeLoadVelocityProfile(sets, bodyweightKg, options = {}) {
   }
 
   return { points, slope, intercept, v1rmEstimate, e1rmCrossCheck, n, mvt };
+}
+
+// v4.34.28: Vk 14 peaking decision-tree -kortin datapisteiden aggregointi
+// (cowork-audit kohta 3.4). Kortti näyttää atleetille 6-10 datapistettä joiden
+// pohjalta päättää vk 15 opener-rehearsaliin spesifi-intensiteetti (@93% vs @95%).
+// Aiempi rakenne: TEKSTI-muistiinpano TI vk 14:n primaryNotessa. Tämä on
+// rakenteellinen korvaaja jonka UI voi renderöidä.
+function computePeakingDecisionTreeCard(ctx) {
+  const { mesocycle, allSets, measurements, decisionTraces, currentE1RMExternal, primaryMovementId, dateISO, bodyweightKg } = ctx;
+  if (!mesocycle || !primaryMovementId) return null;
+  const wk = getMesocycleWeek(mesocycle, dateISO);
+  // Aktivoituu vk 14 alusta — 1 vk ennen opener-rehearsalia (vk 15)
+  if (wk !== 14) return null;
+
+  // Datapisteet:
+  // 1. Vk 12 cal-tulos (e1RM)
+  const calSets = (allSets || []).filter(s =>
+    s.movementId === primaryMovementId && s.setRole === "calibration"
+  );
+  const lastCal = calSets[calSets.length - 1] || null;
+  const calE1RM = lastCal && lastCal.externalLoadKg && lastCal.reps
+    ? Math.round(e1rmAccessory(lastCal.externalLoadKg, lastCal.reps, lastCal.actualVx ?? 1) * 10) / 10
+    : null;
+
+  // 2. Vk 12 → vk 14 e1RM-trendi (kasvanut/vakio/laskenut)
+  const e1rmTrendDelta = (calE1RM !== null && currentE1RMExternal !== null)
+    ? Math.round((currentE1RMExternal - calE1RM) * 10) / 10
+    : null;
+
+  // 3. HRV-trendi viim. 7 pv vs baseline
+  const hrvRecent = (measurements || [])
+    .filter(m => m.hrv != null)
+    .slice(-7);
+  const hrvAvg = hrvRecent.length > 0
+    ? Math.round((hrvRecent.reduce((a, m) => a + m.hrv, 0) / hrvRecent.length) * 10) / 10
+    : null;
+
+  // 4. MPV viim. mittaus
+  const mpvRecent = (measurements || []).filter(m => m.mpv != null);
+  const mpvLast = mpvRecent.length > 0 ? mpvRecent[mpvRecent.length - 1].mpv : null;
+
+  // 5. Bodyweight muutos vk 12 → vk 14
+  const bwMeasurements = (measurements || []).filter(m => m.bodyweightKg != null).slice(-14);
+  const bwDelta = bwMeasurements.length >= 2
+    ? Math.round((bwMeasurements[bwMeasurements.length - 1].bodyweightKg - bwMeasurements[0].bodyweightKg) * 10) / 10
+    : null;
+
+  // 6. Vk 12 cal-päivän actualVx-mediaani (kuinka helposti meni)
+  const lastCalVx = lastCal?.actualVx ?? null;
+
+  // 7. Velocity vk 12 cal-sessiossa (jos Enode käytössä)
+  const lastCalVelocity = lastCal?.velocityMean ?? null;
+
+  // 8. Decision-tracet vk 13-14 ajalta — onko E1RM_INFLATION_CAP, FAILURE_LOCKOUT laukennut?
+  const recentTraces = (decisionTraces || []).filter(t => {
+    if (!t.recId) return false;
+    return ["E1RM_INFLATION_CAP", "E1RM_DEFLATION_CAP", "FAILURE_LOCKOUT", "PROGRESSION_RATE_LIMIT"].includes(t.ruleId);
+  });
+  const ruleFreqRecent = {};
+  for (const t of recentTraces) {
+    ruleFreqRecent[t.ruleId] = (ruleFreqRecent[t.ruleId] || 0) + 1;
+  }
+
+  // 9. Predicted PR @95% vs @93% — paljonko kuorma eroaa absoluuttisesti
+  const load93 = currentE1RMExternal !== null ? Math.round(currentE1RMExternal * 0.93 * 4) / 4 : null;
+  const load95 = currentE1RMExternal !== null ? Math.round(currentE1RMExternal * 0.95 * 4) / 4 : null;
+
+  // 10. Suositus-tier perustuen datapisteisiin
+  const positiveSignals = [];
+  const negativeSignals = [];
+  if (e1rmTrendDelta !== null && e1rmTrendDelta > 2) positiveSignals.push(`e1RM noussut +${e1rmTrendDelta} kg vk 12:sta`);
+  else if (e1rmTrendDelta !== null && e1rmTrendDelta < -2) negativeSignals.push(`e1RM laskenut ${e1rmTrendDelta} kg vk 12:sta`);
+  if (lastCalVx !== null && lastCalVx >= 2) positiveSignals.push(`vk 12 cal Vx ${lastCalVx} (selvä margin)`);
+  else if (lastCalVx !== null && lastCalVx <= 0) negativeSignals.push(`vk 12 cal Vx ${lastCalVx} (failure)`);
+  if (ruleFreqRecent.FAILURE_LOCKOUT) negativeSignals.push(`FAILURE_LOCKOUT laukennut ${ruleFreqRecent.FAILURE_LOCKOUT}× viim. päätöksissä`);
+  if (ruleFreqRecent.E1RM_INFLATION_CAP) negativeSignals.push(`INFLATION_CAP rajoittanut ${ruleFreqRecent.E1RM_INFLATION_CAP}×`);
+
+  let recommendation = "neutral";
+  if (positiveSignals.length >= 2 && negativeSignals.length === 0) recommendation = "consider-95";
+  else if (negativeSignals.length >= 1) recommendation = "stay-93";
+
+  return {
+    week: 14,
+    datapoints: {
+      vk12CalE1RM: calE1RM,
+      vk12CalVx: lastCalVx,
+      vk12CalVelocity: lastCalVelocity,
+      currentE1RMExternal: currentE1RMExternal !== null ? Math.round(currentE1RMExternal * 10) / 10 : null,
+      e1rmTrendDelta,
+      hrvAvg7d: hrvAvg,
+      mpvLast,
+      bodyweightDelta: bwDelta,
+      ruleFreqRecent,
+      load93,
+      load95,
+    },
+    positiveSignals,
+    negativeSignals,
+    recommendation, // "consider-95" | "stay-93" | "neutral"
+    rationale: recommendation === "consider-95"
+      ? `Datapisteet tukevat @95%-yritystä: ${positiveSignals.join("; ")}.`
+      : recommendation === "stay-93"
+      ? `Pidä @93% — riskisignaaleja: ${negativeSignals.join("; ")}.`
+      : "Ei selvää signaalia — pidä @93% (default-konservatiivinen).",
+    note: "Päätös atleetilla, ei automaattinen. Pritchard 2016: peak-intensity 90-95% × 1.9±0.8 vk pre-comp.",
+  };
 }
 
 // v4.34.27: VBT (Velocity-Based Training) Reliability-portti.
@@ -1732,6 +1867,16 @@ async function recommend(options = {}) {
     ? (isBarbell ? currentE1RMSystem : Math.max(0, currentE1RMSystem - bodyweightKg))
     : null;
 
+  // v4.34.28: Ceiling/floor-arvot näkyvissä VBT-promote-clampille (kohta 1).
+  // Aiemmin nämä olivat let-muuttujia INFLATION_CAP- ja DEFLATION_CAP-blokkien
+  // sisällä → VBT-haara (rivi ~1913) ohitti capit. Bug: jos velocity-pohjainen
+  // e1RM oli 4% yli capatun arvon, VBT_PRIMARY_USED nosti currentE1RMExternal
+  // takaisin yli capin. Korjaus: ceiling_ext ja floor_ext ovat nyt funktioscope:ssa.
+  let ceiling_ext = null;
+  let ceilingSource = null;
+  let floor_ext = null;
+  let floorSource = null;
+
   // v4.34.15 FIX #1: E1RM-INFLAATION CAP — Epley + Vara -kaava ylimitatoi 1RM:n
   // varsinkin korkeilla toistoilla (V3+ × 6 reps → +20 % seedista yhden session perusteella).
   // Käyttäjäpalaute simulaatiosta: "vk 1 e1RM 106 vs todellinen ~89 — vk 8 cal yli PR".
@@ -1748,8 +1893,6 @@ async function recommend(options = {}) {
   if (currentE1RMExternal !== null && primaryMovementId) {
     const allCalSets = topSets.filter(s => s.setRole === "calibration");
     const recentCalForCeiling = allCalSets.slice(-3); // viim. 3 cal-settiä
-    let ceiling_ext = null;
-    let ceilingSource = null;
 
     if (recentCalForCeiling.length > 0) {
       // Käytä viim. cal-setin e1RM:ää × 1.05
@@ -1809,8 +1952,6 @@ async function recommend(options = {}) {
     if (currentE1RMExternal !== null && primaryMovementId) {
       const allCalSetsForFloor = topSets.filter(s => s.setRole === "calibration");
       const recentCalForFloor = allCalSetsForFloor.slice(-3);
-      let floor_ext = null;
-      let floorSource = null;
 
       if (recentCalForFloor.length > 0) {
         const calE1RMsFloor = recentCalForFloor.map(s => {
@@ -1910,13 +2051,23 @@ async function recommend(options = {}) {
     });
     if (vbtStatus.status === "promoted" && vbtStatus.recommendedE1RM !== null) {
       const oldE1RM = currentE1RMExternal;
-      currentE1RMExternal = vbtStatus.recommendedE1RM;
+      // v4.34.28: Clamp velocity-pohjainen e1RM cap-rajoihin (cowork-audit kohta 2.2 #1).
+      // Aiempi bug: jos diff < 5% ja velocity-arvio yli ceiling-capin, VBT-promote nosti
+      // e1RM:n yli capin. Korjaus: clampataan ceiling/floor-arvoihin jos ne määritelty.
+      let proposedE1RM = vbtStatus.recommendedE1RM;
+      const beforeClamp = proposedE1RM;
+      if (ceiling_ext !== null) proposedE1RM = Math.min(proposedE1RM, ceiling_ext);
+      if (floor_ext !== null)   proposedE1RM = Math.max(proposedE1RM, floor_ext);
+      const wasClamped = proposedE1RM !== beforeClamp;
+      currentE1RMExternal = proposedE1RM;
       currentE1RMSystem = isBarbell ? currentE1RMExternal : (currentE1RMExternal + bodyweightKg);
       trace("VBT_PRIMARY_USED",
         { e1rmExternal: oldE1RM.toFixed(1), source: "vx-pohjainen" },
         { e1rmExternal: currentE1RMExternal.toFixed(1), source: "velocity-promoted",
-          anchorCount: vbtStatus.anchorCount, diffPct: (vbtStatus.diffPct * 100).toFixed(1) + "%" },
-        `VBT promotettu: ${vbtStatus.anchorCount} ankkuripistettä · ±${(vbtStatus.diffPct * 100).toFixed(1)}% diff ≤ 5% → e1RM ${oldE1RM.toFixed(1)} → ${currentE1RMExternal.toFixed(1)} kg (velocity-pohjainen)`);
+          anchorCount: vbtStatus.anchorCount, diffPct: (vbtStatus.diffPct * 100).toFixed(1) + "%",
+          clampedToCeiling: wasClamped && ceiling_ext !== null && proposedE1RM === ceiling_ext,
+          clampedToFloor: wasClamped && floor_ext !== null && proposedE1RM === floor_ext },
+        `VBT promotettu: ${vbtStatus.anchorCount} ankkuripistettä · ±${(vbtStatus.diffPct * 100).toFixed(1)}% diff → e1RM ${oldE1RM.toFixed(1)} → ${currentE1RMExternal.toFixed(1)} kg (velocity-pohjainen)${wasClamped ? ` [clampattu: ${beforeClamp.toFixed(1)} → ${proposedE1RM.toFixed(1)}]` : ""}`);
     } else if (vbtStatus.status === "candidate") {
       trace("VBT_CANDIDATE", {},
         { anchorCount: vbtStatus.anchorCount, diffPct: vbtStatus.diffPct !== null ? (vbtStatus.diffPct * 100).toFixed(1) + "%" : "n/a" },
@@ -3811,6 +3962,29 @@ function generateBlockTuningPackage(ctx) {
     failureCount: anomalies.filter(a => a.type === "failure-primary").length,
   };
 
+  // v4.34.28: deltaPctBase per blokki-vk + decisionTraces-yhteenveto (cowork-audit kohta 1.1).
+  // AI ei voi nyt nähdä mitkä engine-säännöt rajoittivat blokkia → suosittelee jo-rajattuja
+  // muutoksia "stagnaation korjaukseksi". Korjaus: lisää frequency-aggregaatti per rule-id.
+  const blockDeltaPctBase = block.prevWeeks.map(w => {
+    const wd = mesocycle.weekDefs?.find(wd => wd.week === w);
+    return { week: w, deltaPctBase: wd?.deltaPctBase ?? null, label: wd?.label || null,
+             heavyReps: wd?.heavyReps ?? null, heavyTargetVx: wd?.heavyTargetVx ?? null };
+  });
+  // Trace-frequency aggregointi (kerää rule-id-laskurit blokin sessioista)
+  const blockSessionIds = new Set(prevBlockSessions.map(s => s.sessionId));
+  const blockTraces = (decisionTraces || []).filter(t => {
+    // recId-yhteys session:iin — käytä recId:n associated rec:in dateISO:ta jos saatavilla
+    return t.recId; // hyväksy kaikki — filter on best-effort
+  });
+  const traceFrequency = {};
+  for (const t of blockTraces) {
+    if (!t.ruleId) continue;
+    traceFrequency[t.ruleId] = (traceFrequency[t.ruleId] || 0) + 1;
+  }
+  const traceFrequencySorted = Object.entries(traceFrequency)
+    .sort((a, b) => b[1] - a[1])
+    .map(([ruleId, count]) => ({ ruleId, count }));
+
   // ── Seuraavan blokin prescribed ──
   const wp = mesocycle.weekPlans || [];
   const nextBlockPrescribed = block.nextWeeks.map(nw => {
@@ -3847,6 +4021,9 @@ function generateBlockTuningPackage(ctx) {
       trends,
       anomalies,
       aggregates,
+      // v4.34.28: deltaPctBase per vk + engine-rule-frequency (cowork-audit kohta 1.1)
+      deltaPctBase: blockDeltaPctBase,
+      engineRuleFrequency: traceFrequencySorted,
     },
     upcomingBlock: {
       name: block.nextBlock,
@@ -4206,6 +4383,20 @@ function generateEndOfCycleTuningPackage(ctx) {
     vxMismatchCount: anomalies.filter(a => a.type === "vx-mismatch").length,
   };
 
+  // v4.34.28: deltaPctBase per vk + engine-rule-frequency koko sykliltä (cowork-audit kohta 1.1)
+  const cycleDeltaPctBase = (mesocycle.weekDefs || []).map(wd => ({
+    week: wd.week, deltaPctBase: wd.deltaPctBase ?? null, label: wd.label || null,
+    heavyReps: wd.heavyReps ?? null, heavyTargetVx: wd.heavyTargetVx ?? null,
+  }));
+  const cycleTraceFreq = {};
+  for (const t of (decisionTraces || [])) {
+    if (!t.ruleId) continue;
+    cycleTraceFreq[t.ruleId] = (cycleTraceFreq[t.ruleId] || 0) + 1;
+  }
+  const cycleTraceFreqSorted = Object.entries(cycleTraceFreq)
+    .sort((a, b) => b[1] - a[1])
+    .map(([ruleId, count]) => ({ ruleId, count }));
+
   // ── Markdown-narratiivi ──
   const markdown = buildEndOfCycleMarkdown({
     profile, currentWeek: wk || weekCount, weekCount, sessionAnalysis,
@@ -4215,7 +4406,7 @@ function generateEndOfCycleTuningPackage(ctx) {
   // ── JSON-data (Claude/AI:lle) ──
   const json = {
     meta: {
-      version: "4.34.27",
+      version: "4.34.28",
       generatedAt: new Date().toISOString(),
       currentWeek: wk,
       weekCount,
@@ -4227,6 +4418,9 @@ function generateEndOfCycleTuningPackage(ctx) {
       weeks: Array.from({ length: weekCount }, (_, i) => i + 1),
       sessions: sessionAnalysis,
       e1rmTrends, trends, anomalies, aggregates,
+      // v4.34.28: deltaPctBase + engineRuleFrequency
+      deltaPctBase: cycleDeltaPctBase,
+      engineRuleFrequency: cycleTraceFreqSorted,
     },
   };
 
@@ -4492,6 +4686,7 @@ export {
   VBT_MIN_ANCHORS,
   VBT_PROMOTE_THRESHOLD,
   VBT_DEMOTE_THRESHOLD,
+  computePeakingDecisionTreeCard,
   // Readiness test
   readinessTestLoad,
   // Speed

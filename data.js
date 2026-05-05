@@ -13,7 +13,7 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
-const PROGRAM_BUILD_VERSION = "4.34.27";
+const PROGRAM_BUILD_VERSION = "4.34.28";
 
 // ── Store names ──
 const STORES = {
@@ -1799,6 +1799,58 @@ async function saveDecisionTrace(trace) {
 
 async function getTracesForRec(recId) {
   return dbGetByIndex(STORES.decisionTraces, "recId", recId);
+}
+
+// v4.34.28: decisionTraces retention + purge (cowork-audit jokerikysymys).
+// IDB-store paisuu rajatta — yksi recommend()-kutsu generoi 10-30 trace-objektia,
+// ~1-5 MB / sykli (16 vk). 5 syklin jälkeen ~25 MB, IndexedDB-haku hitaastuu O(n).
+// Purge: säilytä viim. N päivää (default 90 = ~3 sykliä, riittää End-of-Cycle-Tuningille).
+const DEFAULT_TRACE_RETENTION_DAYS = 90;
+
+async function purgeOldDecisionTraces(retainDays = DEFAULT_TRACE_RETENTION_DAYS) {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - retainDays);
+  const cutoffMs = cutoff.getTime();
+
+  const all = await dbGetAll(STORES.decisionTraces);
+  // Trace-objektissa ei ole timestampia suoraan — käytetään associated rec:in dateISO:ta.
+  // Jos rec ei löydy (deletoitu), purge säilyttää orphan-tracet (turvallinen default).
+  const allRecs = await dbGetAll(STORES.recommendations);
+  const recDateMap = new Map();
+  for (const r of allRecs) recDateMap.set(r.recId, r.dateISO || r.createdAtISO);
+
+  let purged = 0;
+  for (const trace of all) {
+    const recDateStr = recDateMap.get(trace.recId);
+    if (!recDateStr) continue; // orphan trace, säilytä
+    const recMs = new Date(recDateStr).getTime();
+    if (Number.isNaN(recMs)) continue;
+    if (recMs < cutoffMs) {
+      await dbDelete(STORES.decisionTraces, trace.traceId);
+      purged++;
+    }
+  }
+  return { purged, total: all.length, cutoffISO: cutoff.toISOString().slice(0, 10) };
+}
+
+// Trigger automaattinen purge kerran/vk (linkitetään backup-reminder-rytmiin).
+// localStorage-key tracen viim. purge-päivämäärälle.
+async function maybeAutoPurgeTraces(retainDays = DEFAULT_TRACE_RETENTION_DAYS) {
+  const LS_KEY = "leve_last_trace_purge_iso";
+  const todayISOArg = todayISO();
+  const lastPurge = (typeof localStorage !== "undefined") ? localStorage.getItem(LS_KEY) : null;
+  if (lastPurge) {
+    const daysSince = (new Date(todayISOArg).getTime() - new Date(lastPurge).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSince < 7) return null; // ajetaan max 1×/vk
+  }
+  try {
+    const result = await purgeOldDecisionTraces(retainDays);
+    if (typeof localStorage !== "undefined") localStorage.setItem(LS_KEY, todayISOArg);
+    return result;
+  } catch (e) {
+    console.warn("[data.js] Trace auto-purge failed:", e);
+    return null;
+  }
 }
 
 // Movement Progress
@@ -5268,19 +5320,46 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     //    motor groove ensisijainen, paused squat -spesifisyys tarpeeton.
     // v4.28.0 (H2): phase="peaking" → MA/TI/TO saavat tiivistetyn peaking-warmupin
     //    (singles-focused neural primer, ei hypertrofia-blokin laajaa prehabia).
+    // v4.34.28: Vk 13 = MÖKKI / aktiivinen palautuminen (käyttäjäpalaute 2026-05-05).
+    // Atleetti palaa mökiltä vk 12-13 jälkeen — vk 13 ei ole varsinainen treeni-vk.
+    // Samalla saadaan Bosquet 2007 -sweet-spot-taperi (14 vrk = vk 14-15) cowork-auditin
+    // kohdan 3.2 mukaisesti (aiempi 28 vrk taper ylitti Bosquet-ylärajan).
+    //
+    // Ohjelma tarjoaa kevyttä aktiivista palautumista — ei kuormaa, ei intensiteettiä.
+    // Atleetti voi tehdä tai jättää tekemättä; lähinnä muistutus liikkua kevyesti.
+    // Aiempi vk 13 realization-sisältö siirtynyt vk 14:ään (peaking 1).
     { week:13, days:[
-      // Realization: 3×2 @92% V1 + finisher (ei pullAcc/pushAcc/lowerAcc).
-      // Alkuperäinen vk 13 oli 3×2 @92% + backoff 3×3 @75% V2, mikä teki
-      // realization-viikosta volyymipiikin — taperin logiikka rikki.
-      // Evidenssi: Bosquet 2007 taper meta-analyysi, Stone 2000 block periodization.
-      // v4.25 P1-6: backoff poistettu. Top @93% antaa intensiteettiärsykkeen fatiikattomasti.
-      // v4.32.9 M14: top single heavy-first (vk 13 realization — CNS-fresh kriittinen PR-validointiin)
-      maDay("MA — Top@93% (heavy-first) + Realization 3×2 @92% + finisher",       3,2,1, 0.92, null, 0.93, finisherAcc("taper-aktivointi"), undefined, "peaking", undefined, undefined, undefined, undefined, true),
-      tiDay("TI — Top@93% (heavy-first) + Realization kyykky 3×2 @92% + finisher", 3,2,1, 0.92, 0.93, finisherAcc("taper-aktivointi"), tiBackoffKisastyle(0.74), "peaking", undefined, true),
-      toDay("TO — Top@93% (heavy-first) + Realization 3×2 @92% + finisher",       3,2,1, 0.92, null, 0.93, finisherAcc("taper-aktivointi"), undefined, "peaking", true),
-      laDay("LA — MU +15 kg + kisakyykky kevyt", 15, 3, "+15 kg — competition ready (3 sarjaa, ei 4)", 2, FS.w13),
+      { dayOfWeek:1, dayType:"speed", label:"MA — 🌲 Mökki: aktiivinen palautuminen",
+        warmup: [
+          { name: "Kävely", desc: "20-30 min reippaasti — verenkierto + nivelnesteet" },
+        ],
+        slots: [
+          { role:"accessory", category:"muu", defaultMovementName:"Kevyt liikkuvuus",
+            sets:1, reps:10, targetVx:5, suggestedLoadKg:0,
+            note:"Hartiarullaus, lonkka 90/90, T-rangan rotaatio · 5-10 min · ei kuormaa" },
+        ],
+      },
+      { dayOfWeek:3, dayType:"speed", label:"KE — 🌲 Mökki: kevyt body weight",
+        warmup: [
+          { name: "Lämmittely", desc: "5 min kävely + dynaaminen venyttely" },
+        ],
+        slots: [
+          { role:"accessory", category:"muu", defaultMovementName:"BW liikkuvuus + skapula",
+            sets:2, reps:10, targetVx:5, suggestedLoadKg:0,
+            note:"Push-up plus + scapular pull-up + glute bridge — 2 kierrosta, V5 (ei väsymystä)" },
+        ],
+      },
+      { dayOfWeek:5, dayType:"speed", label:"PE — 🌲 Mökki: lepopäivä",
+        warmup: [],
+        slots: [],
+      },
     ]},
     { week:14, days:[
+      // v4.34.28 PÄIVITYS: Vk 13 on nyt MÖKKILEPO (ei realization). Vk 14 on paluu mökiltä —
+      // kevyt mutta intensiivinen peaking-vk joka aktivoi CNS:n vk 15 opener-rehearsaliin.
+      // Bosquet 2007: 14 vrk taper sweet-spot = vk 14 + vk 15 (kisapäivä la vk 16).
+      // Pritchard 2016: peak-intensity 90-95% × 1.9±0.8 vk pre-comp = vk 14-15 ✓.
+      //
       // v4.25 P1-7: Peaking intensiteetti 97% → 93% (97% 12 pv ennen kisaa liian raskas,
       // Zourdos 2016 tapering, Stone 2000). PR-yritys tulee kisapäivänä.
       // Finisher minimal = vain 1 slot, 2×12 kevyt.
@@ -5290,17 +5369,14 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       //      ei 100 %. Israetel/JTS: "1-3 reps norm through taper". Pieni
       //      motor-pattern-säilytys-backoff pitää bar-feel + barbell-käyrän alaosan
       //      refleksin lämpiminä ilman CNS-fatiguen lisäystä.
-      //   2) DECISION-TREE NOTE: jos vk 13 realization @92% V0-V1 selvällä margin'illa,
-      //      harkitse vk 14 primary-pct nostoa @95%:iin (190 kg seed, 200 kg-tavoite).
-      //      Tämä on autoregulation-päätös atleetilla, ei automaattinen.
-      maDay("MA — Peaking 2×1 @93% + kevyt",       2,1,1, 0.93, null, null, finisherMinimal("kevyt"), undefined, "peaking"),
-      // TI vk 14: lisätty 1×3 @60% V4 motor-pattern -backoff (Bosquet 2007, JTS Israetel)
-      // primaryNote: decision-tree autoregulation vaiheen 2 syvätutkimuksen mukaan
+      //   2) DECISION-TREE NOTE (v4.34.28 päivitetty): atleetin oma päätös
+      //      perustuu vk 12 cal-tuloksiin + mökiltä-paluun palautumiseen, ei vk 13:een.
+      maDay("MA — Peaking 2×1 @93% + kevyt (paluu mökiltä)",       2,1,1, 0.93, null, null, finisherMinimal("kevyt"), undefined, "peaking"),
       tiDay("TI — Peaking kyykky 2×1 @93% + 1×3 motor-pattern + kevyt", 2,1,1, 0.93, null, finisherMinimal("kevyt"),
         { style: "regular", pct: 0.60, sets: 1, reps: 3, targetVx: 4, note: "Motor-pattern-säilytys 1×3 @60% — kevyt, EI grindiä, pidetään bar-feel kisaa varten" },
         "peaking",
-        "🎯 PEAKING DECISION-TREE: jos vk 13 realization @92% meni V0-V1 selvällä margin'illa → harkitse nostoa @95% (~190 kg). Pidä @93% jos vk 13 oli V2+ tai epävarma. Päätös atleetilla, ei automaattinen. Pritchard 2016: peak-intensity 90-95% 1.9±0.8 vk ennen kisaa."),
-      toDay("TO — Peaking 2×1 @93% + kevyt",       2,1,1, 0.93, null, null, finisherMinimal("kevyt"), undefined, "peaking"),
+        "🎯 PEAKING DECISION-TREE: vk 13 oli MÖKKILEPO (ei realizationia). Mökiltä-paluu = kevyt mutta intensiivinen aktivointi. Jos vk 12 cal antoi >+5% e1RM-nousun ja palautuminen tuntuu täydelliseltä → harkitse 1 ekstra-sarja @95% V1 LA-päivän opener-rehearsalissa. Päätös atleetilla, ei automaattinen. Pritchard 2016: peak-intensity 90-95% 1.9±0.8 vk ennen kisaa = vk 14-15."),
+      toDay("TO — Peaking 2×1 @93% + kevyt (paluu mökiltä)",       2,1,1, 0.93, null, null, finisherMinimal("kevyt"), undefined, "peaking"),
       laDay("LA — MU opener rehearsal + kisakyykky kevyt", 15, 3, "Opener harjoitus +15 kg (V2 — tekniikka edellä)", 2, FS.w14),
     ]},
     { week:15, days:[
@@ -5657,6 +5733,9 @@ export {
   saveRecommendation,
   // Decision Traces
   saveDecisionTrace,
+  purgeOldDecisionTraces,
+  maybeAutoPurgeTraces,
+  DEFAULT_TRACE_RETENTION_DAYS,
   getTracesForRec,
   // Movement Progress
   getMovementProgress,

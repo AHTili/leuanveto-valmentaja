@@ -20,6 +20,7 @@ import {
   MOVEMENT_MVT,
   recommend,
   computeVBTPromotionStatus,
+  computeRateLimitAnchor,
 } from "./engine.js";
 
 import {
@@ -346,6 +347,32 @@ function testFailureReaction() {
   const primaryRefoundation = failureReaction(70, 3, true, 1, "foundation", { isIsolation: false, isLastSet: true });
   assertEqual(primaryRefoundation.strategy, "A", "Primary foundation V0 ennallaan: Strategia A");
   assertEqual(primaryRefoundation.nextWeekLoadAdjust, -0.025, "Primary foundation V0: -2.5% ensi vk (säilyy)");
+
+  // v4.34.28: Multi-set V0 isolation soft-warning (cowork-audit kohta 4.4 vaihtoehto c)
+  // Skenaario E: 1 V0 (sarja 3/3) — ei warning vielä (vain yksi V0)
+  const isoOneV0 = failureReaction(16, 12, false, 1, "foundation",
+    { isIsolation: true, isLastSet: true, previousSetVxs: [3, 2] });
+  assertEqual(isoOneV0.strategy, "ISO-NORMAL", "Isolation 1× V0 viim. sarjassa: ISO-NORMAL");
+  assert(!isoOneV0.warning, "Isolation 1× V0: ei warning (3/2/0 = vain 1 V0)");
+
+  // Skenaario F: 2 V0 (sarja 2 V0, sarja 3 V0) — warning näkyviin
+  const isoTwoV0 = failureReaction(16, 12, false, 1, "foundation",
+    { isIsolation: true, isLastSet: true, previousSetVxs: [3, 0] });
+  assertEqual(isoTwoV0.strategy, "ISO-NORMAL", "Isolation 2× V0: edelleen ISO-NORMAL (last-set V0 OK)");
+  assert(typeof isoTwoV0.warning === "string" && isoTwoV0.warning.includes("2/3"),
+    "Isolation 2× V0: warning sisältää '2/3 sarjaa V0'");
+  assertEqual(isoTwoV0.nextWeekLoadAdjust, 0, "Isolation 2× V0: edelleen ei kevennystä ensi vk:lle (warning vain pehmeä)");
+
+  // Skenaario G: 3/3 V0 (kaikki sarjat V0) — vahvempi warning
+  const isoThreeV0 = failureReaction(16, 12, false, 1, "foundation",
+    { isIsolation: true, isLastSet: true, previousSetVxs: [0, 0] });
+  assertEqual(isoThreeV0.strategy, "ISO-NORMAL", "Isolation 3/3 V0: ISO-NORMAL säilyy");
+  assert(typeof isoThreeV0.warning === "string" && isoThreeV0.warning.includes("3/3"),
+    "Isolation 3/3 V0: warning sisältää '3/3 sarjaa V0'");
+
+  // v4.34.28: Bugi #1 — VBT × CAP -mutaatioketju ei ole testattavissa suoraan
+  // failureReaction-funktion kautta (se on recommend()-tason haara). Skenariotestit
+  // S11 + S12 alla testaavat tämän recommend()-funktiossa.
 }
 
 function testNewMovementInitialWeight() {
@@ -752,6 +779,44 @@ async function testRecommendScenarios() {
   });
 }
 
+// v4.34.28: computeRateLimitAnchor cal-suodatus (cowork-audit kohta 2.2 #2).
+// Aiempi bug: cal-sessio (V1 @92%×3) tunnistettiin "raskaaksi" → lastSession.medianVx=1
+// → seuraava raskas-päivä target V2 = lastVxDelta +1 → cap liian tiukka cal-vk:n jälkeen.
+function testRateLimitAnchorCalFiltering() {
+  // Tilanne: viim. 3 sessiota — vk 5 raskas, vk 6 raskas, vk 4 cal (ennen näitä).
+  // Cal V1 ei saa olla "last session" anchor.
+  const heavySession1 = [
+    { sessionId: "s1", externalLoadKg: 60, actualVx: 2, setRole: "top", timestamp: "2026-01-05" },
+    { sessionId: "s1", externalLoadKg: 60, actualVx: 2, setRole: "top", timestamp: "2026-01-05" },
+  ];
+  const heavySession2 = [
+    { sessionId: "s2", externalLoadKg: 65, actualVx: 2, setRole: "top", timestamp: "2026-01-12" },
+    { sessionId: "s2", externalLoadKg: 65, actualVx: 2, setRole: "top", timestamp: "2026-01-12" },
+  ];
+  const calSession = [
+    { sessionId: "s3", externalLoadKg: 75, actualVx: 1, setRole: "calibration", timestamp: "2026-01-19" },
+    { sessionId: "s3", externalLoadKg: 75, actualVx: 1, setRole: "calibration", timestamp: "2026-01-19" },
+  ];
+  const allSets = [...heavySession1, ...heavySession2, ...calSession];
+  const anchor = computeRateLimitAnchor(allSets);
+
+  assert(anchor !== null, "Anchor: laskettu kolmesta sessiosta");
+  // heaviest = cal-sessio (75 > 65 > 60) — cal sisältyy heaviest-anchoriin (legitimiivinen)
+  assertEqual(anchor.medianLoad, 75, "Heaviest anchor: cal-sessio sisältyy (75 kg)");
+  // last session non-cal: heavySession2 (65 kg, V2)
+  assertEqual(anchor.lastSession.medianLoad, 65, "Last (ei-cal) session: 65 kg (heavySession2)");
+  assertEqual(anchor.lastSession.medianVx, 2, "Last (ei-cal) session Vx: 2 (ei cal V1)");
+  assertEqual(anchor.lastSession.isCalibration, false, "Last session ei ole cal");
+
+  // Toinen tilanne: kaikki sessiot cal — fallback last = viim. cal-sessio
+  const allCal = [
+    { sessionId: "c1", externalLoadKg: 70, actualVx: 1, setRole: "calibration", timestamp: "2026-01-05" },
+    { sessionId: "c2", externalLoadKg: 75, actualVx: 1, setRole: "calibration", timestamp: "2026-01-19" },
+  ];
+  const anchorAllCal = computeRateLimitAnchor(allCal);
+  assertEqual(anchorAllCal.lastSession.isCalibration, true, "Kaikki cal: last on cal (fallback)");
+}
+
 // v4.34.27: VBT (Velocity-Based Training) Reliability-portti.
 // Kohta 4: ennen kuin velocity-pohjainen e1RM voi haastaa Vx-pohjaisen primary-
 // haarana, sen pitää osoittaa luotettavuutensa: n ≥ 10 ankkuripistettä viim.
@@ -948,6 +1013,7 @@ export async function runTests() {
   testBackupReminderLogic();
   testMaintenanceStatus();
   testVBTPromotionStatus();
+  testRateLimitAnchorCalFiltering();
   await testRecommendScenarios();
   await testBackupRoundtrip();
 

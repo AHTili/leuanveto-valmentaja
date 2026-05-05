@@ -762,6 +762,7 @@ import {
   getBackupStatus, getAllBackupSnapshots, createBackupSnapshot, restoreFromSnapshot,
   // v4.34.6: persistent storage + pre-rebuild snapshot + Monday snap
   requestPersistentStorage, createPreRebuildSnapshot, snapToMostRecentMonday, maybeCreateWeeklyBackup,
+  purgeOldDecisionTraces, maybeAutoPurgeTraces, DEFAULT_TRACE_RETENTION_DAYS,
   // v4.34.7: orphan-mesocycle cleanup
   cleanupOrphanMesocycles,
   parseCSV, importHistoricalCSV,
@@ -800,6 +801,8 @@ import {
   generateBlockTuningPackage,
   // v4.34.27 End-of-Cycle Tuning
   generateEndOfCycleTuningPackage,
+  // v4.34.28 Vk 14 peaking decision-tree
+  computePeakingDecisionTreeCard,
   REST_RECOMMENDATIONS,
   pickRestForExercise,
   DEFAULT_VARIANT_MODIFIERS,
@@ -897,6 +900,16 @@ async function init() {
     }
   } catch (e) {
     console.error("[LeVe] startup snapshot failed:", e);
+  }
+  // v4.34.28: Auto-purge old decision traces (cowork-audit jokerikysymys).
+  // Säilytä viim. 90 päivää (~3 sykliä), purge ajetaan max 1×/vk localStorage-checkillä.
+  try {
+    const purgeResult = await maybeAutoPurgeTraces(state.settings?.traceRetentionDays || 90);
+    if (purgeResult && purgeResult.purged > 0) {
+      console.info(`[LeVe] ✓ Decision traces auto-purged: ${purgeResult.purged}/${purgeResult.total} (cutoff ${purgeResult.cutoffISO})`);
+    }
+  } catch (e) {
+    console.warn("[LeVe] decisionTraces auto-purge failed:", e);
   }
   // v4.26.0: backup-status dashboard-indikaattoria varten
   state.backupStatus = await getBackupStatus();
@@ -2336,6 +2349,7 @@ function renderDashboard() {
 
     ${breakHTML}
     ${renderMaintenanceBanner()}
+    ${renderPeakingDecisionTreeCard()}
     ${missedBannerHTML}
     ${renderExternalBackupReminderBanner()}
 
@@ -2445,6 +2459,85 @@ async function renderBackupSnapshotsList() {
   } catch (e) {
     container.innerHTML = `<div style="color:var(--bad)">Virhe ladatessa snapshoteja</div>`;
   }
+}
+
+// v4.34.28: Vk 14 peaking decision-tree -kortti (cowork-audit kohta 3.4).
+// Korvaa nykyisen TI vk 14:n primaryNote-merkkijonon interaktiivisella kortilla.
+// Aktivoituu vk 14 alussa ja pysyy näkyvissä kunnes käyttäjä on tehnyt valinnan
+// (@93% pidetään / @95% nostetaan). Päätös tallennetaan localStorage:en jotta
+// se näkyy LA-päivän opener-rehearsalin yhteydessä.
+function renderPeakingDecisionTreeCard() {
+  // Kortti näkyy vain jos rec.weekNum === 14 ja primary on streetlifting_16w
+  if (state.recommendation?.weekNum !== 14) return "";
+  if (state.mesocycle?.type !== "streetlifting_16w") return "";
+
+  const ctx = {
+    mesocycle: state.mesocycle,
+    allSets: state.allSets || [],
+    measurements: state.measurements || [],
+    decisionTraces: state.decisionTraces || [],
+    currentE1RMExternal: state.recommendation?.e1rmExternal,
+    primaryMovementId: state.recommendation?.dayPlan?.slots?.find(s => s.role === "primary")?.movementId
+      || state.movements?.find(m => m.isPrimary)?.movementId,
+    dateISO: todayISO(),
+    bodyweightKg: state.settings?.bodyweightKg || 91,
+  };
+  const card = computePeakingDecisionTreeCard(ctx);
+  if (!card) return "";
+
+  const stored = localStorage.getItem("leve_vk14_decision");
+  const decision = stored ? JSON.parse(stored) : null;
+
+  const recommendationLabel = card.recommendation === "consider-95"
+    ? `<span style="color:var(--ok)">📈 Harkitse @95%</span>`
+    : card.recommendation === "stay-93"
+    ? `<span style="color:var(--warn)">🛑 Pidä @93%</span>`
+    : `<span style="color:var(--muted)">⚖ Neutraali (default @93%)</span>`;
+
+  const dp = card.datapoints;
+  return `<div class="card" style="margin:8px 0;border:1px solid rgba(168,85,247,0.4);background:linear-gradient(135deg,rgba(168,85,247,0.06),rgba(99,102,241,0.04))">
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>🎯 Vk 14 peaking decision-tree</span>
+      ${decision ? `<span class="chip chip-acc" style="font-size:10px">Päätös: ${decision.choice}</span>` : ""}
+    </div>
+    <div class="muted" style="font-size:11px;margin-bottom:10px;line-height:1.5">
+      Päätä vk 15 opener-rehearsal -intensiteetti datapohjaisesti. Pritchard 2016: peak-intensity 90-95% × 1.9±0.8 vk pre-comp.
+    </div>
+    <div style="font-size:12px;line-height:1.7;margin-bottom:10px">
+      <div><b>Datapisteet:</b></div>
+      ${dp.vk12CalE1RM !== null ? `<div>· Vk 12 cal e1RM: <b>${dp.vk12CalE1RM} kg</b> (Vx${dp.vk12CalVx ?? "?"}${dp.vk12CalVelocity ? ` · ${dp.vk12CalVelocity.toFixed(2)} m/s` : ""})</div>` : ""}
+      ${dp.currentE1RMExternal !== null ? `<div>· Nykyinen e1RM: <b>${dp.currentE1RMExternal} kg</b>${dp.e1rmTrendDelta !== null ? ` (${dp.e1rmTrendDelta >= 0 ? "+" : ""}${dp.e1rmTrendDelta} kg vk 12:sta)` : ""}</div>` : ""}
+      ${dp.hrvAvg7d !== null ? `<div>· HRV 7 pv keskiarvo: <b>${dp.hrvAvg7d} ms</b></div>` : ""}
+      ${dp.mpvLast !== null ? `<div>· Viim. MPV: <b>${dp.mpvLast.toFixed(2)} m/s</b></div>` : ""}
+      ${dp.bodyweightDelta !== null ? `<div>· Bodyweight Δ vk 12: <b>${dp.bodyweightDelta >= 0 ? "+" : ""}${dp.bodyweightDelta} kg</b></div>` : ""}
+      ${Object.keys(dp.ruleFreqRecent).length > 0 ? `<div>· Engine-rule-laukenema: ${Object.entries(dp.ruleFreqRecent).map(([k, v]) => `${k}: ${v}×`).join(", ")}</div>` : ""}
+      <div style="margin-top:6px"><b>Predicted opener-load:</b> @93% = ${dp.load93 ?? "?"} kg · @95% = ${dp.load95 ?? "?"} kg</div>
+    </div>
+    ${card.positiveSignals.length > 0 ? `<div style="font-size:11px;color:var(--ok);margin-bottom:4px">+ ${card.positiveSignals.join(" · ")}</div>` : ""}
+    ${card.negativeSignals.length > 0 ? `<div style="font-size:11px;color:var(--warn);margin-bottom:4px">− ${card.negativeSignals.join(" · ")}</div>` : ""}
+    <div style="font-size:13px;font-weight:600;margin:8px 0;padding:8px;background:rgba(0,0,0,0.15);border-radius:6px">
+      Suositus: ${recommendationLabel}<br>
+      <span class="muted" style="font-weight:400;font-size:11px">${card.rationale}</span>
+    </div>
+    ${!decision ? `<div class="btn-group">
+      <button class="btn btn-sm btn-outline" id="btn-vk14-decide-93">🛑 Pidä @93%</button>
+      <button class="btn btn-sm btn-outline" id="btn-vk14-decide-95">📈 Nosta @95%</button>
+    </div>` : `<div style="font-size:11px;color:var(--muted)">Päätös tehty ${decision.dateISO}: <b>${decision.choice}</b>. ${decision.rationale || ""}</div>
+    <button class="btn btn-sm btn-ghost mt" id="btn-vk14-reset" style="font-size:11px">Resetoi päätös</button>`}
+    <div class="muted" style="font-size:10px;margin-top:8px;line-height:1.4">${card.note}</div>
+  </div>`;
+}
+
+function recordVk14Decision(choice, rationale = "") {
+  const decision = {
+    choice,
+    rationale,
+    dateISO: todayISO(),
+    timestampISO: new Date().toISOString(),
+  };
+  localStorage.setItem("leve_vk14_decision", JSON.stringify(decision));
+  showToast(`Vk 14 päätös tallennettu: ${choice}`, "ok");
+  render();
 }
 
 // v4.34.27: VBT (Velocity-Based Training) -status -chip Koti-näkymässä.
@@ -6797,6 +6890,21 @@ function renderSettingsView() {
           <button class="btn btn-sm btn-outline" id="btn-manual-snapshot">📦 Luo snapshot nyt</button>
         </div>
       </div>
+      <div id="trace-retention-section" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">🗂 Decision-trace -säilytys</div>
+        <div class="muted" style="font-size:11px;margin-bottom:8px">
+          Tracet (engine-päätösten audit-loki) auto-purged 1×/vk. Säilytys oletuksena 90 pv (~3 sykliä — riittää End-of-Cycle-Tuningille). Lyhyempi säilytys = pienempi IDB-koko.
+        </div>
+        <div class="row">
+          <div>
+            <label style="font-size:11px">Säilytä päivää</label>
+            <input type="number" min="14" max="365" id="set-trace-retention" value="${s.traceRetentionDays || 90}">
+          </div>
+          <div style="display:flex;align-items:flex-end">
+            <button class="btn btn-sm btn-outline" id="btn-purge-traces-now">🗑 Purge nyt</button>
+          </div>
+        </div>
+      </div>
       <div id="force-rebuild-section" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:12px;font-weight:600;margin-bottom:6px">🔧 Pakota mesocycle-rebuild</div>
         <div class="muted" style="font-size:11px;margin-bottom:8px">
@@ -7272,6 +7380,22 @@ function bind() {
       createBackupBtn.disabled = false;
       createBackupBtn.textContent = "Luo nyt";
     }
+  });
+
+  // v4.34.28: Vk 14 peaking decision-tree -kortin painikkeet
+  const vk14Btn93 = $("#btn-vk14-decide-93");
+  if (vk14Btn93) vk14Btn93.addEventListener("click", () => {
+    recordVk14Decision("@93%", "Konservatiivinen valinta — pidetään peak-intensity opener-rehearsalissa");
+  });
+  const vk14Btn95 = $("#btn-vk14-decide-95");
+  if (vk14Btn95) vk14Btn95.addEventListener("click", () => {
+    recordVk14Decision("@95%", "Aggressiivinen valinta — datapisteet tukevat korkeampaa intensity-tasoa");
+  });
+  const vk14ResetBtn = $("#btn-vk14-reset");
+  if (vk14ResetBtn) vk14ResetBtn.addEventListener("click", () => {
+    localStorage.removeItem("leve_vk14_decision");
+    showToast("Vk 14 päätös resetoitu", "warn");
+    render();
   });
 
   // v4.34.26: External backup reminder -bannerin napit (Dashboard yläosa)
@@ -7820,11 +7944,37 @@ function bind() {
       if (!isNaN(val)) variantModifiers[name] = val / 100;
     });
     state.settings.variantModifiers = variantModifiers;
+    // v4.34.28: Tallenna trace-retention asetus
+    const traceRetentionInput = $("#set-trace-retention");
+    if (traceRetentionInput) {
+      const days = parseInt(traceRetentionInput.value);
+      if (!isNaN(days) && days >= 14 && days <= 365) {
+        state.settings.traceRetentionDays = days;
+      }
+    }
     await saveSettings(state.settings);
     applyDensityClass();
     await computeRecommendation();
     showToast("Asetukset tallennettu", "ok");
     render();
+  });
+
+  // v4.34.28: Decision-trace purge nyt -nappi (manuaalinen ohitus auto-purgelle)
+  const purgeTracesBtn = $("#btn-purge-traces-now");
+  if (purgeTracesBtn) purgeTracesBtn.addEventListener("click", async () => {
+    purgeTracesBtn.disabled = true;
+    purgeTracesBtn.textContent = "Purgataan…";
+    try {
+      const days = state.settings?.traceRetentionDays || 90;
+      const result = await purgeOldDecisionTraces(days);
+      showToast(`Purged ${result.purged}/${result.total} tracea (cutoff ${result.cutoffISO})`, "ok", 4000);
+    } catch (e) {
+      console.error("[LeVe] Manual trace purge failed:", e);
+      showToast("Trace-purge epäonnistui", "bad");
+    } finally {
+      purgeTracesBtn.disabled = false;
+      purgeTracesBtn.textContent = "🗑 Purge nyt";
+    }
   });
 
   // v4.34.26: Maintenance-mode UI (Asetukset-välilehti + Koti-banneri)
@@ -8576,12 +8726,22 @@ function bindWorkoutEvents() {
       const workSets = exercise.sets.filter(s => !s.isWarmup);
       const currentWorkSetIdx = workSets.findIndex(s => s === currentSet);
       const isLastSet = currentWorkSetIdx >= 0 && currentWorkSetIdx === workSets.length - 1;
-      const reaction = failureReaction(currentSet.loadKg || 0, currentSet.targetReps, isPrimary, consecutiveFailures, blockPhase, { isIsolation, isLastSet });
+      // v4.34.28: kerää aiempien sarjojen Vx-arvot multi-set V0 -tunnistukseen
+      // (cowork-audit kohta 4.4 vaihtoehto c). Soft-warning jos 2+ peräkkäistä V0
+      // isolaatiossa — atleetti näkee ilmoituksen mutta valinta säilyy.
+      const previousSetVxs = workSets
+        .filter((s, i) => i < currentWorkSetIdx && s.completed)
+        .map(s => s.actualVx);
+      const reaction = failureReaction(currentSet.loadKg || 0, currentSet.targetReps, isPrimary, consecutiveFailures, blockPhase, { isIsolation, isLastSet, previousSetVxs });
 
       if (reaction.shouldStop) {
         showToast(reaction.message || "Failure — lopetatko liikkeeseen?", "bad", 6000);
       } else {
         showToast(reaction.message, "warn");
+      }
+      // v4.34.28: Multi-set V0 -varoitus näkyy lisätoasti-ilmoituksena (4 sek)
+      if (reaction.warning) {
+        setTimeout(() => showToast(reaction.warning, "warn", 4000), 500);
       }
 
       // Adjust remaining sets
