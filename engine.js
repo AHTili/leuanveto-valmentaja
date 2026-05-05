@@ -2256,6 +2256,33 @@ async function recommend(options = {}) {
               newVx, weeklyCap, lastWeeklyCap, cappedBy, useLastAnchor, fromSessions: anchor.fromSessions },
             `Rate-limit (${cappedBy}): ${original} → ${targetExternalLoad} kg (heaviest ${anchor.medianLoad.toFixed(1)}@V${anchor.medianVx.toFixed(1)} +${(weeklyCap*100).toFixed(0)}% = ${cappedHeaviest.toFixed(1)} | ${lastNote})`);
         }
+
+        // v4.34.29 PROGRESSION_FLOOR_CAP — regression-suoja kun viim. sessio meni hyvin.
+        // Käyttäjäpalaute: "viime viikolla meni 120 kg, miksi engine ehdottaa 118?".
+        // Engine-konservatismi (Epley+Vara aliarviointi) voi tuottaa target < viim.
+        // session medianLoad vaikka atletti suoriutui targetin Vx:llä. Säännöt:
+        //   - useLastAnchor (uusi sarja sama/helpompi Vx kuin viim.) — atletti pystyi targetiin
+        //   - lastSession EI cal-sessio — cal on tarkoituksella matalampi
+        //   - deltaPctBase >= 0 (ei deload-vk eikä peaking-cut)
+        //   - dayType "heavy" — ei volume/speed-päiviin joissa kevennys on tarkoitettu
+        // Floor: lastSession.medianLoad SUORAAN (ei -2.5%). Atletti pystyi tähän kuormaan
+        // viim. session targetin Vx:llä → seuraavan session sama-Vx target ei saa olla
+        // pienempi. Variantti-vaihto ei vaikuta tähän koska primary-slot ei vaihda
+        // movementId:tä blokin sisällä (TI Takakyykky, MA Lisäpainoleuanveto, jne.).
+        if (useLastAnchor
+            && !anchor.lastSession.isCalibration
+            && (weekDef?.deltaPctBase ?? 0) >= 0
+            && dayType === "heavy") {
+          const floor = anchor.lastSession.medianLoad;
+          if (targetExternalLoad < floor - 0.25) { // 0.25 kg toleranssi pyöristykselle
+            const originalLow = targetExternalLoad;
+            targetExternalLoad = roundToHalf(floor);
+            trace("PROGRESSION_FLOOR_CAP",
+              { targetExternalLoad: originalLow },
+              { targetExternalLoad, lastLoad: anchor.lastSession.medianLoad, lastVx: anchor.lastSession.medianVx, newVx, floor },
+              `Floor-cap: ${originalLow} → ${targetExternalLoad} kg (regression-suoja: viim. sessio ${anchor.lastSession.medianLoad.toFixed(1)} kg @V${anchor.lastSession.medianVx.toFixed(1)} meni targetin Vx:llä — uutta sessiota ei pudoteta tämän alle).`);
+          }
+        }
       }
     } else if (primarySlotMeta?.suggestedLoadKg) {
       // Ei vielä e1RM-historiaa → käytä plan-seedattua kuormaa

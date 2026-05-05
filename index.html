@@ -3419,6 +3419,15 @@ function renderActiveWorkout() {
       deltaChipHTML = `<span class="delta-chip${cls}">${sign}${absStr} kg vs. ${priorSetDaysAgoLabel(priorSet)}</span>`;
     }
   }
+  // v4.34.29: targetReps/targetVx siirretty prev-ghost-koodin EDELLE (TDZ-bug-fix).
+  // Aiempi v4.34.24 -bug: prev-ghost-trend-laskenta käytti `targetReps`-muuttujaa
+  // ennen sen const-määrittelyä → ReferenceError "Cannot access 'targetReps' before
+  // initialization" → koko workout-näkymä kraashasi kun prior-historiaa oli olemassa.
+  // Käyttäjäpalaute: prev-ghost ei näkynyt TI kyykkytreenissä = render kraashasi.
+  const targetReps = currentSet.targetReps ?? "?";
+  const targetVx = currentSet.targetVx;
+  const targetVxStr = targetVx !== null && targetVx !== undefined ? `V${targetVx}` : "—";
+
   // v4.34.24 (B-osio täydennetty): prev-ghost näyttää SEKÄ in-session edellisen sarjan
   // ETTÄ edellisen treenin koko yhteenvedon trend-indikaattorilla. Klikkaamalla edellistä
   // kertaa → modal viim. 3 session per-sarja-detaljilla. Trend lasketaan effortScorella
@@ -3515,9 +3524,9 @@ function renderActiveWorkout() {
     prevGhostHTML = lastInSessionHTML + priorSessionHTML;
   }
 
-  const targetReps = currentSet.targetReps ?? "?";
-  const targetVx = currentSet.targetVx;
-  const targetVxStr = targetVx !== null && targetVx !== undefined ? `V${targetVx}` : "—";
+  // v4.34.29: targetReps/targetVx -määrittelyt siirretty prev-ghost-koodin edelle (TDZ-fix).
+  // Tämä rivi ennen oli "const targetReps = currentSet.targetReps ?? '?';" jne., mutta
+  // sitä käytettiin jo prev-ghost-trend-laskennassa → ReferenceError. Nyt määritelty ylempänä.
 
   // v4.34.2: hold-tyyppisten liikkeiden tunnistus — Hollow body hold, L-sit hold,
   // Plank, Wall sit jne. käyttävät SEKUNTEJA, ei toistoja. UI näyttää nyt "X s"

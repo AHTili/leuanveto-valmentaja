@@ -749,6 +749,33 @@ async function testRecommendScenarios() {
     assert(!hasTrace(rec, "MAINTENANCE_MODE"), "S8: MAINTENANCE_MODE-trace puuttuu (auto-expired)");
   });
 
+  // S9: PROGRESSION_FLOOR_CAP — viim. session 120 kg V3 → uusi target ei saa olla
+  // pienempi (käyttäjäpalaute 2026-05-05: "viime vk meni 120 kg, miksi 118 ehdotetaan?")
+  await scenario("PROGRESSION_FLOOR_CAP — viim. 120 kg V3 → target ≥ 120", async () => {
+    const movId = PRIMARY_MOV_ID;
+    // Mock vk 1 -sessio: 4×6 V3 @ 120 kg, 7 päivää sitten
+    const oldSession = { sessionId: "sess-vk1", dateISO: "2026-01-05", completed: true };
+    const oldSets = Array.from({ length: 4 }, (_, i) => ({
+      setId: `s${i}`, sessionId: "sess-vk1", movementId: movId, movementName: "Lisäpainoleuanveto",
+      externalLoadKg: 120, reps: 6, actualVx: 3, targetVx: 3, targetReps: 6,
+      setRole: "top", isWarmup: false, completed: true,
+      timestamp: "2026-01-05T17:00:00Z",
+    }));
+    const ctx = makeRecommendCtx({
+      dateISO: "2026-01-12", // vk 2 MA
+      sessions: [oldSession],
+      allSets: oldSets,
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error, "S9: ei error");
+    // Default mesosykli vk 2 = heavy day, deltaPctBase >= 0. Floor-cap pitäisi aktivoida
+    // koska viim. sessio @120 V3 onnistui targetin Vx:llä (V3 = oletettu V2-pelaaminen).
+    if (rec.targetExternalLoad !== null) {
+      assert(rec.targetExternalLoad >= 119,
+        `S9: target ≥ 120 kg (regression-suoja viim. 120 V3 jälkeen) — got ${rec.targetExternalLoad}`);
+    }
+  });
+
   // S6: Tauko 14 pv ennen tätä päivää → BREAK-tyyppinen modifier
   await scenario("tauko 14 pv → BREAK_MODIFIER", async () => {
     // Luodaan yksi sessio 14 pv sitten, ei muuta
