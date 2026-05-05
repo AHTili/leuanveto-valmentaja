@@ -3426,7 +3426,13 @@ function renderActiveWorkout() {
   // Käyttäjäpalaute: prev-ghost ei näkynyt TI kyykkytreenissä = render kraashasi.
   const targetReps = currentSet.targetReps ?? "?";
   const targetVx = currentSet.targetVx;
-  const targetVxStr = targetVx !== null && targetVx !== undefined ? `V${targetVx}` : "—";
+  // v4.34.32: Accessoryissa joissa targetVx on null (isolaatio: hauiskääntö, pohje,
+  // tricep, core jne. — design-päätös data.js:ssä), näytetään "vapaa" Vx-vihje sen
+  // sijaan että näytetään pelkkä "—". Käyttäjäpalaute: "miksi tukiliikkeissä ei näy
+  // varoja?". Atleetti voi silti raportoida actualVx:n joka kirjautuu engineen.
+  const targetVxStr = (targetVx !== null && targetVx !== undefined)
+    ? `V${targetVx}`
+    : (exercise.role === "accessory" || exercise.role === "support") ? "vapaa" : "—";
 
   // v4.34.24 (B-osio täydennetty): prev-ghost näyttää SEKÄ in-session edellisen sarjan
   // ETTÄ edellisen treenin koko yhteenvedon trend-indikaattorilla. Klikkaamalla edellistä

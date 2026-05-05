@@ -1928,13 +1928,21 @@ async function recommend(options = {}) {
         if (lastLoadPct && lastLoadPct > 0 && lastLoadPct <= 1.0) {
           const lastMedianLoad = median(lastSessionSets.map(s => s.externalLoadKg).filter(v => v > 0));
           if (lastMedianLoad && lastMedianLoad > 0) {
-            const planBasedExternal = lastMedianLoad / lastLoadPct;
+            // v4.34.32: Vx-overshoot-bonus PLAN_BASED-laskennassa.
+            // Käyttäjäpalaute: "jos teen V2-target-treenin V3:lla, osaa kone optimoida?".
+            // Jos atletti suoriutui HELPOMMIN kuin oli targetoitu (actualVx > targetVx),
+            // engine tunnistaa "kuorma oli liian helppo" ja nostaa e1RM:ää suhteessa.
+            // Tuchscherer RTS / Helms 2018: +2.5% per Vx-luokka (RPE 7 actual vs RPE 8
+            // target = +5%). Kerrointetään plan-based-arvio overshoot:in mukaan.
+            const meanOvershoot = lastSessionSets.reduce((sum, s) =>
+              sum + ((s.actualVx ?? 0) - (s.targetVx ?? 0)), 0) / lastSessionSets.length;
+            // Vain positiivinen overshoot saa bonuksen (negatiivinen = grindas → ei rangaistus
+            // tässä, perfect-execution-ehto sen jo suodattaa)
+            const vxBonusPct = Math.max(0, meanOvershoot) * 0.025;
+            const planBasedExternal = (lastMedianLoad / lastLoadPct) * (1 + vxBonusPct);
             // v4.34.30 PÄIVITETTY: korvaa Epley+Vara plan-based-arvolla AINA kun perfect
             // execution. Älä käytä MAX:ia — Epley voi sekä yli- että aliarvioida e1RM:n
             // ja luottaminen suunnitelmaan on luotettavampaa kuin formula-extrapolointi.
-            // Esim. system-load-liikkeissä (leuka) Epley antaa 183 vaikka todellinen 175,
-            // ja se tuottaisi vk 2 target 130 kg (vs suunnitelman +3.5% = 124).
-            // PLAN_BASED on suunnitelma-uskollinen molempiin suuntiin.
             const original = currentE1RMExternal;
             const diffPct = ((planBasedExternal - original) / original) * 100;
             currentE1RMExternal = planBasedExternal;
@@ -1943,8 +1951,10 @@ async function recommend(options = {}) {
               { e1rmExternal: original.toFixed(1), source: "epley-vara" },
               { e1rmExternal: currentE1RMExternal.toFixed(1), source: "plan-based",
                 lastLoad: lastMedianLoad, lastLoadPct, lastWk, perfectExecution: true,
+                meanOvershoot: meanOvershoot.toFixed(2),
+                vxBonusPct: (vxBonusPct * 100).toFixed(1) + "%",
                 diffPct: diffPct.toFixed(1) + "%" },
-              `Perfect execution viim. session (kaikki sarjat target Vx:llä @${lastMedianLoad} kg, vk ${lastWk} loadPct ${lastLoadPct}) → plan-based e1RM ${planBasedExternal.toFixed(1)} kg ${diffPct >= 0 ? 'yliajaa' : 'korjaa alas'} Epley+Vara ${original.toFixed(1)} kg (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)`);
+              `Perfect execution (kaikki sarjat target Vx:llä @${lastMedianLoad} kg, vk ${lastWk} loadPct ${lastLoadPct})${meanOvershoot > 0.1 ? ` + Vx-overshoot ${meanOvershoot.toFixed(1)} (+${(vxBonusPct*100).toFixed(1)}% bonus, atletti suoriutui helpommalla)` : ''} → plan-based e1RM ${planBasedExternal.toFixed(1)} kg ${diffPct >= 0 ? 'yliajaa' : 'korjaa alas'} Epley+Vara ${original.toFixed(1)} kg (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)`);
           }
         }
       }
