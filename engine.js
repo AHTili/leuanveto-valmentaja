@@ -13,6 +13,7 @@ import {
   PULL_VOLUME_CATEGORIES,
   VARIANT_DAY_TYPE_MAP,
   ACCESSORY_SLOT_CATALOG,
+  maintenanceStatus,
 } from "./data.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -1385,6 +1386,49 @@ async function recommend(options = {}) {
   const traces = [];
   function trace(ruleId, before, after, why) {
     traces.push({ traceId: uid(), recId: null, ruleId, before: { ...before }, after: { ...after }, why });
+  }
+
+  // v4.34.26: Maintenance-mode early-exit (graceful degradation).
+  // Käyttäjä on aktivoinut "ylläpito-tilan" Asetuksista (vamma/elämä/sairas/vaihto).
+  // Engine palauttaa minimum-viable-protokollan: 2 sessiota/vk × 60% e1RM × V3-V4.
+  // Mesocycle ei etene maintenance-aikana — sykli-rakennetta ei muuteta. Käyttäjä
+  // palaa täyteen ohjelmaan kun toggle off TAI durationDays päättyy (auto-expiry).
+  const mm = settings.maintenanceMode;
+  if (mm && mm.active) {
+    const ms = maintenanceStatus(mm, dateISO);
+    if (ms.active) {
+      // Aktiivinen → palauta maintenance-rec. Mesosykli säilyy mutta dayPlan
+      // korvataan suppealla protokollalla.
+      const dow = new Date(dateISO).getDay() || 7;
+      // 2 sessiota/vk: MA (1) + TO (4) JA muut päivät → ei treeniä
+      const isMaintenanceDay = (dow === 1 || dow === 4);
+      trace("MAINTENANCE_MODE",
+        { active: true, reason: mm.reason || "unknown", daysRemaining: ms.daysRemaining },
+        { dayType: "maintenance", isTrainingDay: isMaintenanceDay, expiryISO: ms.expiryISO },
+        `Ylläpito-tila aktiivinen (${mm.reason || "ei syytä"}) · ${ms.daysRemaining} pv jäljellä · ${isMaintenanceDay ? "treeni" : "lepopäivä"}`);
+      return {
+        dateISO,
+        weekNum: null,
+        weekLabel: "Ylläpito",
+        dayType: "maintenance",
+        dayPlan: isMaintenanceDay ? {
+          label: "Ylläpito · 2/vk",
+          slots: [
+            { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 5, targetVx: 3 },
+            { role: "accessory", category: dow === 1 ? "horisontaaliveto" : "horisontaalityöntö",
+              defaultMovementName: dow === 1 ? "Penkkiveto" : "Penkkipunnerrus",
+              sets: 3, reps: 8, targetVx: 4 },
+          ],
+        } : { label: "Ylläpito · lepopäivä", slots: [] },
+        targetExternalLoad: null,  // Engine ei ehdota spesifistä kuormaa — atleetti valitsee 60% e1RM
+        e1rmExternal: null,
+        e1rmSystem: null,
+        deltaPct: 0,
+        readiness: options.readiness || null,
+        traces,
+        maintenanceStatus: ms,
+      };
+    }
   }
 
   // 1. Get mesocycle

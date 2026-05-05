@@ -27,6 +27,8 @@ import {
   uid, createDefaultMesocycle,
   exportFullBackup, importFullBackup,
   initDB,
+  shouldShowBackupReminder,
+  maintenanceStatus,
 } from "./data.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -688,6 +690,37 @@ async function testRecommendScenarios() {
     assertEqual(rec.targetExternalLoad, null, "S5: targetExternalLoad null");
   });
 
+  // S7: Maintenance-mode aktiivinen → MAINTENANCE_MODE-trace olemassa, suositettu
+  // dayPlan on minimum-viable-versio (2 sessiota/vk × 60% e1RM × V3+)
+  await scenario("maintenance mode aktiivinen → MAINTENANCE_MODE -trace", async () => {
+    const ctx = makeRecommendCtx({
+      dateISO: "2026-01-12",
+      settings: {
+        bodyweightKg: 91,
+        maintenanceMode: { active: true, startISO: "2026-01-08", durationDays: 14, reason: "injury" },
+      },
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error, "S7: ei error-flaggia maintenance-modessa");
+    assert(hasTrace(rec, "MAINTENANCE_MODE"), "S7: MAINTENANCE_MODE-trace olemassa");
+    assertEqual(rec.dayType, "maintenance", "S7: dayType = 'maintenance'");
+  });
+
+  // S8: Maintenance-mode auto-expired (14/14 pv kulunut) → ei aktivoitu
+  await scenario("maintenance auto-expired → ei aktivoidu", async () => {
+    const ctx = makeRecommendCtx({
+      dateISO: "2026-01-22", // 14 pv start:n 2026-01-08 jälkeen
+      settings: {
+        bodyweightKg: 91,
+        maintenanceMode: { active: true, startISO: "2026-01-08", durationDays: 14, reason: "injury" },
+      },
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error, "S8: ei error-flaggia auto-expired-tilassa");
+    // Maintenance NOT triggered → normaali rec
+    assert(!hasTrace(rec, "MAINTENANCE_MODE"), "S8: MAINTENANCE_MODE-trace puuttuu (auto-expired)");
+  });
+
   // S6: Tauko 14 pv ennen tätä päivää → BREAK-tyyppinen modifier
   await scenario("tauko 14 pv → BREAK_MODIFIER", async () => {
     // Luodaan yksi sessio 14 pv sitten, ei muuta
@@ -716,6 +749,71 @@ async function testRecommendScenarios() {
     assert(breakTrace !== undefined, "S6: jokin BREAK-trace olemassa (" +
       rec.traces.map(t => t.ruleId).filter(r => /BREAK|MESOCYCLE/.test(r)).join(",") + ")");
   });
+}
+
+// v4.34.26: Maintenance-tila (graceful degradation). Engine palauttaa minimum-
+// viable-protokollan kun atleetti tunnistaa ettei pysty seuraamaan ohjelmaa
+// täydellä volyymilla 2-4 vk ajan. Mesocycle ei etene maintenance-aikana.
+function testMaintenanceStatus() {
+  // Ei aktiivinen → active false
+  const r1 = maintenanceStatus({ active: false, startISO: null, durationDays: 14, reason: null }, "2026-05-05");
+  assertEqual(r1.active, false, "Maintenance: active=false → ei aktiivinen");
+
+  // Aktiivinen + 14 pv duration, 5 pv kulunut → 9 pv jäljellä, active true
+  const r2 = maintenanceStatus({ active: true, startISO: "2026-05-01", durationDays: 14, reason: "injury" }, "2026-05-06");
+  assertEqual(r2.active, true, "Maintenance: 5/14 pv → aktiivinen");
+  assertEqual(r2.daysRemaining, 9, "Maintenance: 9 pv jäljellä (14-5)");
+  assertEqual(r2.expiryISO, "2026-05-15", "Maintenance: expiry 2026-05-15");
+
+  // Aktiivinen + 14 pv duration, 14 pv kulunut → 0 pv jäljellä, active false (auto-expiry)
+  const r3 = maintenanceStatus({ active: true, startISO: "2026-04-21", durationDays: 14, reason: "life" }, "2026-05-05");
+  assertEqual(r3.active, false, "Maintenance: 14/14 pv → auto-expired");
+  assertEqual(r3.daysRemaining, 0, "Maintenance: 0 pv jäljellä");
+
+  // Aktiivinen + 14 pv duration, 20 pv kulunut → expired
+  const r4 = maintenanceStatus({ active: true, startISO: "2026-04-15", durationDays: 14, reason: "switch" }, "2026-05-05");
+  assertEqual(r4.active, false, "Maintenance: yli durationin → expired");
+
+  // Aktiivinen mutta startISO null → aktiivinen ilman expiry-laskentaa
+  const r5 = maintenanceStatus({ active: true, startISO: null, durationDays: 14, reason: null }, "2026-05-05");
+  assertEqual(r5.active, true, "Maintenance: startISO null → aktiivinen ilman expiryä");
+  assertEqual(r5.daysRemaining, null, "Maintenance: startISO null → daysRemaining null");
+}
+
+// v4.34.26: Auto-export viikkobackup -reminder. Banneri näkyy Koti-näkymässä
+// kun viim. ulkoinen export > 14 pv sitten. Lataaminen vapaaehtoista — käyttäjä
+// voi snoozata "Muistuta 2 vk päästä". Bus-factor 1 → 2-3 (OneDrive + GitHub +
+// IndexedDB → + sähköposti/Telegram/Drive valitusta jakelusta).
+function testBackupReminderLogic() {
+  const today = "2026-05-05";
+
+  // Ei aiempaa exportia → näytä banneri
+  assert(shouldShowBackupReminder(null, today, null) === true,
+    "Reminder: ei aiempaa exportia → näytä");
+
+  // Export 5 pv sitten → ei näytetä (< 14 pv)
+  assert(shouldShowBackupReminder("2026-04-30", today, null) === false,
+    "Reminder: 5 pv sitten → ei näytetä (< 14 pv)");
+
+  // Export 14 pv sitten → näytä (rajalla)
+  assert(shouldShowBackupReminder("2026-04-21", today, null) === true,
+    "Reminder: 14 pv sitten → näytä (rajalla, ≥ 14 pv)");
+
+  // Export 30 pv sitten → näytä
+  assert(shouldShowBackupReminder("2026-04-05", today, null) === true,
+    "Reminder: 30 pv sitten → näytä (selvästi yli)");
+
+  // Snooze tulevaisuuteen → ei näytetä vaikka >14 pv export
+  assert(shouldShowBackupReminder("2026-03-01", today, "2026-05-15") === false,
+    "Reminder: snooze tulevaisuuteen → ei näytetä");
+
+  // Snooze menneisyyteen → näytetään (snooze vanhentunut)
+  assert(shouldShowBackupReminder("2026-03-01", today, "2026-05-04") === true,
+    "Reminder: snooze vanhentunut (eilen) → näytä");
+
+  // Snooze tänään (ei lisätty 1 päivä) → ei näytetä
+  assert(shouldShowBackupReminder("2026-03-01", today, "2026-05-05") === false,
+    "Reminder: snooze tänään → ei näytä (tänä päivänä snooze pätee)");
 }
 
 async function testBackupRoundtrip() {
@@ -775,6 +873,8 @@ export async function runTests() {
   testTypoDetection();
   testMesocycleWeek();
   testCalibration();
+  testBackupReminderLogic();
+  testMaintenanceStatus();
   await testRecommendScenarios();
   await testBackupRoundtrip();
 

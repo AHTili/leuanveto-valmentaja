@@ -773,6 +773,7 @@ import {
   validateVelocity, validateLoad, validateReps, validateHRV, validateBodyweight,
   isVelocityTypo,
   isIsolationMovement,
+  shouldShowBackupReminder, maintenanceStatus,
 } from "./data.js";
 
 import {
@@ -2331,7 +2332,9 @@ function renderDashboard() {
     </div>
 
     ${breakHTML}
+    ${renderMaintenanceBanner()}
     ${missedBannerHTML}
+    ${renderExternalBackupReminderBanner()}
 
     <div class="hero${deloadMode ? " deload" : ""}${isPlanOverridden ? " plan-override" : ""}">
       <div class="hero-eyebrow">
@@ -2442,6 +2445,227 @@ async function renderBackupSnapshotsList() {
 }
 
 // v4.26.0: backup-status-kortti — näkyy vain jos status ei ole "fresh"
+// v4.34.26: Graceful degradation -moodi (ylläpito-tila).
+// Atleetin oma toggle Asetuksissa kun vamma/elämä/sairas/työvaihto häiritsee
+// 2-4 vk. Engine vaihtaa minimum-viable-protokollaan (2 sessiota/vk × 60% e1RM
+// × V3-V4). Mesocycle ei etene maintenance-aikana.
+function renderMaintenanceBanner() {
+  const mm = state.settings?.maintenanceMode;
+  if (!mm || !mm.active) return "";
+  const ms = maintenanceStatus(mm, todayISO());
+  if (!ms.active) return "";
+  const reasonLabel = {
+    injury: "🤕 Vamma",
+    life: "💼 Elämä",
+    illness: "🤒 Sairas",
+    switch: "🔄 Vaihto",
+  }[mm.reason] || "🌿 Ylläpito";
+  return `<div class="card maintenance-banner" style="margin:8px 0;padding:12px;background:linear-gradient(135deg,rgba(34,197,94,0.10),rgba(34,197,94,0.04));border:1px solid rgba(34,197,94,0.4);display:flex;align-items:center;gap:10px">
+    <div style="font-size:22px">🌿</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:700;font-size:13px">Ylläpito-tila aktiivinen · ${reasonLabel}</div>
+      <div class="muted" style="font-size:11px;margin-top:2px">${ms.daysRemaining} pv jäljellä · auto-pois ${ms.expiryISO} · 2 sessiota/vk × 60% × V3-V4</div>
+    </div>
+    <button class="btn btn-sm btn-outline" id="btn-end-maintenance" style="flex-shrink:0">Palaa ↩</button>
+  </div>`;
+}
+
+function renderMaintenanceModeCard() {
+  const mm = state.settings?.maintenanceMode || { active: false, durationDays: 14, reason: null };
+  const ms = maintenanceStatus(mm, todayISO());
+  const isActive = ms.active;
+  return `<div class="card" id="maintenance-card">
+    <div class="card-title">🌿 Ylläpito-tila</div>
+    <div class="muted" style="font-size:12px;line-height:1.5;margin-bottom:10px">
+      Aktivoi kun vamma, elämä, sairaus tai työvaihto häiritsee 2-4 vk. Engine vaihtaa minimum-viable-protokollaan (<b>2 sessiota/vk × 60% e1RM × V3-V4</b>). Mesocycle ei etene — palaat siitä mistä jäit. Auto-pois asetettuun päivään.
+    </div>
+    ${isActive
+      ? `<div style="padding:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:6px;margin-bottom:10px">
+          <div style="font-weight:600;font-size:13px;color:var(--ok)">Aktiivinen · ${ms.daysRemaining} pv jäljellä</div>
+          <div class="muted" style="font-size:11px;margin-top:4px">Aloitettu ${mm.startISO} · auto-pois ${ms.expiryISO} · syy: ${mm.reason || "ei"}</div>
+          <button class="btn btn-sm btn-outline mt" id="btn-end-maintenance-settings" style="margin-top:8px">Lopeta ylläpito-tila</button>
+        </div>`
+      : `<button class="btn btn-sm btn-outline" id="btn-start-maintenance">🌿 Aloita ylläpito-tila</button>`
+    }
+  </div>`;
+}
+
+async function startMaintenanceMode() {
+  closeModal();
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-sheet" style="max-width:440px">
+      <div class="modal-handle"></div>
+      <div class="modal-title">🌿 Aloita ylläpito-tila</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5">Engine vaihtaa minimum-viable-protokollaan. Mesocycle ei etene — palaat siitä mistä jäit kun lopetat tilan tai duration päättyy.</div>
+      <label style="font-size:13px;font-weight:600;margin-bottom:6px;display:block">Syy</label>
+      <div class="btn-group" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px">
+        <button class="btn btn-sm btn-outline maintenance-reason" data-reason="injury">🤕 Vamma</button>
+        <button class="btn btn-sm btn-outline maintenance-reason" data-reason="life">💼 Elämä</button>
+        <button class="btn btn-sm btn-outline maintenance-reason" data-reason="illness">🤒 Sairas</button>
+        <button class="btn btn-sm btn-outline maintenance-reason" data-reason="switch">🔄 Vaihto</button>
+      </div>
+      <label style="font-size:13px;font-weight:600;margin-bottom:6px;display:block">Kesto (päivää)</label>
+      <input type="number" id="maintenance-duration" value="14" min="3" max="60" style="width:100%;padding:10px;font-size:14px;margin-bottom:14px">
+      <div class="btn-group">
+        <button class="btn btn-primary btn-full" id="btn-confirm-maintenance" disabled>Aloita</button>
+        <button class="btn btn-ghost btn-full" data-modal-cancel style="margin-top:6px;color:var(--muted)">Peruuta</button>
+      </div>
+    </div>`;
+  let selectedReason = null;
+  overlay.querySelectorAll(".maintenance-reason").forEach(btn => {
+    btn.addEventListener("click", () => {
+      selectedReason = btn.getAttribute("data-reason");
+      overlay.querySelectorAll(".maintenance-reason").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const confirm = overlay.querySelector("#btn-confirm-maintenance");
+      if (confirm) confirm.disabled = false;
+    });
+  });
+  overlay.querySelector("#btn-confirm-maintenance").addEventListener("click", async () => {
+    const duration = parseInt(overlay.querySelector("#maintenance-duration").value, 10) || 14;
+    state.settings.maintenanceMode = {
+      active: true,
+      startISO: todayISO(),
+      durationDays: Math.max(3, Math.min(60, duration)),
+      reason: selectedReason,
+    };
+    await saveSettings(state.settings);
+    closeModal();
+    showToast(`Ylläpito-tila aloitettu (${duration} pv)`, "ok");
+    await refresh();
+    render();
+  });
+  overlay.querySelector("[data-modal-cancel]").addEventListener("click", closeModal);
+  overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
+  document.body.appendChild(overlay);
+}
+
+async function endMaintenanceMode() {
+  state.settings.maintenanceMode = {
+    active: false, startISO: null, durationDays: 14, reason: null,
+  };
+  await saveSettings(state.settings);
+  showToast("Ylläpito-tila lopetettu — palaat normaaliin ohjelmaan", "ok");
+  await refresh();
+  render();
+}
+
+// v4.34.26: External backup reminder — bus-factor 1 → 2-3 -suoja.
+// OneDrive + GitHub + IndexedDB ovat kaikki yhden tilini takana. 2 vk välein
+// vapaaehtoinen muistutus jakaa backup ulkoiseen pilveen (sähköposti/Telegram/
+// Drive Web Share API:n kautta). Lataaminen ei pakollista — käyttäjä voi
+// snoozata "Muistuta 2 vk päästä" tai sulkea bannerin.
+const LS_LAST_EXT_EXPORT = "leve_last_external_export_iso";
+const LS_BACKUP_SNOOZE = "leve_backup_snooze_until_iso";
+
+function renderExternalBackupReminderBanner() {
+  const today = todayISO();
+  const lastExport = localStorage.getItem(LS_LAST_EXT_EXPORT);
+  const snooze = localStorage.getItem(LS_BACKUP_SNOOZE);
+  if (!shouldShowBackupReminder(lastExport, today, snooze)) return "";
+
+  const daysSinceLabel = lastExport
+    ? (() => {
+        const days = Math.floor((new Date(today).getTime() - new Date(lastExport).getTime()) / (24 * 3600 * 1000));
+        if (days < 14) return `${days} pv vanha`;
+        const wks = Math.round(days / 7);
+        return `${wks} vk vanha`;
+      })()
+    : "ei vielä jaettu";
+
+  return `<div class="card backup-reminder" style="margin:8px 0;padding:10px 12px;background:linear-gradient(135deg,rgba(99,102,241,0.10),rgba(59,130,246,0.05));border:1px solid rgba(99,102,241,0.3);display:flex;align-items:center;gap:10px">
+    <div style="font-size:20px;flex-shrink:0">📦</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:600;font-size:13px">Backup pilveen · ${daysSinceLabel}</div>
+      <div class="muted" style="font-size:11px;margin-top:2px;line-height:1.35">Vapaaehtoinen viikkomuistutus — jaa data ulkoiseen tallennukseen (sähköposti/Drive/Telegram).</div>
+    </div>
+    <button class="btn btn-sm btn-primary" id="btn-share-backup" style="flex-shrink:0">Jaa</button>
+    <button class="btn btn-sm btn-ghost" id="btn-snooze-backup" title="Muistuta 2 vk päästä" style="flex-shrink:0;padding:6px 8px">✕</button>
+  </div>`;
+}
+
+function snoozeBackupReminder() {
+  const today = todayISO();
+  const d = new Date(today);
+  d.setDate(d.getDate() + 14);
+  const until = d.toISOString().slice(0, 10);
+  localStorage.setItem(LS_BACKUP_SNOOZE, until);
+}
+
+function markExternalBackupExported() {
+  localStorage.setItem(LS_LAST_EXT_EXPORT, todayISO());
+  // Snooze auto-reset: kun export tehty, snooze ei tarvita
+  localStorage.removeItem(LS_BACKUP_SNOOZE);
+}
+
+async function showBackupShareModal() {
+  const data = await exportFullBackup();
+  const json = JSON.stringify(data, null, 2);
+  const filename = `leve-ai-backup-${todayISO()}.json`;
+  const blob = new Blob([json], { type: "application/json" });
+
+  closeModal();
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+
+  // Web Share API tuettu? (file-jako vaatii navigator.canShare)
+  const file = new File([blob], filename, { type: "application/json" });
+  const canShareFile = typeof navigator.canShare === "function" && navigator.canShare({ files: [file] });
+
+  overlay.innerHTML = `
+    <div class="modal-sheet" style="max-width:480px">
+      <div class="modal-handle"></div>
+      <div class="modal-title">📦 Jaa backup pilveen</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">Backup-tiedosto sisältää treenihistorian, e1RM:n, asetukset ja mesocyclen. Tallenna se sähköpostiisi, Driveen tai Telegramiin että data säilyy vaikka puhelin häviäisi.</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${canShareFile ? `<button class="btn btn-primary btn-full" id="btn-share-via-os" style="padding:14px"><b>📤 Jaa puhelimen jako-menüllä</b><div style="font-size:11px;font-weight:400;margin-top:2px;opacity:0.85">Sähköposti · Telegram · Drive · ym.</div></button>` : ""}
+        <button class="btn btn-outline btn-full" id="btn-download-backup" style="padding:12px">📥 Lataa puhelimeen (${Math.round(blob.size / 1024)} KB)</button>
+        <button class="btn btn-ghost btn-full" data-modal-cancel style="padding:10px;font-size:13px;color:var(--muted)">Peruuta</button>
+      </div>
+    </div>`;
+
+  // Web Share API
+  const shareBtn = overlay.querySelector("#btn-share-via-os");
+  if (shareBtn) {
+    shareBtn.addEventListener("click", async () => {
+      try {
+        await navigator.share({
+          files: [file],
+          title: "LeVe AI backup",
+          text: `LeVe AI backup ${todayISO()}`,
+        });
+        markExternalBackupExported();
+        closeModal();
+        showToast("Backup jaettu · muistutus snoozattu 2 vk", "ok");
+      } catch (e) {
+        // User cancelled tai virhe
+        if (e.name !== "AbortError") {
+          showToast("Jako epäonnistui — kokeile latausta", "warn");
+        }
+      }
+    });
+  }
+
+  // Fallback download
+  overlay.querySelector("#btn-download-backup").addEventListener("click", () => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    markExternalBackupExported();
+    closeModal();
+    showToast("Backup ladattu · siirrä pilveen → muistutus snoozattu", "ok");
+    render();
+  });
+
+  overlay.querySelector("[data-modal-cancel]").addEventListener("click", closeModal);
+  overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
+  document.body.appendChild(overlay);
+}
+
 function renderBackupStatusCard() {
   const bs = state.backupStatus;
   if (!bs) return "";
@@ -6529,6 +6753,8 @@ function renderSettingsView() {
 
     <button class="btn btn-full mb" id="btn-save-settings">Tallenna asetukset</button>
 
+    ${renderMaintenanceModeCard()}
+
     <div class="card">
       <div class="card-title">Data</div>
       <div class="btn-group">
@@ -6993,6 +7219,18 @@ function bind() {
       createBackupBtn.disabled = false;
       createBackupBtn.textContent = "Luo nyt";
     }
+  });
+
+  // v4.34.26: External backup reminder -bannerin napit (Dashboard yläosa)
+  const shareBackupBtn = $("#btn-share-backup");
+  if (shareBackupBtn) shareBackupBtn.addEventListener("click", () => {
+    showBackupShareModal();
+  });
+  const snoozeBackupBtn = $("#btn-snooze-backup");
+  if (snoozeBackupBtn) snoozeBackupBtn.addEventListener("click", () => {
+    snoozeBackupReminder();
+    showToast("Muistutus snoozattu 2 vk", "ok");
+    render();
   });
 
   document.querySelectorAll(".preview-info-btn").forEach(btn => {
@@ -7534,6 +7772,20 @@ function bind() {
     await computeRecommendation();
     showToast("Asetukset tallennettu", "ok");
     render();
+  });
+
+  // v4.34.26: Maintenance-mode UI (Asetukset-välilehti + Koti-banneri)
+  const startMaintenanceBtn = $("#btn-start-maintenance");
+  if (startMaintenanceBtn) startMaintenanceBtn.addEventListener("click", () => {
+    startMaintenanceMode();
+  });
+  const endMaintenanceSettingsBtn = $("#btn-end-maintenance-settings");
+  if (endMaintenanceSettingsBtn) endMaintenanceSettingsBtn.addEventListener("click", () => {
+    endMaintenanceMode();
+  });
+  const endMaintenanceBannerBtn = $("#btn-end-maintenance");
+  if (endMaintenanceBannerBtn) endMaintenanceBannerBtn.addEventListener("click", () => {
+    endMaintenanceMode();
   });
 
   // v4.23 P4.2: Density-mode selection (Default / Focus / Compact)

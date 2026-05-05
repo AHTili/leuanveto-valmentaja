@@ -13,7 +13,7 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
-const PROGRAM_BUILD_VERSION = "4.34.25";
+const PROGRAM_BUILD_VERSION = "4.34.26";
 
 // ── Store names ──
 const STORES = {
@@ -1862,6 +1862,17 @@ async function getSettings() {
     readinessPrimerEnabled: true,
     readinessPrimerPct: 0.60,       // % e1rmExternal → primer-kuorma
     readinessPrimerReps: 3,         // toistojen määrä (best-of-N)
+    // v4.34.26: Graceful degradation -moodi. Kun atleetti tunnistaa ettei pysty
+    // seuraamaan ohjelmaa täydellä volyymilla 2-4 vk ajan (vamma/elämä/sairas/
+    // työvaihto), engine vaihtaa minimum-viable-protokollaan: 2 sessiota/vk ×
+    // 60% e1RM × V3-V4. Mesocycle ei etene maintenance-aikana — palaa sieltä
+    // mistä jäit kun toggle off. Auto-expiry asetettuun päivään.
+    maintenanceMode: {
+      active: false,
+      startISO: null,        // milloin maintenance aloitettu
+      durationDays: 14,      // 14 pv default; käyttäjä asettaa
+      reason: null,          // "injury" | "life" | "illness" | "switch" | null
+    },
   };
   if (!s) return defaults;
   // Täytä puuttuvat kentät oletuksilla (esim. päivitetylle käyttäjälle)
@@ -1873,11 +1884,64 @@ async function saveSettings(settings) {
   return dbPut(STORES.appMeta, settings);
 }
 
+// v4.34.26: Maintenance-tilan aktiivisuus + auto-expiry.
+// Palauttaa { active: bool, daysRemaining: number|null, expiryISO: string|null }.
+// Auto-expiry: jos durationDays kulunut startISO:sta → expired (active=false).
+function maintenanceStatus(maintenanceMode, todayISO) {
+  if (!maintenanceMode || !maintenanceMode.active) {
+    return { active: false, daysRemaining: null, expiryISO: null };
+  }
+  if (!maintenanceMode.startISO) {
+    return { active: true, daysRemaining: null, expiryISO: null };
+  }
+  const start = new Date(maintenanceMode.startISO);
+  const today = new Date(todayISO);
+  const dur = maintenanceMode.durationDays || 14;
+  const expiry = new Date(start);
+  expiry.setDate(expiry.getDate() + dur);
+  const expiryISO = expiry.toISOString().slice(0, 10);
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const daysRemaining = Math.ceil((expiry.getTime() - today.getTime()) / msPerDay);
+  return {
+    active: daysRemaining > 0,
+    daysRemaining: Math.max(0, daysRemaining),
+    expiryISO,
+  };
+}
+
 // ── Backup / Restore ──
 // v4.26.0: backupSnapshots-store EI sisälly full exportiin (rekursio-suoja).
 // Snapshot-data koostuu kaikista MUISTA storeista — snapshotit ovat itsenäinen
 // kerros jota ei dumpata takaisin snapshottiin.
 const BACKUP_EXCLUDED_STORES = new Set(["backupSnapshots"]);
+
+// v4.34.26: Auto-export viikkobackup -reminder.
+// Bus-factor-suoja: OneDrive + GitHub + IndexedDB ovat kaikki yhden tilini takana.
+// 2 vk välein vapaaehtoinen muistutus jakaa backup ulkoiseen pilveen (sähköposti/
+// Telegram/Drive Web Share API:n kautta). Lataaminen ei pakollista — käyttäjä
+// voi snoozata "Muistuta 2 vk päästä" (snoozeUntilISO = today + 14 pv) tai
+// sulkea bannerin (snoozeUntilISO = today + 14 pv samalla tavalla).
+//
+// Trigger-säännöt:
+//   1. Ei aiempaa external-exportia (lastExportISO === null) → näytä
+//   2. Snooze tulevaisuuteen (snoozeUntilISO > today) → ei näytetä
+//   3. Snooze tänään (snoozeUntilISO === today) → ei näytetä (snooze pätee tänään)
+//   4. Aiempi export ≥ 14 pv sitten → näytä
+//   5. Aiempi export < 14 pv sitten → ei näytetä
+//
+// Käyttäjä paivittää lastExportISO:n kun jakaa tai lataa backupin (joko Web Share
+// API:n kautta tai puhdas download). Kumpikin tapa kelpaa external-tallennukseksi.
+const BACKUP_REMINDER_DAYS = 14;
+function shouldShowBackupReminder(lastExportISO, todayISO, snoozeUntilISO) {
+  // Snooze: jos snoozeUntilISO >= todayISO → ei näytetä
+  if (snoozeUntilISO) {
+    if (snoozeUntilISO >= todayISO) return false;
+  }
+  if (!lastExportISO) return true;
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const days = Math.floor((new Date(todayISO).getTime() - new Date(lastExportISO).getTime()) / msPerDay);
+  return days >= BACKUP_REMINDER_DAYS;
+}
 
 async function exportFullBackup() {
   const data = {};
@@ -5499,6 +5563,9 @@ export {
   VARIANT_DAY_TYPE_MAP,
   ISOLATION_CATEGORIES,
   isIsolationMovement,
+  BACKUP_REMINDER_DAYS,
+  shouldShowBackupReminder,
+  maintenanceStatus,
   // Utilities
   uid,
   nowISO,
