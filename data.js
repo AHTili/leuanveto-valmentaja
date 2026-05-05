@@ -13,7 +13,7 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
-const PROGRAM_BUILD_VERSION = "4.34.32";
+const PROGRAM_BUILD_VERSION = "4.34.33";
 
 // ── Store names ──
 const STORES = {
@@ -1995,11 +1995,34 @@ function shouldShowBackupReminder(lastExportISO, todayISO, snoozeUntilISO) {
   return days >= BACKUP_REMINDER_DAYS;
 }
 
+// v4.34.33 BUG-FIX 6.1: localStorage-keyt jotka pitää sisällyttää backupiin/restoreen.
+// Aiempi versio menetti nämä restoressa: vk 14 päätös, AI-block-tuning-historia,
+// ulkoisen exportin timestampit, snooze-asetukset, UI-collapsible-tilat.
+const LOCAL_STORAGE_BACKUP_KEYS = [
+  "leve_vk14_decision",
+  "LeVe.BLOCK_TUNING_HISTORY",
+  "leve_last_ext_export_iso",
+  "leve_backup_snooze_until_iso",
+  "dash_future_open",
+  "dash_trace_open",
+];
+
 async function exportFullBackup() {
   const data = {};
   for (const storeName of Object.values(STORES)) {
     if (BACKUP_EXCLUDED_STORES.has(storeName)) continue;
     data[storeName] = await dbGetAll(storeName);
+  }
+  // v4.34.33 BUG-FIX 6.1: kerää localStorage-keyt backupiin
+  if (typeof localStorage !== "undefined") {
+    const ls = {};
+    for (const key of LOCAL_STORAGE_BACKUP_KEYS) {
+      try {
+        const val = localStorage.getItem(key);
+        if (val !== null) ls[key] = val;
+      } catch (e) { /* QuotaExceeded tai disabled localStorage — skipataan */ }
+    }
+    if (Object.keys(ls).length > 0) data._localStorage = ls;
   }
   data._meta = {
     exportedAtISO: nowISO(),
@@ -2025,6 +2048,20 @@ async function importFullBackup(data) {
     if (BACKUP_EXCLUDED_STORES.has(storeName)) continue;
     if (Array.isArray(data[storeName]) && data[storeName].length > 0) {
       await dbPutBulk(storeName, data[storeName]);
+    }
+  }
+
+  // v4.34.33 BUG-FIX 6.1: palauta localStorage-keyt jos backupissa on niitä
+  if (data._localStorage && typeof data._localStorage === "object" && typeof localStorage !== "undefined") {
+    for (const [key, val] of Object.entries(data._localStorage)) {
+      // Vain whitelistatut keyt — torjuu pahantahtoiset payloadit
+      if (!LOCAL_STORAGE_BACKUP_KEYS.includes(key)) continue;
+      if (typeof val !== "string") continue;
+      try {
+        localStorage.setItem(key, val);
+      } catch (e) {
+        console.warn(`[data.js] localStorage restore epäonnistui keylle ${key}:`, e);
+      }
     }
   }
 

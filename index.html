@@ -2185,6 +2185,9 @@ function renderDashboard() {
       else if (slot.role === "support") roleIcon = "🎯";
       else if (slot.role === "accessory") roleIcon = "💪";
       else if (isAttempt) roleIcon = "🏆";
+      // v4.34.33: secondary + calibration ikonit
+      else if (slot.role === "secondary") roleIcon = "🎯";
+      else if (slot.role === "calibration") roleIcon = "🎯";
 
       let loadStr = "";
       let loadCls = "";
@@ -2197,9 +2200,27 @@ function renderDashboard() {
       } else if (isPrimary && rec?.targetExternalLoad !== null && rec?.targetExternalLoad !== undefined) {
         loadStr = `+${rec.targetExternalLoad} kg`;
         if (deloadMode) loadCls = "deload";
+      } else if (isBackoff && typeof slot.resolvedLoadKg === "number") {
+        // v4.34.33 BUG-FIX 5.1: engine resolvoi backoff-kuorman slot.loadPct × current e1RM:llä.
+        // Aiempi 0.85 × primary -hardcode ei tunnista slot-spesifiä loadPct:tä (esim.
+        // foundation backoff loadPct=0.55, mutta dashboard näytti 0.85). Workout-flow
+        // (rivi 8414) lukee resolvedLoadKg:n oikein, dashboard ei aiemmin.
+        loadStr = `+${slot.resolvedLoadKg} kg`;
+        loadCls = deloadMode ? "deload" : "backoff";
       } else if (isBackoff && rec?.targetExternalLoad !== null && rec?.targetExternalLoad !== undefined) {
+        // Fallback: legacy default-mesosykli ilman loadPct-arvoa → primary × 0.85
         loadStr = `+${roundToHalf(rec.targetExternalLoad * 0.85)} kg`;
         loadCls = deloadMode ? "deload" : "backoff";
+      } else if (slot.role === "secondary" && typeof slot.resolvedLoadKg === "number") {
+        // v4.34.33 RISK 5.3: secondary-slot näkyväksi dashboardilla. Streetlifting_16w
+        // käyttää secondary-slottia mm. vk 8/12/13/14 top-singletteihin (loadPct
+        // 0.85-0.92). Workout-flow renderöi ne, dashboard ei aiemmin.
+        loadStr = `+${slot.resolvedLoadKg} kg`;
+        loadCls = deloadMode ? "deload" : "secondary";
+      } else if (slot.role === "calibration" && typeof slot.resolvedLoadKg === "number") {
+        // Cal-slot näkyväksi dashboardilla
+        loadStr = `+${slot.resolvedLoadKg} kg`;
+        loadCls = "cal";
       }
 
       const setsReps = `${slot.sets}×${slot.reps}`;
@@ -2548,13 +2569,21 @@ function recordVk14Decision(choice, rationale = "") {
 function renderVBTStatusChip() {
   const vbt = state.recommendation?.vbtStatus;
   if (!vbt || vbt.status === "not-eligible") return "";
+  // v4.34.33 BUG-FIX 5.4: deferred-tila näkyy "VBT viivästetty" -chipinä — käyttäjä tietää
+  // että VBT-data on ok mutta plan-based on aktivoitu (suunnitelma-uskollisuus voittaa).
   const isPromoted = vbt.status === "promoted";
-  const cls = isPromoted ? "chip-green" : "chip-yellow";
-  const icon = isPromoted ? "📊" : "🟡";
-  const label = isPromoted ? "VBT primary" : "VBT candidate";
+  const isDeferred = vbt.status === "deferred";
+  const cls = isPromoted ? "chip-green" : isDeferred ? "chip-acc" : "chip-yellow";
+  const icon = isPromoted ? "📊" : isDeferred ? "📊" : "🟡";
+  const label = isPromoted ? "VBT primary" : isDeferred ? "VBT viivästetty" : "VBT candidate";
+  const diffStr = vbt.diffPct
+    ? (typeof vbt.diffPct === "number" ? `±${(vbt.diffPct * 100).toFixed(1)}%` : `±${vbt.diffPct}`)
+    : "n/a";
   const tooltip = isPromoted
-    ? `Velocity-pohjainen e1RM käytössä · ${vbt.anchorCount} ankkuripistettä · ±${(vbt.diffPct * 100).toFixed(1)}% diff Vx-arvioon`
-    : `${vbt.anchorCount} ankkuripistettä kerätty · diff Vx-arvioon ${vbt.diffPct ? "±" + (vbt.diffPct * 100).toFixed(1) + "%" : "n/a"} (kynnys 5%)`;
+    ? `Velocity-pohjainen e1RM käytössä · ${vbt.anchorCount} ankkuripistettä · ${diffStr} diff Vx-arvioon`
+    : isDeferred
+    ? `VBT on valmis (${vbt.anchorCount} ankkuripistettä) mutta plan-based aktivoitu — suunnitelma-uskollisuus voittaa yksittäiset velocity-mittaukset`
+    : `${vbt.anchorCount} ankkuripistettä kerätty · diff Vx-arvioon ${diffStr} (kynnys 5%)`;
   return `<span class="chip ${cls}" title="${tooltip}" style="font-size:10px;padding:3px 8px">${icon} ${label}</span>`;
 }
 
@@ -2920,6 +2949,64 @@ function renderFutureCollapsible() {
   </details>`;
 }
 
+// v4.34.33 BUG-FIX 5.2: Trace-rule-ID:t suomennettuna käyttäjälle. Aiempi versio näytti
+// raakat ID:t (PLAN_BASED_E1RM, VBT_DEFERRED_TO_PLAN jne.) jotka ovat teknistä jargonia.
+const RULE_LABELS_FI = {
+  MAINTENANCE_MODE: "Ylläpito-tila",
+  MESOCYCLE_PHASE: "Mesosyklin vaihe",
+  MESOCYCLE_CREATED: "Mesosykli luotu",
+  MESOCYCLE_BEFORE_START: "Ennen mesosyklin alkua",
+  MESOCYCLE_ENDED: "Mesosykli päättynyt",
+  MESOCYCLE_BREAK_RESET: "Mesosykli nollattu (tauko)",
+  PEAKING_PHASE: "Peaking-vaihe",
+  PEAKING_TRANSITION: "Peaking päättynyt",
+  PEAKING_E1RM: "Peaking e1RM",
+  COMPETITION_LOADS: "Kilpailukuormat",
+  DELOAD_OVERRIDE: "Kevennysviikko",
+  RETURN_FROM_BREAK: "Paluu tauolta",
+  RETURN_FROM_BREAK_DAYTYPE: "Tauon jälkeen — päivätyyppi",
+  BREAK_MODIFIER: "Taukomodifikaattori",
+  PLAN_BASED_E1RM: "Suunnitelma-pohjainen e1RM",
+  E1RM_INFLATION_CAP: "e1RM-katto",
+  E1RM_DEFLATION_CAP: "e1RM-lattia",
+  E1RM_COMPUTED: "e1RM laskettu",
+  E1RM_MOMENTUM_BONUS: "e1RM-momenttibonus",
+  VBT_E1RM_CROSSCHECK: "VBT cross-check",
+  VBT_PRIMARY_USED: "VBT primary",
+  VBT_DEFERRED_TO_PLAN: "VBT viivästetty (plan-based voittaa)",
+  VBT_CANDIDATE: "VBT candidate",
+  DELTA_PCT_RAW: "DeltaPct raaka",
+  VARA_TREND_CORRECTION: "Vara-trendikorjaus",
+  GROSS_MISMATCH_CORRECTION: "Skaalausvirhe-korjaus",
+  FAILURE_LOCKOUT: "Failure-lukko",
+  FAILURE_DETECTED: "Failure havaittu",
+  CAP_RED: "RED-readiness-cap",
+  CAP_YELLOW: "YELLOW-readiness-cap",
+  CAP_RED_DAYTYPE: "RED → volume",
+  LOAD_PCT_RESOLVED: "Kuorma loadPct:llä",
+  LOAD_PCT_SEED: "Kuorma seediltä",
+  LOAD_SANITY_WARNING: "⚠ Sanity-varoitus",
+  PROGRESSION_RATE_LIMIT: "Progressio-rajoitin",
+  PROGRESSION_RATE_LIMIT_CROSSREF: "Progressio-rajoitin (cross-ref)",
+  PROGRESSION_FLOOR_CAP: "Progressio-lattia",
+  SLOT_LOAD_RESOLVED: "Slot-kuorma resolvoitu",
+  SLOT_LOAD_RESOLVED_CAL: "Cal-slot kuorma resolvoitu",
+  SLOT_LOAD_RESOLVED_CROSSREF: "Slot-kuorma (cross-ref)",
+  SUGGESTED_LOAD_FALLBACK: "Lähtökuorma fallbackilla",
+  TARGET_LOAD: "Tavoitekuorma",
+  ACCESSORY_CAP_ACTIVE: "Tukiliike-cap",
+  ACCESSORY_BLOCK_SCALAR: "Blokin tukiliike-skaalaus",
+  ACCESSORY_SWAP_AUTO: "Auto-swap (stagnaatio)",
+  DAY_PLAN_GENERATED: "Päiväsuunnitelma generoitu",
+  MU_AUTO_REGULATE: "MU autoregulaatio",
+  VARA_FEEDBACK: "Vara-palaute",
+  VARIANT_ASSIGNED: "Variaatio asetettu",
+};
+
+function ruleLabelFi(ruleId) {
+  return RULE_LABELS_FI[ruleId] || ruleId;
+}
+
 function renderTraceCollapsible(rec) {
   if (!rec || !rec.traces || !rec.traces.length) return "";
   const open = localStorage.getItem("dash_trace_open") === "1";
@@ -2930,7 +3017,7 @@ function renderTraceCollapsible(rec) {
     </summary>
     <div class="body">
       ${rec.traces.map(t => `<div class="trace-row">
-        <span class="rule">${t.ruleId}</span>
+        <span class="rule" title="${t.ruleId}">${ruleLabelFi(t.ruleId)}</span>
         <span class="why">${t.why}</span>
       </div>`).join("")}
     </div>

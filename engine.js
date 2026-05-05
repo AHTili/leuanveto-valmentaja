@@ -1885,6 +1885,10 @@ async function recommend(options = {}) {
   // suoriutunut, Epley+Vara säilyy (konservatiivinen suoja grindausta vastaan).
   if (currentE1RMExternal !== null && primaryMovementId && recentTopSets.length > 0) {
     // Hae viim. session SETIT — ei cal, ei deload (filtteröi sessio-tasolla)
+    // v4.34.33 BUG-FIX 1.1: jos VIIM. session on cal-dominantti, ÄLÄ laukea
+    // PLAN_BASED. Cal on tarkin mittaus (RPE 8 × 3 reps, low-rep e1RM-tarkkuus
+    // ±2.7 kg, DiStasio 2014). Plan-based ekstrapoloi loadPct:llä — vanhempi
+    // ei-cal-data tuottaa väärän e1RM:n kun cal on jo päivittänyt arvon.
     const lastSessionSets = (() => {
       // Ryhmitä sessionId:n mukaan, ota viim. ei-cal-sessio
       const sessGroups = new Map();
@@ -1893,6 +1897,12 @@ async function recommend(options = {}) {
         const sid = s.sessionId || `__nosess_${s.timestamp}`;
         if (!sessGroups.has(sid)) { sessGroups.set(sid, []); sessOrder.push(sid); }
         sessGroups.get(sid).push(s);
+      }
+      // v4.34.33: jos viim. session on cal-dominantti, palauta null → cal voittaa
+      if (sessOrder.length > 0) {
+        const lastSets = sessGroups.get(sessOrder[sessOrder.length - 1]);
+        const lastCalCount = lastSets.filter(s => s.setRole === "calibration").length;
+        if (lastCalCount >= lastSets.length * 0.5) return null;
       }
       // Käy lopusta alkuun, etsi viim. ei-cal-sessio
       for (let i = sessOrder.length - 1; i >= 0; i--) {
@@ -1914,9 +1924,14 @@ async function recommend(options = {}) {
 
       if (allHitTarget) {
         // Hae viim. session date → mesocycle-vk → primary-slot loadPct
-        const lastDateISO = lastSessionSets[0]?.timestamp?.slice(0, 10)
+        // v4.34.33 BUG-FIX 1.2: session.dateISO on AUTORITATIIVINEN, ei set.timestamp.
+        // Backfilloidut setit tallennetaan timestamp = recording-aika (= today),
+        // joka ei vastaa historiallista vk:ta. Aiempi järjestys (timestamp ensin)
+        // teki backfill-päiville väärän vk-lookupin → väärä loadPct → väärä e1RM.
+        const lastSessionId = lastSessionSets[0]?.sessionId;
+        const lastDateISO = (lastSessionId && (sessions || []).find(s => s.sessionId === lastSessionId)?.dateISO)
           || lastSessionSets[0]?.dateISO
-          || (sessions || []).find(s => s.sessionId === lastSessionSets[0]?.sessionId)?.dateISO;
+          || lastSessionSets[0]?.timestamp?.slice(0, 10);
         const lastWk = lastDateISO ? getMesocycleWeek(mesocycle, lastDateISO) : null;
         const lastDow = lastDateISO ? (new Date(lastDateISO).getDay() || 7) : null;
         const lastDayPlan = (lastWk !== null && lastDow !== null)
@@ -2226,11 +2241,19 @@ async function recommend(options = {}) {
 
   // 8b. Failure lockout (v4.25 P2-16): jos edellinen sessio meni failureen
   // (Vx 0), ei nosteta kuormaa. Suojaa atleetin grinding-taipumukselta.
-  if (hadFailureLastSession(recentTopSets) && deltaPctRawValue > 0) {
-    const oldDelta = deltaPctRawValue;
-    deltaPctRawValue = Math.min(deltaPctRawValue, 0);
-    trace("FAILURE_LOCKOUT", { deltaPct: oldDelta }, { deltaPct: deltaPctRawValue },
-      "Edellinen sessio Vx 0 → kuormaa ei nosteta (failure-lockout)");
+  // v4.34.33 BUG-FIX 1.4: trace edelleen vaikka deltaPct olisi jo negatiivinen
+  // (esim. tauko-modifikaattori vetänyt sen alas). Käyttäjä saa tietää että
+  // engine HUOMASI failuren — UX-konsistenssi, ei behavior change.
+  if (hadFailureLastSession(recentTopSets)) {
+    if (deltaPctRawValue > 0) {
+      const oldDelta = deltaPctRawValue;
+      deltaPctRawValue = Math.min(deltaPctRawValue, 0);
+      trace("FAILURE_LOCKOUT", { deltaPct: oldDelta }, { deltaPct: deltaPctRawValue, capped: true },
+        "Edellinen sessio Vx 0 → kuormaa ei nosteta (failure-lockout)");
+    } else {
+      trace("FAILURE_DETECTED", { deltaPct: deltaPctRawValue }, { deltaPct: deltaPctRawValue, capped: false },
+        "Edellinen sessio Vx 0 huomattu — kuorma jo negatiivinen muista syistä, lockoutia ei tarvita");
+    }
   }
 
   // 9. Clamp
@@ -2343,7 +2366,9 @@ async function recommend(options = {}) {
         const lastVxDelta = newVx - anchor.lastSession.medianVx;
         const useLastAnchor = lastVxDelta >= 0;  // KRIITTINEN — vain jos sama/helpompi
         let cappedLast = Infinity;
-        let lastWeeklyCap = null;
+        // v4.34.33 RISK 1.5: defensive default 0 (oli null) — siistii trace-datan
+        // ja torjuu null-arithmetic-virheet jos koodi muuttuu.
+        let lastWeeklyCap = 0;
         if (useLastAnchor) {
           lastWeeklyCap = lastVxDelta >= 2 ? 0.15 : lastVxDelta >= 1 ? 0.10 : 0.06;
           cappedLast = anchor.lastSession.medianLoad * (1 + lastWeeklyCap);
@@ -2555,7 +2580,8 @@ async function recommend(options = {}) {
             const lastVxDelta = newVx - selfAnchor.lastSession.medianVx;
             const useLastAnchor = lastVxDelta >= 0;
             let cappedLast = Infinity;
-            let lastWeeklyCap = null;
+            // v4.34.33 RISK 1.5: defensive default 0 (oli null)
+            let lastWeeklyCap = 0;
             if (useLastAnchor) {
               lastWeeklyCap = lastVxDelta >= 2 ? 0.15 : lastVxDelta >= 1 ? 0.10 : 0.06;
               cappedLast = selfAnchor.lastSession.medianLoad * (1 + lastWeeklyCap);
@@ -2766,10 +2792,16 @@ async function recommend(options = {}) {
 
   // Build recommendation
   // v4.34.27: VBT-status promote/candidate näkyväksi UI:lle (Edistyminen-välilehti).
+  // v4.34.33 BUG-FIX 5.4: lisätty deferred-status — VBT olisi ollut promoted mutta
+  // PLAN_BASED voitti. Käyttäjä näkee nyt että velocity-data on jo riittävä mutta
+  // suunnitelma-uskollisuus on aktiivinen.
   const vbtPromotedTrace = traces.find(t => t.ruleId === "VBT_PRIMARY_USED");
+  const vbtDeferredTrace = traces.find(t => t.ruleId === "VBT_DEFERRED_TO_PLAN");
   const vbtCandidateTrace = traces.find(t => t.ruleId === "VBT_CANDIDATE");
   const vbtSummary = vbtPromotedTrace
     ? { status: "promoted", anchorCount: vbtPromotedTrace.after.anchorCount, diffPct: vbtPromotedTrace.after.diffPct, source: "velocity" }
+    : vbtDeferredTrace
+    ? { status: "deferred", anchorCount: vbtDeferredTrace.after.anchorCount, diffPct: vbtDeferredTrace.after.diffPct, source: "plan-based" }
     : vbtCandidateTrace
     ? { status: "candidate", anchorCount: vbtCandidateTrace.after.anchorCount, diffPct: vbtCandidateTrace.after.diffPct, source: "vx" }
     : { status: "not-eligible", anchorCount: 0, diffPct: null, source: "vx" };
@@ -3821,7 +3853,10 @@ async function recommendPeaking(options = {}) {
   let currentE1RMSystem;
   if (peakingCalibSets.length > 0) {
     const calibE1rms = peakingCalibSets.map(s => {
-      const vara = s.actualVx ?? 0;
+      // v4.34.33 BUG-FIX 1.3: yhtenäinen fallback pää-recommend()-funktion kanssa.
+      // Aiempi `?? 0` aliarvioi peaking-cal-setit (V0 = failure) — v4.32.8 protokolla
+      // käyttää RPE 8 × 3 V1, joten target-Vx ei välttämättä ole tallennettu actualVx:nä.
+      const vara = s.actualVx ?? s.targetVx ?? 1;
       return isBarbellPeaking
         ? e1rmAccessory(s.externalLoadKg || 0, s.reps || 1, vara)
         : e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || 1, vara);
