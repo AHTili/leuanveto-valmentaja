@@ -2133,7 +2133,15 @@ async function recommend(options = {}) {
       todayISO: dateISO,
       previouslyPromoted: false, // MVP: ei vielä historiaa, lasketaan fresh
     });
-    if (vbtStatus.status === "promoted" && vbtStatus.recommendedE1RM !== null) {
+    // v4.34.31: Tarkista onko PLAN_BASED_E1RM jo aktivoitunut. Jos kyllä, VBT EI saa
+    // ylikirjoittaa sitä (suunnitelma-uskollisuus voittaa yksittäiset velocity-mittaukset).
+    // Plan-based on hyödyttänyt useamman session datasta + tunnetusta loadPct-historiasta;
+    // VBT on regressio yksittäisten ankkuripisteiden pohjalta. Tärkeysjärjestys:
+    //   1. Plan-based (jos perfect execution)
+    //   2. VBT (jos n≥10 LV-pistettä JA plan-based ei aktivoitu)
+    //   3. Epley+Vara (default)
+    const planBasedActive = traces.some(t => t.ruleId === "PLAN_BASED_E1RM");
+    if (vbtStatus.status === "promoted" && vbtStatus.recommendedE1RM !== null && !planBasedActive) {
       const oldE1RM = currentE1RMExternal;
       // v4.34.28: Clamp velocity-pohjainen e1RM cap-rajoihin (cowork-audit kohta 2.2 #1).
       // Aiempi bug: jos diff < 5% ja velocity-arvio yli ceiling-capin, VBT-promote nosti
@@ -2152,6 +2160,12 @@ async function recommend(options = {}) {
           clampedToCeiling: wasClamped && ceiling_ext !== null && proposedE1RM === ceiling_ext,
           clampedToFloor: wasClamped && floor_ext !== null && proposedE1RM === floor_ext },
         `VBT promotettu: ${vbtStatus.anchorCount} ankkuripistettä · ±${(vbtStatus.diffPct * 100).toFixed(1)}% diff → e1RM ${oldE1RM.toFixed(1)} → ${currentE1RMExternal.toFixed(1)} kg (velocity-pohjainen)${wasClamped ? ` [clampattu: ${beforeClamp.toFixed(1)} → ${proposedE1RM.toFixed(1)}]` : ""}`);
+    } else if (vbtStatus.status === "promoted" && planBasedActive) {
+      // VBT olisi aktivoitunut mutta PLAN_BASED on tärkeämpi
+      trace("VBT_DEFERRED_TO_PLAN", {},
+        { vbtRecommendedE1RM: vbtStatus.recommendedE1RM?.toFixed(1), planBasedE1RM: currentE1RMExternal.toFixed(1),
+          anchorCount: vbtStatus.anchorCount, diffPct: vbtStatus.diffPct !== null ? (vbtStatus.diffPct * 100).toFixed(1) + "%" : "n/a" },
+        `VBT promote ohitettu: PLAN_BASED on aktiivinen (suunnitelma-uskollisuus voittaa yksittäisen velocity-mittauksen). VBT-arvio ${vbtStatus.recommendedE1RM?.toFixed(1)} kg, plan-based ${currentE1RMExternal.toFixed(1)} kg.`);
     } else if (vbtStatus.status === "candidate") {
       trace("VBT_CANDIDATE", {},
         { anchorCount: vbtStatus.anchorCount, diffPct: vbtStatus.diffPct !== null ? (vbtStatus.diffPct * 100).toFixed(1) + "%" : "n/a" },
