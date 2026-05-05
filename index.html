@@ -798,6 +798,8 @@ import {
   predictE1RMEndOfProgram, computeStreetliftingFinalProjection,
   // v4.34.0 AI-Block-Tuning
   generateBlockTuningPackage,
+  // v4.34.27 End-of-Cycle Tuning
+  generateEndOfCycleTuningPackage,
   REST_RECOMMENDATIONS,
   pickRestForExercise,
   DEFAULT_VARIANT_MODIFIERS,
@@ -2328,6 +2330,7 @@ function renderDashboard() {
       <div class="dash-topline-right">
         ${mesoChipHTML}
         <span class="chip ${readinessClass}">${readinessEmoji} ${r.combined || "?"}</span>
+        ${renderVBTStatusChip()}
       </div>
     </div>
 
@@ -2442,6 +2445,24 @@ async function renderBackupSnapshotsList() {
   } catch (e) {
     container.innerHTML = `<div style="color:var(--bad)">Virhe ladatessa snapshoteja</div>`;
   }
+}
+
+// v4.34.27: VBT (Velocity-Based Training) -status -chip Koti-näkymässä.
+// Näytetään hero-otsikon vieressä kun n ≥ 10 ankkuripistettä ON kerätty.
+// promoted = velocity-pohjainen e1RM käytössä primary-haarana (vihreä chip)
+// candidate = data riittää mutta diff > 5% (keltainen chip)
+// not-eligible = piilossa (ei näytetä mitään, ei häiritse normaalia UI:ta)
+function renderVBTStatusChip() {
+  const vbt = state.recommendation?.vbtStatus;
+  if (!vbt || vbt.status === "not-eligible") return "";
+  const isPromoted = vbt.status === "promoted";
+  const cls = isPromoted ? "chip-green" : "chip-yellow";
+  const icon = isPromoted ? "📊" : "🟡";
+  const label = isPromoted ? "VBT primary" : "VBT candidate";
+  const tooltip = isPromoted
+    ? `Velocity-pohjainen e1RM käytössä · ${vbt.anchorCount} ankkuripistettä · ±${(vbt.diffPct * 100).toFixed(1)}% diff Vx-arvioon`
+    : `${vbt.anchorCount} ankkuripistettä kerätty · diff Vx-arvioon ${vbt.diffPct ? "±" + (vbt.diffPct * 100).toFixed(1) + "%" : "n/a"} (kynnys 5%)`;
+  return `<span class="chip ${cls}" title="${tooltip}" style="font-size:10px;padding:3px 8px">${icon} ${label}</span>`;
 }
 
 // v4.26.0: backup-status-kortti — näkyy vain jos status ei ole "fresh"
@@ -6852,6 +6873,38 @@ function renderSettingsView() {
       </div>`;
     })()}
 
+    ${(() => {
+      // v4.34.27 End-of-Cycle Tuning -kortti — toimii KAIKILLE mesocycleille (default, peaking,
+      // streetlifting_16w, custom). Aktivoituu viim. viikolla (≤ 7 pv lopulle) tai jos sykli on
+      // jo päättynyt. Sisko AI-Block-Tuningille — kohdennettu seuraavan syklin suunnitteluun.
+      const meso = state.mesocycle;
+      if (!meso) return "";
+      const rec = state.recommendation;
+      const wk = typeof rec?.weekNum === "number" ? rec.weekNum : null;
+      const weekCount = meso.weekCount || 4;
+      const isFinalWeek = wk !== null && wk >= weekCount;
+      const isAfterEnd = wk === null && rec?.error !== "before-start";
+      const isActive = isFinalWeek || isAfterEnd;
+      const weeksLeft = wk !== null ? Math.max(0, weekCount - wk) : null;
+      return `<div class="card" style="border:1px solid rgba(168, 85, 247, 0.4); background: linear-gradient(135deg, rgba(168,85,247,0.04), rgba(99,102,241,0.04))">
+        <div class="card-title">🏁 End-of-Cycle Tuning <span style="font-size:10px;font-weight:400;color:var(--muted)">v4.34.27</span></div>
+        <div class="muted" style="font-size:12px;margin-bottom:10px;line-height:1.5">
+          Generoi koko syklin yhteenvedon + valmis AI-prompt seuraavan mesocyclen suunnitteluun. Sisko AI-Block-Tuningille — toimii <b>kaikille mesosyklityypeille</b> (default, peaking, streetlifting_16w).
+        </div>
+        ${isActive
+          ? `<div style="padding:10px;background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.4);border-radius:6px;margin-bottom:10px">
+              <div style="font-size:13px;font-weight:600">🏁 ${isAfterEnd ? "Sykli päättynyt" : `Vk ${wk}/${weekCount} — viim. viikko`} · End-of-Cycle Tuning aktiivinen</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">Mesocycle: <b>${meso.type || "default"}</b></div>
+            </div>
+            <button class="btn btn-primary btn-full" id="btn-generate-end-of-cycle">🏁 Generoi seuraavan syklin AI-paketti</button>`
+          : `<div style="padding:10px;background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.3);border-radius:6px">
+              <div style="font-size:12px;color:var(--muted)">End-of-Cycle Tuning aktivoituu syklin viim. viikolla (≤ 7 pv lopulle).</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">Olet vk ${wk || "?"}/${weekCount}. Aktivoituu vk <b>${weekCount}</b> alkaen (jäljellä <b>${weeksLeft || "?"}</b> vk).</div>
+            </div>`
+        }
+      </div>`;
+    })()}
+
     <div class="card">
       <div class="card-title">Diagnostiikka</div>
       <div class="muted">
@@ -7906,6 +7959,35 @@ function bind() {
     } catch (e) {
       console.error("[BlockTuning] error:", e);
       showToast("Virhe analyysipaketin generoinnissa: " + (e.message || "tuntematon"), "bad");
+    }
+  });
+
+  // v4.34.27: End-of-Cycle Tuning generaattori (sisko AI-Block-Tuningille,
+  // toimii kaikille mesosykkityypeille)
+  const endOfCycleBtn = $("#btn-generate-end-of-cycle");
+  if (endOfCycleBtn) endOfCycleBtn.addEventListener("click", async () => {
+    try {
+      const meso = state.mesocycle;
+      const rec = state.recommendation;
+      const wk = typeof rec?.weekNum === "number" ? rec.weekNum : null;
+      const pkg = generateEndOfCycleTuningPackage({
+        mesocycle: meso,
+        sessions: state.sessions,
+        allSets: state.allSets,
+        measurements: state.measurements || [],
+        prs: state.prs || [],
+        currentWeekNum: wk,
+        settings: state.settings,
+        decisionTraces: state.decisionTraces || [],
+      });
+      if (pkg.error) {
+        showToast(pkg.error, "warn", 5000);
+        return;
+      }
+      renderBlockTuningModal(pkg);  // sama modal-render — yhdenmukainen UX
+    } catch (e) {
+      console.error("[EndOfCycle] error:", e);
+      showToast("Virhe end-of-cycle-paketin generoinnissa: " + (e.message || "tuntematon"), "bad");
     }
   });
 

@@ -1318,6 +1318,101 @@ function computeLoadVelocityProfile(sets, bodyweightKg, options = {}) {
   return { points, slope, intercept, v1rmEstimate, e1rmCrossCheck, n, mvt };
 }
 
+// v4.34.27: VBT (Velocity-Based Training) Reliability-portti.
+// Ennen kuin velocity-pohjainen e1RM voi haastaa Vx-pohjaisen primary-haarana,
+// sen on osoitettava luotettavuutensa kahdella kriteerillä:
+//   1. n ≥ 10 ankkuripistettä viim. 4 vk (tarpeeksi dataa regressiolle)
+//   2. |velocity-e1RM − Vx-e1RM| / Vx-e1RM ≤ 5% (konvergenssi)
+//
+// Hysteresis: kun jo promoted, demote-kynnys = 8% (ei flikkaa edestakaisin
+// 5-7% rajalla). Tämä noudattaa cowork-arvioinnin reliability-portti -mallia
+// (kohta 4 vk 1-3 punchlistissa).
+//
+// MVP: yksi diff-arvio per kutsu — ei vielä convergence-historia (joka vaatisi
+// session-tason snapshotteja). Voi lisätä myöhemmin kun datapintaa kertyy.
+const VBT_MIN_ANCHORS = 10;
+const VBT_ANCHOR_WINDOW_DAYS = 28;
+const VBT_PROMOTE_THRESHOLD = 0.05;  // 5%
+const VBT_DEMOTE_THRESHOLD = 0.08;   // 8% — hysteresis
+
+function computeVBTPromotionStatus(allSets, movementId, currentE1RMExternal, options = {}) {
+  const isBarbell = options.isBarbell === true;
+  const bodyweightKg = options.bodyweightKg || 91;
+  const movementName = options.movementName || null;
+  const previouslyPromoted = options.previouslyPromoted === true;
+  const todayISOArg = options.todayISO || todayISO();
+
+  if (!movementId || !currentE1RMExternal || currentE1RMExternal <= 0) {
+    return {
+      status: "not-eligible",
+      anchorCount: 0,
+      diffPct: null,
+      reason: "movementId tai e1RM puuttuu",
+      recommendedE1RM: null,
+      velocityE1RM: null,
+      vxE1RM: currentE1RMExternal || null,
+    };
+  }
+
+  // Filter ankkuripisteet: viim. 28 päivää, oikeassa liikkeessä, velocityMean tallennettu
+  const cutoff = new Date(todayISOArg);
+  cutoff.setDate(cutoff.getDate() - VBT_ANCHOR_WINDOW_DAYS);
+  const cutoffISO = cutoff.toISOString().slice(0, 10);
+  const anchors = allSets.filter(s =>
+    s.movementId === movementId &&
+    s.velocityMean !== null && s.velocityMean !== undefined &&
+    s.externalLoadKg !== null && s.externalLoadKg !== undefined &&
+    (s.dateISO || s.timestamp || "9999-12-31") >= cutoffISO
+  );
+
+  if (anchors.length < VBT_MIN_ANCHORS) {
+    return {
+      status: "not-eligible",
+      anchorCount: anchors.length,
+      diffPct: null,
+      reason: `Vain ${anchors.length}/${VBT_MIN_ANCHORS} ankkuripistettä viim. ${VBT_ANCHOR_WINDOW_DAYS} pv`,
+      recommendedE1RM: null,
+      velocityE1RM: null,
+      vxE1RM: currentE1RMExternal,
+    };
+  }
+
+  const lvProfile = computeLoadVelocityProfile(anchors, bodyweightKg, {
+    isBarbell, currentE1RMExternal, movementName,
+  });
+
+  if (lvProfile.e1rmCrossCheck === null) {
+    return {
+      status: "not-eligible",
+      anchorCount: anchors.length,
+      diffPct: null,
+      reason: "LV-regressio epäluotettava (slope ≥ 0 tai loadPct@MVT ulkopuolelle [0.5, 2.5])",
+      recommendedE1RM: null,
+      velocityE1RM: null,
+      vxE1RM: currentE1RMExternal,
+    };
+  }
+
+  const diffPct = Math.abs(lvProfile.e1rmCrossCheck - currentE1RMExternal) / currentE1RMExternal;
+  const threshold = previouslyPromoted ? VBT_DEMOTE_THRESHOLD : VBT_PROMOTE_THRESHOLD;
+  const status = diffPct <= threshold ? "promoted" : "candidate";
+
+  return {
+    status,
+    anchorCount: anchors.length,
+    diffPct,
+    promoteThreshold: VBT_PROMOTE_THRESHOLD,
+    demoteThreshold: VBT_DEMOTE_THRESHOLD,
+    reason: status === "promoted"
+      ? `${anchors.length} ankkuripistettä · ±${(diffPct * 100).toFixed(1)}% diff (${previouslyPromoted ? "demote" : "promote"} ≤ ${(threshold * 100)}%)`
+      : `${anchors.length} ankkuripistettä · ±${(diffPct * 100).toFixed(1)}% diff yli kynnyksen ${(threshold * 100)}%`,
+    recommendedE1RM: status === "promoted" ? lvProfile.e1rmCrossCheck : null,
+    velocityE1RM: lvProfile.e1rmCrossCheck,
+    vxE1RM: currentE1RMExternal,
+    mvt: lvProfile.mvt,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════
 // DEFAULT DAY PLAN GENERATOR
 // ═══════════════════════════════════════════════════════════════
@@ -1800,6 +1895,32 @@ async function recommend(options = {}) {
           severity,
         },
         `LV-profiili ${lvProfile.n} pistettä · Vx-e1RM ${currentE1RMExternal.toFixed(1)} kg vs. velocity-e1RM ${lvProfile.e1rmCrossCheck.toFixed(1)} kg (${(diffPct * 100).toFixed(1)}%) · ${severity}`);
+    }
+
+    // v4.34.27: VBT Reliability-portti — promote velocity-pohjainen e1RM PRIMARY-haaraan
+    // jos n ≥ 10 ankkuripistettä viim. 4 vk JA |diff| ≤ 5%. Hysteresis ≥ 8% demotelle.
+    // Vaatii liike-spesifin MVT:n (Sánchez-Moreno 2017 jne.) — tunnistetaan
+    // primarySlotMeta?.defaultMovementName-pohjalta.
+    const vbtStatus = computeVBTPromotionStatus(allSets, primaryMovementId, currentE1RMExternal, {
+      isBarbell,
+      bodyweightKg,
+      movementName: primarySlotMeta?.defaultMovementName || null,
+      todayISO: dateISO,
+      previouslyPromoted: false, // MVP: ei vielä historiaa, lasketaan fresh
+    });
+    if (vbtStatus.status === "promoted" && vbtStatus.recommendedE1RM !== null) {
+      const oldE1RM = currentE1RMExternal;
+      currentE1RMExternal = vbtStatus.recommendedE1RM;
+      currentE1RMSystem = isBarbell ? currentE1RMExternal : (currentE1RMExternal + bodyweightKg);
+      trace("VBT_PRIMARY_USED",
+        { e1rmExternal: oldE1RM.toFixed(1), source: "vx-pohjainen" },
+        { e1rmExternal: currentE1RMExternal.toFixed(1), source: "velocity-promoted",
+          anchorCount: vbtStatus.anchorCount, diffPct: (vbtStatus.diffPct * 100).toFixed(1) + "%" },
+        `VBT promotettu: ${vbtStatus.anchorCount} ankkuripistettä · ±${(vbtStatus.diffPct * 100).toFixed(1)}% diff ≤ 5% → e1RM ${oldE1RM.toFixed(1)} → ${currentE1RMExternal.toFixed(1)} kg (velocity-pohjainen)`);
+    } else if (vbtStatus.status === "candidate") {
+      trace("VBT_CANDIDATE", {},
+        { anchorCount: vbtStatus.anchorCount, diffPct: vbtStatus.diffPct !== null ? (vbtStatus.diffPct * 100).toFixed(1) + "%" : "n/a" },
+        `VBT candidate: ${vbtStatus.reason} (Vx-e1RM säilyy primary-haarana)`);
     }
   }
 
@@ -2358,6 +2479,15 @@ async function recommend(options = {}) {
   }
 
   // Build recommendation
+  // v4.34.27: VBT-status promote/candidate näkyväksi UI:lle (Edistyminen-välilehti).
+  const vbtPromotedTrace = traces.find(t => t.ruleId === "VBT_PRIMARY_USED");
+  const vbtCandidateTrace = traces.find(t => t.ruleId === "VBT_CANDIDATE");
+  const vbtSummary = vbtPromotedTrace
+    ? { status: "promoted", anchorCount: vbtPromotedTrace.after.anchorCount, diffPct: vbtPromotedTrace.after.diffPct, source: "velocity" }
+    : vbtCandidateTrace
+    ? { status: "candidate", anchorCount: vbtCandidateTrace.after.anchorCount, diffPct: vbtCandidateTrace.after.diffPct, source: "vx" }
+    : { status: "not-eligible", anchorCount: 0, diffPct: null, source: "vx" };
+
   const rec = {
     recId: uid(),
     dateISO,
@@ -2380,6 +2510,7 @@ async function recommend(options = {}) {
     breakInfo: breakInfo.breakDays >= 7 ? breakInfo : null,
     accessoryCapActive,
     dayPlan,
+    vbtStatus: vbtSummary,
     traces,
   };
 
@@ -3930,6 +4061,331 @@ OUTPUT-VAATIMUKSET:
 }
 
 // ═══════════════════════════════════════════════════════════════
+// END-OF-CYCLE TUNING — v4.34.27 (cowork-arvioinnin kohta 5)
+// ═══════════════════════════════════════════════════════════════
+//
+// generateBlockTuningPackage:n sisko, mutta MESOCYCLE-AGNOSTIC. Kun mesocycle
+// lähestyy loppua (viim. 7 päivää tai jo päättynyt), aktivoi kortti Asetuksissa
+// joka generoi koko syklin yhteenvedon + ehdotuksen seuraavalle blokille.
+//
+// Toimii kaikille mesocycle.type-arvoille:
+//   - streetlifting_16w: foundation/strength/intensity/peaking-blokit erikseen
+//   - default (4 vk): yksi yhtenäinen sykli
+//   - peaking, custom, render: vastaavasti yksi sykli
+//
+// Trigger:
+//   - mesocycle.weekCount - currentWeekNum < 1 (viim. viikko, ≤ 7 päivää lopulle)
+//   - tai pos?.reason === "after-end" (jo päättynyt)
+
+function generateEndOfCycleTuningPackage(ctx) {
+  const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings, decisionTraces } = ctx;
+
+  if (!mesocycle) {
+    return { error: "End-of-Cycle Tuning vaatii aktiivisen mesosyklin." };
+  }
+
+  const weekCount = mesocycle.weekCount || 4;
+  const wk = currentWeekNum;
+  const isFinalWeek = wk !== null && wk >= weekCount;
+  const isAfterEnd = wk === null;
+  if (!isFinalWeek && !isAfterEnd) {
+    const weeksLeft = weekCount - wk;
+    return {
+      error: `End-of-Cycle Tuning aktivoituu viim. viikolla (≤ 7 pv lopulle). Olet vk ${wk}/${weekCount}, jäljellä ${weeksLeft} vk.`,
+    };
+  }
+
+  // ── Atleettiprofile ──
+  const cal = mesocycle.streetliftingConfig?.calibration || {};
+  const bw = settings?.bodyweightKg || 91;
+  const profile = {
+    bw,
+    weekCount,
+    mesocycleType: mesocycle.type || "default",
+    competitionDate: mesocycle.streetliftingConfig?.competitionDate || null,
+    calibration: cal,
+    prs: (prs || []).map(p => ({ movement: p.movementName, value: p.value, dateISO: p.dateISO, context: p.context })),
+  };
+
+  // ── Koko syklin sessio-data ──
+  const cycleSessions = (sessions || []).filter(s => {
+    const sw = getMesocycleWeek(mesocycle, s.dateISO);
+    return sw !== null && sw >= 1 && sw <= weekCount;
+  }).sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+
+  const sessionAnalysis = cycleSessions.map(sess => {
+    const sessSets = (allSets || []).filter(set => set.sessionId === sess.sessionId);
+    const sw = getMesocycleWeek(mesocycle, sess.dateISO);
+    const slots = sessSets.map(set => ({
+      movementName: set.movementName,
+      role: set.setRole,
+      prescribed: { reps: set.targetReps, vx: set.targetVx, loadKg: set.targetLoadKg, loadPct: set.targetLoadPct },
+      actual: { reps: set.reps, actualVx: set.actualVx, loadKg: set.externalLoadKg, velocity: set.velocityMs },
+      vxDelta: (set.targetVx != null && set.actualVx != null) ? (set.targetVx - set.actualVx) : null,
+    }));
+    return {
+      week: sw, dateISO: sess.dateISO, label: sess.label, dayType: sess.dayType, slots, notes: sess.notes || null,
+    };
+  });
+
+  // ── e1RM-trendit per päämuovikatselma (mesocycle-agnostic: hae kaikki primary-merkityt) ──
+  // Streetlifting_16w käyttää 4 kisaliikettä; muille mesocycleille hae kaikki liikkeet joista on dataa.
+  const compLifts = mesocycle.type === "streetlifting_16w"
+    ? ["Lisäpainoleuanveto", "Muscle-up", "Lisäpainodippi", "Takakyykky"]
+    : Array.from(new Set((allSets || []).filter(s => s.movementName).map(s => s.movementName)))
+        .filter(name => {
+          const sets = (allSets || []).filter(s => s.movementName === name && s.externalLoadKg > 0);
+          return sets.length >= 3; // vähintään 3 settiä että trendi on järkevä
+        })
+        .slice(0, 6); // max 6 liikettä jotta data ei räjähdä
+
+  const e1rmTrends = {};
+  for (const liftName of compLifts) {
+    const liftSets = (allSets || []).filter(set => set.movementName === liftName && set.externalLoadKg > 0);
+    if (liftSets.length === 0) continue;
+    const sortedSets = liftSets.sort((a, b) => (a.timestamp || a.dateISO || "").localeCompare(b.timestamp || b.dateISO || ""));
+    const dataPoints = sortedSets.slice(-12).map(s => {
+      const vara = s.actualVx ?? s.targetVx ?? 1;
+      const isBarbell = liftName === "Takakyykky" || liftName === "Etukyykky" ||
+                        liftName === "Penkkipunnerrus" || liftName === "Maastaveto" || liftName === "Pystypunnerrus";
+      const e1rm = isBarbell
+        ? e1rmAccessory(s.externalLoadKg || 0, s.reps || 1, vara)
+        : e1rmSystem(bw, s.externalLoadKg || 0, s.reps || 1, vara);
+      return { dateISO: s.dateISO, e1rm: Math.round(e1rm * 10) / 10, load: s.externalLoadKg, reps: s.reps, vx: s.actualVx };
+    });
+    if (dataPoints.length >= 2) {
+      const first = dataPoints[0].e1rm;
+      const latest = dataPoints[dataPoints.length - 1].e1rm;
+      const deltaPct = first > 0 ? ((latest - first) / first) * 100 : 0;
+      e1rmTrends[liftName] = { first, latest, deltaPct: Math.round(deltaPct * 10) / 10, dataPoints };
+    }
+  }
+
+  // ── Koko syklin recovery-/mittari-trendit ──
+  const cycleMeasurements = (measurements || []).filter(m => {
+    const mw = getMesocycleWeek(mesocycle, m.dateISO);
+    return mw !== null && mw >= 1 && mw <= weekCount;
+  }).sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+
+  const trends = {
+    hrv: cycleMeasurements.filter(m => m.hrv != null).map(m => ({ dateISO: m.dateISO, value: m.hrv })),
+    mpv: cycleMeasurements.filter(m => m.mpv != null).map(m => ({ dateISO: m.dateISO, value: m.mpv })),
+    bodyweight: cycleMeasurements.filter(m => m.bodyweightKg != null).map(m => ({ dateISO: m.dateISO, value: m.bodyweightKg })),
+  };
+
+  // ── Anomaliat (V0 primaryjen failure, Vx-mismatch ±2+) ──
+  const anomalies = [];
+  for (const sess of sessionAnalysis) {
+    for (const slot of sess.slots) {
+      if (slot.actual.actualVx === 0 && slot.role === "primary") {
+        anomalies.push({ type: "failure-primary", week: sess.week, day: sess.label, movement: slot.movementName, prescribed: slot.prescribed, actual: slot.actual });
+      }
+      if (slot.vxDelta != null && Math.abs(slot.vxDelta) >= 2 && slot.role === "primary") {
+        anomalies.push({ type: "vx-mismatch", week: sess.week, day: sess.label, movement: slot.movementName, vxDelta: slot.vxDelta, prescribed: slot.prescribed, actual: slot.actual });
+      }
+    }
+  }
+
+  // ── Aggregaatit ──
+  const totalSessions = sessionAnalysis.length;
+  const completedSets = sessionAnalysis.reduce((sum, s) => sum + s.slots.length, 0);
+  const vxHits = sessionAnalysis.reduce((acc, s) => {
+    for (const slot of s.slots) {
+      if (slot.prescribed.vx != null && slot.actual.actualVx != null) {
+        acc.total++;
+        if (Math.abs(slot.vxDelta || 0) <= 1) acc.hits++;
+      }
+    }
+    return acc;
+  }, { hits: 0, total: 0 });
+  const aggregates = {
+    totalSessions,
+    completedSets,
+    vxHitRate: vxHits.total > 0 ? Math.round((vxHits.hits / vxHits.total) * 100) : null,
+    failureCount: anomalies.filter(a => a.type === "failure-primary").length,
+    vxMismatchCount: anomalies.filter(a => a.type === "vx-mismatch").length,
+  };
+
+  // ── Markdown-narratiivi ──
+  const markdown = buildEndOfCycleMarkdown({
+    profile, currentWeek: wk || weekCount, weekCount, sessionAnalysis,
+    e1rmTrends, trends, anomalies, aggregates, mesocycleType: mesocycle.type || "default",
+  });
+
+  // ── JSON-data (Claude/AI:lle) ──
+  const json = {
+    meta: {
+      version: "4.34.27",
+      generatedAt: new Date().toISOString(),
+      currentWeek: wk,
+      weekCount,
+      mesocycleType: mesocycle.type || "default",
+      isAfterEnd,
+    },
+    profile,
+    completedCycle: {
+      weeks: Array.from({ length: weekCount }, (_, i) => i + 1),
+      sessions: sessionAnalysis,
+      e1rmTrends, trends, anomalies, aggregates,
+    },
+  };
+
+  // ── AI-prompt (valmis copy-paste) ──
+  const prompt = buildEndOfCyclePrompt({ profile, currentWeek: wk || weekCount, weekCount, json, markdown });
+
+  return {
+    markdown, json, prompt,
+    meta: {
+      currentWeek: wk, weekCount, mesocycleType: mesocycle.type || "default",
+      generatedAt: new Date().toISOString(),
+      sessionsAnalyzed: totalSessions,
+      anomaliesFound: anomalies.length,
+    },
+  };
+}
+
+function buildEndOfCycleMarkdown({ profile, currentWeek, weekCount, sessionAnalysis, e1rmTrends, trends, anomalies, aggregates, mesocycleType }) {
+  const lines = [];
+  lines.push(`# End-of-Cycle Tuning -analyysi — koko sykli (${weekCount} vk)`);
+  lines.push("");
+  lines.push(`**Generoitu**: ${new Date().toLocaleDateString("fi-FI")}`);
+  lines.push(`**Mesocycle**: ${mesocycleType}, vk ${currentWeek}/${weekCount}`);
+  lines.push(`**Atleettiprofile**: ${profile.bw} kg bw`);
+  if (profile.calibration?.kyykkyExtKg) {
+    lines.push(`**Kalibrointi**: K=${profile.calibration.kyykkyExtKg} kg, L=${profile.calibration.leukaExtKg} kg, D=${profile.calibration.dippiExtKg} kg`);
+  }
+  if (profile.competitionDate) {
+    lines.push(`**Kisapäivä**: ${profile.competitionDate}`);
+  }
+  lines.push("");
+
+  lines.push(`## Syklin yhteenveto`);
+  lines.push("");
+  lines.push(`- Sessioita kirjattu: **${aggregates.totalSessions}**`);
+  lines.push(`- Sarjoja yhteensä: **${aggregates.completedSets}**`);
+  if (aggregates.vxHitRate != null) {
+    lines.push(`- Vx-target-hit-rate (±1): **${aggregates.vxHitRate}%**`);
+  }
+  lines.push(`- Failure-tapauksia (V0 primary): **${aggregates.failureCount}**`);
+  lines.push(`- Vx-mismatch (±2+): **${aggregates.vxMismatchCount}**`);
+  lines.push("");
+
+  if (Object.keys(e1rmTrends).length > 0) {
+    lines.push("### e1RM-trendit");
+    lines.push("");
+    lines.push("| Liike | Lähtö | Loppu | Δ% |");
+    lines.push("|---|---|---|---|");
+    for (const [name, t] of Object.entries(e1rmTrends)) {
+      const arrow = t.deltaPct > 0 ? "📈" : t.deltaPct < 0 ? "📉" : "→";
+      lines.push(`| ${name} | ${t.first} kg | ${t.latest} kg | ${arrow} ${t.deltaPct >= 0 ? "+" : ""}${t.deltaPct}% |`);
+    }
+    lines.push("");
+  }
+
+  if (trends.hrv.length > 0 || trends.mpv.length > 0 || trends.bodyweight.length > 0) {
+    lines.push("### Recovery-/mittari-trendit");
+    lines.push("");
+    if (trends.hrv.length > 0) {
+      const first = trends.hrv[0].value, last = trends.hrv[trends.hrv.length - 1].value;
+      const delta = first > 0 ? Math.round(((last - first) / first) * 1000) / 10 : 0;
+      lines.push(`- **HRV**: ${trends.hrv.length} mittausta, ${first.toFixed(1)} → ${last.toFixed(1)} (${delta >= 0 ? "+" : ""}${delta}%)`);
+    }
+    if (trends.mpv.length > 0) {
+      const first = trends.mpv[0].value, last = trends.mpv[trends.mpv.length - 1].value;
+      const delta = first > 0 ? Math.round(((last - first) / first) * 1000) / 10 : 0;
+      lines.push(`- **MPV**: ${trends.mpv.length} mittausta, ${first.toFixed(2)} → ${last.toFixed(2)} m/s (${delta >= 0 ? "+" : ""}${delta}%)`);
+    }
+    if (trends.bodyweight.length > 0) {
+      const first = trends.bodyweight[0].value, last = trends.bodyweight[trends.bodyweight.length - 1].value;
+      const delta = Math.round((last - first) * 10) / 10;
+      lines.push(`- **Kehonpaino**: ${trends.bodyweight.length} mittausta, ${first.toFixed(1)} → ${last.toFixed(1)} kg (${delta >= 0 ? "+" : ""}${delta} kg)`);
+    }
+    lines.push("");
+  }
+
+  if (anomalies.length > 0) {
+    lines.push("### Anomaliat");
+    lines.push("");
+    for (const a of anomalies.slice(0, 12)) {
+      if (a.type === "failure-primary") {
+        lines.push(`- 🔴 **vk ${a.week} ${a.day}**: ${a.movement} V0-failure (target ${a.prescribed.reps}×V${a.prescribed.vx}, actual ${a.actual.reps} reps)`);
+      } else if (a.type === "vx-mismatch") {
+        lines.push(`- 🟡 **vk ${a.week} ${a.day}**: ${a.movement} Vx-delta ${a.vxDelta > 0 ? "+" : ""}${a.vxDelta} (target V${a.prescribed.vx}, actual V${a.actual.actualVx})`);
+      }
+    }
+    if (anomalies.length > 12) lines.push(`- ...ja ${anomalies.length - 12} muuta`);
+    lines.push("");
+  }
+
+  lines.push(`## Seuraava sykli — pohdittavaa AI:lle`);
+  lines.push("");
+  lines.push(`Vie tämä paketti Claude/ChatGPT:lle saadaksesi ehdotuksen seuraavan mesocyclen rakenteeksi.`);
+  lines.push(`Kysy spesifisti:`);
+  lines.push(`1. Mitkä blokit (foundation/strength/intensity/peaking) toimivat hyvin, mitkä eivät?`);
+  lines.push(`2. Pitäisikö volyymi-bias / intensity-bias muuttua seuraavassa syklissä?`);
+  lines.push(`3. Mitkä slot-rotaatiot (esim. accessory-vaihdot) tuottivat eniten hyötyä?`);
+  lines.push(`4. Onko peaking-protokolla A/B-vaihdettava (esim. Bosquet 2007 vs Pritchard NZ raw)?`);
+  lines.push(`5. Mikä konkreettinen muutos parantaisi seuraavaa sykliä eniten?`);
+
+  return lines.join("\n");
+}
+
+function buildEndOfCyclePrompt({ profile, currentWeek, weekCount, json, markdown }) {
+  return `# End-of-Cycle Tuning -pyyntö
+
+Olen edistynyt streetlifting-/voimanostoatleetti (15+v kokemus). Käytän LeVe AI -valmennussovellusta jonka olen rakentanut itselleni Claude Code -työkalulla.
+
+## Konteksti
+${profile.competitionDate ? `Kisapäivä: ${profile.competitionDate}.` : "Ei spesifistä kisapäivää."}
+Mesocycle: ${json.meta.mesocycleType}, vk ${currentWeek}/${weekCount}.
+Profile: ${profile.bw} kg bw.
+${profile.calibration?.kyykkyExtKg ? `Kalibrointi: K=${profile.calibration.kyykkyExtKg}, L=${profile.calibration.leukaExtKg}, D=${profile.calibration.dippiExtKg} kg.` : ""}
+
+## Pyyntö
+Analysoi koko syklin data (alla JSON) ja palauta ehdotus seuraavan mesocyclen rakenteeksi. Tärkein kysymys: **mikä konkreettinen muutos parantaisi seuraavaa sykliä eniten?**
+
+## Vaadittu vastausformaatti
+
+\`\`\`json
+{
+  "executive_summary": "1-2 lauseen kiteytys mitä mennyt sykli kertoi atleetin nykytasosta + isoin oppimisaihe.",
+  "next_cycle_proposal": {
+    "structure": "esim. '4-blokki 16 vk: hypertrofia 4 + voima 4 + intensifikaatio 4 + peaking 4'",
+    "volume_bias": "low | balanced | high",
+    "intensity_bias": "low | balanced | high",
+    "primary_focus": "esim. 'leuanveto-volyymi' tai 'kyykky-tekniikka'",
+    "rationale": "lyhyt perustelu (3-5 lausetta)"
+  },
+  "key_changes_from_previous": [
+    { "category": "A | B | C", "change": "konkreettinen muutos", "why": "syy datasta" }
+  ],
+  "athlete_critical_questions": [
+    "kysymys 1 atleetin pohdittavaksi",
+    "kysymys 2..."
+  ],
+  "citations": ["lähde 1 (esim. 'Bosquet 2007 tapering meta')"]
+}
+\`\`\`
+
+Kategoria A = sovellus-tason muutokset (atleetti applaa UI:ssa: slot-swap, e1RM-update, BW)
+Kategoria B = rakenteelliset muutokset (Claude Code -tasolla: %-progressio, set/rep, backoff-tyyli)
+Kategoria C = mentaalinen koutsaus (atleetti sisäistää: tekniikkavinkit, riskimanagement)
+
+## Data (mennyt sykli)
+
+\`\`\`json
+${JSON.stringify(json, null, 2)}
+\`\`\`
+
+## Ohjeet
+- Älä ehdota muutoksia jotka rikkovat käyttäjän nykyistä työkalua
+- Älä myöntäile — jos sykli oli puutteellinen, sano se
+- Erottele vakaa konsensus / aktiivinen debate / heuristiikka
+- Streetlifting-spesifeille kysymyksille (peaking, peakkari-protokolla) on usein vain coaching-konsensus, ei RCT — myönnä se
+- Jos ehdotat A/B-vertailua, suunnittele se SCED-tyyppisenä (single-case experimental design)`;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════
 
@@ -3964,6 +4420,7 @@ export {
   upperBodyMpvReadiness,
   // v4.34.0 AI-Block-Tuning
   generateBlockTuningPackage,
+  generateEndOfCycleTuningPackage,
   combineReadiness,
   // Mesocycle
   getMesocycleWeek,
@@ -4031,6 +4488,10 @@ export {
   computeLoadVelocityProfile,
   MOVEMENT_MVT,
   DEFAULT_MVT,
+  computeVBTPromotionStatus,
+  VBT_MIN_ANCHORS,
+  VBT_PROMOTE_THRESHOLD,
+  VBT_DEMOTE_THRESHOLD,
   // Readiness test
   readinessTestLoad,
   // Speed
