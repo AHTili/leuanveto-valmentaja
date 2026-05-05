@@ -1867,6 +1867,90 @@ async function recommend(options = {}) {
     ? (isBarbell ? currentE1RMSystem : Math.max(0, currentE1RMSystem - bodyweightKg))
     : null;
 
+  // v4.34.30: PLAN_BASED_E1RM — kun atletti suoriutui täydellisesti targetin Vx:llä,
+  // luota suunnitelmaan, älä Epley+Vara -aliarvioon (Helms 2018, Tuchscherer RTS).
+  //
+  // Käyttäjäpalaute 2026-05-05: "Tein 4×6 V3 @120 kg juuri kuten oli tavoite, ja
+  // engine ehdottaa vk 2 SAMA paino vaikka suunnitelma sanoo +3.5%". Juurisyy:
+  // Epley+Vara aliarvioi e1RM:n korkeilla toistoilla ~10-15% (4×6 V3 @120 → 156,
+  // todellinen ~175). Konservatiivinen e1RM × suunnitelma % → liian matala target.
+  //
+  // Korjaus: jos viim. session oli "perfect execution" (kaikki sarjat actualVx ≥
+  // targetVx JA reps ≥ targetReps), johdetaan e1RM SUORAAN suunnitelmasta:
+  //   plan_e1rm = lastLoad / lastLoadPct
+  // Kun lastPct=0.686 ja lastLoad=120 → plan_e1rm = 175 (vrt. Epley+Vara 156).
+  // Käytetään MAX(epley_vara, plan_based) → ei pakota alaspäin, vain ylöspäin.
+  //
+  // Plan-based aktivoituu vain perfect-execution-tilanteessa: jos atletti ei
+  // suoriutunut, Epley+Vara säilyy (konservatiivinen suoja grindausta vastaan).
+  if (currentE1RMExternal !== null && primaryMovementId && recentTopSets.length > 0) {
+    // Hae viim. session SETIT — ei cal, ei deload (filtteröi sessio-tasolla)
+    const lastSessionSets = (() => {
+      // Ryhmitä sessionId:n mukaan, ota viim. ei-cal-sessio
+      const sessGroups = new Map();
+      const sessOrder = [];
+      for (const s of recentTopSets) {
+        const sid = s.sessionId || `__nosess_${s.timestamp}`;
+        if (!sessGroups.has(sid)) { sessGroups.set(sid, []); sessOrder.push(sid); }
+        sessGroups.get(sid).push(s);
+      }
+      // Käy lopusta alkuun, etsi viim. ei-cal-sessio
+      for (let i = sessOrder.length - 1; i >= 0; i--) {
+        const sets = sessGroups.get(sessOrder[i]);
+        const calCount = sets.filter(s => s.setRole === "calibration").length;
+        if (calCount < sets.length * 0.5) return sets;
+      }
+      return null;
+    })();
+
+    if (lastSessionSets && lastSessionSets.length > 0) {
+      // Tarkista perfect execution: kaikki sarjat targetVx tai parempi (alempi luku)
+      // JA reps >= targetReps. Sallitaan myös yksi V0 jos reps = targetReps (= just-made-it).
+      const allHitTarget = lastSessionSets.every(s =>
+        s.actualVx !== null && s.actualVx !== undefined && s.targetVx !== null && s.targetVx !== undefined
+        && s.actualVx >= s.targetVx  // Vx asteikko: korkeampi = helpompi → actualVx >= targetVx tarkoittaa "yhtä helppo tai helpompi"
+        && (s.reps ?? 0) >= (s.targetReps ?? 0)
+      );
+
+      if (allHitTarget) {
+        // Hae viim. session date → mesocycle-vk → primary-slot loadPct
+        const lastDateISO = lastSessionSets[0]?.timestamp?.slice(0, 10)
+          || lastSessionSets[0]?.dateISO
+          || (sessions || []).find(s => s.sessionId === lastSessionSets[0]?.sessionId)?.dateISO;
+        const lastWk = lastDateISO ? getMesocycleWeek(mesocycle, lastDateISO) : null;
+        const lastDow = lastDateISO ? (new Date(lastDateISO).getDay() || 7) : null;
+        const lastDayPlan = (lastWk !== null && lastDow !== null)
+          ? mesocycle.weekPlans?.[lastWk - 1]?.days?.find(d => d.dayOfWeek === lastDow)
+          : null;
+        const lastPrimarySlot = lastDayPlan?.slots?.find(s => s.role === "primary");
+        const lastLoadPct = lastPrimarySlot?.loadPct;
+
+        if (lastLoadPct && lastLoadPct > 0 && lastLoadPct <= 1.0) {
+          const lastMedianLoad = median(lastSessionSets.map(s => s.externalLoadKg).filter(v => v > 0));
+          if (lastMedianLoad && lastMedianLoad > 0) {
+            const planBasedExternal = lastMedianLoad / lastLoadPct;
+            // v4.34.30 PÄIVITETTY: korvaa Epley+Vara plan-based-arvolla AINA kun perfect
+            // execution. Älä käytä MAX:ia — Epley voi sekä yli- että aliarvioida e1RM:n
+            // ja luottaminen suunnitelmaan on luotettavampaa kuin formula-extrapolointi.
+            // Esim. system-load-liikkeissä (leuka) Epley antaa 183 vaikka todellinen 175,
+            // ja se tuottaisi vk 2 target 130 kg (vs suunnitelman +3.5% = 124).
+            // PLAN_BASED on suunnitelma-uskollinen molempiin suuntiin.
+            const original = currentE1RMExternal;
+            const diffPct = ((planBasedExternal - original) / original) * 100;
+            currentE1RMExternal = planBasedExternal;
+            currentE1RMSystem = isBarbell ? planBasedExternal : (planBasedExternal + bodyweightKg);
+            trace("PLAN_BASED_E1RM",
+              { e1rmExternal: original.toFixed(1), source: "epley-vara" },
+              { e1rmExternal: currentE1RMExternal.toFixed(1), source: "plan-based",
+                lastLoad: lastMedianLoad, lastLoadPct, lastWk, perfectExecution: true,
+                diffPct: diffPct.toFixed(1) + "%" },
+              `Perfect execution viim. session (kaikki sarjat target Vx:llä @${lastMedianLoad} kg, vk ${lastWk} loadPct ${lastLoadPct}) → plan-based e1RM ${planBasedExternal.toFixed(1)} kg ${diffPct >= 0 ? 'yliajaa' : 'korjaa alas'} Epley+Vara ${original.toFixed(1)} kg (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)`);
+          }
+        }
+      }
+    }
+  }
+
   // v4.34.28: Ceiling/floor-arvot näkyvissä VBT-promote-clampille (kohta 1).
   // Aiemmin nämä olivat let-muuttujia INFLATION_CAP- ja DEFLATION_CAP-blokkien
   // sisällä → VBT-haara (rivi ~1913) ohitti capit. Bug: jos velocity-pohjainen

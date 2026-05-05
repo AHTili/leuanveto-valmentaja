@@ -776,6 +776,72 @@ async function testRecommendScenarios() {
     }
   });
 
+  // S10: PLAN_BASED_E1RM — perfect execution viim. session → e1RM nostetaan suunnitelmasta
+  // Käyttäjäpalaute 2026-05-05: "4×6 V3 @120 kg, miksi vk 2 sama paino vaikka suunnitelma sanoo +3.5%?"
+  await scenario("PLAN_BASED_E1RM — perfect execution → e1RM plan-based", async () => {
+    const movId = PRIMARY_MOV_ID;
+    // Mock streetlifting_16w-tyyppinen mesocycle vaatii loadPct slotissa.
+    // Käytetään kustomia: meso jossa vk 1 day 1 primary loadPct = 0.686
+    const customMeso = {
+      mesocycleId: 'mock-sl16w',
+      type: 'streetlifting_16w',
+      startDateISO: '2026-04-20',
+      weekCount: 16,
+      weekDefs: [
+        { week: 1, deltaPctBase: 0, label: 'Foundation vk 1' },
+        { week: 2, deltaPctBase: 0.025, label: 'Foundation vk 2' },
+      ],
+      weekPlans: [
+        { week: 1, days: [{
+          dayOfWeek: 1, dayType: 'heavy', label: 'MA — Leuka 4×6 @68.6%',
+          slots: [{
+            role: 'primary', category: 'vertikaaliveto',
+            defaultMovementName: 'Lisäpainoleuanveto',
+            sets: 4, reps: 6, targetVx: 3,
+            loadPct: 0.686, suggestedLoadKg: 60,
+          }],
+        }]},
+        { week: 2, days: [{
+          dayOfWeek: 1, dayType: 'heavy', label: 'MA — Leuka 4×6 @71%',
+          slots: [{
+            role: 'primary', category: 'vertikaaliveto',
+            defaultMovementName: 'Lisäpainoleuanveto',
+            sets: 4, reps: 6, targetVx: 3,
+            loadPct: 0.71, suggestedLoadKg: 62,
+          }],
+        }]},
+      ],
+    };
+    // Mock vk 1 MA -sessio: PERFECT EXECUTION 4×6 V3 @ 120 kg
+    const oldSession = { sessionId: 'sess-vk1', dateISO: '2026-04-20', completed: true };
+    const oldSets = Array.from({ length: 4 }, (_, i) => ({
+      setId: `s${i}`, sessionId: 'sess-vk1', movementId: movId,
+      movementName: 'Lisäpainoleuanveto',
+      externalLoadKg: 120, reps: 6, actualVx: 3, targetVx: 3, targetReps: 6,
+      setRole: 'top', isWarmup: false, completed: true,
+      timestamp: '2026-04-20T17:00:00Z',
+    }));
+    const ctx = makeRecommendCtx({
+      dateISO: '2026-04-27', // vk 2 MA
+      mesocycle: customMeso,
+      sessions: [oldSession],
+      allSets: oldSets,
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error, 'S10: ei error');
+    // Plan-based: e1RM = 120 / 0.686 = 174.9 kg (suunnitelma-uskollinen,
+    // EI Epley+Vara 156 system-aliarvio eikä 183 system-yliarvio)
+    assert(rec.e1rmExternal !== null && rec.e1rmExternal >= 173 && rec.e1rmExternal <= 177,
+      `S10: plan-based e1RM ~174.9 (= 120/0.686) — got ${rec.e1rmExternal}`);
+    assert(hasTrace(rec, 'PLAN_BASED_E1RM'),
+      'S10: PLAN_BASED_E1RM-trace olemassa');
+    // Vk 2 target = 174.9 × 0.71 = 124.2 kg → suunnitelma-uskollinen +3.5% nousu vk 1:stä
+    if (rec.targetExternalLoad !== null) {
+      assert(rec.targetExternalLoad >= 123 && rec.targetExternalLoad <= 125,
+        `S10: vk 2 target ~124 kg (suunnitelma-uskollinen) — got ${rec.targetExternalLoad}`);
+    }
+  });
+
   // S6: Tauko 14 pv ennen tätä päivää → BREAK-tyyppinen modifier
   await scenario("tauko 14 pv → BREAK_MODIFIER", async () => {
     // Luodaan yksi sessio 14 pv sitten, ei muuta
