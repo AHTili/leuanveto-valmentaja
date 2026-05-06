@@ -1,7 +1,12 @@
-// sw.js — Service Worker (offline-first, cache-first)
-// LeVe AI v4.34.36
+// sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
+// LeVe AI v4.34.37 — automaattinen päivitys: navigation-pyynnöt yrittävät verkosta
+// ensin (3 s timeout), fallback cache. Asset-pyynnöt (engine.js, data.js, ikonit)
+// stale-while-revalidate. Yhdessä index.html:n auto-skipWaiting + controllerchange-
+// reload-mekaniikan kanssa: käyttäjä saa aina uusimman version sovelluksen avauksessa
+// ilman manuaalista cache-tyhjennystä. Offline-tila säilyy: jos verkko kaatuu,
+// sovellus toimii cachetetulla viim. nähdyllä versiolla.
 
-const APP_VERSION = "4.34.36";
+const APP_VERSION = "4.34.37";
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
 
 // v4.34.9: Kuuntele SKIP_WAITING-message-eventtia, jolla pää-säie voi pakottaa
@@ -44,15 +49,46 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Fetch: stale-while-revalidate for core assets, cache-first for others
+// Fetch: navigation network-first (3s timeout), assets stale-while-revalidate, others cache-first
 self.addEventListener("fetch", (event) => {
   // Only handle GET requests
   if (event.request.method !== "GET") return;
 
   const url = new URL(event.request.url);
+
+  // v4.34.37: navigation-pyynnöt (= index.html) → network-first 3 s timeout, fallback cache.
+  // Tämä takaa että käyttäjä saa AINA uusimman index.html:n + script-viittaukset
+  // kun online. Aiempi stale-while-revalidate palveli vanhan HTML:n joka viittasi
+  // vanhoihin engine.js + data.js -tiedostoihin → automaattinen päivitys ei toiminut.
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      Promise.race([
+        fetch(event.request).then((response) => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(event.request, clone));
+          }
+          return response;
+        }),
+        new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+      ]).then(async (networkResponse) => {
+        if (networkResponse) return networkResponse;
+        // Timeout tai fail → fallback cache
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(event.request) || await cache.match("./index.html");
+        return cached || new Response("Offline", { status: 503 });
+      }).catch(async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(event.request) || await cache.match("./index.html");
+        return cached || new Response("Offline", { status: 503 });
+      })
+    );
+    return;
+  }
+
   const isCoreAsset = CORE_ASSETS.some(a => url.pathname.endsWith(a.replace("./", "/")));
 
-  if (isCoreAsset || event.request.mode === "navigate") {
+  if (isCoreAsset) {
     // Stale-while-revalidate: serve cache immediately, update in background
     event.respondWith(
       caches.open(CACHE_NAME).then(async (cache) => {
