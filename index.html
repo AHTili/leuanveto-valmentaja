@@ -3235,8 +3235,14 @@ function effortScore(loadKg, reps, vx) {
 // per-sarja-detaljilla.
 function computeRecentSessionsForMovement(movementId, excludeSessionId, n = 3) {
   if (!movementId) return [];
+  // v4.34.36 BUG-FIX: poistettu `s.completed === true` -ehto. Tallennetut setit
+  // ovat aina valmiita (saveSets ei persistoi `completed`-kenttää, joka on vain
+  // workout-flow:n sisäinen tila). Aiempi filtteri sulki KAIKKI tallennetut sarjat
+  // pois → 📊-historia-modali näytti aina "Ei aikaisempia treenejä".
+  // Filtteröi sen sijaan skipped-sarjat (= setRole "skipped" tai reps null).
   const completed = state.allSets
-    .filter(s => s.movementId === movementId && !s.isWarmup && s.completed)
+    .filter(s => s.movementId === movementId && !s.isWarmup)
+    .filter(s => s.setRole !== "skipped" && s.reps !== null && s.reps !== undefined)
     .filter(s => s.sessionId !== excludeSessionId);
   if (!completed.length) return [];
   const sessionMap = {};
