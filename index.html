@@ -238,6 +238,91 @@
     @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
     .modal-handle { width: 36px; height: 4px; background: var(--dim); border-radius: 2px; margin: 0 auto 12px; }
     .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+
+    /* ── v4.34.38 LIIKEHISTORIA-MODAALI (Claude Design) ────────────────────── */
+    .lh-head { display:flex; align-items:center; justify-content:space-between; padding:0 4px 12px; }
+    .lh-title-row { display:flex; align-items:center; gap:10px; }
+    .lh-title-icon { width:32px; height:32px; border-radius:9px; background:rgba(79,140,255,0.14); color:var(--acc); display:flex; align-items:center; justify-content:center; border:1px solid rgba(79,140,255,0.25); font-size:16px; }
+    .lh-title-h { font-size:16px; font-weight:700; letter-spacing:-.2px; }
+    .lh-title-s { font-size:11px; color:var(--muted); margin-top:1px; }
+    .lh-trio { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+    .lh-trio-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px; }
+    .lh-lbl { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.6px; font-weight:600; margin-bottom:8px; }
+    .lh-e1rm-row { display:flex; align-items:baseline; gap:6px; }
+    .lh-e1rm-num { font-size:30px; font-weight:800; letter-spacing:-1px; line-height:1; font-variant-numeric:tabular-nums; }
+    .lh-e1rm-unit { font-size:12px; color:var(--muted); font-weight:600; }
+    .lh-delta { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:3px 7px; border-radius:6px; margin-top:8px; font-variant-numeric:tabular-nums; }
+    .lh-delta.up { color:var(--ok); background:rgba(34,197,94,0.14); }
+    .lh-delta.down { color:#ff5d5d; background:rgba(255,93,93,0.12); }
+    .lh-delta.flat { color:var(--muted); background:rgba(138,152,192,0.10); }
+    .lh-vx-row { display:flex; align-items:center; gap:8px; }
+    .lh-vx-from { font-size:18px; font-weight:700; color:var(--muted); }
+    .lh-vx-arrow { color:var(--ok); font-size:14px; }
+    .lh-vx-to { font-size:26px; font-weight:800; color:var(--ok); letter-spacing:-.5px; }
+    .lh-vx-to.harder { color:var(--warn); }
+    .lh-vx-to.flat { color:var(--muted); }
+    .lh-vx-arrow.harder { color:var(--warn); }
+    .lh-vx-arrow.flat { color:var(--muted); }
+    .lh-vx-note { font-size:11px; color:var(--muted); margin-top:6px; }
+    .lh-engine-card { grid-column:1 / -1; background:linear-gradient(135deg, rgba(79,140,255,0.10), rgba(79,140,255,0.02)); border:1px solid rgba(79,140,255,0.30); border-radius:14px; padding:12px 14px; position:relative; }
+    .lh-engine-card::before { content:""; position:absolute; left:0; top:12px; bottom:12px; width:3px; background:var(--acc); border-radius:0 3px 3px 0; }
+    .lh-engine-lbl { font-size:10px; color:var(--acc); text-transform:uppercase; letter-spacing:0.6px; font-weight:700; margin-bottom:6px; }
+    .lh-engine-load { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+    .lh-engine-load .num { font-size:28px; font-weight:800; letter-spacing:-.8px; line-height:1; font-variant-numeric:tabular-nums; }
+    .lh-engine-load .unit { font-size:13px; color:var(--muted); font-weight:600; }
+    .lh-engine-load .scheme { font-size:13px; font-weight:700; color:var(--txt); padding:3px 8px; border-radius:6px; background:rgba(255,255,255,0.04); border:1px solid var(--border); }
+    .lh-engine-delta { display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:var(--ok); margin-top:4px; font-variant-numeric:tabular-nums; }
+    .lh-engine-delta.down { color:#ff7676; }
+    .lh-engine-delta.flat { color:var(--muted); }
+    .lh-tabs { display:grid; grid-template-columns:1fr 1fr; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:3px; margin:14px 0 10px; }
+    .lh-tabs button { background:transparent; border:none; color:var(--muted); font-size:12px; font-weight:600; padding:8px; border-radius:7px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; font-family:inherit; transition:background .15s, color .15s; }
+    .lh-tabs button.active { background:var(--card2); color:var(--txt); }
+    .lh-tabs .dot { width:6px; height:6px; border-radius:999px; }
+    .lh-tabs .dot.primary { background:var(--warn); }
+    .lh-tabs .dot.accessory { background:#6b7896; }
+    .lh-sess { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:10px 12px; margin-bottom:8px; }
+    .lh-sess.primary { border-left:3px solid var(--warn); }
+    .lh-sess.accessory { border-left:3px solid #6b7896; }
+    .lh-sess-head { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:8px; }
+    .lh-sess-date { font-size:13px; font-weight:700; }
+    .lh-sess-rel { font-size:11px; color:var(--muted); margin-top:1px; }
+    .lh-sess-tags { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
+    .lh-tag { font-size:10px; font-weight:700; padding:3px 7px; border-radius:5px; text-transform:uppercase; letter-spacing:0.4px; border:1px solid transparent; }
+    .lh-tag.primary { color:var(--warn); background:rgba(245,158,11,0.14); border-color:rgba(255,149,0,0.25); }
+    .lh-tag.accessory { color:#8a98c0; background:rgba(107,120,150,0.12); border-color:rgba(107,120,150,0.25); }
+    .lh-tag.day { color:var(--muted); background:rgba(255,255,255,0.03); border-color:var(--border); }
+    .lh-set-row { display:grid; grid-template-columns:22px 1fr auto; align-items:center; gap:8px; font-size:13px; padding:4px 0; }
+    .lh-set-row .sn { color:var(--dim); font-size:11px; font-weight:700; }
+    .lh-set-row .load { font-weight:700; font-variant-numeric:tabular-nums; }
+    .lh-set-row .reps { color:var(--muted); margin-left:2px; }
+    .lh-set-row.bw .load { color:#8a98c0; }
+    .lh-vx { font-size:11px; font-weight:700; padding:2px 6px; border-radius:4px; background:rgba(255,255,255,0.04); border:1px solid var(--border); color:var(--muted); font-variant-numeric:tabular-nums; }
+    .lh-vx.target { color:var(--ok); border-color:rgba(34,197,94,0.30); background:rgba(34,197,94,0.14); }
+    .lh-vx.over { color:var(--acc); border-color:rgba(79,140,255,0.30); background:rgba(79,140,255,0.14); }
+    .lh-vx.under { color:#ff7676; border-color:rgba(255,93,93,0.30); background:rgba(255,93,93,0.10); }
+    .lh-sess-summary { margin-top:8px; padding-top:8px; border-top:1px dashed var(--border); font-size:11px; color:var(--muted); line-height:1.4; }
+    .lh-sess-summary strong { color:var(--txt); font-weight:600; }
+    .lh-why { margin-top:12px; background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+    .lh-why-toggle { width:100%; background:transparent; border:none; color:var(--txt); padding:12px 14px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; font-family:inherit; text-align:left; }
+    .lh-why-toggle .lh-why-l { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
+    .lh-why-toggle .chev { transition:transform .25s ease; color:var(--muted); }
+    .lh-why.open .lh-why-toggle .chev { transform:rotate(180deg); }
+    .lh-why-body { overflow:hidden; max-height:0; transition:max-height .35s cubic-bezier(.4,0,.2,1); }
+    .lh-why.open .lh-why-body { max-height:600px; }
+    .lh-why-inner { padding:0 14px 14px; border-top:1px solid var(--border); padding-top:12px; }
+    .lh-trace { display:grid; grid-template-columns:28px 1fr auto; gap:10px; align-items:center; padding:8px 0; border-bottom:1px dashed var(--border); }
+    .lh-trace:last-child { border-bottom:none; }
+    .lh-trace-icon { width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; }
+    .lh-trace-icon.plan { background:rgba(79,140,255,0.14); color:var(--acc); border:1px solid rgba(79,140,255,0.25); }
+    .lh-trace-icon.cap { background:rgba(245,158,11,0.10); color:var(--warn); border:1px solid rgba(255,149,0,0.25); }
+    .lh-trace-icon.bonus { background:rgba(34,197,94,0.14); color:var(--ok); border:1px solid rgba(34,197,94,0.25); }
+    .lh-trace-icon.final { background:var(--card2); color:var(--txt); border:1px solid var(--border); }
+    .lh-trace-msg { font-size:12px; color:var(--muted); line-height:1.4; }
+    .lh-trace-msg strong { color:var(--txt); font-weight:600; }
+    .lh-trace-val { font-size:12px; font-weight:700; color:var(--txt); font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .lh-trace.final .lh-trace-msg strong { color:var(--acc); }
+    .lh-trace.final .lh-trace-val { color:var(--acc); font-size:14px; }
+    .lh-empty { text-align:center; color:var(--dim); font-size:12px; padding:30px 10px; }
     .modal-option {
       display: flex; align-items: center; gap: 10px; padding: 12px;
       border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -3261,76 +3346,381 @@ function computeRecentSessionsForMovement(movementId, excludeSessionId, n = 3) {
 }
 
 // v4.34.24: Modal näyttää viim. 3 session per-sarja-detaljit (kuorma×toistot×Vx, pvm).
-// Avataan klikkaamalla prev-ghost-laatikkoa workout-näkymässä.
+// v4.34.38 (Claude Design): kolmen tason layout — Header trio (e1RM, Vx-trend,
+// engine-suositus), Primary/Accessory-välilehdet ja "Miksi tämä kuorma?" -drilldown.
+// Avataan klikkaamalla prev-ghost-laatikkoa tai 📊-nappia workout-näkymässä.
 function openPriorSessionsModal(movementId, excludeSessionId, movementName) {
-  const sessions = computeRecentSessionsForMovement(movementId, excludeSessionId, 3);
+  const allSessions = computeRecentSessionsForMovement(movementId, excludeSessionId, 5);
+  const stats = computeMovementStatsForModal(movementId, allSessions);
   closeModal();
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
-  if (!sessions.length) {
+
+  // Tyhjä tila: ei kategoriaa, vain header + viesti
+  if (!allSessions.length && !stats.hasE1RM) {
     overlay.innerHTML = `
       <div class="modal-sheet">
         <div class="modal-handle"></div>
-        <div class="modal-title">📊 ${movementName || "Liike"} — historia</div>
-        <div style="padding:16px 4px;color:var(--muted);font-size:13px">Ei aikaisempia treenejä tästä liikkeestä.</div>
-        <button class="btn btn-outline btn-full" data-modal-cancel>Sulje</button>
-      </div>`;
-  } else {
-    const sessionsHTML = sessions.map(sess => {
-      const days = (() => {
-        const today = new Date();
-        const then = new Date(sess.dateISO);
-        const d = Math.max(0, Math.round((today - then) / (24 * 3600 * 1000)));
-        if (d === 0) return "tänään";
-        if (d === 1) return "eilen";
-        if (d < 14) return `${d} pv sitten`;
-        return `${Math.round(d / 7)} vk sitten`;
-      })();
-      // Päivämäärä formatoituna
-      const dateLabel = (() => {
-        if (!sess.dateISO) return "";
-        const dt = new Date(sess.dateISO);
-        return dt.toLocaleDateString("fi-FI", { day: "numeric", month: "numeric", year: "2-digit" });
-      })();
-      // Per-sarja-rivit
-      const setsHTML = sess.sets.map((s, i) => {
-        const loadStr = s.externalLoadKg !== null && s.externalLoadKg !== undefined
-          ? `${s.externalLoadKg} kg`
-          : "BW";
-        const repsStr = s.reps ?? "?";
-        const vxStr = s.actualVx !== null && s.actualVx !== undefined ? `V${s.actualVx}` : "V?";
-        const velStr = s.velocity ? ` · ${s.velocity.toFixed(2)} m/s` : "";
-        const noteStr = s.notes ? ` · ✏️ ${s.notes}` : "";
-        return `<div style="display:flex;justify-content:space-between;padding:6px 8px;border-radius:4px;background:${i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent'};font-size:12px">
-          <span style="color:var(--muted);width:32px">S${i + 1}</span>
-          <span style="flex:1"><b>${loadStr} × ${repsStr}</b> · ${vxStr}${velStr}</span>
-        </div>${noteStr ? `<div style="padding:2px 8px 6px 40px;font-size:11px;color:var(--muted);font-style:italic">${noteStr.replace(' · ✏️ ', '✏️ ')}</div>` : ""}`;
-      }).join("");
-      // Session-tason effort-summa
-      const sessEffort = sess.sets.reduce((sum, s) => sum + effortScore(s.externalLoadKg, s.reps, s.actualVx), 0);
-      return `<div style="margin-bottom:14px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card2)">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
-          <div>
-            <div style="font-weight:700;font-size:13px">${dateLabel}</div>
-            <div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:0.3px">${days}</div>
+        <div class="lh-head">
+          <div class="lh-title-row">
+            <div class="lh-title-icon">📊</div>
+            <div>
+              <div class="lh-title-h">${escapeHTML(movementName || "Liike")}</div>
+              <div class="lh-title-s">${escapeHTML(stats.categoryLabel || "")}</div>
+            </div>
           </div>
-          <div style="font-size:11px;color:var(--muted)">Effort: <b style="color:var(--fg)">${Math.round(sessEffort)}</b></div>
         </div>
-        ${setsHTML}
-      </div>`;
-    }).join("");
-    overlay.innerHTML = `
-      <div class="modal-sheet" style="max-height:85vh">
-        <div class="modal-handle"></div>
-        <div class="modal-title">📊 ${movementName || "Liike"} — viim. ${sessions.length} treeniä</div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.4">Effort = Σ(load × reps × Vx-painokerroin). Korkeampi = kovempi sessio.</div>
-        ${sessionsHTML}
+        <div class="lh-empty">Ei aikaisempia treenejä tästä liikkeestä.</div>
         <button class="btn btn-outline btn-full" style="margin-top:8px" data-modal-cancel>Sulje</button>
       </div>`;
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", closeModal);
+    overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
+    document.body.appendChild(overlay);
+    return;
   }
+
+  // Header — 1) e1RM 2) Vx-trendi 3) Engine-ehdotus full-width
+  const e1rmCard = stats.hasE1RM
+    ? `<div class="lh-trio-card">
+        <div class="lh-lbl">e1RM (ext.)</div>
+        <div class="lh-e1rm-row">
+          <span class="lh-e1rm-num">${stats.e1rm.toFixed(1)}</span>
+          <span class="lh-e1rm-unit">kg</span>
+        </div>
+        ${stats.e1rmDeltaText ? `<span class="lh-delta ${stats.e1rmDeltaClass}">${stats.e1rmDeltaIcon} ${stats.e1rmDeltaText}</span>` : ""}
+      </div>`
+    : `<div class="lh-trio-card">
+        <div class="lh-lbl">e1RM</div>
+        <div style="font-size:13px;color:var(--muted);padding:6px 0">Ei mittauksia</div>
+      </div>`;
+
+  const vxCard = stats.vxTrend
+    ? `<div class="lh-trio-card">
+        <div class="lh-lbl">Vx-trendi</div>
+        <div class="lh-vx-row">
+          <span class="lh-vx-from">V${stats.vxTrend.from}</span>
+          <span class="lh-vx-arrow ${stats.vxTrend.cssMod}">→</span>
+          <span class="lh-vx-to ${stats.vxTrend.cssMod}">V${stats.vxTrend.to}</span>
+        </div>
+        <div class="lh-vx-note">${escapeHTML(stats.vxTrend.note)}</div>
+      </div>`
+    : `<div class="lh-trio-card">
+        <div class="lh-lbl">Vx-trendi</div>
+        <div style="font-size:13px;color:var(--muted);padding:6px 0">Tarvitaan 2+ sessiota</div>
+      </div>`;
+
+  const engineCard = stats.engineRec
+    ? `<div class="lh-engine-card">
+        <div class="lh-engine-lbl">⚡ Engine ehdottaa tänään</div>
+        <div class="lh-engine-load">
+          <span class="num">${stats.engineRec.loadStr}</span>
+          <span class="unit">kg</span>
+          <span class="scheme">${escapeHTML(stats.engineRec.scheme)}</span>
+        </div>
+        ${stats.engineRec.deltaText ? `<div class="lh-engine-delta ${stats.engineRec.deltaClass}">${stats.engineRec.deltaIcon} ${stats.engineRec.deltaText}</div>` : ""}
+      </div>`
+    : "";
+
+  // TASO 2: tabs + sessio-kortit
+  const primSessions = allSessions.filter(s => sessionIsPrimaryRole(s));
+  const accSessions = allSessions.filter(s => !sessionIsPrimaryRole(s));
+  const tabsHTML = `<div class="lh-tabs" id="lh-tabs">
+    <button class="active" data-tab="primary">
+      <span class="dot primary"></span>Primary <span style="opacity:.55;margin-left:2px">· ${primSessions.length}</span>
+    </button>
+    <button data-tab="accessory">
+      <span class="dot accessory"></span>Accessory <span style="opacity:.55;margin-left:2px">· ${accSessions.length}</span>
+    </button>
+  </div>`;
+
+  // TASO 3: drilldown
+  const whyHTML = stats.engineRec && stats.engineRec.traces && stats.engineRec.traces.length > 0
+    ? `<div class="lh-why" id="lh-why">
+        <button class="lh-why-toggle" id="lh-why-toggle">
+          <span class="lh-why-l">💡 Miksi engine ehdottaa <strong style="color:var(--acc)">${stats.engineRec.loadStr} kg</strong>?</span>
+          <span class="chev">▼</span>
+        </button>
+        <div class="lh-why-body">
+          <div class="lh-why-inner">
+            ${stats.engineRec.traces.map(t => `<div class="lh-trace ${t.final ? 'final' : ''}">
+              <div class="lh-trace-icon ${t.cls}">${t.icon}</div>
+              <div class="lh-trace-msg">${t.html}</div>
+              <div class="lh-trace-val">${escapeHTML(t.val || "")}</div>
+            </div>`).join("")}
+          </div>
+        </div>
+      </div>`
+    : "";
+
+  overlay.innerHTML = `
+    <div class="modal-sheet" style="max-height:90vh;overflow-y:auto">
+      <div class="modal-handle"></div>
+      <div class="lh-head">
+        <div class="lh-title-row">
+          <div class="lh-title-icon">📊</div>
+          <div>
+            <div class="lh-title-h">${escapeHTML(movementName || "Liike")}</div>
+            <div class="lh-title-s">${escapeHTML(stats.categoryLabel || "")}</div>
+          </div>
+        </div>
+      </div>
+      <div class="lh-trio">
+        ${e1rmCard}
+        ${vxCard}
+        ${engineCard}
+      </div>
+      ${tabsHTML}
+      <div id="lh-sess-list"></div>
+      ${whyHTML}
+      <button class="btn btn-outline btn-full" style="margin-top:12px" data-modal-cancel>Sulje</button>
+    </div>`;
+
+  // Tabs
+  const renderList = (filter) => {
+    const list = overlay.querySelector("#lh-sess-list");
+    const filtered = filter === "primary" ? primSessions : accSessions;
+    if (!filtered.length) {
+      list.innerHTML = `<div class="lh-empty">Ei ${filter === "primary" ? "primary" : "accessory"}-sessioita.</div>`;
+      return;
+    }
+    list.innerHTML = filtered.map(renderModalSession).join("");
+  };
+  overlay.querySelectorAll("#lh-tabs button").forEach(b => b.addEventListener("click", () => {
+    overlay.querySelectorAll("#lh-tabs button").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    renderList(b.dataset.tab);
+  }));
+  // Default: primary jos on, muuten accessory
+  const initialTab = primSessions.length > 0 ? "primary" : "accessory";
+  if (initialTab === "accessory") {
+    overlay.querySelectorAll("#lh-tabs button").forEach(x => x.classList.remove("active"));
+    overlay.querySelector('[data-tab="accessory"]').classList.add("active");
+  }
+  renderList(initialTab);
+
+  // Why-accordion
+  const whyEl = overlay.querySelector("#lh-why");
+  const whyToggle = overlay.querySelector("#lh-why-toggle");
+  if (whyToggle) whyToggle.addEventListener("click", () => whyEl.classList.toggle("open"));
+
   overlay.querySelector("[data-modal-cancel]").addEventListener("click", closeModal);
   overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
   document.body.appendChild(overlay);
+}
+
+// v4.34.38: HTML-escape modaalin renderointiin
+function escapeHTML(s) {
+  return String(s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+
+// Onko sessio primary-rooli? Logiikka: yksikin sarja jossa setRole === "top"
+// JA load > 0 (= ei BW-only-tertiary). Tämä matchaa kuvaa "atletti teki TI:llä
+// kovan kyykkysession" vs "atletti teki MA:lla BW-dippejä accessoryna".
+function sessionIsPrimaryRole(sess) {
+  if (!sess.sets || !sess.sets.length) return false;
+  return sess.sets.some(s => s.setRole === "top" && (s.externalLoadKg || 0) > 0);
+}
+
+// v4.34.38: Per-liike-tilastot modaalin headerille (e1RM, Vx-trendi, engine-rec, traces)
+function computeMovementStatsForModal(movementId, sessions) {
+  const mov = state.movements?.find(m => m.movementId === movementId);
+  const bw = state.settings?.bodyweightKg || 91;
+  const stats = {
+    movement: mov,
+    categoryLabel: mov ? (CATEGORY_LABELS_SHORT?.[mov.category] || mov.category) : "",
+    e1rm: null, hasE1RM: false, e1rmDeltaText: null, e1rmDeltaClass: "flat", e1rmDeltaIcon: "→",
+    vxTrend: null,
+    engineRec: null,
+  };
+
+  // e1RM-history (movement-pohjalta, ottaa system/external loadType:n huomioon)
+  if (mov) {
+    const allSets = state.allSets.filter(s => s.movementId === movementId && (s.externalLoadKg || 0) > 0 && s.reps >= 1);
+    const history = computeMovementE1RMHistory(allSets, state.sessions, mov, bw);
+    if (history.length > 0) {
+      stats.hasE1RM = true;
+      stats.e1rm = history[history.length - 1].e1rm;
+      // 3 vk:n trendi: vertaa nyt vs n. 21 pv sitten
+      const cutoffMs = Date.now() - 21 * 86400000;
+      const olderPoint = history.find(p => new Date(p.dateISO).getTime() >= cutoffMs - 7 * 86400000) || history[0];
+      if (olderPoint && olderPoint !== history[history.length - 1]) {
+        const delta = stats.e1rm - olderPoint.e1rm;
+        if (Math.abs(delta) >= 0.5) {
+          stats.e1rmDeltaText = `${delta > 0 ? "+" : ""}${delta.toFixed(1)} kg · 3 vk`;
+          stats.e1rmDeltaClass = delta > 0 ? "up" : "down";
+          stats.e1rmDeltaIcon = delta > 0 ? "▲" : "▼";
+        }
+      }
+    }
+  }
+
+  // Vx-trendi: vertaa viim. session ja sitä edeltävän session mean Vx
+  if (sessions.length >= 2) {
+    const meanVx = (sets) => {
+      const vx = sets.map(s => s.actualVx).filter(v => v !== null && v !== undefined);
+      return vx.length ? vx.reduce((a, b) => a + b, 0) / vx.length : null;
+    };
+    const prevVx = meanVx(sessions[1].sets);
+    const lastVx = meanVx(sessions[0].sets);
+    if (prevVx !== null && lastVx !== null) {
+      const fromR = Math.round(prevVx);
+      const toR = Math.round(lastVx);
+      const diff = lastVx - prevVx;
+      let cssMod = "flat";
+      let note = "Sama vaikeustaso";
+      if (diff >= 0.5) { cssMod = ""; note = "Helpottuu · sama kuorma, enemmän varaa"; }
+      else if (diff <= -0.5) { cssMod = "harder"; note = "Vaikeutuu · grindi alkaa"; }
+      stats.vxTrend = { from: fromR, to: toR, cssMod, note };
+    }
+  }
+
+  // Engine-suositus: hae state.recommendation (mikäli liike matchaa primary-slot:ia)
+  // ja decisionTraces jotka selittävät kuorman.
+  const rec = state.recommendation;
+  const slot = rec?.dayPlan?.slots?.find(s => s.movementId === movementId)
+            || rec?.dayPlan?.slots?.find(s => s.defaultMovementName === mov?.name);
+  if (slot && (slot.role === "primary" || slot.role === "backoff")) {
+    const targetLoad = slot.role === "primary" ? rec.targetExternalLoad : (slot.resolvedLoadKg ?? slot.suggestedLoadKg);
+    if (targetLoad) {
+      const scheme = `${slot.sets || "?"} × ${slot.reps || "?"} · V${slot.targetVx ?? "?"}`;
+      // Edellisen vastaavan session medianLoad (sama setRole) → delta
+      const prevSimSession = sessions.find(s => s.sets.some(x => x.setRole === slot.role));
+      let deltaText = null, deltaClass = "flat", deltaIcon = "→";
+      if (prevSimSession) {
+        const prevLoads = prevSimSession.sets.filter(x => x.setRole === slot.role).map(x => x.externalLoadKg).filter(v => v > 0);
+        if (prevLoads.length) {
+          const prevMed = median(prevLoads);
+          const dKg = targetLoad - prevMed;
+          const dPct = prevMed > 0 ? (dKg / prevMed) * 100 : 0;
+          if (Math.abs(dKg) >= 0.5) {
+            deltaText = `${dKg > 0 ? "+" : ""}${dKg.toFixed(1)} kg · ${dPct > 0 ? "+" : ""}${dPct.toFixed(0)} %`;
+            deltaClass = dKg > 0 ? "" : "down";
+            deltaIcon = dKg > 0 ? "▲" : "▼";
+          } else { deltaText = "sama kuorma"; deltaClass = "flat"; deltaIcon = "→"; }
+        }
+      }
+      // Decision-traces: suodata informatiivisimmat
+      const traces = [];
+      const allTraces = (rec.traces || []).filter(t => ["LOAD_PCT_RESOLVED","PROGRESSION_RATE_LIMIT","PLAN_BASED_E1RM","FIRST_SET_CAPACITY_BONUS","E1RM_INFLATION_CAP","PROGRESSION_FLOOR_CAP","SLOT_LOAD_RESOLVED"].includes(t.ruleId));
+      const planT = allTraces.find(t => t.ruleId === "LOAD_PCT_RESOLVED");
+      if (planT) traces.push({
+        cls: "plan", icon: "📋",
+        html: `<strong>Plan:</strong> loadPct ${(planT.after?.pct * 100)?.toFixed(0) ?? "?"} % × e1RM ${planT.after?.currentE1RMExternal?.toFixed?.(1) ?? "?"}`,
+        val: `${planT.after?.targetExternalLoad?.toFixed?.(1) ?? "?"} kg`,
+      });
+      const planBased = allTraces.find(t => t.ruleId === "PLAN_BASED_E1RM");
+      if (planBased) traces.push({
+        cls: "bonus", icon: "🚀",
+        html: `<strong>PLAN_BASED:</strong> perfect-execution → e1RM ${planBased.after?.e1rmExternal} kg`,
+        val: planBased.after?.diffPct || "+",
+      });
+      const fcb = allTraces.find(t => t.ruleId === "FIRST_SET_CAPACITY_BONUS");
+      if (fcb) traces.push({
+        cls: "bonus", icon: "⚡",
+        html: `<strong>Ekka V${fcb.after?.overshoot} fresh:</strong> kapasiteetti-bonus`,
+        val: `+${(fcb.after?.bonus * 100).toFixed(1)} %`,
+      });
+      const cap = allTraces.find(t => t.ruleId === "PROGRESSION_RATE_LIMIT");
+      if (cap) traces.push({
+        cls: "cap", icon: "🛡",
+        html: `<strong>Cap:</strong> max ${(cap.after?.weeklyCap * 100).toFixed(0)} % / vk`,
+        val: `${cap.after?.targetExternalLoad?.toFixed?.(1) ?? "?"} kg`,
+      });
+      const floor = allTraces.find(t => t.ruleId === "PROGRESSION_FLOOR_CAP");
+      if (floor) traces.push({
+        cls: "cap", icon: "⬆",
+        html: `<strong>Floor:</strong> regression-suoja edellisestä`,
+        val: `${floor.after?.targetExternalLoad?.toFixed?.(1) ?? "?"} kg`,
+      });
+      // Final
+      traces.push({
+        cls: "final", icon: "✓",
+        html: `<strong>Final ehdotus</strong>`,
+        val: `${roundToHalf(targetLoad)} kg`,
+        final: true,
+      });
+      stats.engineRec = {
+        loadStr: roundToHalf(targetLoad).toFixed(1).replace(/\.0$/, ""),
+        scheme, deltaText, deltaClass, deltaIcon,
+        traces: traces.length > 1 ? traces : null,
+      };
+    }
+  }
+
+  return stats;
+}
+
+// v4.34.38: yksittäisen session kortin renderointi modaaliin
+function renderModalSession(sess) {
+  const today = new Date();
+  const then = new Date(sess.dateISO);
+  const days = Math.max(0, Math.round((today - then) / 86400000));
+  const relStr = days === 0 ? "tänään" : days === 1 ? "eilen" : days < 14 ? `${days} pv sitten` : `${Math.round(days / 7)} vk sitten`;
+  const dateStr = then.toLocaleDateString("fi-FI", { day: "numeric", month: "numeric", year: "2-digit" });
+  const dayLabels = { 1: "MA", 2: "TI", 3: "KE", 4: "TO", 5: "PE", 6: "LA", 0: "SU" };
+  const sessionObj = state.sessions.find(x => x.sessionId === sess.sessionId);
+  const dow = sessionObj?.dayOfWeek ?? then.getDay();
+  const wk = sessionObj?.mesocycleWeek ?? "?";
+  const isPrimary = sessionIsPrimaryRole(sess);
+  const role = isPrimary ? "primary" : "accessory";
+
+  // Per-sarja-rivit
+  const setsHTML = sess.sets.map((s, i) => {
+    const isBW = !s.externalLoadKg || s.externalLoadKg === 0;
+    const loadStr = isBW ? "BW" : `${s.externalLoadKg} kg`;
+    const repsStr = s.reps ?? "?";
+    let vxCls = "";
+    if (s.actualVx !== null && s.actualVx !== undefined && s.targetVx !== null && s.targetVx !== undefined) {
+      if (s.actualVx === s.targetVx) vxCls = "target";
+      else if (s.actualVx > s.targetVx) vxCls = "over";
+      else vxCls = "under";
+    }
+    const vxLbl = s.actualVx !== null && s.actualVx !== undefined ? `V${s.actualVx}` : "V?";
+    const tgtLbl = s.targetVx !== null && s.targetVx !== undefined && s.actualVx !== s.targetVx ? ` · t${s.targetVx}` : "";
+    return `<div class="lh-set-row ${isBW ? "bw" : ""}">
+      <span class="sn">S${i + 1}</span>
+      <span><span class="load">${loadStr}</span><span class="reps">× ${repsStr}</span></span>
+      <span class="lh-vx ${vxCls}">${vxLbl}${tgtLbl}</span>
+    </div>`;
+  }).join("");
+
+  // Summary
+  let summaryHTML = "";
+  if (isPrimary) {
+    const tops = sess.sets.filter(s => s.setRole === "top" && (s.externalLoadKg || 0) > 0);
+    if (tops.length) {
+      const meanVx = (tops.reduce((a, s) => a + (s.actualVx ?? 0), 0) / tops.length).toFixed(1);
+      const maxLoad = Math.max(...tops.map(s => s.externalLoadKg));
+      const first = tops[0]?.actualVx ?? 0;
+      const last = tops[tops.length - 1]?.actualVx ?? 0;
+      const fatigue = last - first;
+      const fatigueStr = fatigue === 0 ? "fatique +0" : fatigue > 0 ? `fatique +${fatigue}` : `fatique ${fatigue}`;
+      const tail = sess.sets.filter(s => s.setRole !== "top" || (s.externalLoadKg || 0) === 0);
+      const tailStr = tail.length ? ` · ${tail.length} accessory-sarja${tail.length > 1 ? "a" : ""}` : "";
+      summaryHTML = `<div class="lh-sess-summary">Mean V${meanVx}, paras <strong>${maxLoad} kg</strong>, ${fatigueStr}${tailStr}</div>`;
+    }
+  } else {
+    const reps = sess.sets.reduce((a, s) => a + (s.reps || 0), 0);
+    const firstSet = sess.sets[0];
+    const isBW = !firstSet?.externalLoadKg;
+    const loadStr = isBW ? "BW" : `${firstSet.externalLoadKg} kg`;
+    summaryHTML = `<div class="lh-sess-summary">Volyymi <strong>${loadStr}</strong> · ${reps} reps · skill / volume</div>`;
+  }
+
+  return `<div class="lh-sess ${role}">
+    <div class="lh-sess-head">
+      <div>
+        <div class="lh-sess-date">${dateStr}</div>
+        <div class="lh-sess-rel">${relStr}</div>
+      </div>
+      <div class="lh-sess-tags">
+        <span class="lh-tag day">${dayLabels[dow] || ""} · vk ${wk}</span>
+        <span class="lh-tag ${role}">${isPrimary ? "Primary" : "Accessory"}</span>
+      </div>
+    </div>
+    <div>${setsHTML}</div>
+    ${summaryHTML}
+  </div>`;
 }
 
 function renderActiveWorkout() {

@@ -1,12 +1,9 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.37 — automaattinen päivitys: navigation-pyynnöt yrittävät verkosta
-// ensin (3 s timeout), fallback cache. Asset-pyynnöt (engine.js, data.js, ikonit)
-// stale-while-revalidate. Yhdessä index.html:n auto-skipWaiting + controllerchange-
-// reload-mekaniikan kanssa: käyttäjä saa aina uusimman version sovelluksen avauksessa
-// ilman manuaalista cache-tyhjennystä. Offline-tila säilyy: jos verkko kaatuu,
-// sovellus toimii cachetetulla viim. nähdyllä versiolla.
+// LeVe AI v4.34.38 — Claude Design -liikehistoria-modaali (kolme tasoa: e1RM/Vx-trio,
+// Primary/Accessory-välilehdet, "Miksi tämä kuorma?" -drilldown engine-traceilla).
+// v4.34.37 säilyy: navigation network-first 3 s timeout + auto-skipWaiting.
 
-const APP_VERSION = "4.34.37";
+const APP_VERSION = "4.34.38";
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
 
 // v4.34.9: Kuuntele SKIP_WAITING-message-eventtia, jolla pää-säie voi pakottaa
