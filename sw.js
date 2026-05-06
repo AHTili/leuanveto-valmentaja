@@ -1,10 +1,10 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.40 — Liikehistoria-modaali: jos avattu liike ei ole tämän päivän
-// primary, modaali etsii MESOCYCLESTA seuraavan primary-päivän + ajaa recommend()
-// siihen päivään (async). Atletti voi tarkistaa tulevan TO-treenin target esim.
-// KE-lepopäivänä. Otsikko: "📅 Seuraava primary · TO 7.5.26".
+// LeVe AI v4.34.41 — Intra-session capacity bump: jos ekka työsarja meni V5+
+// target V3:lla (overshoot ≥ 2), engine ehdottaa kuorman nostoa seuraaviin
+// sarjoihin (+2.5-5 % conservatiivisesti, freshness-suoja). Atletti päättää
+// confirm-promptilla. Vain heavy-day primary-sarjoille.
 
-const APP_VERSION = "4.34.40";
+const APP_VERSION = "4.34.41";
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
 
 // v4.34.9: Kuuntele SKIP_WAITING-message-eventtia, jolla pää-säie voi pakottaa

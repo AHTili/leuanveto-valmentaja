@@ -738,6 +738,56 @@ function varaTrendCorrection(recentTopSets, opts = {}) {
 }
 
 /**
+ * v4.34.41 — INTRA-SESSION LOAD ADJUST.
+ *
+ * Käyttäjäpalaute 2026-05-07: "Jos teen ekan sarjan 57.5 kg V5 (target V3),
+ * fixaako engine kuorman heti sopivammaksi jotta saan oikean ärsykkeen?".
+ *
+ * Tämä on intra-session-version FIRST_SET_CAPACITY_BONUS:ista (joka koski vain
+ * NEXT-session-targetia). Aiempi vaihtoehto B+C ei korjannut kuormaa kesken
+ * session — atletti jatkoi alkuperäisellä template-kuormalla vaikka ekka V5
+ * fresh osoitti kuorman olevan alle kapasiteetin.
+ *
+ * Logiikka:
+ *   - vain heavy-day primary-sarjoille (ei volume, ei accessory, ei back-off)
+ *   - vain ekka työsarja (sarja 1)
+ *   - vaatii overshoot >= +2 luokkaa (V5 vs V3 target = +2)
+ *   - bonus: clamp((overshoot - 1) × 0.025, 0.025, 0.05) → +2.5-5 %
+ *     - overshoot 2: +2.5 % (= V5 vs V3)
+ *     - overshoot 3: +5.0 % cap (= V6 vs V3)
+ *
+ * Freshness-suoja: bonus on KONSERVATIIVINEN (max +5 %) koska ekka V5 fresh
+ * ei tarkoita että kuorma kesti V3:ssa kaikissa sarjoissa. Atletti saa
+ * oikean ärsykkeen ilman riskittömää grindi-kierrettä.
+ *
+ * Returns: { shouldAdjust, suggestedLoadKg, bumpKg, bumpPct, reason } tai null.
+ */
+function intraSessionLoadAdjustSuggestion(opts = {}) {
+  const {
+    firstSetVx, targetVx, currentLoadKg,
+    isPrimary = false, dayType = null, setRole = null
+  } = opts;
+  // Suojat: vain primary-top-sarja heavy-päivänä
+  if (!isPrimary || dayType !== "heavy" || setRole !== "top") return null;
+  if (firstSetVx === null || firstSetVx === undefined) return null;
+  if (targetVx === null || targetVx === undefined) return null;
+  if (!currentLoadKg || currentLoadKg <= 0) return null;
+  const overshoot = firstSetVx - targetVx;
+  if (overshoot < 2) return null; // tarvitaan +2 luokkaa = V5 vs V3 minimi
+  const bonus = clamp((overshoot - 1) * 0.025, 0.025, 0.05);
+  const newLoad = roundToHalf(currentLoadKg * (1 + bonus));
+  const bumpKg = newLoad - currentLoadKg;
+  if (bumpKg <= 0) return null; // pyöristys-edge: ei kasvata
+  return {
+    shouldAdjust: true,
+    suggestedLoadKg: newLoad,
+    bumpKg,
+    bumpPct: bonus * 100,
+    reason: `Ekka V${firstSetVx} target V${targetVx}:llä (+${overshoot} luokkaa) — fresh-V kapasiteetti-signaali, +${(bonus*100).toFixed(1)} % seuraaviin sarjoihin`,
+  };
+}
+
+/**
  * v4.34.34 BUG 2 (b) — FIRST-SET CAPACITY BONUS.
  *
  * Käyttäjäpalaute: "ekassa sarjassa V5-helppous (= 2 sarjaa varaa) ei johda
@@ -5119,6 +5169,8 @@ export {
   grossMismatchCorrection,
   // v4.34.34 BUG 2 (b)
   firstSetCapacityBonus,
+  // v4.34.41 — intra-session-bump
+  intraSessionLoadAdjustSuggestion,
   // Break
   breakAnalysis,
   mesocycleBreakReset,

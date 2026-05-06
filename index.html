@@ -868,6 +868,8 @@ import {
   velocityReadiness, hrvReadiness, varaReadiness, combineReadiness,
   computeBaseline, median, avg, roundToHalf,
   failureReaction,
+  // v4.34.41
+  intraSessionLoadAdjustSuggestion,
   accessoryProgression, updateMovementProgressFromSets, initialWeightFrom1RM,
   velocityLossPercent,
   weeklyStimulus, checkStagnation,
@@ -9364,6 +9366,43 @@ function bindWorkoutEvents() {
           s.targetReps = reaction.nextSetReps;
         }
       });
+    } else if (currentSet.targetVx !== null && currentSet.targetVx !== undefined &&
+               selectedVara >= currentSet.targetVx + 2) {
+      // v4.34.41: INTRA-SESSION CAPACITY BUMP — käänteinen near-failure-varoitukselle.
+      // Jos ekka työsarja meni HELPPOA target+2 luokkaa (V5 vs V3), ehdotetaan
+      // kuorman nostoa seuraaviin sarjoihin. Käyttäjäpalaute 2026-05-07: "haluan
+      // oikean ärsykkeen jos ekan sarjan V5 fresh osoittaa kuorman alikuorman".
+      // Konservatiivinen +2.5-5 % bump, freshness-suoja sisäänrakennettu.
+      const isPrimary = exercise.role === "primary";
+      const isFirstWorkSet = exercise.sets.filter((s, i) => !s.isWarmup && s.completed && i <= w.currentSetIdx).length === 1;
+      const dayType = state.workout?.dayType || state.recommendation?.dayType;
+      if (isPrimary && isFirstWorkSet) {
+        const bump = intraSessionLoadAdjustSuggestion({
+          firstSetVx: selectedVara,
+          targetVx: currentSet.targetVx,
+          currentLoadKg: currentSet.loadKg || 0,
+          isPrimary, dayType, setRole: "top"
+        });
+        if (bump?.shouldAdjust) {
+          const remainingSets = exercise.sets.slice(w.currentSetIdx + 1).filter(s => !s.isWarmup && !s.completed);
+          if (remainingSets.length > 0) {
+            const ok = confirm(
+              `Ekka sarja V${selectedVara} (target V${currentSet.targetVx}) — kuorma näyttää alle kapasiteetin.\n\n` +
+              `Nosta seuraavat ${remainingSets.length} sarjaa kuormaan ${bump.suggestedLoadKg} kg?\n` +
+              `${currentSet.loadKg} kg → ${bump.suggestedLoadKg} kg (+${bump.bumpKg.toFixed(1)} kg / +${bump.bumpPct.toFixed(1)} %)\n\n` +
+              `Freshness-suoja: ekka V${selectedVara} fresh ei takaa että V${currentSet.targetVx} kestää loppuun. Konservatiivinen nosto.`
+            );
+            if (ok) {
+              exercise.sets.forEach((s, i) => {
+                if (i > w.currentSetIdx && !s.isWarmup && !s.completed) s.loadKg = bump.suggestedLoadKg;
+              });
+              showToast(`🚀 Kuorma nostettu ${bump.suggestedLoadKg} kg seuraaviin sarjoihin`, "ok", 3500);
+            } else {
+              showToast(`Pidätetty — V${selectedVara} kirjattu, kuorma ${currentSet.loadKg} kg säilyy`, "warn", 3000);
+            }
+          }
+        }
+      }
     } else if (currentSet.targetVx !== null && currentSet.targetVx !== undefined &&
                selectedVara <= currentSet.targetVx - 2) {
       // v4.22: Near-failure in-session varoitus. Jos todellinen Vx on 2+
