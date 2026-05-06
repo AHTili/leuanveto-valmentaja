@@ -1,5 +1,9 @@
 // engine.js — Computation engine: e1RM, baselines, readiness, recommend(), mesocycle, decisionTrace
-// LeVe AI v4.34.12 — engine logic muuttumaton (index.html v4.34.12-muutokset: skip-set/skip-exercise/skip-warmup-element UX-parannukset).
+// LeVe AI v4.34.36 — A: PLAN_BASED setRole-filteri (vain top-sarjat, ei accessoreja).
+// B: Multi-week-aware cap (cap × ceil(daysSinceLast/7), max 3×). C: accessoryProgression
+// Vx-overshoot bonus (V+1 → +increment, V+2 → +1.5×, V+3 → +2×) + sub-target hold (V1-V2)
+// + V0 deload. Korjaa Phase 0:n MA/TO/LA-päivien optimoinnin: TO Dippi 58.5 → 60+ kg,
+// accessoryt V5-target-V3 → +5 kg vaikka consecutive=1.
 
 import {
   uid, todayISO, parseNumericInput,
@@ -189,6 +193,43 @@ function e1rmAccessory(weightKg, reps, vara = null) {
   if (weightKg <= 0 || reps < 1) return null;
   const effectiveReps = reps + (vara ?? 0);
   return weightKg * (1 + effectiveReps / 30);
+}
+
+/**
+ * v4.34.34: Movement-load-style resolver — keskitetty totuudenlähde "lisätäänkö
+ * BW e1RM-laskuun?" -kysymykseen. Aiemmin koodi käytti kolmea eri proxyä
+ * (mov.isPrimary, slot.role === "primary", primarySlotMeta.isBarbell), mikä
+ * johti UI-tason e1RM-virheisiin (Takakyykky 293.8 kg = system, dippi
+ * aliarvioitu = ext). Nyt kaikki UI- ja engine-laskut käyttävät tätä funktiota.
+ *
+ * - "system" → BW + ulkoinen kuorma (Lisäpainoleuanveto, Lisäpainodippi, MU)
+ * - "external" → vain ulkoinen kuorma, ei BW (Takakyykky ja muut tankoliikkeet)
+ * - undefined → accessory-style (käsipainot ym., ei BW)
+ *
+ * v4.34.35: nimi-pohjainen fallback käyttäjille joiden movement-rekisteri on
+ * tallennettu ennen loadType-kentän käyttöönottoa (data export 2026-05-05 ei
+ * sisältänyt loadType-kenttää → Lisäpainodippi & MU-variantit aliarvioituivat).
+ */
+const SYSTEM_LOAD_NAMES = new Set([
+  // Vertikaaliveto: kaikki BW-pohjaiset leuanvedot ja MU
+  "Lisäpainoleuanveto", "Vastaote-leuanveto", "Leuanveto (kehonpaino)",
+  "Leuanveto chest-to-bar", "Paused pull-up", "Tempo pull-up",
+  "Räjähtävä leuka", "Räjähtävä leuka (vyö)", "Räjähtävä leuanveto",
+  "Muscle-up", "Muscle-up eksentrinen", "False grip pull-up",
+  // Horisontaalityöntö: dippi + variantit
+  "Lisäpainodippi", "BW dippi", "BW eksentrinen dippi", "Räjähtävä dippi",
+  "Paused dip", "Tempo dip", "Ring dip",
+]);
+function isSystemLoadMovement(movement) {
+  if (!movement) return false;
+  if (movement.loadType === "system") return true;
+  if (movement.loadType === "external") return false;
+  // Legacy fallback 1: isPrimary=true tarkoitti aiemmin "Lisäpainoleuanveto"
+  if (movement.isPrimary === true) return true;
+  // Legacy fallback 2: nimi-pohjainen tunnistus käyttäjille joiden movement-rekisteri
+  // ei sisällä loadType-kenttää (vanha schema).
+  if (movement.name && SYSTEM_LOAD_NAMES.has(movement.name)) return true;
+  return false;
 }
 
 /**
@@ -639,17 +680,36 @@ function varaTrendCorrection(recentTopSets, opts = {}) {
   // Pelkkä mean overshoot voi johtaa harhaan jos sarjat raportoidaan ramp-pattern:nä
   // (V5, V4, V2, V1, V0 → mean = -0.4 mutta sarja 5 V0 = liian raskas).
   //
-  // RATKAISU: PAINOTETTU mean joka korostaa viim. session viim. sarjaa (modern
-  // strength-doktriini Tulkinta C: "viim. sarja = target Vx, V0 missä tahansa = warning").
-  // Painot: viimeinen sarja 2.0×, toiseksi viimeinen 1.5×, muut 1.0×.
-  // crushingStreak -säännös myös päivitetty: tarkista että viim. session viim. 3 sarjaa
-  // (ei 3 setin slice yli sessioiden) ovat consistently crushed.
+  // v4.34.34 BUG 2 (c) — DUAL-SIGNAL-PAINOTUS: ekka sarja per-sessio = "kapasiteetti-
+  // mittari" (fresh start → kuinka helposti kuorma lähtee), viim. sarja = "väsymys-
+  // mittari" (sessio loppuun → riitti voima). Aiempi pelkkä viim.-sarja-painotus
+  // (2.0× viim, 1.5× 2.viim, 1.0× muut) sokaisi ekan sarjan V5-helppouden:
+  // jos atletti teki 125×6 V5 ekan ja V1 viim. sarjan, mean ≈ V3 = target → ei
+  // bonusta. Mutta ekka V5 fresh = tankokuorma 18 % aliarvioitu vrt. kapasiteetti.
+  //
+  // Uusi painotus (per-sessio-tietoinen):
+  //   - viim. session ekka sarja = 1.8× (kapasiteetti-signaali)
+  //   - viim. session viim. sarja = 1.8× (väsymys-signaali)
+  //   - viim. session muut = 1.2×
+  //   - aiempien sessioiden sarjat = 1.0×
+  //
+  // crushingStreak -säännös: tarkista että viim. 3 sarjaa overall ovat crushed.
   const overshoots = withVara.map((s) => s.targetVx - s.actualVx);
-  const weights = withVara.map((_, i) => {
-    const fromEnd = withVara.length - 1 - i;
-    if (fromEnd === 0) return 2.0;       // viim. sarja painoa eniten
-    if (fromEnd === 1) return 1.5;       // toiseksi viimeinen
-    return 1.0;
+
+  // Tunnista viim. session sarjat (sessionId-pohjainen, viim. sarjojen blokki)
+  const lastSessId = withVara[withVara.length - 1]?.sessionId ?? null;
+  const lastSessIndices = lastSessId
+    ? withVara.map((s, i) => s.sessionId === lastSessId ? i : -1).filter(i => i >= 0)
+    : [];
+  const lastSessFirstIdx = lastSessIndices.length > 0 ? lastSessIndices[0] : -1;
+  const lastSessLastIdx = lastSessIndices.length > 0 ? lastSessIndices[lastSessIndices.length - 1] : -1;
+
+  const weights = withVara.map((s, i) => {
+    if (s.sessionId !== lastSessId) return 1.0;
+    if (i === lastSessFirstIdx && i === lastSessLastIdx) return 1.8; // single-set session
+    if (i === lastSessFirstIdx) return 1.8; // ekka sarja = kapasiteetti
+    if (i === lastSessLastIdx) return 1.8;  // viim. sarja = väsymys
+    return 1.2;
   });
   const weightedSum = overshoots.reduce((acc, ovr, i) => acc + ovr * weights[i], 0);
   const totalWeight = weights.reduce((a, b) => a + b, 0);
@@ -675,6 +735,54 @@ function varaTrendCorrection(recentTopSets, opts = {}) {
     return Math.max(adjustment, -maxDown);
   }
   return 0;
+}
+
+/**
+ * v4.34.34 BUG 2 (b) — FIRST-SET CAPACITY BONUS.
+ *
+ * Käyttäjäpalaute: "ekassa sarjassa V5-helppous (= 2 sarjaa varaa) ei johda
+ * mihinkään, ja backoff-progressio kasvaa +1 kg vaikka V6-headroomia oli paljon".
+ * Engine ei ennen tätä versiota tunnistanut ekan-sarjan-fresh-V5 -tilannetta
+ * erikseen — se sulautui keskimääräiseen Vx-trendiin.
+ *
+ * Tämä bonus aktivoituu kun viim. session **ekka työsarja** oli ≥2 luokkaa
+ * helpompi kuin target (esim. target V3, actual V5+). Fresh-startin V5+ on
+ * vahva kapasiteetti-signaali: target-kuorma oli aliarvioitu, atletti pystyi
+ * vähintään +5 %:iin samalla Vx:llä.
+ *
+ * Bonus: +1.0 % loadPct:hen (= ~+1.5-2 kg primary-liikkeessä). Kerrostuu
+ * varaTrendCorrection:n päälle, mutta capatataan +1.5 % maksimiin tämän
+ * lähteen osalta. Aktivoituu vain non-cal sessioista, non-deload-päiviin.
+ *
+ * @param {Array} recentTopSets — sets in chronological order (asc)
+ * @param {Object} opts — { maxBonus: 0.015 (default), minOvershoot: 2 }
+ * @returns {number} — 0 to maxBonus (kerroin loadPct:hen)
+ */
+function firstSetCapacityBonus(recentTopSets, opts = {}) {
+  const maxBonus = opts.maxBonus ?? 0.015;
+  const minOvershoot = opts.minOvershoot ?? 2;
+  if (!recentTopSets || recentTopSets.length === 0) return 0;
+
+  // Etsi viim. session sarjat
+  const lastSessId = recentTopSets[recentTopSets.length - 1]?.sessionId;
+  if (!lastSessId) return 0;
+  const lastSessSets = recentTopSets.filter(s => s.sessionId === lastSessId);
+  if (lastSessSets.length === 0) return 0;
+
+  // Skippaa cal-dominantit sessiot — cal on tarkoituksella matalampi
+  const calCount = lastSessSets.filter(s => s.setRole === "calibration").length;
+  if (calCount >= lastSessSets.length * 0.5) return 0;
+
+  // Ekka työsarja (filtteröi calit pois jos sekoittuu)
+  const firstWorkSet = lastSessSets.find(s => s.setRole !== "calibration") || lastSessSets[0];
+  if (!firstWorkSet || firstWorkSet.actualVx === null || firstWorkSet.targetVx === null) return 0;
+
+  const overshoot = firstWorkSet.actualVx - firstWorkSet.targetVx;
+  if (overshoot < minOvershoot) return 0;
+
+  // +1.0 % per Vx-luokka yli minOvershoot:n, capattuna maxBonukseen
+  // overshoot=2 → 1.0 %, overshoot=3 → 1.5 % (cap)
+  return clamp((overshoot - minOvershoot + 1) * 0.010, 0, maxBonus);
 }
 
 /**
@@ -905,21 +1013,99 @@ function accessoryProgression(progress, isLowerBody = false) {
 
   const increment = isLowerBody ? 5 : 2.5;
 
-  if (progress.consecutiveTargetMetSessions >= 2) {
-    const newLoad = roundToHalf((progress.lastLoadKg || 0) + increment);
-    return {
-      action: "increase",
-      suggestedLoad: newLoad,
-      reason: `Target saavutettu ${progress.consecutiveTargetMetSessions}× peräkkäin → +${increment}kg`,
-    };
-  }
+  // v4.34.36 BUG-FIX C: Vx-overshoot-aware progressio. Aiempi algoritmi käytti
+  // VAIN consecutiveTargetMetSessions-laskuria (tarvitaan 2 peräkkäistä target met
+  // -sessiota +5 kg:lle). Tämä jätti huomiotta että V5 vs target V3 = 2 luokkaa
+  // helpompi → atletti pystyi paljon enemmän kuormaa, mutta engine sanoi "hold"
+  // koska consecutive=1.
+  //
+  // Käyttäjäpalaute: "Tukiliikkeiden hold ei voi olla optimaalinen jos
+  // edellisellä viikolla mennyt esim. V3 ja nyt pidettäisiin samassa painossa".
+  //
+  // Uusi logiikka:
+  //   V0 (failure): −increment (kevennä, ei luota progressioon)
+  //   sub-target (V_actual < V_target): hold (ei nostaa, ei laskeaa V1-V2:lla)
+  //   target met (V_actual == V_target): consecutive>=2 → +increment, muuten hold
+  //   overshoot +1: +increment (ei vaadi consecutive=2 — fresh signal riittää)
+  //   overshoot +2: +1.5× increment (selvä yli-kapasiteetti)
+  //   overshoot +3+: +2× increment (kuorma reilusti aliarvioitu)
+  //
+  // V0 hold-back nojaa hadFailureLastSession + FAILURE_LOCKOUT primary-haaralle;
+  // accessoryllä menetelmä simulee saman tason käyttäen progress.lastMinVx-arvoa.
+  const lastVxOvershoot = progress.lastVxOvershoot ?? null; // mean(actualVx) − targetVx
+  const lastMinVx = progress.lastMinVx ?? null;
 
+  // Stagnation override (>= 3 vk → flagi liikkeen vaihtoon)
   if (progress.stagnationWeeks >= 3) {
     return {
       action: "hold",
       suggestedLoad: progress.lastLoadKg,
       reason: `Stagnaatio ${progress.stagnationWeeks} viikkoa — harkitse liikkeen vaihtoa`,
       stagnationWarning: true,
+    };
+  }
+
+  // V0 viim. sessiossa → kevennä (V0 = liian raskas)
+  if (lastMinVx === 0) {
+    const newLoad = roundToHalf(Math.max(0, (progress.lastLoadKg || 0) - increment));
+    return {
+      action: "decrease",
+      suggestedLoad: newLoad,
+      reason: `V0 viim. session sarjassa → kevennä −${increment} kg`,
+    };
+  }
+
+  // Sub-target (V_actual < V_target, esim. V1-V2 target V3): hold — ei deload
+  // V1-V2 painoissa, mutta ei myöskään nosta. Käyttäjäpyyntö 2026-05-05:
+  // "ei deloadia heti V1-V2:lla, V0 osalta kyllä".
+  if (lastVxOvershoot !== null && lastVxOvershoot < 0) {
+    return {
+      action: "hold",
+      suggestedLoad: progress.lastLoadKg,
+      reason: `Hieman alle target Vx (${lastVxOvershoot.toFixed(1)}) — hold, anna runkokunnon palautua`,
+    };
+  }
+
+  // Target met täsmälleen (overshoot ≈ 0): legacy consecutive=2 -sääntö
+  if (lastVxOvershoot !== null && Math.abs(lastVxOvershoot) < 0.5) {
+    if (progress.consecutiveTargetMetSessions >= 2) {
+      const newLoad = roundToHalf((progress.lastLoadKg || 0) + increment);
+      return {
+        action: "increase",
+        suggestedLoad: newLoad,
+        reason: `Target saavutettu ${progress.consecutiveTargetMetSessions}× peräkkäin → +${increment} kg`,
+      };
+    }
+    return {
+      action: "hold",
+      suggestedLoad: progress.lastLoadKg,
+      reason: "Target saavutettu, kasvattamiseen tarvitaan 2× peräkkäin",
+    };
+  }
+
+  // Overshoot >= +0.5 luokkaa (= last Vx selvästi yli target) → progressio.
+  // Multiplier:
+  //   0.5–1.5 → 1×, 1.5–2.5 → 1.5×, 2.5+ → 2×
+  if (lastVxOvershoot !== null && lastVxOvershoot >= 0.5) {
+    let multiplier = 1.0;
+    if (lastVxOvershoot >= 2.5) multiplier = 2.0;
+    else if (lastVxOvershoot >= 1.5) multiplier = 1.5;
+    const bonusKg = increment * multiplier;
+    const newLoad = roundToHalf((progress.lastLoadKg || 0) + bonusKg);
+    return {
+      action: "increase",
+      suggestedLoad: newLoad,
+      reason: `Vx +${lastVxOvershoot.toFixed(1)} target Vx:stä — fresh-V signaali → +${bonusKg.toFixed(1)} kg`,
+    };
+  }
+
+  // Legacy fallback: lastVxOvershoot null (vanha progress-record ilman Vx-trackingia)
+  if (progress.consecutiveTargetMetSessions >= 2) {
+    const newLoad = roundToHalf((progress.lastLoadKg || 0) + increment);
+    return {
+      action: "increase",
+      suggestedLoad: newLoad,
+      reason: `Target saavutettu ${progress.consecutiveTargetMetSessions}× peräkkäin → +${increment} kg (legacy)`,
     };
   }
 
@@ -940,8 +1126,14 @@ function updateMovementProgressFromSets(existingProgress, sessionSets, targetRep
   const lastLoadKg = lastSet.externalLoadKg;
   const lastReps = lastSet.reps;
 
-  // Calculate e1RM for accessory
-  const e1rm = e1rmAccessory(lastLoadKg, lastReps);
+  // v4.34.34 BUG-FIX E1: Vx-parametri puuttui aiemmin → e1rmAccessory käytti
+  // efektiivisiä reppejä = reps + 0, mikä **aliarvioi** atletin todellisen
+  // suorituskyvyn (V5-helppo sarja luettiin V0-grindiksi). Tämä rikkoi
+  // accessory-progression next-load-suosituksen koko järjestelmästä — atletti
+  // teki helpoilla, engine ehdotti samaa kuormaa seuraavalle kerralle.
+  // Korjaus: priorisoi actualVx (todellinen palaute), fallback targetVx, sitten 1.
+  const lastVx = lastSet.actualVx ?? lastSet.targetVx ?? targetVx ?? 1;
+  const e1rm = e1rmAccessory(lastLoadKg, lastReps, lastVx);
 
   // Check if target was met for all sets
   const allTargetMet = sessionSets.every((s) => {
@@ -975,6 +1167,21 @@ function updateMovementProgressFromSets(existingProgress, sessionSets, targetRep
   }
   progress.lastLoadKg = lastLoadKg;
   progress.lastReps = lastReps;
+
+  // v4.34.36 BUG-FIX C: tallenna last-session Vx-tiedot accessoryProgressionia varten.
+  // lastVxOvershoot = mean(actualVx) − targetVx (positiivinen = helpompi kuin target)
+  // lastMinVx = pienin actualVx (V0 = failure → kevennys)
+  const vxValues = sessionSets
+    .map(s => s.actualVx)
+    .filter(v => v !== null && v !== undefined);
+  if (vxValues.length > 0 && targetVx !== null && targetVx !== undefined) {
+    const meanActualVx = vxValues.reduce((a, b) => a + b, 0) / vxValues.length;
+    progress.lastVxOvershoot = meanActualVx - targetVx;
+    progress.lastMinVx = Math.min(...vxValues);
+  } else {
+    progress.lastVxOvershoot = null;
+    progress.lastMinVx = null;
+  }
 
   // Update target met counter
   if (allTargetMet) {
@@ -1136,7 +1343,12 @@ function hadFailureLastSession(recentTopSets) {
 //
 // Returns: { medianLoad, medianVx, fromSessions, lastSession: { medianLoad, medianVx } } tai null.
 
-function computeRateLimitAnchor(recentTopSets) {
+function computeRateLimitAnchor(recentTopSets, opts = {}) {
+  // v4.34.35: opts.excludeBackoff (default false) — kun true, backoff-sarjat
+  // poistetaan anchor-laskusta. Bug: aiemmin primary V3-V4 + backoff V5-V6
+  // sekoittuivat → median Vx vinoutui ylöspäin → cap rajoitti virheellisesti
+  // primary-targetia. Recommend() antaa true:n primary-target-rate-limitille.
+  const excludeBackoff = opts.excludeBackoff === true;
   if (!recentTopSets || recentTopSets.length === 0) return null;
 
   // Ryhmitä sessionId:n mukaan (säilytä aikajärjestys — recentTopSets on jo sortattu asc)
@@ -1166,6 +1378,7 @@ function computeRateLimitAnchor(recentTopSets) {
       (s.externalLoadKg || 0) > 0 &&
       s.setRole !== "readiness_test" &&
       s.actualVx !== 0  // Vx0 = failure, ei käytetä ankkurina
+      && (!excludeBackoff || s.setRole !== "backoff") // v4.34.35: primary-only-mode
     );
     if (!sets.length) continue;
     const medianLoad = median(sets.map(s => s.externalLoadKg));
@@ -1175,7 +1388,11 @@ function computeRateLimitAnchor(recentTopSets) {
     // muutama V4 deload-sarja + cal-sarja; cal dominoi merkitykseltään)
     const calSets = sessSets.filter(s => s.setRole === "calibration");
     const isCalibrationSession = calSets.length > 0 && calSets.length >= sets.length * 0.5;
-    profiles.push({ sessionId: sid, medianLoad, medianVx, isCalibrationSession });
+    // v4.34.36 BUG-FIX B: tallenna session-päivämäärä multi-week-cap-laskua varten.
+    // dateISO:n puuttuessa fallback timestamp.slice(0,10).
+    const firstSet = sets[0];
+    const dateISO = firstSet.dateISO || firstSet.timestamp?.slice(0, 10) || null;
+    profiles.push({ sessionId: sid, medianLoad, medianVx, isCalibrationSession, dateISO });
   }
 
   if (profiles.length === 0) return null;
@@ -1193,7 +1410,12 @@ function computeRateLimitAnchor(recentTopSets) {
     medianLoad: anchor.medianLoad,
     medianVx: anchor.medianVx,
     fromSessions: profiles.length,
-    lastSession: { medianLoad: last.medianLoad, medianVx: last.medianVx, isCalibration: last.isCalibrationSession === true },
+    lastSession: {
+      medianLoad: last.medianLoad,
+      medianVx: last.medianVx,
+      isCalibration: last.isCalibrationSession === true,
+      dateISO: last.dateISO || null,
+    },
   };
 }
 
@@ -1867,6 +2089,13 @@ async function recommend(options = {}) {
     ? (isBarbell ? currentE1RMSystem : Math.max(0, currentE1RMSystem - bodyweightKg))
     : null;
 
+  // v4.34.35: tallenna PLAN_BASED:n e1RM-nousu rate-limit-blokille.
+  // Kun PLAN_BASED aktivoituu, e1RM nousee perfect-execution-pohjalta. Rate-limit
+  // cap (joka oli kiinteä +6%) sokaistui tästä — cap rajoitti kuorman vaikka
+  // todellinen e1RM oli nousussa. Korjaus: PLAN_BASED-aware cap = 6% + e1RMGrowth.
+  let planBasedE1RMGrowthPct = 0;
+  const epleyVaraE1RM = currentE1RMExternal; // tallennetaan ennen PLAN_BASED-overridea
+
   // v4.34.30: PLAN_BASED_E1RM — kun atletti suoriutui täydellisesti targetin Vx:llä,
   // luota suunnitelmaan, älä Epley+Vara -aliarvioon (Helms 2018, Tuchscherer RTS).
   //
@@ -1889,11 +2118,22 @@ async function recommend(options = {}) {
     // PLAN_BASED. Cal on tarkin mittaus (RPE 8 × 3 reps, low-rep e1RM-tarkkuus
     // ±2.7 kg, DiStasio 2014). Plan-based ekstrapoloi loadPct:llä — vanhempi
     // ei-cal-data tuottaa väärän e1RM:n kun cal on jo päivittänyt arvon.
+    //
+    // v4.34.36 BUG-FIX A: filtteröi VAIN setRole === "top" -sarjat. Aiempi bug:
+    // Lisäpainodippi vk 2 MA -accessory (3×10 V5 @ 30 kg BW-volyymi) tunnistettiin
+    // "viim. dippi-session"-laukaisijaksi → planBasedExternal = 30/0.71 = 42.25 kg
+    // (= aliarvioi e1RM:n 80→42 kg). Korjaus: lastSessionSets sisältää vain
+    // primary-work-sarjat, jolloin volume-day accessory-volyymi ei sotke laskua.
+    // Ennen filteriä: recentTopSets sisältää JO vain primaryMovementId:n sarjoja
+    // (rivi ~1830 filtteri), mutta accessoreja samalle liikkeelle ei suodatettu.
     const lastSessionSets = (() => {
       // Ryhmitä sessionId:n mukaan, ota viim. ei-cal-sessio
       const sessGroups = new Map();
       const sessOrder = [];
-      for (const s of recentTopSets) {
+      // v4.34.36 A: filtteröi vain primary-work-sarjat (setRole === "top")
+      const primaryWorkSets = recentTopSets.filter(s => s.setRole === "top");
+      if (primaryWorkSets.length === 0) return null;
+      for (const s of primaryWorkSets) {
         const sid = s.sessionId || `__nosess_${s.timestamp}`;
         if (!sessGroups.has(sid)) { sessGroups.set(sid, []); sessOrder.push(sid); }
         sessGroups.get(sid).push(s);
@@ -1962,6 +2202,10 @@ async function recommend(options = {}) {
             const diffPct = ((planBasedExternal - original) / original) * 100;
             currentE1RMExternal = planBasedExternal;
             currentE1RMSystem = isBarbell ? planBasedExternal : (planBasedExternal + bodyweightKg);
+            // v4.34.35: tallenna nousupct rate-limit-blokille
+            planBasedE1RMGrowthPct = epleyVaraE1RM > 0
+              ? Math.max(0, (planBasedExternal - epleyVaraE1RM) / epleyVaraE1RM)
+              : 0;
             trace("PLAN_BASED_E1RM",
               { e1rmExternal: original.toFixed(1), source: "epley-vara" },
               { e1rmExternal: currentE1RMExternal.toFixed(1), source: "plan-based",
@@ -2232,6 +2476,27 @@ async function recommend(options = {}) {
     trace("GROSS_MISMATCH_CORRECTION", { deltaPct: oldDelta }, { deltaPct: deltaPctRawValue }, `Ohjelman skaalausvirhe havaittu — pikakorjaus +${(grossCorr * 100).toFixed(2)}%`);
   }
 
+  // v4.34.34 BUG 2 (b): FIRST-SET CAPACITY BONUS
+  // Aktivoituu kun viim. session ekka työsarja oli ≥2 luokkaa helpompi kuin
+  // target (esim. target V3, actual V5+). Käyttäjäpalaute: "ekka V5-helppous
+  // ei johda mihinkään" → tämä on suora vastaus. Ekka sarja fresh = vahva
+  // kapasiteetti-signaali, ei väsymys-signaali. Soveltaa vain heavy-päiviin
+  // (volume/speed-päivissä Vx ei mittaa kuorma-kapasiteettia).
+  if (dayType === "heavy") {
+    const firstSetBonus = firstSetCapacityBonus(recentTopSets);
+    if (firstSetBonus > 0) {
+      const oldDelta = deltaPctRawValue;
+      deltaPctRawValue += firstSetBonus;
+      const lastSessId = recentTopSets[recentTopSets.length - 1]?.sessionId;
+      const firstWork = recentTopSets.filter(s => s.sessionId === lastSessId).find(s => s.setRole !== "calibration");
+      const ovr = firstWork ? (firstWork.actualVx - firstWork.targetVx) : 0;
+      trace("FIRST_SET_CAPACITY_BONUS",
+        { deltaPct: oldDelta },
+        { deltaPct: deltaPctRawValue, overshoot: ovr, bonus: firstSetBonus },
+        `Ekka työsarja ${ovr >= 0 ? "+" : ""}${ovr} Vx vs target (target V${firstWork?.targetVx}, actual V${firstWork?.actualVx}) — fresh-V${firstWork?.actualVx} = +${(firstSetBonus*100).toFixed(1)}% kapasiteetti-bonus`);
+    }
+  }
+
   // 8. Break modifier
   if (breakInfo.modifier !== 0) {
     const oldDelta = deltaPctRawValue;
@@ -2356,11 +2621,45 @@ async function recommend(options = {}) {
       //     Last-sessio oli helpompi (deload), ei relevantti rajoitin.
       //   - lastVxDelta >= 0 (sama tai helpompi Vx) → käytä MIN molemmista.
       //     Tällöin last-anchor estää historia-PR-bounce-back-ongelman.
-      const anchor = computeRateLimitAnchor(recentTopSets);
+      // v4.34.35: anchor lasketaan VAIN primary-sarjoista (ei backoffia/cal:ia).
+      // Aiemmin backoff V5-V6 sotki anchor.medianVx:n → cap rajoitti vääränperin.
+      const anchor = computeRateLimitAnchor(recentTopSets, { excludeBackoff: true });
       if (anchor) {
         const newVx = targetVx ?? 2;
         const vxDelta = newVx - anchor.medianVx;
-        const weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
+        let weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
+
+        // v4.34.36 BUG-FIX B: MULTI-WEEK-AWARE CAP.
+        // Aiempi cap oli "session-to-session" — jos atletti hyppää väliviikon
+        // (esim. vk 2 TO ei tehty), vk 1 TO → vk 3 TO = 14 pv väli mutta cap antaa
+        // vain +6 % (= 1 vk:n nousu) → kuorma ei nouse vaikka atletti palauttaa
+        // 2 viikon takaisesta. Korjaus: cap × ceil(daysSinceLastPrimary / 7).
+        // Vk 1 → vk 3 = 14 pv → cap × 2 = 12 % primary-nousu sallittu.
+        let weekMultiplier = 1;
+        if (anchor.lastSession.dateISO && dateISO) {
+          const daysSince = Math.max(0, Math.floor(
+            (new Date(dateISO).getTime() - new Date(anchor.lastSession.dateISO).getTime()) / 86400000
+          ));
+          if (daysSince > 7) {
+            weekMultiplier = Math.min(3, Math.ceil(daysSince / 7));
+            weeklyCap = weeklyCap * weekMultiplier;
+          }
+        }
+
+        // v4.34.35: PLAN_BASED-aware cap. Kun PLAN_BASED_E1RM aktivoitui ja e1RM
+        // nousi perfect-execution-pohjalta, cap nousee vastaavasti. Aiemmin kiinteä
+        // +6% cappi syö PLAN_BASED-pohjaisen e1RM-nousun pois → engine ehdotti
+        // alikuorman vaikka todellinen kapasiteetti oli noussut. Käyttäjäpalaute
+        // 2026-05-05: vk 2 V5 ekka @125 kg → vk 3 PRIMARY 132.5 kg vaikka 136-139
+        // olisi ollut PLAN_BASED-uskollinen. Korjaus: cap = base + e1RM-nousu.
+        let planBasedCapBonus = 0;
+        if (planBasedE1RMGrowthPct > 0.005 && vxDelta < 1) {
+          // Vain kun newVx on vaikeampi tai sama (vxDelta < 1) — Vx helpotuksen
+          // tapauksissa cap on jo 10-15% joka kattaa nousun.
+          planBasedCapBonus = Math.min(planBasedE1RMGrowthPct, 0.080); // max +8 % yli base
+          weeklyCap = weeklyCap + planBasedCapBonus;
+        }
+
         const cappedHeaviest = anchor.medianLoad * (1 + weeklyCap);
 
         const lastVxDelta = newVx - anchor.lastSession.medianVx;
@@ -2371,6 +2670,10 @@ async function recommend(options = {}) {
         let lastWeeklyCap = 0;
         if (useLastAnchor) {
           lastWeeklyCap = lastVxDelta >= 2 ? 0.15 : lastVxDelta >= 1 ? 0.10 : 0.06;
+          // v4.34.36: sama week-multiplier myös last-anchor-haarassa
+          if (weekMultiplier > 1) lastWeeklyCap = lastWeeklyCap * weekMultiplier;
+          // v4.34.35: sama PLAN_BASED-bonus myös last-anchor-haarassa
+          if (planBasedCapBonus > 0) lastWeeklyCap = lastWeeklyCap + planBasedCapBonus;
           cappedLast = anchor.lastSession.medianLoad * (1 + lastWeeklyCap);
         }
 
@@ -2383,11 +2686,13 @@ async function recommend(options = {}) {
           const lastNote = useLastAnchor
             ? `last ${anchor.lastSession.medianLoad.toFixed(1)}@V${anchor.lastSession.medianVx.toFixed(1)} +${(lastWeeklyCap*100).toFixed(0)}% = ${cappedLast.toFixed(1)}`
             : `last @V${anchor.lastSession.medianVx.toFixed(1)} (helpompi → ohitettu)`;
+          const planNote = planBasedCapBonus > 0 ? ` [PLAN_BASED +${(planBasedCapBonus*100).toFixed(1)}% bonus]` : "";
           trace("PROGRESSION_RATE_LIMIT", { targetExternalLoad: original },
             { targetExternalLoad, anchorLoad: anchor.medianLoad, anchorVx: anchor.medianVx,
               lastLoad: anchor.lastSession.medianLoad, lastVx: anchor.lastSession.medianVx,
-              newVx, weeklyCap, lastWeeklyCap, cappedBy, useLastAnchor, fromSessions: anchor.fromSessions },
-            `Rate-limit (${cappedBy}): ${original} → ${targetExternalLoad} kg (heaviest ${anchor.medianLoad.toFixed(1)}@V${anchor.medianVx.toFixed(1)} +${(weeklyCap*100).toFixed(0)}% = ${cappedHeaviest.toFixed(1)} | ${lastNote})`);
+              newVx, weeklyCap, lastWeeklyCap, cappedBy, useLastAnchor,
+              planBasedCapBonus, fromSessions: anchor.fromSessions },
+            `Rate-limit (${cappedBy})${planNote}: ${original} → ${targetExternalLoad} kg (heaviest ${anchor.medianLoad.toFixed(1)}@V${anchor.medianVx.toFixed(1)} +${(weeklyCap*100).toFixed(0)}% = ${cappedHeaviest.toFixed(1)} | ${lastNote})`);
         }
 
         // v4.34.29 PROGRESSION_FLOOR_CAP — regression-suoja kun viim. sessio meni hyvin.
@@ -3435,10 +3740,20 @@ function eliteVolumeCheck(weekSets, movements) {
 
 /**
  * Compute e1RM for any movement from its set history.
- * Uses accessory Epley for non-primary, system Epley for primary.
+ * Uses system Epley for system-load movements (Lisäpainoleuanveto, dippi, MU),
+ * accessory Epley for kaikki muut (Takakyykky-style barbell + true accessoryt).
+ *
+ * v4.34.34: 2. argumentti hyväksyy nyt joko booleanin (taaksepäin yhteensopiva)
+ * TAI movement-objektin. Movement-objektista käytetään isSystemLoadMovement(mov)
+ * — tämä on KESKITETTY totuudenlähde "lisätäänkö BW e1RM-laskuun" -kysymykseen.
  */
-function computeMovementE1RM(movementSets, isPrimary, bodyweightKg) {
+function computeMovementE1RM(movementSets, movementOrIsSystem, bodyweightKg) {
   if (!movementSets.length) return null;
+
+  // v4.34.34: tunnista signature — boolean (legacy) vs movement-objekti (uusi)
+  const isSystem = typeof movementOrIsSystem === "boolean"
+    ? movementOrIsSystem
+    : isSystemLoadMovement(movementOrIsSystem);
 
   // Take last 6 sets with valid data
   const recent = movementSets
@@ -3449,7 +3764,7 @@ function computeMovementE1RM(movementSets, isPrimary, bodyweightKg) {
 
   const values = recent.map((s) => {
     const vara = s.actualVx ?? s.targetVx ?? 1;
-    if (isPrimary) {
+    if (isSystem) {
       return e1rmSystem(bodyweightKg, s.externalLoadKg, s.reps, vara);
     } else {
       return e1rmAccessory(s.externalLoadKg, s.reps, vara);
@@ -3460,11 +3775,16 @@ function computeMovementE1RM(movementSets, isPrimary, bodyweightKg) {
 }
 
 /**
- * Compute e1RM history (time series) for any movement
+ * Compute e1RM history (time series) for any movement.
+ * v4.34.34: 3. argumentti hyväksyy joko booleanin tai movement-objektin (kuten yllä).
  */
-function computeMovementE1RMHistory(movementSets, sessions, isPrimary, bodyweightKg) {
+function computeMovementE1RMHistory(movementSets, sessions, movementOrIsSystem, bodyweightKg) {
   const sessionMap = new Map(sessions.map((s) => [s.sessionId, s]));
   const points = [];
+
+  const isSystem = typeof movementOrIsSystem === "boolean"
+    ? movementOrIsSystem
+    : isSystemLoadMovement(movementOrIsSystem);
 
   for (const s of movementSets) {
     if (s.externalLoadKg <= 0 || s.reps < 1) continue;
@@ -3473,7 +3793,7 @@ function computeMovementE1RMHistory(movementSets, sessions, isPrimary, bodyweigh
 
     const vara = s.actualVx ?? s.targetVx ?? 1;
     let e1rm;
-    if (isPrimary) {
+    if (isSystem) {
       e1rm = e1rmSystem(bodyweightKg, s.externalLoadKg, s.reps, vara);
     } else {
       e1rm = e1rmAccessory(s.externalLoadKg, s.reps, vara);
@@ -4797,6 +5117,8 @@ export {
   varaTrendCorrection,
   e1rmMomentumBonus,
   grossMismatchCorrection,
+  // v4.34.34 BUG 2 (b)
+  firstSetCapacityBonus,
   // Break
   breakAnalysis,
   mesocycleBreakReset,
@@ -4875,4 +5197,6 @@ export {
   // Movement e1RM
   computeMovementE1RM,
   computeMovementE1RMHistory,
+  // v4.34.34 movement-load-style resolver
+  isSystemLoadMovement,
 };

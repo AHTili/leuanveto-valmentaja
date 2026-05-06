@@ -794,6 +794,8 @@ import {
   findMissedPriorSessions,
   eliteVolumeCheck,
   computeMovementE1RM, computeMovementE1RMHistory,
+  // v4.34.34: keskitetty totuudenlähde "lisätäänkö BW e1RM-laskuun?" -kysymykseen
+  isSystemLoadMovement,
   computeStreetliftingOpenerStrategy,
   // v4.30.3: ennuste edistymis-näkymälle
   predictE1RMEndOfProgram, computeStreetliftingFinalProjection,
@@ -2294,7 +2296,8 @@ function renderDashboard() {
       const mov = state.movements.find(m => m.name === liftName);
       if (!mov) continue;
       const sets = state.allSets.filter(s => s.movementId === mov.movementId);
-      const history = computeMovementE1RMHistory(sets, state.sessions, mov.isPrimary, bw);
+      // v4.34.34 BUG 1 -fix: anna mov-objekti (sisältää loadType:n)
+      const history = computeMovementE1RMHistory(sets, state.sessions, mov, bw);
       if (history.length > 0) {
         const lastE1rm = history[history.length - 1].e1rm;
         if (lastE1rm > 0) e1rms[liftName] = lastE1rm;
@@ -3855,6 +3858,7 @@ function renderActiveWorkout() {
         ${swapHTML}
         <span class="info" id="btn-info-exercise" title="Tietoja liikkeestä">ⓘ</span>
         <span class="info ${exercise.exerciseNote ? "has-note" : ""}" id="btn-exercise-note" title="${exercise.exerciseNote ? "Muokkaa muistiinpanoa" : "Lisää muistiinpano"}" style="${exercise.exerciseNote ? "color:var(--acc)" : ""}">📝</span>
+        ${exercise.movementId ? `<span class="info" id="btn-exercise-history" data-prior-sessions="${exercise.movementId}" data-prior-name="${(exercise.name || "").replace(/"/g, "&quot;")}" title="Liikkeen treenihistoria">📊</span>` : ""}
         ${lockHTML}
       </div>
       ${exSubHTML}
@@ -4581,11 +4585,15 @@ function renderWorkoutSummary() {
   const bw = state.settings?.bodyweightKg || 91;
   const totalTonnageExt = w.exercises.reduce((sum, ex) =>
     sum + ex.sets.filter(s => s.completed && !s.isWarmup).reduce((ss, s) => ss + (s.loadKg || 0) * (s.reps || 0), 0), 0);
-  // System tonnage includes bodyweight for primary/backoff movements (työsarjat only)
+  // v4.34.34 BUG 1 -fix: tonnage käytti ex.role === "primary" -slot-roolia kuin
+  // se olisi system-load-flag, mutta TI Takakyykyssä role === "primary" eikä siihen
+  // saa lisätä BW:tä (loadType="external"). Korjaus: tunnistus liike-pohjaisesta
+  // loadType-kentästä (isSystemLoadMovement) movement-rekisteristä.
   const totalTonnageSys = w.exercises.reduce((sum, ex) => {
-    const isPull = ex.role === "primary" || ex.role === "backoff";
+    const movForEx = state.movements.find(m => m.movementId === ex.movementId);
+    const isSystem = isSystemLoadMovement(movForEx);
     return sum + ex.sets.filter(s => s.completed && !s.isWarmup).reduce((ss, s) => {
-      const load = isPull ? (bw + (s.loadKg || 0)) : (s.loadKg || 0);
+      const load = isSystem ? (bw + (s.loadKg || 0)) : (s.loadKg || 0);
       return ss + load * (s.reps || 0);
     }, 0);
   }, 0);
@@ -4605,22 +4613,27 @@ function renderWorkoutSummary() {
 
   // v4.23 P4.1: PR-tunnistus session sisällä.
   // Per-movement: vertaa tämän session best-e1RM historiallisesti.
+  // v4.34.34 BUG 1 -fix: tunnistus liikkeen loadType-kentästä, EI slot-roolista
+  // (ex.role === "primary" tarkoittaa "TI:n päälinkku Takakyykky" — *slot*-rooli
+  // mesocyclessa, ei "system-load liike"). Tämä aiheutti 293.8 kg PR-bannerin
+  // Takakyykylle (system-laskenta vaikka loadType="external").
   const prBadges = [];
   for (const ex of w.exercises) {
     if (!ex.movementId) continue;
     const completedSets = ex.sets.filter(s => s.completed && !s.isWarmup);
     if (completedSets.length === 0) continue;
-    const isPri = ex.role === "primary" || ex.role === "backoff";
+    const movForEx = state.movements.find(m => m.movementId === ex.movementId);
+    const isSystem = isSystemLoadMovement(movForEx);
     // Rakenna historia ENNEN tätä sessiota
     const priorSets = state.allSets.filter(s =>
       s.movementId === ex.movementId && s.sessionId !== w.sessionId
     );
-    const priorHistory = computeMovementE1RMHistory(priorSets, state.sessions, isPri, bw);
+    const priorHistory = computeMovementE1RMHistory(priorSets, state.sessions, movForEx, bw);
     const priorBest = priorHistory.length > 0 ? Math.max(...priorHistory.map(h => h.e1rm)) : 0;
     // Tämän session set-e1RM:t
     const nowE1RMs = completedSets.map(s => {
       const vx = s.actualVx ?? s.targetVx ?? 1;
-      if (isPri) return e1rmSystem(bw, s.loadKg || 0, s.reps || 1, vx);
+      if (isSystem) return e1rmSystem(bw, s.loadKg || 0, s.reps || 1, vx);
       return e1rmAccessory(s.loadKg || 0, s.reps || 1, vx);
     }).filter(v => v !== null && v > 0);
     const nowBest = nowE1RMs.length ? Math.max(...nowE1RMs) : 0;
@@ -4666,8 +4679,12 @@ function renderWorkoutSummary() {
       const warmups = completedSets.filter(s => s.isWarmup);
       const workSets = completedSets.filter(s => !s.isWarmup);
       const firstWork = workSets[0];
-      const isPri = ex.role === "primary" || ex.role === "backoff";
-      const exE1RM = firstWork ? (isPri
+      // v4.34.34 BUG 1 -fix: e1rmExternal vain system-load-liikkeille (Lisäpainoleuanveto, dippi, MU);
+      // Takakyykky ja muut barbell-liikkeet käyttävät e1rmAccessory (= ei BW-vähennystä, koska BW
+      // ei ollut summassa alun perin). Aiemmin näytti 203.8 kg = (91+125)*1.367-91 — väärin.
+      const movForExSum = state.movements.find(m => m.movementId === ex.movementId);
+      const isSystemSum = isSystemLoadMovement(movForExSum);
+      const exE1RM = firstWork ? (isSystemSum
         ? e1rmExternal(bw, firstWork.loadKg || 0, firstWork.reps || 3, firstWork.actualVx ?? 1)
         : e1rmAccessory(firstWork.loadKg || 0, firstWork.reps || 3, firstWork.actualVx ?? 1)) : null;
       const isAttempt = ["warmup","opener","attempt2","attempt3"].includes(ex.role);
@@ -4964,7 +4981,10 @@ function renderPerLiftAutoregStatus(meso) {
       .filter(s => s.movementId === mov.movementId && s.setRole === "top")
       .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
     const last = sets[sets.length - 1];
-    const e1rm = computeMovementE1RM(sets, mov.isPrimary, bw);
+    // v4.34.34 BUG 1 -fix: käytä movement-objektia computeMovementE1RM:lle
+    // (taaksepäin yhteensopiva — engine osaa molemmat boolean+movement -signatuurit)
+    const e1rm = computeMovementE1RM(sets, mov, bw);
+    const movIsSystem = isSystemLoadMovement(mov);
 
     const recentN = sets.slice(-6).filter(s => s.actualVx !== null && s.targetVx !== null);
     let trendLabel = "—", trendColor = "var(--muted)";
@@ -4975,7 +4995,10 @@ function renderPerLiftAutoregStatus(meso) {
       else { trendLabel = "➡ Vakaa"; trendColor = "var(--muted)"; }
     }
     const e1rmHistory = sets.slice(-5).map(s => {
-      const loadTotal = mov.isPrimary ? (s.externalLoadKg + bw) : s.externalLoadKg;
+      // v4.34.34 BUG 1 -fix: tunnistus loadType-kentästä, ei isPrimary-flagista.
+      // Aiemmin Lisäpainodippi (loadType="system" mutta isPrimary=false) sai
+      // virheellisesti accessory-laskelman → e1RM aliarvioitu noin BW:n verran.
+      const loadTotal = movIsSystem ? (s.externalLoadKg + bw) : s.externalLoadKg;
       const eff = (s.reps || 0) + (s.actualVx ?? 0);
       return loadTotal * (1 + eff / 30);
     });
@@ -5172,10 +5195,12 @@ function renderMovements() {
   const bw = state.settings?.bodyweightKg || 91;
 
   // Compute e1RM for every movement
+  // v4.34.34 BUG 1 -fix: anna koko movement-objekti (joka sisältää loadType:n)
+  // computeMovementE1RM:lle, ei vain m.isPrimary-flagia.
   const movementE1RMs = {};
   for (const m of state.movements) {
     const sets = state.allSets.filter(s => s.movementId === m.movementId);
-    movementE1RMs[m.movementId] = computeMovementE1RM(sets, m.isPrimary, bw);
+    movementE1RMs[m.movementId] = computeMovementE1RM(sets, m, bw);
   }
 
   return `<div class="fade-in">
@@ -5953,7 +5978,8 @@ function renderProgress() {
     if (!mov) return null;
     const sets = state.allSets.filter(s => s.movementId === mov.movementId);
     if (sets.length === 0) return null;
-    const history = computeMovementE1RMHistory(sets, state.sessions, mov.isPrimary, bw);
+    // v4.34.34 BUG 1 -fix: anna mov-objekti
+    const history = computeMovementE1RMHistory(sets, state.sessions, mov, bw);
     if (history.length === 0) return null;
     const weekly = resampleWeeklyMaxE1RM(history);
     const sliced = rangeWeeks >= weekly.length ? weekly : weekly.slice(-rangeWeeks);
@@ -6154,7 +6180,8 @@ function renderProgress() {
         const liftSets = state.allSets.filter(s => s.movementId === mov.movementId);
         let hist = [];
         if (liftSets.length > 0) {
-          hist = computeMovementE1RMHistory(liftSets, state.sessions, mov.isPrimary, bw);
+          // v4.34.34 BUG 1 -fix: anna mov-objekti
+          hist = computeMovementE1RMHistory(liftSets, state.sessions, mov, bw);
         }
         // Fallback: jos historia tyhjä mutta PR-rekisterissä on liike, lisää PR-piste
         if (hist.length === 0) {
@@ -6254,11 +6281,12 @@ function renderTrends() {
   const bw = state.settings?.bodyweightKg || 91;
 
   // Compute e1RM for all movements that have data
+  // v4.34.34 BUG 1 -fix: anna koko movement-objekti computeMovementE1RMHistory:lle
   const movementTrends = [];
   for (const m of state.movements) {
     const sets = state.allSets.filter(s => s.movementId === m.movementId);
     if (sets.length === 0) continue;
-    const history = computeMovementE1RMHistory(sets, state.sessions, m.isPrimary, bw);
+    const history = computeMovementE1RMHistory(sets, state.sessions, m, bw);
     if (history.length === 0) continue;
     const current = history[history.length - 1].e1rm;
     const first = history[0].e1rm;
@@ -6280,13 +6308,16 @@ function renderTrends() {
 
     ${movementTrends.map(mt => {
       const changeStr = mt.change > 0 ? `<span class="text-ok">+${mt.change.toFixed(1)}</span>` : mt.change < 0 ? `<span class="text-bad">${mt.change.toFixed(1)}</span>` : `<span class="dim">±0</span>`;
-      const isPrimary = mt.movement.isPrimary;
-      const label = isPrimary ? "e1RM system (kg)" : "e1RM (kg)";
+      // v4.34.34 BUG 1 -fix: e1RM-label tunnistus loadType-kentästä (system/external),
+      // tähti-emoji säilyy isPrimary-flagilla (= UI-merkintä "tämä on Lisäpainoleuanveto").
+      const isStarred = mt.movement.isPrimary;
+      const isSysLoad = isSystemLoadMovement(mt.movement);
+      const label = isSysLoad ? "e1RM system (kg)" : "e1RM (kg)";
 
       return `<div class="card">
         <div class="flex-between">
           <div>
-            <div style="font-weight:600">${isPrimary ? "⭐ " : ""}${mt.movement.name}</div>
+            <div style="font-weight:600">${isStarred ? "⭐ " : ""}${mt.movement.name}</div>
             <div class="muted" style="font-size:11px">${mt.movement.category} | ${mt.totalSets} sarjaa</div>
           </div>
           <div style="text-align:right">
@@ -6686,14 +6717,17 @@ function buildCSVExport({ scope, mesocycleId, fromISO, toISO }) {
     const key = `${set.sessionId}|${set.movementId}`;
     const n = (setCounter.get(key) || 0) + 1;
     setCounter.set(key, n);
-    const isPrimary = mov?.isPrimary;
+    // v4.34.34 BUG 1 -fix: CSV-export käyttää loadType:ta, ei isPrimary-flagia.
+    // Aiempi rivi sekoitti UI-tason "tämä on leuka" -flagin ja teknisen
+    // "lisätäänkö BW e1RM-laskuun" -kysymyksen.
+    const isSystemRow = isSystemLoadMovement(mov);
     const bw = sess.bodyweightKg || state.latestBodyweight || 91;
     const load = set.externalLoadKg || 0;
-    const systemLoad = isPrimary ? (bw + load) : load;
-    const e1rmExt = isPrimary ? e1rmExternal(bw, load, set.reps, set.actualVx)
-                              : e1rmAccessory(load, set.reps, set.actualVx);
-    const e1rmSys = isPrimary ? e1rmSystem(bw, load, set.reps, set.actualVx)
-                              : e1rmAccessory(load, set.reps, set.actualVx);
+    const systemLoad = isSystemRow ? (bw + load) : load;
+    const e1rmExt = isSystemRow ? e1rmExternal(bw, load, set.reps, set.actualVx)
+                                : e1rmAccessory(load, set.reps, set.actualVx);
+    const e1rmSys = isSystemRow ? e1rmSystem(bw, load, set.reps, set.actualVx)
+                                : e1rmAccessory(load, set.reps, set.actualVx);
     const readinessLabel = sess.readinessCapLevel === 2 ? "RED"
                          : sess.readinessCapLevel === 1 ? "YELLOW"
                          : sess.readinessCapLevel === 0 ? "GREEN" : "";
@@ -6753,16 +6787,17 @@ function buildMesocycleMarkdown(mesocycleId) {
   }
 
   // e1RM first vs last per primary movement
+  // v4.34.34 BUG 1 -fix: tunnistus loadType:sta, ei isPrimary-flagista.
   const e1rmLines = [];
   for (const { mov, sets: ms } of byMov.values()) {
     if (ms.length < 2) continue;
-    const isPrimary = mov.isPrimary;
+    const movIsSys = isSystemLoadMovement(mov);
     const sorted = [...ms].sort((a,b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
     const compute = (s) => {
       const sess = sessions.find(ss => ss.sessionId === s.sessionId);
       const bw = sess?.bodyweightKg || 91;
-      return isPrimary ? e1rmExternal(bw, s.externalLoadKg || 0, s.reps, s.actualVx)
-                       : e1rmAccessory(s.externalLoadKg || 0, s.reps, s.actualVx);
+      return movIsSys ? e1rmExternal(bw, s.externalLoadKg || 0, s.reps, s.actualVx)
+                      : e1rmAccessory(s.externalLoadKg || 0, s.reps, s.actualVx);
     };
     const firstE = compute(sorted[0]);
     const lastE = compute(sorted[sorted.length - 1]);
@@ -9036,7 +9071,8 @@ function bindWorkoutEvents() {
           let currentE1RM = null;
           let e1rmSource = "history"; // "history" tai "PR"
           if (allLiftSets.length > 0) {
-            const history = computeMovementE1RMHistory(allLiftSets, state.sessions, m.isPrimary, bw);
+            // v4.34.34 BUG 1 -fix: anna m-objekti (sisältää loadType:n)
+            const history = computeMovementE1RMHistory(allLiftSets, state.sessions, m, bw);
             if (history.length > 0 && history[history.length - 1].e1rm > 0) {
               currentE1RM = history[history.length - 1].e1rm;
             }
@@ -9579,8 +9615,11 @@ function bindWorkoutEvents() {
       );
       if (sets.length < 2) return { growthPct: null, lastE1RM: null, sessions: 0, isStagnating: false };
       const movDef = state.movements.find(m => m.movementId === movId);
-      const isPrim = movDef?.isPrimary ?? isPrimaryHint;
-      const history = computeMovementE1RMHistory(sets, state.sessions, isPrim, bw);
+      // v4.34.34 BUG 1 -fix: anna movDef-objekti, ei isPrimary-flagia.
+      // Fallback-isPrimaryHint säilytetään API-yhteensopivuudeksi (kutsutaan rivi 9642).
+      const history = movDef
+        ? computeMovementE1RMHistory(sets, state.sessions, movDef, bw)
+        : computeMovementE1RMHistory(sets, state.sessions, isPrimaryHint, bw);
       if (history.length < 2) return { growthPct: null, lastE1RM: null, sessions: history.length, isStagnating: false };
       // 21 päivän (3 vk) ikkunan trendi
       const cutoffMs = Date.now() - 21 * 24 * 60 * 60 * 1000;
@@ -9950,27 +9989,31 @@ async function saveWorkoutToDb(sessionNotes = "") {
   await saveSets(sets);
 
   // PR detection: check if any movement hit a new e1RM record
+  // v4.34.34 BUG 1 -fix: tunnistus loadType:sta (movement-rekisteristä), EI
+  // exercise.role-slot-roolista. TI Takakyykky on slot.role==="primary" mutta
+  // loadType="external" → e1RM lasketaan ilman BW:tä.
   for (const exercise of w.exercises) {
     if (!exercise.movementId) continue;
     const completedSets = exercise.sets.filter(s => s.completed);
     if (completedSets.length === 0) continue;
-    const isPrimary = exercise.role === "primary";
+    const movForPR = state.movements.find(m => m.movementId === exercise.movementId);
+    const isSysPR = isSystemLoadMovement(movForPR);
     const exSets = state.allSets.filter(s => s.movementId === exercise.movementId);
-    const prevHistory = computeMovementE1RMHistory(exSets, state.sessions, isPrimary, bw);
+    const prevHistory = computeMovementE1RMHistory(exSets, state.sessions, movForPR, bw);
     const prevBest = prevHistory.length > 0 ? Math.max(...prevHistory.map(h => h.e1rm)) : 0;
     // Compute current session e1RM
     const nowSets = completedSets.map(s => ({
       externalLoadKg: s.loadKg || 0, reps: s.reps || 1,
       actualVx: s.actualVx, targetVx: s.targetVx,
     }));
-    const nowE1RMs = nowSets.map(s => isPrimary
+    const nowE1RMs = nowSets.map(s => isSysPR
       ? e1rmSystem(bw, s.externalLoadKg, s.reps, s.actualVx ?? 1)
       : e1rmAccessory(s.externalLoadKg, s.reps, s.actualVx)
     ).filter(v => v !== null);
     const nowBest = nowE1RMs.length > 0 ? Math.max(...nowE1RMs) : 0;
     if (nowBest > prevBest && prevBest > 0) {
       const delta = (nowBest - prevBest).toFixed(1);
-      const label = isPrimary ? "system" : "";
+      const label = isSysPR ? "system" : "";
       showToast(`🎉 PR! ${exercise.name}: ${nowBest.toFixed(1)} kg ${label} (+${delta})`, "ok", 5000);
     }
   }
@@ -10014,7 +10057,8 @@ async function saveWorkoutToDb(sessionNotes = "") {
 function showMovementDetail(mov) {
   const bw = state.settings?.bodyweightKg || 91;
   const sets = state.allSets.filter(s => s.movementId === mov.movementId);
-  const history = computeMovementE1RMHistory(sets, state.sessions, mov.isPrimary, bw);
+  // v4.34.34 BUG 1 -fix: anna mov-objekti (sisältää loadType:n)
+  const history = computeMovementE1RMHistory(sets, state.sessions, mov, bw);
   const currentE1RM = history.length > 0 ? history[history.length - 1].e1rm : null;
   const totalSets = sets.length;
   const totalSessions = new Set(sets.map(s => s.sessionId)).size;
