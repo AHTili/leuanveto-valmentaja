@@ -1,9 +1,10 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.38 — Claude Design -liikehistoria-modaali (kolme tasoa: e1RM/Vx-trio,
-// Primary/Accessory-välilehdet, "Miksi tämä kuorma?" -drilldown engine-traceilla).
-// v4.34.37 säilyy: navigation network-first 3 s timeout + auto-skipWaiting.
+// LeVe AI v4.34.39 — Liikehistoria-modaali: engine-rec näytetään VAIN kun
+// rec.primaryMovementId === movementId. Aiempi bug: traceit (e1RM 184.9, -9.3 %)
+// vuotivat toisen päivän primary-liikkeen tiedoista, mikä oli harhaanjohtavaa
+// (esim. Lisäpainodippi-modaali näytti Takakyykyn PLAN_BASED-tracen).
 
-const APP_VERSION = "4.34.38";
+const APP_VERSION = "4.34.39";
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
 
 // v4.34.9: Kuuntele SKIP_WAITING-message-eventtia, jolla pää-säie voi pakottaa

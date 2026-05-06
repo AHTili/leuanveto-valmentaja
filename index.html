@@ -3576,9 +3576,17 @@ function computeMovementStatsForModal(movementId, sessions) {
 
   // Engine-suositus: hae state.recommendation (mikäli liike matchaa primary-slot:ia)
   // ja decisionTraces jotka selittävät kuorman.
+  // v4.34.39 BUG-FIX: tarkista että rec.primaryMovementId === movementId.
+  // Aiempi bug: jos atletti avasi modaalin liikkeelle joka EI ollut sen päivän
+  // primary (esim. Lisäpainodippi-modaali leukapäivänä), traces:t kuuluivat
+  // VÄÄRÄLLE liikkeelle (LV cal 88 + Takakyykky PLAN_BASED 184.9 → harhaanjohtava).
+  // Korjaus: näytä engine-rec + drilldown VAIN kun primaryMovementId matchaa.
   const rec = state.recommendation;
-  const slot = rec?.dayPlan?.slots?.find(s => s.movementId === movementId)
-            || rec?.dayPlan?.slots?.find(s => s.defaultMovementName === mov?.name);
+  const isPrimaryToday = rec?.primaryMovementId === movementId;
+  const slot = isPrimaryToday
+    ? (rec?.dayPlan?.slots?.find(s => s.movementId === movementId)
+       || rec?.dayPlan?.slots?.find(s => s.role === "primary"))
+    : null;
   if (slot && (slot.role === "primary" || slot.role === "backoff")) {
     const targetLoad = slot.role === "primary" ? rec.targetExternalLoad : (slot.resolvedLoadKg ?? slot.suggestedLoadKg);
     if (targetLoad) {
