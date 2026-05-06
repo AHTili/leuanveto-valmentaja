@@ -3346,12 +3346,42 @@ function computeRecentSessionsForMovement(movementId, excludeSessionId, n = 3) {
 }
 
 // v4.34.24: Modal näyttää viim. 3 session per-sarja-detaljit (kuorma×toistot×Vx, pvm).
+// v4.34.40: etsi seuraava päivä mesocyclesta jossa annettu movement on primary.
+// Käytetään modaalin engine-suosituksen näyttämiseen ei-primary-päivinä
+// (esim. KE → näytetään tulevan TO-treenin Lisäpainodippi-ennuste).
+// HUOM: käytetään lokaalia päivämäärä-formattia (ei toISOString()), koska UTC-
+// shifti aiheuttaa Suomessa "2026-05-07" → "2026-05-06" -konversion.
+function findNextPrimaryDayForMovement(mesocycle, movementName, fromDateISO, maxDays = 14) {
+  if (!mesocycle?.weekPlans || !movementName || !fromDateISO) return null;
+  const start = new Date(fromDateISO + "T12:00:00"); // klo 12 keskellä päivää → ei DST-issuja
+  for (let i = 0; i < maxDays; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const checkISO = `${yyyy}-${mm}-${dd}`;
+    const wk = getMesocycleWeek(mesocycle, checkISO);
+    if (!wk) continue;
+    const dow = d.getDay() || 7;
+    const dayPlan = mesocycle.weekPlans[wk - 1]?.days?.find(dd2 => dd2.dayOfWeek === dow);
+    if (!dayPlan) continue;
+    const primarySlot = dayPlan.slots?.find(s => s.role === "primary");
+    if (primarySlot?.defaultMovementName === movementName) {
+      return { dateISO: checkISO, weekNum: wk, dayOfWeek: dow };
+    }
+  }
+  return null;
+}
+
 // v4.34.38 (Claude Design): kolmen tason layout — Header trio (e1RM, Vx-trend,
 // engine-suositus), Primary/Accessory-välilehdet ja "Miksi tämä kuorma?" -drilldown.
+// v4.34.40: jos avattu liike ei ole tämän päivän primary, etsi seuraava primary-
+// päivä mesocyclesta + aja recommend() siihen päivään → näytä future-rec.
 // Avataan klikkaamalla prev-ghost-laatikkoa tai 📊-nappia workout-näkymässä.
-function openPriorSessionsModal(movementId, excludeSessionId, movementName) {
+async function openPriorSessionsModal(movementId, excludeSessionId, movementName) {
   const allSessions = computeRecentSessionsForMovement(movementId, excludeSessionId, 5);
-  const stats = computeMovementStatsForModal(movementId, allSessions);
+  const stats = await computeMovementStatsForModal(movementId, allSessions);
   closeModal();
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -3409,9 +3439,19 @@ function openPriorSessionsModal(movementId, excludeSessionId, movementName) {
         <div style="font-size:13px;color:var(--muted);padding:6px 0">Tarvitaan 2+ sessiota</div>
       </div>`;
 
+  // v4.34.40: jos rec on tulevasta päivästä, otsikko muuttuu "Seuraava primary: TO 7.5.26"
+  const engineLbl = stats.engineRec && stats.futureRecDate
+    ? (() => {
+        const d = new Date(stats.futureRecDate + "T00:00:00");
+        const dows = { 1: "MA", 2: "TI", 3: "KE", 4: "TO", 5: "PE", 6: "LA", 0: "SU" };
+        const dow = dows[d.getDay()] || "";
+        const dateStr = `${d.getDate()}.${d.getMonth() + 1}.${String(d.getFullYear()).slice(-2)}`;
+        return `📅 Seuraava primary · ${dow} ${dateStr}`;
+      })()
+    : "⚡ Engine ehdottaa tänään";
   const engineCard = stats.engineRec
     ? `<div class="lh-engine-card">
-        <div class="lh-engine-lbl">⚡ Engine ehdottaa tänään</div>
+        <div class="lh-engine-lbl">${engineLbl}</div>
         <div class="lh-engine-load">
           <span class="num">${stats.engineRec.loadStr}</span>
           <span class="unit">kg</span>
@@ -3521,8 +3561,10 @@ function sessionIsPrimaryRole(sess) {
   return sess.sets.some(s => s.setRole === "top" && (s.externalLoadKg || 0) > 0);
 }
 
-// v4.34.38: Per-liike-tilastot modaalin headerille (e1RM, Vx-trendi, engine-rec, traces)
-function computeMovementStatsForModal(movementId, sessions) {
+// v4.34.40: Per-liike-tilastot modaalin headerille (e1RM, Vx-trendi, engine-rec, traces).
+// Async koska future-rec-laskenta (kun avattu liike ei ole tämän päivän primary)
+// vaatii recommend()-kutsun mesocyclen seuraavaan primary-päivään tällä liikkeellä.
+async function computeMovementStatsForModal(movementId, sessions) {
   const mov = state.movements?.find(m => m.movementId === movementId);
   const bw = state.settings?.bodyweightKg || 91;
   const stats = {
@@ -3531,6 +3573,7 @@ function computeMovementStatsForModal(movementId, sessions) {
     e1rm: null, hasE1RM: false, e1rmDeltaText: null, e1rmDeltaClass: "flat", e1rmDeltaIcon: "→",
     vxTrend: null,
     engineRec: null,
+    futureRecDate: null, // v4.34.40: jos rec on tulevasta päivästä, näytä päivämäärä
   };
 
   // e1RM-history (movement-pohjalta, ottaa system/external loadType:n huomioon)
@@ -3577,12 +3620,41 @@ function computeMovementStatsForModal(movementId, sessions) {
   // Engine-suositus: hae state.recommendation (mikäli liike matchaa primary-slot:ia)
   // ja decisionTraces jotka selittävät kuorman.
   // v4.34.39 BUG-FIX: tarkista että rec.primaryMovementId === movementId.
-  // Aiempi bug: jos atletti avasi modaalin liikkeelle joka EI ollut sen päivän
-  // primary (esim. Lisäpainodippi-modaali leukapäivänä), traces:t kuuluivat
-  // VÄÄRÄLLE liikkeelle (LV cal 88 + Takakyykky PLAN_BASED 184.9 → harhaanjohtava).
-  // Korjaus: näytä engine-rec + drilldown VAIN kun primaryMovementId matchaa.
-  const rec = state.recommendation;
-  const isPrimaryToday = rec?.primaryMovementId === movementId;
+  // v4.34.40: jos primary ei matchaa, etsi MESOCYCLESTA seuraava primary-päivä
+  // tälle liikkeelle JA aja recommend() siihen päivään (async). Tämä antaa
+  // atletille mahdollisuuden tarkistaa tulevan TO-treenin target esim. KE-lepopäivänä.
+  let rec = state.recommendation;
+  let isPrimaryToday = rec?.primaryMovementId === movementId;
+  if (!isPrimaryToday && state.mesocycle && mov?.name) {
+    try {
+      const today = todayISO();
+      const next = findNextPrimaryDayForMovement(state.mesocycle, mov.name, today, 14);
+      if (next && next.dateISO !== today) {
+        // Aja recommend() tulevan primary-päivän kontekstilla
+        const futureRec = await recommend({
+          mesocycle: state.mesocycle,
+          sessions: state.sessions || [],
+          allSets: state.allSets || [],
+          movements: state.movements || [],
+          measurements: state.measurements || [],
+          decisionTraces: [],
+          primaryMovementId: movementId,
+          dateISO: next.dateISO,
+          bodyweightKg: bw,
+          settings: state.settings || {},
+          options: { readiness: { combined: "GREEN", capLevel: 0, channels: {} } }
+        });
+        if (futureRec && futureRec.targetExternalLoad) {
+          rec = futureRec;
+          isPrimaryToday = true;
+          stats.futureRecDate = next.dateISO;
+        }
+      }
+    } catch (e) {
+      // Future-rec failed (esim. ei ole valid mesosykli) → fallback olemassa olevaan rec:iin
+      console.warn("[Modal future-rec] failed:", e?.message || e);
+    }
+  }
   const slot = isPrimaryToday
     ? (rec?.dayPlan?.slots?.find(s => s.movementId === movementId)
        || rec?.dayPlan?.slots?.find(s => s.role === "primary"))

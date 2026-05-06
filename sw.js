@@ -1,10 +1,10 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.39 — Liikehistoria-modaali: engine-rec näytetään VAIN kun
-// rec.primaryMovementId === movementId. Aiempi bug: traceit (e1RM 184.9, -9.3 %)
-// vuotivat toisen päivän primary-liikkeen tiedoista, mikä oli harhaanjohtavaa
-// (esim. Lisäpainodippi-modaali näytti Takakyykyn PLAN_BASED-tracen).
+// LeVe AI v4.34.40 — Liikehistoria-modaali: jos avattu liike ei ole tämän päivän
+// primary, modaali etsii MESOCYCLESTA seuraavan primary-päivän + ajaa recommend()
+// siihen päivään (async). Atletti voi tarkistaa tulevan TO-treenin target esim.
+// KE-lepopäivänä. Otsikko: "📅 Seuraava primary · TO 7.5.26".
 
-const APP_VERSION = "4.34.39";
+const APP_VERSION = "4.34.40";
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
 
 // v4.34.9: Kuuntele SKIP_WAITING-message-eventtia, jolla pää-säie voi pakottaa
