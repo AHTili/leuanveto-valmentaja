@@ -245,6 +245,105 @@ function targetLoadFromE1RM(e1rmSys, bodyweightKg, targetReps, targetVx) {
   return roundToHalf(Math.max(0, external));
 }
 
+/**
+ * v4.34.42 — Adaptive ceiling streak: tunnistaa "cal aliarvioitu" -tilanteen.
+ *
+ * Käyttäjäpalaute 2026-05-07: cfg.dippiExtKg=80 → ceiling 88, atletti suoritti
+ * vk 2 TO 65.5 kg V3 perfect (PLAN_BASED 92.3 kg). Cap esti todellisen
+ * kapasiteettinousun → vk 3 target jäi +0.5 kg vk 2:sta. Engine ei luottanut
+ * toistuvaan PLAN_BASED-evidenssiin koska cap oli kiinteä cfg × 1.10.
+ *
+ * Korjaus: streak-pohjainen kerroin-nosto. Käy sessiot uusin → vanhin, laskee
+ * peräkkäisten "perfect-execution + PLAN_BASED-e1RM > baseCeiling" -sessioiden
+ * määrän. Bonus-portaikko (palautetaan kerroin-lisä baseen 1.10):
+ *   1 streak → +0.00 (=1.10 base, ei muutosta)
+ *   2 streak → +0.05 (=1.15)
+ *   3+ streak → +0.10 (=1.20 max)
+ *
+ * Reset jos:
+ *   - perfectionin rikkoutuminen (esim. V0 actualVx < targetVx, reps < target)
+ *   - PLAN_BASED-e1RM <= baseCeiling (= sessio ei vahvistanut kasvua)
+ *   - ei loadPct-tietoa kyseisestä sessio-päivästä
+ *
+ * Konservatismi V0-grindi-taipumukselle: 1 fail palauttaa kertoimen 1.10:een.
+ *
+ * @param {Array} topSets - kaikki primary-liikkeen setit (recentTopSets)
+ * @param {Array} sessions - kaikki sessiot (date-lookupia varten)
+ * @param {Object} mesocycle - aktiivinen mesosykli (loadPct-lookupia varten)
+ * @param {boolean} isBarbell - load-tyyppi (false = system-load, +bw)
+ * @param {number} bodyweightKg - oletus 91
+ * @param {number} baseCeiling - cap-pohjataso (esim. cfg-PR × 1.10)
+ * @returns {object} { streak, bonus, info }
+ */
+function computePerfectStreakCeilingBonus(topSets, sessions, mesocycle, isBarbell, bodyweightKg, baseCeiling) {
+  if (!topSets || topSets.length === 0 || !mesocycle || !baseCeiling || baseCeiling <= 0) {
+    return { streak: 0, bonus: 0, info: 'no-data' };
+  }
+
+  // Vain primary-work setit (sama suodatus kuin PLAN_BASED-blokissa, v4.34.36 BUG-FIX A)
+  const primaryWork = topSets.filter(s => s.setRole === 'top');
+  if (primaryWork.length === 0) return { streak: 0, bonus: 0, info: 'no-top-sets' };
+
+  // Ryhmittele sessio-id:n mukaan, säilytä järjestys
+  const sessGroups = new Map();
+  const sessOrder = [];
+  for (const s of primaryWork) {
+    const sid = s.sessionId || `__nosess_${s.timestamp}`;
+    if (!sessGroups.has(sid)) { sessGroups.set(sid, []); sessOrder.push(sid); }
+    sessGroups.get(sid).push(s);
+  }
+
+  // Käy uusimmasta vanhimpaan, laske streak
+  let streak = 0;
+  for (let i = sessOrder.length - 1; i >= 0; i--) {
+    const sets = sessGroups.get(sessOrder[i]);
+    if (!sets || sets.length === 0) break;
+
+    // Perfect execution: kaikki sarjat actualVx >= targetVx ja reps >= targetReps
+    const perfect = sets.every(s =>
+      s.actualVx !== null && s.actualVx !== undefined
+      && s.targetVx !== null && s.targetVx !== undefined
+      && s.actualVx >= s.targetVx
+      && (s.reps ?? 0) >= (s.targetReps ?? 0)
+    );
+    if (!perfect) break;
+
+    // Lookup loadPct kyseisestä mesosykli-viikosta+päivästä
+    // (sama logiikka kuin PLAN_BASED_E1RM-blokki, v4.34.33 BUG-FIX 1.2)
+    const sessId = sessOrder[i];
+    const dateISO = sessions?.find(s => s.sessionId === sessId)?.dateISO
+                  || sets[0]?.dateISO
+                  || sets[0]?.timestamp?.slice(0, 10);
+    if (!dateISO) break;
+
+    const wk = getMesocycleWeek(mesocycle, dateISO);
+    const dow = new Date(dateISO).getDay() || 7;
+    const dayPlan = (wk !== null && wk !== undefined)
+      ? mesocycle.weekPlans?.[wk - 1]?.days?.find(d => d.dayOfWeek === dow)
+      : null;
+    const primarySlot = dayPlan?.slots?.find(s => s.role === 'primary');
+    const loadPct = primarySlot?.loadPct;
+    if (!loadPct || loadPct <= 0 || loadPct > 1.0) break;
+
+    // PLAN_BASED-e1RM tämän session medianloadista
+    const loads = sets.map(x => x.externalLoadKg).filter(v => v > 0);
+    if (loads.length === 0) break;
+    const medLoad = median(loads);
+    const planBasedE1RM = medLoad / loadPct;
+
+    if (planBasedE1RM > baseCeiling) {
+      streak++;
+    } else {
+      break; // sessio ei vahvistanut kasvua → streak ei kasva
+    }
+  }
+
+  let bonus = 0;
+  if (streak >= 3) bonus = 0.10;
+  else if (streak >= 2) bonus = 0.05;
+  return { streak, bonus, info: `streak=${streak}, bonus=+${(bonus*100).toFixed(0)}%` };
+}
+
 // ═══════════════════════════════════════════════════════════════
 // BASELINE CALCULATIONS (rolling median + MAD)
 // ═══════════════════════════════════════════════════════════════
@@ -2284,12 +2383,18 @@ async function recommend(options = {}) {
   // varsinkin korkeilla toistoilla (V3+ × 6 reps → +20 % seedista yhden session perusteella).
   // Käyttäjäpalaute simulaatiosta: "vk 1 e1RM 106 vs todellinen ~89 — vk 8 cal yli PR".
   //
-  // Logiikka:
-  //   1. Jos kalibrointi-setti on viim. 12 setissä → ceiling = cal-derived e1RM × 1.05
-  //      (cal on validoitu mittaus, salli max +5 % parannus seuraavaan caliin asti)
-  //   2. Muuten käytä mesocyclen streetliftingConfig.calibration.leukaExtKg × 1.10
-  //      (ei vielä validoitu mittausta, salli max +10 % seedistä)
-  //   3. Jos ei kumpaakaan, ei capata (legacy-yhteensopivuus)
+  // v4.34.42 — B+ ADAPTIVE CEILING: streak-pohjainen kerroin-nosto (ks.
+  // computePerfectStreakCeilingBonus). Aiempi kiinteä cfg × 1.10 -ceiling
+  // rajoitti kasvun jos atletti toistuvasti ylitti targetin V3+ perfectillä
+  // (esim. dippi vk 2 PLAN_BASED 92.3 > ceiling 88 → vk 3 jäi +0.5 kg).
+  // Adaptive: 2 peräkkäistä perfect-yli-ceiling-sessiota nostaa kerrointa
+  // 1.10 → 1.15, 3+ → 1.20 (max). Yksi V0-fail palauttaa 1.10:een.
+  //
+  // Logiikka (3 tasoa, prioriteettijärjestyksessä):
+  //   1. Cal-historia → ceiling = max(cal-derived) × 1.05 (validoitu mittaus)
+  //   2. streetliftingConfig (Lisäpainoleuka/dippi/Takakyykky) → cfg × adaptive
+  //   3. (B+) Yleinen historia-baseline → max-3-e1RM × adaptive
+  //      — toimii MILLE TAHANSA liikkeelle (variantti-vaihto, custom-meso)
   //
   // Cap pätee vain kun currentE1RMExternal > ceiling. Alaspäin ei capata
   // (oikea heikkous-signaali pitää näkyä rate-limit-anchorissa, ei piilottaa).
@@ -2313,17 +2418,48 @@ async function recommend(options = {}) {
     }
 
     if (ceiling_ext === null) {
-      // Ei cal-historiaa → käytä konfiguroitu PR × 1.10
+      // Ei cal-historiaa → käytä konfiguroitu PR × adaptive
+      // v4.34.42: adaptive-kerroin = 1.10 + streak-bonus (max +0.10 = 1.20)
       const cfg = mesocycle?.streetliftingConfig?.calibration || {};
-      // Map movement → config key (Lisäpainoleuanveto → leukaExtKg, etc.)
       const movName = primarySlotMeta?.defaultMovementName;
       const initialPR = movName === "Lisäpainoleuanveto" ? cfg.leukaExtKg
                       : movName === "Lisäpainodippi"     ? cfg.dippiExtKg
                       : movName === "Takakyykky"          ? cfg.kyykkyExtKg
                       : null;
       if (initialPR && initialPR > 0) {
-        ceiling_ext = initialPR * 1.10;
-        ceilingSource = `${movName} PR ${initialPR} × 1.10`;
+        const baseCeiling = initialPR * 1.10;
+        const sr = computePerfectStreakCeilingBonus(topSets, sessions, mesocycle, isBarbell, bodyweightKg, baseCeiling);
+        const ceilingMult = 1.10 + sr.bonus;
+        ceiling_ext = initialPR * ceilingMult;
+        ceilingSource = `${movName} PR ${initialPR} × ${ceilingMult.toFixed(2)}`
+                      + (sr.bonus > 0 ? ` [B+ streak ${sr.streak}× → +${(sr.bonus*100).toFixed(0)}%]` : '');
+      }
+    }
+
+    if (ceiling_ext === null && topSets.length > 0) {
+      // v4.34.42 B+ — Yleistys: historia-baseline mille tahansa liikkeelle.
+      // Käytä top-3 e1RM:n mediaania baselinena → adaptive × 1.10 + streak.
+      // Tämä korvaa hardkoodatun "vain 3 streetlifting-päälikettä" -mallin —
+      // variantti-vaihto (esim. Painodippi → Lisäpainodippi) ei riko cap:ia,
+      // ja custom-mesosyklit muille liikkeille saavat suojan automaattisesti.
+      const histE1RMs = topSets.slice(-12).map(s => {
+        const cv = s.actualVx ?? s.targetVx ?? 1;
+        if ((s.externalLoadKg ?? 0) <= 0 || (s.reps ?? 0) < 1) return null;
+        const e1rmSys = isBarbell
+          ? e1rmAccessory(s.externalLoadKg, s.reps, cv)
+          : e1rmSystem(bodyweightKg, s.externalLoadKg, s.reps, cv);
+        return isBarbell ? e1rmSys : (e1rmSys - bodyweightKg);
+      }).filter(v => v !== null && v > 0);
+
+      if (histE1RMs.length > 0) {
+        histE1RMs.sort((a, b) => b - a);
+        const baseline = median(histE1RMs.slice(0, Math.min(3, histE1RMs.length)));
+        const baseCeiling = baseline * 1.10;
+        const sr = computePerfectStreakCeilingBonus(topSets, sessions, mesocycle, isBarbell, bodyweightKg, baseCeiling);
+        const ceilingMult = 1.10 + sr.bonus;
+        ceiling_ext = baseline * ceilingMult;
+        ceilingSource = `historia-baseline ${baseline.toFixed(1)} × ${ceilingMult.toFixed(2)}`
+                      + (sr.bonus > 0 ? ` [B+ streak ${sr.streak}× → +${(sr.bonus*100).toFixed(0)}%]` : '');
       }
     }
 

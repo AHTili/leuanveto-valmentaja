@@ -872,6 +872,128 @@ async function testRecommendScenarios() {
     assert(breakTrace !== undefined, "S6: jokin BREAK-trace olemassa (" +
       rec.traces.map(t => t.ruleId).filter(r => /BREAK|MESOCYCLE/.test(r)).join(",") + ")");
   });
+
+  // v4.34.42 B+ -testit: rakenna mini-meso jossa on loadPct-kentät (default-meso ei sisällä).
+  function makeStreetMeso(startISO) {
+    const baseDay = (loadPct, sets = 4, reps = 6, targetVx = 3) => ({
+      dayOfWeek: 1, dayType: "heavy", label: "Test",
+      slots: [
+        { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto",
+          sets, reps, targetVx, loadPct, suggestedLoadKg: Math.round(loadPct * 88) },
+      ],
+    });
+    return {
+      mesocycleId: "test-meso-streetb",
+      type: "streetlifting_16w",
+      startDateISO: startISO,
+      weekCount: 16,
+      streetliftingConfig: { calibration: { dippiExtKg: 80, leukaExtKg: 88, kyykkyExtKg: 175, bwKg: 91 } },
+      weekDefs: Array.from({length: 16}, (_, i) => ({
+        week: i + 1, deltaPctBase: i === 3 ? -0.25 : (i % 4 === 0 ? 0 : 0.025),
+        label: `Vk ${i+1}`, heavyReps: 6, heavyTargetVx: 3,
+      })),
+      weekPlans: Array.from({length: 16}, (_, i) => ({
+        week: i + 1,
+        days: [baseDay(i === 0 ? 0.686 : i === 1 ? 0.71 : 0.75)],
+      })),
+    };
+  }
+
+  // S9 (v4.34.42 B+): adaptive ceiling — 1 perfect-execution-yli-ceiling-sessio
+  // EI nosta kerrointa (streak=1 → bonus=0). Cap pysyy cfg × 1.10.
+  await scenario("v4.34.42 B+ — 1 perfect ei laukaise streakia", async () => {
+    const startISO = "2026-04-27";
+    const meso = makeStreetMeso(startISO);
+    const sessions = [{ sessionId: "s-vk1", dateISO: "2026-04-27" }];
+    // Vk 1 MA loadPct=0.686, 4×6 V3 perfect @ 75 kg → PLAN_BASED 75/0.686 = 109.3 > 88×1.10=96.8
+    const setsOld = Array.from({length: 4}, (_, i) => ({
+      setId: `s-vk1-${i}`, sessionId: "s-vk1", movementId: PRIMARY_MOV_ID,
+      externalLoadKg: 75, reps: 6, targetReps: 6, targetVx: 3, actualVx: 3,
+      setRole: "top", completed: true, timestamp: "2026-04-27T07:00:00Z", dateISO: "2026-04-27"
+    }));
+    const ctx = makeRecommendCtx({
+      startDateISO: startISO, dateISO: "2026-05-04",
+      mesocycle: meso, sessions, allSets: setsOld,
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error, "S9: ei error-flaggia");
+    const capTrace = rec.traces.find(t => t.ruleId === "E1RM_INFLATION_CAP");
+    // Streak=1 → bonus=0 → source EI saa sisältää "B+ streak"
+    if (capTrace) {
+      const src = capTrace.after?.source || "";
+      assert(!/B\+ streak/.test(src), `S9: 1 perfect ei laukaise streakia (source: ${src})`);
+    } else {
+      // Cap ei aktivoitu → OK myös, e1RM ei ylittänyt ceilingiä
+      assert(true, "S9: cap ei aktivoitu");
+    }
+  });
+
+  // S10 (v4.34.42 B+): 2 peräkkäistä perfect-yli-ceiling → kerroin nousee 1.15
+  await scenario("v4.34.42 B+ — 2 perfect peräkkäin nostaa ceiling-kerrointa", async () => {
+    const startISO = "2026-04-27";
+    const meso = makeStreetMeso(startISO);
+    const sessions = [
+      { sessionId: "s-vk1", dateISO: "2026-04-27" },
+      { sessionId: "s-vk2", dateISO: "2026-05-04" },
+    ];
+    // Vk 1: 80 kg V3 perfect → PLAN_BASED 80/0.686 = 116.6 > 96.8 ✓
+    // Vk 2: 85 kg V3 perfect → PLAN_BASED 85/0.71 = 119.7 > 96.8 ✓
+    const setsVk1 = Array.from({length: 4}, (_, i) => ({
+      setId: `s-vk1-${i}`, sessionId: "s-vk1", movementId: PRIMARY_MOV_ID,
+      externalLoadKg: 80, reps: 6, targetReps: 6, targetVx: 3, actualVx: 3,
+      setRole: "top", completed: true, timestamp: "2026-04-27T07:00:00Z", dateISO: "2026-04-27"
+    }));
+    const setsVk2 = Array.from({length: 4}, (_, i) => ({
+      setId: `s-vk2-${i}`, sessionId: "s-vk2", movementId: PRIMARY_MOV_ID,
+      externalLoadKg: 85, reps: 6, targetReps: 6, targetVx: 3, actualVx: 3,
+      setRole: "top", completed: true, timestamp: "2026-05-04T07:00:00Z", dateISO: "2026-05-04"
+    }));
+    const ctx = makeRecommendCtx({
+      startDateISO: startISO, dateISO: "2026-05-11",
+      mesocycle: meso, sessions, allSets: [...setsVk1, ...setsVk2],
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error, "S10: ei error-flaggia");
+    const capTrace = rec.traces.find(t => t.ruleId === "E1RM_INFLATION_CAP");
+    assert(capTrace, "S10: E1RM_INFLATION_CAP-trace olemassa");
+    const src = capTrace?.after?.source || "";
+    assert(/B\+ streak/.test(src), `S10: streak nostaa kerrointa (source: ${src})`);
+  });
+
+  // S11 (v4.34.42 B+): 1 V0-fail viimeisimpänä → streak resetoituu (= 0)
+  await scenario("v4.34.42 B+ — V0-fail resetoi streakin", async () => {
+    const startISO = "2026-04-27";
+    const meso = makeStreetMeso(startISO);
+    const sessions = [
+      { sessionId: "s-vk1", dateISO: "2026-04-27" },
+      { sessionId: "s-vk2", dateISO: "2026-05-04" }, // V0 fail
+    ];
+    const setsVk1 = Array.from({length: 4}, (_, i) => ({
+      setId: `s-vk1-${i}`, sessionId: "s-vk1", movementId: PRIMARY_MOV_ID,
+      externalLoadKg: 80, reps: 6, targetReps: 6, targetVx: 3, actualVx: 3,
+      setRole: "top", completed: true, timestamp: "2026-04-27T07:00:00Z", dateISO: "2026-04-27"
+    }));
+    // V0-fail: actualVx 0 < targetVx 3 → ei perfect → streak break
+    const setsVk2 = Array.from({length: 4}, (_, i) => ({
+      setId: `s-vk2-${i}`, sessionId: "s-vk2", movementId: PRIMARY_MOV_ID,
+      externalLoadKg: 85, reps: 6, targetReps: 6, targetVx: 3, actualVx: 0,
+      setRole: "top", completed: true, timestamp: "2026-05-04T07:00:00Z", dateISO: "2026-05-04"
+    }));
+    const ctx = makeRecommendCtx({
+      startDateISO: startISO, dateISO: "2026-05-11",
+      mesocycle: meso, sessions, allSets: [...setsVk1, ...setsVk2],
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error, "S11: ei error-flaggia");
+    const capTrace = rec.traces.find(t => t.ruleId === "E1RM_INFLATION_CAP");
+    if (capTrace) {
+      const src = capTrace.after?.source || "";
+      // Vain "B+ streak 2×" tai "B+ streak 3×" on bonus — streak=1 ei näytä bonusta source:ssa
+      assert(!/B\+ streak [23]×/.test(src), `S11: V0-fail resetoi streakin (source: ${src})`);
+    } else {
+      assert(true, "S11: cap ei aktivoitu");
+    }
+  });
 }
 
 // v4.34.28: computeRateLimitAnchor cal-suodatus (cowork-audit kohta 2.2 #2).

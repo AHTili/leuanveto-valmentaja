@@ -2060,7 +2060,21 @@ function render() {
       case "dashboard": app.innerHTML = renderDashboard(); break;
       case "workout": app.innerHTML = renderWorkout(); break;
       case "readiness": app.innerHTML = renderReadiness(); break;
-      case "mesocycle": app.innerHTML = renderMesocycle(); break;
+      case "mesocycle":
+        app.innerHTML = renderMesocycle();
+        // v4.34.42: lazy-populoi Sykli-sivun ohjelma-yleiskatsauksen kuormat taustalla.
+        // Cache-pohjainen → seuraavat renderit saavat datan heti, vain ekka latauskerta
+        // kestää ~1-2 s (64 recommend()-kutsua).
+        if (state.mesocycle && state.mesocycle.type === "streetlifting_16w") {
+          setTimeout(() => {
+            populateProgramOverviewTargets(state.mesocycle).then(() => {
+              // Re-render jos käyttäjä on edelleen mesocycle-näkymässä — solut
+              // päivittyvät DOMissa suoraan applyProgramTargetsToDOM:n kautta,
+              // mutta tämä varmistaa että renderöinti on persistent (esim. nav-vaihdon jälkeen).
+            }).catch(err => console.warn("[populateProgramOverviewTargets] failed:", err?.message || err));
+          }, 0);
+        }
+        break;
       case "movements": app.innerHTML = renderMovements(); break;
       case "history": app.innerHTML = renderHistory(); break;
       case "prs": app.innerHTML = renderPRs(); break;
@@ -5509,6 +5523,105 @@ function renderPerLiftAutoregStatus(meso) {
   </div>`;
 }
 
+// v4.34.42: cache + lazy-populate kuormille (Puute 1).
+// Atletti haluaa nähdä koko ohjelman tarkoilla kuormilla, päivitettynä viim.
+// session jälkeen. 64 recommend()-kutsua olisi liian hidas synchronously →
+// renderöidään placeholderit + populoidaan async + päivitetään DOM suoraan.
+//
+// Cache-strategia: yksi aktiivinen meso kerrallaan, key = mesoId + lastSetTimestamp.
+// Invalidoituu automaattisesti uuden setin tallennuksen yhteydessä.
+function getProgramTargetsCacheKey(meso, allSets) {
+  if (!meso?.mesocycleId) return null;
+  const lastTs = (allSets || []).reduce((max, s) => {
+    const t = s.timestamp || s.dateISO || "";
+    return t > max ? t : max;
+  }, "");
+  return `${meso.mesocycleId}|${lastTs}`;
+}
+
+async function populateProgramOverviewTargets(meso) {
+  if (!meso || meso.type !== "streetlifting_16w") return;
+  const cacheKey = getProgramTargetsCacheKey(meso, state.allSets);
+  if (!cacheKey) return;
+  // Ohita jos cache on jo voimassa
+  if (state.programTargetsCache && state.programTargetsCache.key === cacheKey
+      && state.programTargetsCache.targets) {
+    applyProgramTargetsToDOM(state.programTargetsCache.targets);
+    return;
+  }
+
+  const targets = new Map(); // "wk:dow" → { load, source, isCapped, movId }
+  const days = [1, 2, 4, 6];
+  const bw = state.settings?.bodyweightKg || 91;
+  const movByName = new Map((state.movements || []).map(m => [m.name, m]));
+
+  // Käy primary-päivät — per päivä yksi recommend()-kutsu
+  for (const wp of (meso.weekPlans || [])) {
+    for (const dow of days) {
+      const day = wp.days?.find(d => d.dayOfWeek === dow);
+      if (!day) continue;
+      const primarySlot = day.slots?.find(s => s.role === "primary");
+      if (!primarySlot?.defaultMovementName) continue;
+      const mov = movByName.get(primarySlot.defaultMovementName);
+      if (!mov) continue;
+
+      // Päivämäärä: vk-1 päiviä mesocyclen alkuun + dow-1
+      const start = new Date(meso.startDateISO);
+      const dayDate = new Date(start);
+      dayDate.setDate(start.getDate() + (wp.week - 1) * 7 + (dow - 1));
+      const dateISO = dayDate.toISOString().slice(0, 10);
+
+      try {
+        const rec = await recommend({
+          mesocycle: meso,
+          sessions: state.sessions || [],
+          allSets: state.allSets || [],
+          movements: state.movements || [],
+          measurements: state.measurements || [],
+          decisionTraces: [],
+          primaryMovementId: mov.movementId,
+          dateISO,
+          bodyweightKg: bw,
+          settings: state.settings || {},
+          options: { readiness: { combined: "GREEN", capLevel: 0, channels: {} } }
+        });
+        const load = rec?.targetExternalLoad;
+        const isCapped = (rec?.traces || []).some(t => t.ruleId === "E1RM_INFLATION_CAP" || t.ruleId === "PROGRESSION_RATE_LIMIT");
+        targets.set(`${wp.week}:${dow}`, {
+          load: typeof load === "number" ? load : null,
+          source: rec?.error || "ok",
+          isCapped,
+          movId: mov.movementId,
+          movName: primarySlot.defaultMovementName,
+        });
+      } catch (e) {
+        targets.set(`${wp.week}:${dow}`, { load: null, source: "error", isCapped: false, movId: mov.movementId });
+      }
+    }
+  }
+
+  state.programTargetsCache = { key: cacheKey, targets };
+  applyProgramTargetsToDOM(targets);
+}
+
+function applyProgramTargetsToDOM(targets) {
+  if (!targets) return;
+  for (const [key, val] of targets.entries()) {
+    const cell = document.querySelector(`[data-prog-cell="${key}"]`);
+    if (!cell) continue;
+    const baseHtml = cell.dataset.baseHtml || "";
+    if (val.load && val.load > 0) {
+      const loadStr = `${val.load} kg`;
+      const badge = val.isCapped
+        ? `<span style="padding:1px 4px;border-radius:3px;background:#7a5a3e;color:#fff;font-size:9px;margin-left:3px" title="Cap-rajoitettu">⚠</span>`
+        : "";
+      cell.innerHTML = `${baseHtml}<div style="font-size:10px;color:var(--text);margin-top:2px;font-weight:600">${loadStr}${badge}</div>`;
+    } else {
+      cell.innerHTML = `${baseHtml}<div style="font-size:10px;color:var(--muted);margin-top:2px">—</div>`;
+    }
+  }
+}
+
 function renderProgramOverviewTable(meso, currentWeek) {
   const days = [1, 2, 4, 6];
   const dayHeaders = { 1: "MA", 2: "TI", 4: "TO", 6: "LA" };
@@ -5524,6 +5637,11 @@ function renderProgramOverviewTable(meso, currentWeek) {
     if (w <= 12) return "#7a5a3e";
     return "#8a3e3e";
   };
+
+  // v4.34.42: lue cache jos saatavilla — populoituu render-jälkeen jos puuttuu.
+  const cacheKey = getProgramTargetsCacheKey(meso, state.allSets);
+  const cachedTargets = (state.programTargetsCache && state.programTargetsCache.key === cacheKey)
+    ? state.programTargetsCache.targets : null;
 
   return `<div class="card">
     <div class="card-title">📋 Koko 16 vk — yleiskatsaus</div>
@@ -5548,7 +5666,26 @@ function renderProgramOverviewTable(meso, currentWeek) {
               <td style="padding:5px 4px"><span style="padding:2px 6px;border-radius:3px;background:${blockColor(wp.week)};color:#fff;font-size:10px">${blockName}</span></td>
               ${days.map(d => {
                 const day = wp.days.find(x => x.dayOfWeek === d);
-                return `<td style="text-align:center;padding:5px 4px;color:var(--muted)">${summarizeDay(day)}</td>`;
+                const baseHtml = `<div>${summarizeDay(day)}</div>`;
+                const cached = cachedTargets?.get(`${wp.week}:${d}`);
+                let loadHtml = `<div style="font-size:10px;color:var(--muted);margin-top:2px">…</div>`;
+                if (cached) {
+                  if (cached.load && cached.load > 0) {
+                    const badge = cached.isCapped
+                      ? `<span style="padding:1px 4px;border-radius:3px;background:#7a5a3e;color:#fff;font-size:9px;margin-left:3px" title="Cap-rajoitettu">⚠</span>`
+                      : "";
+                    loadHtml = `<div style="font-size:10px;color:var(--text);margin-top:2px;font-weight:600">${cached.load} kg${badge}</div>`;
+                  } else {
+                    loadHtml = `<div style="font-size:10px;color:var(--muted);margin-top:2px">—</div>`;
+                  }
+                }
+                const primaryMovName = day?.slots?.find(s => s.role === "primary")?.defaultMovementName;
+                const movId = primaryMovName
+                  ? (state.movements || []).find(m => m.name === primaryMovName)?.movementId
+                  : "";
+                const clickable = movId ? `cursor:pointer` : "";
+                const clickAttr = movId ? `data-view-movement="${movId}"` : "";
+                return `<td ${clickAttr} data-prog-cell="${wp.week}:${d}" data-base-html="${baseHtml.replace(/"/g, '&quot;')}" style="text-align:center;padding:5px 4px;color:var(--muted);${clickable}">${baseHtml}${loadHtml}</td>`;
               }).join("")}
               <td style="text-align:right;padding:5px 4px;color:var(--muted)">${wdef ? ((wdef.deltaPctBase || 0) * 100).toFixed(0) + "%" : ""}</td>
             </tr>`;
@@ -5556,7 +5693,7 @@ function renderProgramOverviewTable(meso, currentWeek) {
         </tbody>
       </table>
     </div>
-    <div class="muted mt" style="font-size:10px">Solu: primary-sarjat × toistot V-tavoite</div>
+    <div class="muted mt" style="font-size:10px">Solu: primary-sarjat × toistot V-tavoite + engine-laskettu kuorma. ⚠ = cap-rajoitettu. Klikkaa solua → liikehistoria.</div>
   </div>`;
 }
 

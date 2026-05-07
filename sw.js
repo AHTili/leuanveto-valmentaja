@@ -1,10 +1,13 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.41 — Intra-session capacity bump: jos ekka työsarja meni V5+
-// target V3:lla (overshoot ≥ 2), engine ehdottaa kuorman nostoa seuraaviin
-// sarjoihin (+2.5-5 % conservatiivisesti, freshness-suoja). Atletti päättää
-// confirm-promptilla. Vain heavy-day primary-sarjoille.
+// LeVe AI v4.34.42 — B+ ADAPTIVE CEILING + Sykli-sivun kuormat:
+// 1) E1RM_INFLATION_CAP käyttää nyt streak-pohjaista kerrointa (1.10→1.20)
+//    + yleistyy mille tahansa primary-liikkeelle (ei vain hardkoodattuun 3:n).
+//    Kun atletti suorittaa 2+ peräkkäin perfect-execution PLAN_BASED-yli-ceiling
+//    -session, ceiling nousee → ohjelma ei lukitse todistettua kasvua.
+// 2) Sykli-sivu (renderProgramOverviewTable) näyttää nyt jokaisen primary-päivän
+//    engine-lasketun tarkan kuorman (lazy-populate, cache, ⚠ cap-rajoitettu).
 
-const APP_VERSION = "4.34.41";
+const APP_VERSION = "4.34.42";
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
 
 // v4.34.9: Kuuntele SKIP_WAITING-message-eventtia, jolla pää-säie voi pakottaa
