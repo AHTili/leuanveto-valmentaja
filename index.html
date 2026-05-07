@@ -1224,24 +1224,50 @@ async function persistCfgDriftIfApplicable(rec) {
   if (!drift.driftPct || drift.driftPct <= 0 || !drift.key || !drift.toCfg) return;
 
   const meso = state.mesocycle;
-  if (!meso || meso.type !== "streetlifting_16w") return;
-  if (!meso.streetliftingConfig) meso.streetliftingConfig = {};
-  if (!meso.streetliftingConfig.calibration) meso.streetliftingConfig.calibration = {};
-  const cal = meso.streetliftingConfig.calibration;
-  const currentCfg = cal[drift.key];
+  if (!meso) return;
+
+  // v4.34.44: Hybridi-haarautuminen drift.source-kentän mukaan.
+  // - 'streetliftingConfig' (legacy, streetlifting_16w) → cfg.calibration[key]
+  // - 'movementCfg' (uusi, kaikki muut mesot) → movementCfg[key].e1rmExternal
+  let currentCfg = null;
+  let writeBack = null; // funktio joka tallentaa newCfg:n oikeaan rakenteeseen
+  let driftHistoryArr = null;
+
+  if (drift.source === 'streetliftingConfig') {
+    if (meso.type !== "streetlifting_16w") return; // turvasaranat: source ja type yhdenmukaiset
+    if (!meso.streetliftingConfig) meso.streetliftingConfig = {};
+    if (!meso.streetliftingConfig.calibration) meso.streetliftingConfig.calibration = {};
+    const cal = meso.streetliftingConfig.calibration;
+    currentCfg = cal[drift.key];
+    writeBack = (val) => { cal[drift.key] = val; };
+    if (!Array.isArray(meso.streetliftingConfig.cfgDriftHistory)) {
+      meso.streetliftingConfig.cfgDriftHistory = [];
+    }
+    driftHistoryArr = meso.streetliftingConfig.cfgDriftHistory;
+  } else if (drift.source === 'movementCfg') {
+    if (!meso.movementCfg) meso.movementCfg = {};
+    if (!meso.movementCfg[drift.key]) {
+      meso.movementCfg[drift.key] = { e1rmExternal: null, dateISO: null, source: 'cfg-drift' };
+    }
+    currentCfg = meso.movementCfg[drift.key].e1rmExternal;
+    writeBack = (val) => {
+      meso.movementCfg[drift.key].e1rmExternal = val;
+      meso.movementCfg[drift.key].dateISO = todayISO();
+    };
+    if (!Array.isArray(meso.cfgDriftHistory)) meso.cfgDriftHistory = [];
+    driftHistoryArr = meso.cfgDriftHistory;
+  } else {
+    return; // tuntematon source — ei persistointia
+  }
 
   // Idempotency-suoja: jos cfg on jo lähellä toCfg:tä, älä persistoi
   if (currentCfg && Math.abs(currentCfg - drift.toCfg) < 0.5) return;
 
   // Päivitä cfg
   const newCfg = Math.round(drift.toCfg * 2) / 2; // 0.5 kg tarkkuus
-  cal[drift.key] = newCfg;
+  writeBack(newCfg);
 
-  // Lisää drift-history
-  if (!Array.isArray(meso.streetliftingConfig.cfgDriftHistory)) {
-    meso.streetliftingConfig.cfgDriftHistory = [];
-  }
-  meso.streetliftingConfig.cfgDriftHistory.push({
+  driftHistoryArr.push({
     dateISO: drift.dateISO || todayISO(),
     movName: drift.movName,
     key: drift.key,
@@ -1255,7 +1281,7 @@ async function persistCfgDriftIfApplicable(rec) {
   });
 
   await saveMesocycle(meso);
-  console.info(`[CFG-DRIFT] ${drift.movName} ${currentCfg?.toFixed(1) || '?'} → ${newCfg.toFixed(1)} kg (+${(drift.driftPct*100).toFixed(1)}%, signal=${drift.signal})`);
+  console.info(`[CFG-DRIFT] ${drift.movName} ${currentCfg?.toFixed(1) || '?'} → ${newCfg.toFixed(1)} kg (+${(drift.driftPct*100).toFixed(1)}%, signal=${drift.signal}, source=${drift.source})`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1443,6 +1469,118 @@ function showCalibrationModal(defaultBw = 91) {
     overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
     // Autofocus first input
     setTimeout(() => overlay.querySelector("#cal-leuka")?.focus(), 50);
+  });
+}
+
+/**
+ * v4.34.44 — Yleinen 1RM-kalibrointimodaali kaikille ei-streetlifting-mesoille.
+ *
+ * Kysyy käyttäjältä nykyisen 1RM-arvion kullekin uniikille päälikkeelle. Tulos
+ * tallennetaan mesocycle.movementCfg-tauluun (avain = liike-nimi). Engine
+ * (getCfgBaselineForMovement TASO 1) käyttää tätä baseline-arvona INFLATION_CAP
+ * + CFG-DRIFT -laskennassa.
+ *
+ * Streetlifting_16w käyttää edelleen showCalibrationModal:ia + streetliftingConfig
+ * -rakennetta — tätä funktiota EI kutsuta sieltä.
+ *
+ * @param {Array} primaries - [{ name, category }, ...] uniikit päälikkeet
+ * @param {number} defaultBw - oletuskehopaino
+ * @returns {Promise<{ bwKg, movementCfg } | null>} cfg-objekti tai null peruutus
+ */
+function showGenericCalibrationModal(primaries, defaultBw = 80) {
+  return new Promise(resolve => {
+    closeModal();
+
+    // Kategorisoi liike: tanko-pohjaiset (2.5 kg step) vs lisäpaino/lisäkuorma (0.5 kg step)
+    const BAR_CATEGORIES = new Set(["alaraaja"]);
+    const BAR_NAMES_HINT = /penkki|kyykky|maast|pysty|romanian|hauisk|ojennus|jalkaprässi|hip thrust/i;
+    const isBarLike = (p) => BAR_CATEGORIES.has(p.category) || BAR_NAMES_HINT.test(p.name);
+
+    // Kohtuulliset placeholder-arviot kategorian mukaan (käyttäjä korvaa omillaan)
+    const placeholderHint = (p) => {
+      const n = p.name.toLowerCase();
+      if (n.includes("penkkip"))    return "esim. 100";
+      if (n.includes("takakyykky")) return "esim. 140";
+      if (n.includes("etukyykky"))  return "esim. 110";
+      if (n.includes("maast"))      return "esim. 160";
+      if (n.includes("romanian"))   return "esim. 130";
+      if (n.includes("pysty"))      return "esim. 60";
+      if (n.includes("leuka") || n.includes("leuanveto")) return "esim. 30 (lisäpaino)";
+      if (n.includes("dippi"))      return "esim. 30 (lisäpaino)";
+      if (n.includes("hauis"))      return "esim. 40";
+      return "kg";
+    };
+
+    const inputRows = primaries.map((p, i) => {
+      const step = isBarLike(p) ? 2.5 : 0.5;
+      const id = `gencal-${i}`;
+      return `
+        <label style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-top:10px">${p.name} 1RM (kg)</label>
+        <input type="number" inputmode="decimal" id="${id}" data-mov="${p.name.replace(/"/g, '&quot;')}" value="" placeholder="${placeholderHint(p)}" step="${step}" min="0" max="500">
+      `;
+    }).join("");
+
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal-sheet" style="max-width:480px;max-height:90vh;overflow-y:auto">
+        <div class="modal-handle"></div>
+        <div class="modal-title">🎯 Ohjelman kalibrointi</div>
+        <div style="padding:0 4px">
+          <div class="muted" style="font-size:12px;margin-bottom:14px;line-height:1.55">
+            Anna nykyinen 1RM-arvio kullekin päälikkeelle. Sovellus käyttää näitä laskemaan jokaisen viikon kuormat. <b>Epätarkkuus ei ole kohtalokasta</b> — sovellus oppii suorituksistasi automaattisesti ja kalibroi itsensä uudelleen muutaman session jälkeen.
+          </div>
+
+          <label style="margin-top:0;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">Kehonpaino (kg)</label>
+          <input type="number" inputmode="decimal" id="gencal-bw" value="${defaultBw}" step="0.5" min="30" max="200">
+
+          ${inputRows}
+
+          <div class="muted" style="font-size:11px;margin:12px 0;padding:10px;background:rgba(79,140,255,0.08);border-radius:6px;line-height:1.5">
+            💡 <b>Vinkki:</b> jos et ole testannut 1RM:ää viime aikoina, anna konservatiivinen arvio (-2.5–5 kg). Sovellus nostaa tasoa automaattisesti kun suoriudut hyvin, ja varoittaa jos targetit alkavat tuntua liian raskailta.
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
+            <button class="btn btn-outline" data-modal-cancel>Peruuta</button>
+            <button class="btn" data-modal-ok>Aloita ohjelma</button>
+          </div>
+          <button class="btn-sm" id="gencal-skip" style="background:none;border:none;color:var(--muted);font-size:11px;margin-top:10px;width:100%;cursor:pointer;padding:6px">Aloita ilman kalibrointia (sovellus oppii suorituksistasi muutaman session jälkeen)</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const submit = (skipCal = false) => {
+      const bwVal = parseFloat(overlay.querySelector("#gencal-bw")?.value) || defaultBw;
+      const movementCfg = {};
+      const dateISO = todayISO();
+
+      if (!skipCal) {
+        for (let i = 0; i < primaries.length; i++) {
+          const p = primaries[i];
+          const inp = overlay.querySelector(`#gencal-${i}`);
+          const val = parseFloat(inp?.value);
+          if (!val || val <= 0 || val > 500) {
+            showToast(`${p.name}: anna realistinen 1RM-arvio (1-500 kg)`, "warn");
+            inp?.focus();
+            return;
+          }
+          movementCfg[p.name] = {
+            e1rmExternal: val,
+            dateISO,
+            source: 'manual-calibration',
+          };
+        }
+      }
+
+      closeModal();
+      resolve({ bwKg: bwVal, movementCfg });
+    };
+
+    overlay.querySelector("[data-modal-ok]").addEventListener("click", () => submit(false));
+    overlay.querySelector("#gencal-skip").addEventListener("click", () => submit(true));
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); resolve(null); });
+    overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
+    setTimeout(() => overlay.querySelector("#gencal-0")?.focus(), 50);
   });
 }
 
@@ -3115,15 +3253,16 @@ const RULE_LABELS_FI = {
   RETURN_FROM_BREAK: "Paluu tauolta",
   RETURN_FROM_BREAK_DAYTYPE: "Tauon jälkeen — päivätyyppi",
   BREAK_MODIFIER: "Taukomodifikaattori",
-  PLAN_BASED_E1RM: "Suunnitelma-pohjainen e1RM",
-  E1RM_INFLATION_CAP: "e1RM-katto",
-  E1RM_DEFLATION_CAP: "e1RM-lattia",
-  E1RM_COMPUTED: "e1RM laskettu",
-  E1RM_MOMENTUM_BONUS: "e1RM-momenttibonus",
-  VBT_E1RM_CROSSCHECK: "VBT cross-check",
-  VBT_PRIMARY_USED: "VBT primary",
-  VBT_DEFERRED_TO_PLAN: "VBT viivästetty (plan-based voittaa)",
-  VBT_CANDIDATE: "VBT candidate",
+  PLAN_BASED_E1RM: "Suoritus vahvisti 1RM-arvion",
+  E1RM_INFLATION_CAP: "1RM-arvion yläraja",
+  E1RM_DEFLATION_CAP: "1RM-arvion alaraja",
+  E1RM_COMPUTED: "1RM-arvio laskettu",
+  E1RM_MOMENTUM_BONUS: "Etenemisbonus",
+  CFG_DRIFT_APPLIED: "Engine oppi uuden 1RM-arvion",
+  VBT_E1RM_CROSSCHECK: "Velocity-vertailu",
+  VBT_PRIMARY_USED: "Velocity-pohjainen 1RM käytössä",
+  VBT_DEFERRED_TO_PLAN: "Velocity ohitettu (suunnitelma voittaa)",
+  VBT_CANDIDATE: "Velocity-ehdokas",
   DELTA_PCT_RAW: "DeltaPct raaka",
   VARA_TREND_CORRECTION: "Vara-trendikorjaus",
   GROSS_MISMATCH_CORRECTION: "Skaalausvirhe-korjaus",
@@ -3746,37 +3885,37 @@ async function computeMovementStatsForModal(movementId, sessions) {
       const planT = allTraces.find(t => t.ruleId === "LOAD_PCT_RESOLVED");
       if (planT) traces.push({
         cls: "plan", icon: "📋",
-        html: `<strong>Plan:</strong> loadPct ${(planT.after?.pct * 100)?.toFixed(0) ?? "?"} % × e1RM ${planT.after?.currentE1RMExternal?.toFixed?.(1) ?? "?"}`,
+        html: `<strong>Suunnitelma:</strong> ${(planT.after?.pct * 100)?.toFixed(0) ?? "?"} % × 1RM-arvio ${planT.after?.currentE1RMExternal?.toFixed?.(1) ?? "?"} kg`,
         val: `${planT.after?.targetExternalLoad?.toFixed?.(1) ?? "?"} kg`,
       });
       const planBased = allTraces.find(t => t.ruleId === "PLAN_BASED_E1RM");
       if (planBased) traces.push({
         cls: "bonus", icon: "🚀",
-        html: `<strong>PLAN_BASED:</strong> perfect-execution → e1RM ${planBased.after?.e1rmExternal} kg`,
+        html: `<strong>Engine luotti suoritukseesi:</strong> 1RM-arvio nostettu ${planBased.after?.e1rmExternal} kg`,
         val: planBased.after?.diffPct || "+",
       });
       const fcb = allTraces.find(t => t.ruleId === "FIRST_SET_CAPACITY_BONUS");
       if (fcb) traces.push({
         cls: "bonus", icon: "⚡",
-        html: `<strong>Ekka V${fcb.after?.overshoot} fresh:</strong> kapasiteetti-bonus`,
+        html: `<strong>Ekan sarjan bonus (V${fcb.after?.overshoot}):</strong> kapasiteettia varaa`,
         val: `+${(fcb.after?.bonus * 100).toFixed(1)} %`,
       });
       const cap = allTraces.find(t => t.ruleId === "PROGRESSION_RATE_LIMIT");
       if (cap) traces.push({
         cls: "cap", icon: "🛡",
-        html: `<strong>Cap:</strong> max ${(cap.after?.weeklyCap * 100).toFixed(0)} % / vk`,
+        html: `<strong>Yläraja:</strong> max ${(cap.after?.weeklyCap * 100).toFixed(0)} % / vk`,
         val: `${cap.after?.targetExternalLoad?.toFixed?.(1) ?? "?"} kg`,
       });
       const floor = allTraces.find(t => t.ruleId === "PROGRESSION_FLOOR_CAP");
       if (floor) traces.push({
         cls: "cap", icon: "⬆",
-        html: `<strong>Floor:</strong> regression-suoja edellisestä`,
+        html: `<strong>Suoja edelliseen:</strong> ei laske kuormaa`,
         val: `${floor.after?.targetExternalLoad?.toFixed?.(1) ?? "?"} kg`,
       });
-      // Final
+      // Lopullinen ehdotus
       traces.push({
         cls: "final", icon: "✓",
-        html: `<strong>Final ehdotus</strong>`,
+        html: `<strong>Lopullinen suositus</strong>`,
         val: `${roundToHalf(targetLoad)} kg`,
         final: true,
       });
@@ -8370,18 +8509,51 @@ function bind() {
     }
 
     // v4.27 Räätälöity ohjelma — wizard-pohjainen generaattori
+    // v4.34.44: lisätty 1RM-kalibrointi (showGenericCalibrationModal) wizardin
+    // jälkeen. Tulos tallennetaan mesocycle.movementCfg-tauluun, josta engine
+    // (getCfgBaselineForMovement TASO 1) lukee baseline-arvon CFG-DRIFT + cap-
+    // laskentaan. Streetlifting_16w säilyy täysin koskemattomana (oma flow).
     if (template.id === "custom") {
       const answers = await showProgramWizardModal();
       if (!answers) return;
+
+      // Resolvoi uniikit primaryt — kysy 1RM kullekin
+      const uniquePrimaries = [];
+      const seen = new Set();
+      for (const p of answers.primaries) {
+        if (!seen.has(p.name)) { seen.add(p.name); uniquePrimaries.push(p); }
+      }
+      const defaultBw = state.settings?.bodyweightKg || 80;
+      const cal = await showGenericCalibrationModal(uniquePrimaries, defaultBw);
+      if (cal === null) return; // käyttäjä peruutti
+
       try {
         const customMeso = generateCustomMesocycle(answers, todayISO());
-        // Nimeä liikeotsikko yhdistelmäksi (rotaatiossa) — preset ei tiedä päälikkeitä etukäteen
+        // Tallenna 1RM-kalibrointi mesocycle.movementCfg-tauluun
+        if (cal.movementCfg && Object.keys(cal.movementCfg).length > 0) {
+          customMeso.movementCfg = cal.movementCfg;
+        }
         assignVariantRotation(customMeso.weekPlans);
         await saveMesocycle(customMeso);
         state.mesocycle = customMeso;
+        // Päivitä BW jos käyttäjä muutti sitä kalibroinnissa
+        if (cal.bwKg && cal.bwKg !== state.settings.bodyweightKg) {
+          state.settings.bodyweightKg = cal.bwKg;
+          await saveSettings(state.settings);
+        }
+        // v4.34.7: cleanup orphan mesocycles (sama logiikka kuin streetlifting/peaking)
+        try {
+          const cleanup = await cleanupOrphanMesocycles(customMeso.mesocycleId);
+          if (cleanup.deleted > 0) {
+            console.info(`[LeVe] Vaihda ohjelma: poistettu ${cleanup.deleted} orphan-mesosyklia`);
+          }
+        } catch (e) { console.warn("cleanupOrphanMesocycles failed:", e); }
         await computeRecommendation();
         const primaries = answers.primaries.map(p => p.name).join(" + ");
-        showToast(`🎯 Räätälöity ohjelma aloitettu (${primaries})!`, "ok", 4500);
+        const calMsg = cal.movementCfg && Object.keys(cal.movementCfg).length > 0
+          ? `🎯 Räätälöity ohjelma aloitettu (${primaries}, kalibroitu)!`
+          : `🎯 Räätälöity ohjelma aloitettu (${primaries})!`;
+        showToast(calMsg, "ok", 4500);
         render();
       } catch (err) {
         console.error("generateCustomMesocycle failed:", err);

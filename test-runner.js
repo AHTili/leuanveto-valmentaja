@@ -23,6 +23,8 @@ import {
   recommend,
   computeVBTPromotionStatus,
   computeRateLimitAnchor,
+  // v4.34.44: cfg-baseline-resolveri (TASO 1: movementCfg, TASO 2: streetliftingConfig)
+  getCfgBaselineForMovement,
 } from "./engine.js";
 
 import {
@@ -1320,6 +1322,74 @@ function testBackupReminderLogic() {
     "Reminder: snooze tänään → ei näytä (tänä päivänä snooze pätee)");
 }
 
+// v4.34.44 — Hybridi cfg-baseline-rakenne. Testaa että:
+//   - TASO 1 (movementCfg) toimii uusille mesoille (custom/hypertrofia/maksimivoima)
+//   - TASO 2 (streetliftingConfig) säilyy ennallaan streetlifting_16w-mesolle
+//   - TASO 1 voittaa TASO 2 (jos molemmat on määritelty samalla liikkeellä)
+//   - TASO 3 fallback (null) palautuu kun kalibrointia ei ole
+//   - Streetlifting_16w-meso EI vahingossa lue movementCfg:tä — säilyy bit-perfect
+async function testGetCfgBaselineForMovement() {
+  // T1: TASO 1 — movementCfg toimii uusille liikkeille (custom-meso)
+  const customMeso = {
+    type: "custom",
+    movementCfg: {
+      "Penkkipunnerrus": { e1rmExternal: 130, dateISO: "2026-05-07", source: 'manual-calibration' },
+      "Maastaveto":      { e1rmExternal: 200, dateISO: "2026-05-07", source: 'manual-calibration' },
+    },
+  };
+  const r1 = getCfgBaselineForMovement(customMeso, { defaultMovementName: "Penkkipunnerrus" });
+  assertEqual(r1.value, 130, "T1: movementCfg-haku Penkkipunnerrus → 130 kg");
+  assertEqual(r1.source, 'movementCfg', "T1: source = 'movementCfg'");
+  assertEqual(r1.key, "Penkkipunnerrus", "T1: key = liike-nimi");
+
+  // T2: TASO 2 — streetliftingConfig säilyy ennallaan (regressio)
+  const slMeso = {
+    type: "streetlifting_16w",
+    streetliftingConfig: { calibration: { leukaExtKg: 88, dippiExtKg: 80, kyykkyExtKg: 175 } },
+  };
+  const r2 = getCfgBaselineForMovement(slMeso, { defaultMovementName: "Lisäpainoleuanveto" });
+  assertEqual(r2.value, 88, "T2: streetliftingConfig leuka → 88 kg (regressio)");
+  assertEqual(r2.source, 'streetliftingConfig', "T2: source = 'streetliftingConfig'");
+  assertEqual(r2.key, 'leukaExtKg', "T2: key = 'leukaExtKg' (legacy)");
+
+  // T3: TASO 1 voittaa TASO 2 — sama liike-nimi molemmissa, movementCfg priorisoituu
+  const hybridMeso = {
+    type: "custom",
+    movementCfg: { "Lisäpainoleuanveto": { e1rmExternal: 95, dateISO: "2026-05-07", source: 'manual-calibration' } },
+    streetliftingConfig: { calibration: { leukaExtKg: 88 } }, // ei pitäisi voittaa
+  };
+  const r3 = getCfgBaselineForMovement(hybridMeso, { defaultMovementName: "Lisäpainoleuanveto" });
+  assertEqual(r3.value, 95, "T3: movementCfg voittaa streetliftingConfig (95, ei 88)");
+  assertEqual(r3.source, 'movementCfg', "T3: source = 'movementCfg' (TASO 1 priorisoitu)");
+
+  // T4: TASO 3 fallback — null kun ei kalibrointia
+  const emptyMeso = { type: "default" };
+  const r4 = getCfgBaselineForMovement(emptyMeso, { defaultMovementName: "Penkkipunnerrus" });
+  assertEqual(r4.value, null, "T4: ei kalibrointia → value = null");
+  assertEqual(r4.source, null, "T4: ei kalibrointia → source = null");
+
+  // T5: Streetlifting-meso EI vuoda movementCfg-haaraan — bit-perfect regressio
+  // (Lisäpainodippi → cfg.dippiExtKg, ei mahdollista movementCfg-haaraa kun ei oo)
+  const slMesoOnly = {
+    type: "streetlifting_16w",
+    streetliftingConfig: { calibration: { dippiExtKg: 80 } },
+    // EI movementCfg:tä → TASO 1 ohitetaan, mennään suoraan TASO 2:een
+  };
+  const r5 = getCfgBaselineForMovement(slMesoOnly, { defaultMovementName: "Lisäpainodippi" });
+  assertEqual(r5.value, 80, "T5: streetlifting-haaran regressio (Lisäpainodippi → 80 kg)");
+  assertEqual(r5.source, 'streetliftingConfig', "T5: streetlifting säilyy TASO 2:ssa");
+  assertEqual(r5.key, 'dippiExtKg', "T5: key säilyy legacy-muodossa 'dippiExtKg'");
+
+  // T6: Takakyykky streetlifting-haarassa toimii (3. legacy-liike)
+  const slKyykky = {
+    type: "streetlifting_16w",
+    streetliftingConfig: { calibration: { kyykkyExtKg: 175 } },
+  };
+  const r6 = getCfgBaselineForMovement(slKyykky, { defaultMovementName: "Takakyykky" });
+  assertEqual(r6.value, 175, "T6: streetlifting Takakyykky → 175 kg");
+  assertEqual(r6.source, 'streetliftingConfig', "T6: Takakyykky source = streetliftingConfig");
+}
+
 async function testBackupRoundtrip() {
   // This test requires IndexedDB — skip if not available
   try {
@@ -1391,6 +1461,8 @@ export async function runTests() {
   // v4.34.36: A+B+C — PLAN_BASED setRole, multi-week cap, accessory Vx-overshoot
   testAccessoryProgressionVxOvershoot();
   testRateLimitAnchorDateISO();
+  // v4.34.44: hybridi cfg-baseline (movementCfg + streetliftingConfig)
+  await testGetCfgBaselineForMovement();
   await testRecommendScenarios();
   await testBackupRoundtrip();
 

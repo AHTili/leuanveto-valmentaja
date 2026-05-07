@@ -523,17 +523,44 @@ function computeCfgDrift(topSets, sessions, mesocycle, isBarbell, bodyweightKg, 
 }
 
 /**
- * v4.34.43 — Hae primary-liikkeen cfg-baseline-arvo mesosyklin streetlifting-
- * configista. Käytetään computeCfgDriftin ja INFLATION_CAP:n base-arvona.
- * Palauttaa null jos liike ei ole hardkoodattu (Lisäpainoleuka/dippi/Takakyykky).
+ * v4.34.44 — Hae primary-liikkeen cfg-baseline-arvo. Yleistetty hybridi-rakenne:
+ *
+ * TASO 1 (uusi, ei-streetlifting-mesoille): mesocycle.movementCfg[movName]
+ *   Custom/hypertrofia/maksimivoima/jne. mesoissa kalibrointiarvot tallennetaan
+ *   movementCfg-tauluun avaimella defaultMovementName. Tämä on uusi rakenne joka
+ *   ei sotke streetliftingConfig.calibration-haaraa.
+ *
+ * TASO 2 (legacy, streetlifting_16w): mesocycle.streetliftingConfig.calibration
+ *   Säilyy bit-perfect koskemattomana — streetlifting_16w-meso käyttää tätä
+ *   edelleen kuten v4.34.43:ssa.
+ *
+ * TASO 3 (fallback): null → recommend() käyttää historia-baselinea (top-3 e1RM
+ *   median × adaptive ceiling).
+ *
+ * Käytössä computeCfgDrift, E1RM_INFLATION_CAP ja persistCfgDriftIfApplicable.
  */
 function getCfgBaselineForMovement(mesocycle, primarySlotMeta) {
-  const cfg = mesocycle?.streetliftingConfig?.calibration || {};
   const movName = primarySlotMeta?.defaultMovementName;
-  if (movName === "Lisäpainoleuanveto") return { value: cfg.leukaExtKg, key: 'leukaExtKg', movName };
-  if (movName === "Lisäpainodippi")     return { value: cfg.dippiExtKg,  key: 'dippiExtKg',  movName };
-  if (movName === "Takakyykky")          return { value: cfg.kyykkyExtKg, key: 'kyykkyExtKg', movName };
-  return { value: null, key: null, movName };
+
+  // TASO 1: movementCfg (uusi, kaikki ei-streetlifting-mesot)
+  const movementCfg = mesocycle?.movementCfg || {};
+  if (movName && movementCfg[movName] && movementCfg[movName].e1rmExternal != null) {
+    return {
+      value: movementCfg[movName].e1rmExternal,
+      key: movName,
+      movName,
+      source: 'movementCfg',
+    };
+  }
+
+  // TASO 2: streetliftingConfig.calibration (legacy, streetlifting_16w)
+  const cfg = mesocycle?.streetliftingConfig?.calibration || {};
+  if (movName === "Lisäpainoleuanveto") return { value: cfg.leukaExtKg, key: 'leukaExtKg', movName, source: 'streetliftingConfig' };
+  if (movName === "Lisäpainodippi")     return { value: cfg.dippiExtKg,  key: 'dippiExtKg',  movName, source: 'streetliftingConfig' };
+  if (movName === "Takakyykky")          return { value: cfg.kyykkyExtKg, key: 'kyykkyExtKg', movName, source: 'streetliftingConfig' };
+
+  // TASO 3: ei kalibrointia → fallback historia-baselineen
+  return { value: null, key: null, movName, source: null };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -5630,4 +5657,6 @@ export {
   computeMovementE1RMHistory,
   // v4.34.34 movement-load-style resolver
   isSystemLoadMovement,
+  // v4.34.44: cfg-baseline-resolveri (TASO 1: movementCfg, TASO 2: streetliftingConfig)
+  getCfgBaselineForMovement,
 };

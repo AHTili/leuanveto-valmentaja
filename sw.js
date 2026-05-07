@@ -1,15 +1,18 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.43 — CFG-DRIFT (mestarillinen ohjelmointikone):
-// Engine OPPII cfg-baseline-arvon atletin todellisesta suoriutumisesta.
-// Kaksi signaalia: SIGNAL B (priority) = primer-velocity-trend (objektiivinen,
-// vaatii n>=5 mittausta), SIGNAL A (fallback) = vx-overshoot (Vx-arviolta).
-// Drift max +5%/blokki (velocity) tai +10%/blokki (vx). Reset: cal-päivä,
-// V0-fail, RED readiness. CFG-DRIFT-historia integroitu AI-block-tuningiin.
+// LeVe AI v4.34.44 — UNIVERSAALI 1RM-KALIBROINTI (Vaihe 1/3 universaalille kyselylle):
+// Räätälöity ohjelma kysyy nyt 1RM-arvion kullekin päälikkeelle. Engine yleisti
+// getCfgBaselineForMovement-funktion: TASO 1 = mesocycle.movementCfg (uusi, kaikki
+// ei-streetlifting-mesot), TASO 2 = streetliftingConfig (legacy, streetlifting_16w
+// säilyy bit-perfect koskemattomana), TASO 3 = historia-baseline-fallback.
+// CFG-DRIFT-persistointi yleistetty molempia rakenteita tukevaksi (drift.source-
+// kenttä haarautuu). UI-tekstit puhdistettu: PLAN_BASED → "Suoritus vahvisti",
+// loadPct → "kuormaprosentti", Cap → "Yläraja", CFG-DRIFT → "Engine oppi".
+// 6 uutta testiä test-runneriin (254/254). Streetlifting_16w 100% koskematon.
 //
-// Atletin palaute 2026-05-07: "Toivoin, että sovellus on niin mestarillinen
-// että se kykenee tunnistamaan potentiaalini." Tämä versio toteuttaa sen.
+// Atletti 2026-05-07: "Samalla kun itse treenaan 16 vk streetliftingiä,
+// kaverini voi tehdä juuri hänelle räätälöityä voimaohjelmaa eri laitteella."
 
-const APP_VERSION = "4.34.43";
+const APP_VERSION = "4.34.44";
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
 
 // v4.34.9: Kuuntele SKIP_WAITING-message-eventtia, jolla pää-säie voi pakottaa
