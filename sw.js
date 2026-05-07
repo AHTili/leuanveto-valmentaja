@@ -1,13 +1,15 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.42 — B+ ADAPTIVE CEILING + Sykli-sivun kuormat:
-// 1) E1RM_INFLATION_CAP käyttää nyt streak-pohjaista kerrointa (1.10→1.20)
-//    + yleistyy mille tahansa primary-liikkeelle (ei vain hardkoodattuun 3:n).
-//    Kun atletti suorittaa 2+ peräkkäin perfect-execution PLAN_BASED-yli-ceiling
-//    -session, ceiling nousee → ohjelma ei lukitse todistettua kasvua.
-// 2) Sykli-sivu (renderProgramOverviewTable) näyttää nyt jokaisen primary-päivän
-//    engine-lasketun tarkan kuorman (lazy-populate, cache, ⚠ cap-rajoitettu).
+// LeVe AI v4.34.43 — CFG-DRIFT (mestarillinen ohjelmointikone):
+// Engine OPPII cfg-baseline-arvon atletin todellisesta suoriutumisesta.
+// Kaksi signaalia: SIGNAL B (priority) = primer-velocity-trend (objektiivinen,
+// vaatii n>=5 mittausta), SIGNAL A (fallback) = vx-overshoot (Vx-arviolta).
+// Drift max +5%/blokki (velocity) tai +10%/blokki (vx). Reset: cal-päivä,
+// V0-fail, RED readiness. CFG-DRIFT-historia integroitu AI-block-tuningiin.
+//
+// Atletin palaute 2026-05-07: "Toivoin, että sovellus on niin mestarillinen
+// että se kykenee tunnistamaan potentiaalini." Tämä versio toteuttaa sen.
 
-const APP_VERSION = "4.34.42";
+const APP_VERSION = "4.34.43";
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
 
 // v4.34.9: Kuuntele SKIP_WAITING-message-eventtia, jolla pää-säie voi pakottaa

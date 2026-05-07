@@ -344,6 +344,198 @@ function computePerfectStreakCeilingBonus(topSets, sessions, mesocycle, isBarbel
   return { streak, bonus, info: `streak=${streak}, bonus=+${(bonus*100).toFixed(0)}%` };
 }
 
+/**
+ * v4.34.43 — CFG-DRIFT: engine oppii cfg-baseline-tason atletin todellisesta
+ * suoriutumisesta.
+ *
+ * Käyttäjäpalaute 2026-05-07: "Toivoin että sovellus on niin mestarillinen
+ * että se kykenee tunnistamaan potentiaalini." B+ streak (v4.34.42) reagoi
+ * vk-tasolla mutta vain ceilingiin. CFG-DRIFT vaikuttaa **pohjaan** (cfg-
+ * baseline) → koko ohjelma kalibroituu uudelleen kun engine tunnistaa
+ * toistuvan ylityksen.
+ *
+ * KAKSI SIGNAALIA — velocity priorisoituu (atletti: "ohjelmointikone on
+ * vara-arviointia parempi" — primer-velocity on objektiivinen, Vx subjektiivinen).
+ *
+ * SIGNAL B (priority): VELOCITY-PRIMER-TREND
+ *   Vaatimus: vähintään 5 primer-velocity-mittausta historiassa.
+ *   Logiikka: viim. 3 primer-velocity-mediaani vs baseline (10 viim.) -mediaani.
+ *     - Jos viim. 3 mediaani > baseline × 1.05 (= +5 %): cfg += 1 % per
+ *       peräkkäinen drift-sessio, max +5 % per blokki (4 vk).
+ *   Velocity nopeutuminen samalla loadPct:llä = objektiivinen kapasiteettinousu.
+ *
+ * SIGNAL A (fallback): VX-OVERSHOOT
+ *   Käytössä vain jos velocity-baseline n < 5.
+ *   Logiikka: kuten B+ streak mutta vaikutus cfg-arvoon, ei ceilingiin.
+ *     - 3+ peräkkäin perfect-execution + PLAN_BASED-e1RM > cfg × 1.10
+ *     - cfg += 2.5 % per peräkkäinen, max +10 % per blokki
+ *
+ * RESET-EHDOT (molemmat signaalit):
+ *   - Cal-päivä: drift-counter resetoi, cal-derived arvo lukitaan
+ *   - V0-fail (työsarja): counter resetoi, cfg ei laske
+ *   - RED readiness: counter resetoi
+ *   - Blokki-vaihto (vk 4→5, 8→9, 12→13): counter resetoi
+ *
+ * Konservatismi V0-grindi-taipumukselle (atletin profiili): yksi V0 resetoi,
+ * cfg vain nousee ei laske. PROGRESSION_FLOOR_CAP suojaa erikseen Epley-
+ * aliarviolta, FAILURE_LOCKOUT V0-grindiltä.
+ *
+ * @param {Array} topSets - kaikki primary-liikkeen setit (top + readiness_test + cal)
+ * @param {Array} sessions - kaikki sessiot (date-lookupia varten)
+ * @param {Object} mesocycle - aktiivinen mesosykli (loadPct + cfg-arvot)
+ * @param {boolean} isBarbell - load-tyyppi
+ * @param {number} bodyweightKg - oletus 91
+ * @param {number} cfgBaseline - nykyinen cfg-arvo (esim. cfg.dippiExtKg = 95)
+ * @param {string} dateISO - request-päivä (käytetään blokki-rajan tunnistukseen)
+ * @returns {object} { driftPct, signal, source, info, counter }
+ */
+function computeCfgDrift(topSets, sessions, mesocycle, isBarbell, bodyweightKg, cfgBaseline, dateISO) {
+  if (!topSets || topSets.length === 0 || !mesocycle || !cfgBaseline || cfgBaseline <= 0) {
+    return { driftPct: 0, signal: null, source: 'no-data', info: '', counter: 0 };
+  }
+
+  // Tunnista tämän sessio:n blokki (vk 1-4, 5-8, 9-12, 13-16)
+  const currentWk = dateISO ? getMesocycleWeek(mesocycle, dateISO) : null;
+  const blockOf = (wk) => wk == null ? null : Math.ceil(wk / 4);
+  const currentBlock = blockOf(currentWk);
+
+  // ═══ SIGNAL B: VELOCITY-PRIMER-TREND ═══
+  // Käytä jos primer-velocity-baseline >= 5 mittausta
+  const primerSets = topSets
+    .filter(s => s.setRole === 'readiness_test' && s.velocityRep1 != null && s.velocityRep1 > 0)
+    .sort((a, b) => (a.timestamp || a.dateISO || '').localeCompare(b.timestamp || b.dateISO || ''));
+
+  if (primerSets.length >= 5) {
+    // Baseline-mediaani 10 viim. mittauksesta
+    const baselineWindow = primerSets.slice(-10).map(s => s.velocityRep1);
+    const baselineMed = median(baselineWindow);
+
+    // Viim. 3 primer-mediaani
+    const recent3 = primerSets.slice(-3).map(s => s.velocityRep1);
+    const recent3Med = median(recent3);
+
+    if (baselineMed > 0) {
+      const velDeltaPct = (recent3Med - baselineMed) / baselineMed;
+
+      // Reset-tarkistus: käy 3 viim. primer-sessiota läpi, etsi reset-ehdot
+      // (V0-fail samassa sessiossa primary-työsarjassa tai RED readiness)
+      let driftValid = true;
+      for (const ps of primerSets.slice(-3)) {
+        // Etsi saman session primary-työsarjat
+        const sessionWorkSets = topSets.filter(s =>
+          s.sessionId === ps.sessionId && s.setRole === 'top'
+        );
+        const hasV0Fail = sessionWorkSets.some(s => s.actualVx === 0);
+        if (hasV0Fail) { driftValid = false; break; }
+      }
+
+      if (driftValid && velDeltaPct >= 0.05) {
+        // Counter: kuinka monta peräkkäistä viim. primeriä on yli baseline × 1.05?
+        // (käännetty: uusin → vanhin, break kun ensimmäinen alle threshold)
+        let counter = 0;
+        for (let i = primerSets.length - 1; i >= 0; i--) {
+          const v = primerSets[i].velocityRep1;
+          if (v > baselineMed * 1.05) counter++;
+          else break;
+        }
+        // Cap: drift max +5 % per blokki, +1 % per peräkkäinen drift-sessio
+        const driftPctRaw = Math.min(0.05, counter * 0.01);
+        return {
+          driftPct: driftPctRaw,
+          signal: 'velocity-trend',
+          source: `velocity-primer (recent3 med ${recent3Med.toFixed(3)} m/s vs baseline ${baselineMed.toFixed(3)} m/s = +${(velDeltaPct*100).toFixed(1)}%, streak=${counter})`,
+          info: `velDelta=+${(velDeltaPct*100).toFixed(1)}%, counter=${counter}`,
+          counter,
+          velDeltaPct,
+        };
+      }
+      // Velocity-baseline on olemassa mutta ei näytä driftiä → ei drift signaalista B
+      return {
+        driftPct: 0, signal: 'velocity-trend', source: `velocity-stable (delta ${(velDeltaPct*100).toFixed(1)}%)`,
+        info: `velocity-baseline n=${primerSets.length}, no drift`, counter: 0, velDeltaPct,
+      };
+    }
+  }
+
+  // ═══ SIGNAL A: VX-OVERSHOOT (fallback kun velocity-baseline puuttuu) ═══
+  const primaryWork = topSets.filter(s => s.setRole === 'top');
+  if (primaryWork.length === 0) {
+    return { driftPct: 0, signal: 'vx-overshoot', source: 'no-top-sets', info: '', counter: 0 };
+  }
+
+  // Ryhmittele sessio-id:n mukaan, säilytä järjestys
+  const sessGroups = new Map();
+  const sessOrder = [];
+  for (const s of primaryWork) {
+    const sid = s.sessionId || `__nosess_${s.timestamp}`;
+    if (!sessGroups.has(sid)) { sessGroups.set(sid, []); sessOrder.push(sid); }
+    sessGroups.get(sid).push(s);
+  }
+
+  let counter = 0;
+  for (let i = sessOrder.length - 1; i >= 0; i--) {
+    const sets = sessGroups.get(sessOrder[i]);
+    if (!sets || sets.length === 0) break;
+
+    // Perfect execution
+    const perfect = sets.every(s =>
+      s.actualVx != null && s.targetVx != null
+      && s.actualVx >= s.targetVx
+      && (s.reps ?? 0) >= (s.targetReps ?? 0)
+    );
+    if (!perfect) break;
+
+    // Lookup loadPct
+    const sessId = sessOrder[i];
+    const dateISOSess = sessions?.find(s => s.sessionId === sessId)?.dateISO
+                     || sets[0]?.dateISO || sets[0]?.timestamp?.slice(0, 10);
+    if (!dateISOSess) break;
+
+    const wk = getMesocycleWeek(mesocycle, dateISOSess);
+    const dow = new Date(dateISOSess).getDay() || 7;
+    const dayPlan = (wk != null) ? mesocycle.weekPlans?.[wk - 1]?.days?.find(d => d.dayOfWeek === dow) : null;
+    const loadPct = dayPlan?.slots?.find(s => s.role === 'primary')?.loadPct;
+    if (!loadPct || loadPct <= 0 || loadPct > 1.0) break;
+
+    // PLAN_BASED-e1RM
+    const loads = sets.map(x => x.externalLoadKg).filter(v => v > 0);
+    if (loads.length === 0) break;
+    const medLoad = median(loads);
+    const planBasedE1RM = medLoad / loadPct;
+
+    if (planBasedE1RM > cfgBaseline * 1.10) counter++;
+    else break;
+  }
+
+  if (counter < 3) {
+    return { driftPct: 0, signal: 'vx-overshoot', source: `streak=${counter} (<3 ei laukea)`, info: '', counter };
+  }
+
+  // Drift max +10 % per blokki, +2.5 % per peräkkäinen
+  const driftPctRaw = Math.min(0.10, (counter - 2) * 0.025);
+  return {
+    driftPct: driftPctRaw,
+    signal: 'vx-overshoot',
+    source: `vx-overshoot (perfect-streak ${counter}, +${(driftPctRaw*100).toFixed(1)}%)`,
+    info: `counter=${counter}, fallback (velocity-baseline n=${primerSets.length} < 5)`,
+    counter,
+  };
+}
+
+/**
+ * v4.34.43 — Hae primary-liikkeen cfg-baseline-arvo mesosyklin streetlifting-
+ * configista. Käytetään computeCfgDriftin ja INFLATION_CAP:n base-arvona.
+ * Palauttaa null jos liike ei ole hardkoodattu (Lisäpainoleuka/dippi/Takakyykky).
+ */
+function getCfgBaselineForMovement(mesocycle, primarySlotMeta) {
+  const cfg = mesocycle?.streetliftingConfig?.calibration || {};
+  const movName = primarySlotMeta?.defaultMovementName;
+  if (movName === "Lisäpainoleuanveto") return { value: cfg.leukaExtKg, key: 'leukaExtKg', movName };
+  if (movName === "Lisäpainodippi")     return { value: cfg.dippiExtKg,  key: 'dippiExtKg',  movName };
+  if (movName === "Takakyykky")          return { value: cfg.kyykkyExtKg, key: 'kyykkyExtKg', movName };
+  return { value: null, key: null, movName };
+}
+
 // ═══════════════════════════════════════════════════════════════
 // BASELINE CALCULATIONS (rolling median + MAD)
 // ═══════════════════════════════════════════════════════════════
@@ -2378,6 +2570,8 @@ async function recommend(options = {}) {
   let ceilingSource = null;
   let floor_ext = null;
   let floorSource = null;
+  // v4.34.43: cfg-drift result (UI persistoi mesocycleen jos driftPct > 0).
+  let cfgDriftResult = null;
 
   // v4.34.15 FIX #1: E1RM-INFLAATION CAP — Epley + Vara -kaava ylimitatoi 1RM:n
   // varsinkin korkeilla toistoilla (V3+ × 6 reps → +20 % seedista yhden session perusteella).
@@ -2420,18 +2614,43 @@ async function recommend(options = {}) {
     if (ceiling_ext === null) {
       // Ei cal-historiaa → käytä konfiguroitu PR × adaptive
       // v4.34.42: adaptive-kerroin = 1.10 + streak-bonus (max +0.10 = 1.20)
-      const cfg = mesocycle?.streetliftingConfig?.calibration || {};
-      const movName = primarySlotMeta?.defaultMovementName;
-      const initialPR = movName === "Lisäpainoleuanveto" ? cfg.leukaExtKg
-                      : movName === "Lisäpainodippi"     ? cfg.dippiExtKg
-                      : movName === "Takakyykky"          ? cfg.kyykkyExtKg
-                      : null;
+      // v4.34.43: cfg-arvo voi olla drifted (engine on oppinut atletin todellisen
+      // pohjatason). Käytä effectiveCfg = baseCfg × (1 + driftPct).
+      const cfgInfo = getCfgBaselineForMovement(mesocycle, primarySlotMeta);
+      const initialPR = cfgInfo.value;
       if (initialPR && initialPR > 0) {
-        const baseCeiling = initialPR * 1.10;
+        // CFG-DRIFT: laske drift IN-MEMORY (ei muta meso). Persistointi UI:ssa
+        // computeRecommendation():n yhteydessä cfgDriftApplied-flagin perusteella.
+        const drift = computeCfgDrift(topSets, sessions, mesocycle, isBarbell, bodyweightKg, initialPR, dateISO);
+        const effectiveCfg = initialPR * (1 + drift.driftPct);
+        if (drift.driftPct > 0) {
+          trace("CFG_DRIFT_APPLIED",
+            { cfg: initialPR.toFixed(1), source: "cfg-baseline" },
+            { effectiveCfg: effectiveCfg.toFixed(1), driftPct: (drift.driftPct*100).toFixed(1) + '%',
+              signal: drift.signal, counter: drift.counter, source: drift.source },
+            `Cfg-drift +${(drift.driftPct*100).toFixed(1)}% (${drift.signal}): ${cfgInfo.movName} ${initialPR} → ${effectiveCfg.toFixed(1)} kg [${drift.source}]`);
+        }
+        // Tallenna drift-info recommend()-output:iin (UI persistoi mesocycleen)
+        cfgDriftResult = {
+          movName: cfgInfo.movName,
+          key: cfgInfo.key,
+          fromCfg: initialPR,
+          toCfg: effectiveCfg,
+          driftPct: drift.driftPct,
+          signal: drift.signal,
+          source: drift.source,
+          counter: drift.counter,
+          velDeltaPct: drift.velDeltaPct,
+          dateISO,
+        };
+
+        // Cap-laskenta käyttää effectiveCfg:tä baseena
+        const baseCeiling = effectiveCfg * 1.10;
         const sr = computePerfectStreakCeilingBonus(topSets, sessions, mesocycle, isBarbell, bodyweightKg, baseCeiling);
         const ceilingMult = 1.10 + sr.bonus;
-        ceiling_ext = initialPR * ceilingMult;
-        ceilingSource = `${movName} PR ${initialPR} × ${ceilingMult.toFixed(2)}`
+        ceiling_ext = effectiveCfg * ceilingMult;
+        const driftLabel = drift.driftPct > 0 ? ` [drift +${(drift.driftPct*100).toFixed(1)}%]` : '';
+        ceilingSource = `${cfgInfo.movName} PR ${initialPR}${driftLabel} × ${ceilingMult.toFixed(2)}`
                       + (sr.bonus > 0 ? ` [B+ streak ${sr.streak}× → +${(sr.bonus*100).toFixed(0)}%]` : '');
       }
     }
@@ -2507,15 +2726,16 @@ async function recommend(options = {}) {
       }
 
       if (floor_ext === null) {
-        const cfgFloor = mesocycle?.streetliftingConfig?.calibration || {};
-        const movNameFloor = primarySlotMeta?.defaultMovementName;
-        const initialPRFloor = movNameFloor === "Lisäpainoleuanveto" ? cfgFloor.leukaExtKg
-                             : movNameFloor === "Lisäpainodippi"     ? cfgFloor.dippiExtKg
-                             : movNameFloor === "Takakyykky"          ? cfgFloor.kyykkyExtKg
-                             : null;
+        // v4.34.43: floor käyttää SAMAA effective cfg:tä kuin ceiling
+        // (drift-konsistenssi). Jos cfg drifttasi ylös, myös floor on korkeampi.
+        const cfgInfoFloor = getCfgBaselineForMovement(mesocycle, primarySlotMeta);
+        const initialPRFloor = cfgInfoFloor.value;
         if (initialPRFloor && initialPRFloor > 0) {
-          floor_ext = initialPRFloor * 0.95;
-          floorSource = `${movNameFloor} PR ${initialPRFloor} × 0.95`;
+          // Käytä cfgDriftResult:n effective-arvoa jos saatavilla (= sama drift kuin ceilingissä)
+          const effectiveCfgFloor = cfgDriftResult?.toCfg ?? initialPRFloor;
+          floor_ext = effectiveCfgFloor * 0.95;
+          const driftLabel = cfgDriftResult?.driftPct > 0 ? ` [drift +${(cfgDriftResult.driftPct*100).toFixed(1)}%]` : '';
+          floorSource = `${cfgInfoFloor.movName} PR ${initialPRFloor}${driftLabel} × 0.95`;
         }
       }
 
@@ -3320,6 +3540,8 @@ async function recommend(options = {}) {
     accessoryCapActive,
     dayPlan,
     vbtStatus: vbtSummary,
+    // v4.34.43: cfg-drift result. UI persistoi mesocycleen jos driftPct > 0.
+    cfgDriftApplied: cfgDriftResult,
     traces,
   };
 
@@ -4539,6 +4761,12 @@ function generateBlockTuningPackage(ctx) {
     weekCount: mesocycle.weekCount || 16,
     competitionDate: mesocycle.streetliftingConfig?.competitionDate || "elokuu 2026",
     calibration: cal,
+    // v4.34.43: cfg-drift-historia AI-tuningille — näkyvyys siihen miten engine
+    // on oppinut atletin todellisen kapasiteetin blokin aikana.
+    cfgDriftHistory: (mesocycle.streetliftingConfig?.cfgDriftHistory || []).filter(d => {
+      const dw = getMesocycleWeek(mesocycle, d.dateISO);
+      return block.prevWeeks.includes(dw);
+    }),
     prs: (prs || []).map(p => ({ movement: p.movementName, value: p.value, dateISO: p.dateISO, context: p.context })),
   };
 
@@ -4753,6 +4981,21 @@ function buildMarkdownNarrative({ profile, block, currentWeek, sessionAnalysis, 
       const arrow = t.deltaPct > 0 ? "📈" : t.deltaPct < 0 ? "📉" : "→";
       lines.push(`| ${name} | ${t.first} kg | ${t.latest} kg | ${arrow} ${t.deltaPct >= 0 ? "+" : ""}${t.deltaPct}% |`);
     }
+    lines.push("");
+  }
+
+  // v4.34.43: cfg-drift-historia tämän blokin sisällä — näkyvyys siihen miten
+  // engine on oppinut atletin todellisen kapasiteetin (cfg-baseline-päivitykset).
+  if (profile.cfgDriftHistory && profile.cfgDriftHistory.length > 0) {
+    lines.push("### CFG-DRIFT (engine on oppinut tämän blokin aikana)");
+    lines.push("");
+    lines.push("| Päivä | Liike | Cfg ennen | Cfg jälk. | Δ% | Signaali | Counter |");
+    lines.push("|---|---|---|---|---|---|---|");
+    for (const d of profile.cfgDriftHistory) {
+      lines.push(`| ${d.dateISO} | ${d.movName} | ${d.fromCfg?.toFixed(1) || '?'} kg | ${d.toCfg?.toFixed(1)} kg | +${(d.driftPct*100).toFixed(1)}% | ${d.signal} | ${d.counter} |`);
+    }
+    lines.push("");
+    lines.push("*CFG-drift = engine päivittää cfg-baseline-arvoa kun atletti toistuvasti ylittää engineen syötettyjen perusteella laskettuja targetia. Velocity-signaali (primer-MPV-trend) priorisoidaan Vx-overshoot-signaalin yli kun riittävästi velocity-mittauksia (n ≥ 5).*");
     lines.push("");
   }
 

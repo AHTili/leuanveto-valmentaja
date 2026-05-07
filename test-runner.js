@@ -960,6 +960,156 @@ async function testRecommendScenarios() {
     assert(/B\+ streak/.test(src), `S10: streak nostaa kerrointa (source: ${src})`);
   });
 
+  // ═══ v4.34.43 CFG-DRIFT -testit ═══
+
+  // S12: CFG-DRIFT — vx-overshoot fallback (ei velocity-baselinea)
+  // 3+ peräkkäin perfect + PLAN_BASED > cfg×1.10 → cfg drifttaa +2.5%/sessio
+  await scenario("v4.34.43 CFG-DRIFT — vx-overshoot fallback", async () => {
+    const startISO = "2026-04-27";
+    const meso = makeStreetMeso(startISO);
+    const sessions = [
+      { sessionId: "s-vk1", dateISO: "2026-04-27" },
+      { sessionId: "s-vk2", dateISO: "2026-05-04" },
+      { sessionId: "s-vk3", dateISO: "2026-05-11" },
+    ];
+    // 3 sessio:ta perfect, kuorma > cfg×1.10 = 88×1.10 = 96.8 (PLAN_BASED)
+    // Vk 1: 80kg/0.686 = 116.6 ✓, Vk 2: 85/0.71 = 119.7 ✓, Vk 3: 90/0.75 = 120 ✓
+    const mkSets = (sid, dateISO, load) => Array.from({length: 4}, (_, i) => ({
+      setId: `${sid}-${i}`, sessionId: sid, movementId: PRIMARY_MOV_ID,
+      externalLoadKg: load, reps: 6, targetReps: 6, targetVx: 3, actualVx: 3,
+      setRole: "top", completed: true, timestamp: dateISO + "T07:00:00Z", dateISO
+    }));
+    const allSets = [
+      ...mkSets("s-vk1", "2026-04-27", 80),
+      ...mkSets("s-vk2", "2026-05-04", 85),
+      ...mkSets("s-vk3", "2026-05-11", 90),
+    ];
+    const ctx = makeRecommendCtx({
+      startDateISO: startISO, dateISO: "2026-05-18", // vk 4 MA
+      mesocycle: meso, sessions, allSets,
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error, "S12: ei error");
+    const cfgDrift = rec.cfgDriftApplied;
+    assert(cfgDrift && cfgDrift.driftPct > 0, `S12: cfg-drift > 0 (got ${cfgDrift?.driftPct})`);
+    assertEqual(cfgDrift?.signal, "vx-overshoot", "S12: signal vx-overshoot");
+    assert(cfgDrift?.counter >= 3, `S12: counter >= 3 (got ${cfgDrift?.counter})`);
+    // 3 sessiota → counter=3 → driftPct = (3-2)*0.025 = 0.025 (=+2.5%)
+    assertClose(cfgDrift.driftPct, 0.025, 0.001, "S12: driftPct = +2.5%");
+  });
+
+  // S13: CFG-DRIFT — counter < 3 ei laukaise driftiä
+  await scenario("v4.34.43 CFG-DRIFT — counter<3 ei laukaise", async () => {
+    const startISO = "2026-04-27";
+    const meso = makeStreetMeso(startISO);
+    const sessions = [
+      { sessionId: "s-vk1", dateISO: "2026-04-27" },
+      { sessionId: "s-vk2", dateISO: "2026-05-04" },
+    ];
+    const mkSets = (sid, dateISO, load) => Array.from({length: 4}, (_, i) => ({
+      setId: `${sid}-${i}`, sessionId: sid, movementId: PRIMARY_MOV_ID,
+      externalLoadKg: load, reps: 6, targetReps: 6, targetVx: 3, actualVx: 3,
+      setRole: "top", completed: true, timestamp: dateISO + "T07:00:00Z", dateISO
+    }));
+    const allSets = [
+      ...mkSets("s-vk1", "2026-04-27", 80),
+      ...mkSets("s-vk2", "2026-05-04", 85),
+    ];
+    const ctx = makeRecommendCtx({
+      startDateISO: startISO, dateISO: "2026-05-11",
+      mesocycle: meso, sessions, allSets,
+    });
+    const rec = await recommend(ctx);
+    const cfgDrift = rec.cfgDriftApplied;
+    // counter=2 ei pitäisi laukaista driftiä (vaaditaan 3+)
+    assertEqual(cfgDrift?.driftPct ?? 0, 0, "S13: driftPct = 0 kun counter<3");
+  });
+
+  // S14: CFG-DRIFT — V0-fail resetoi counterin
+  await scenario("v4.34.43 CFG-DRIFT — V0-fail resetoi counter", async () => {
+    const startISO = "2026-04-27";
+    const meso = makeStreetMeso(startISO);
+    const sessions = [
+      { sessionId: "s-vk1", dateISO: "2026-04-27" },
+      { sessionId: "s-vk2", dateISO: "2026-05-04" },
+      { sessionId: "s-vk3", dateISO: "2026-05-11" }, // V0 fail
+    ];
+    const mkSets = (sid, dateISO, load, vx) => Array.from({length: 4}, (_, i) => ({
+      setId: `${sid}-${i}`, sessionId: sid, movementId: PRIMARY_MOV_ID,
+      externalLoadKg: load, reps: 6, targetReps: 6, targetVx: 3, actualVx: vx,
+      setRole: "top", completed: true, timestamp: dateISO + "T07:00:00Z", dateISO
+    }));
+    const allSets = [
+      ...mkSets("s-vk1", "2026-04-27", 80, 3),
+      ...mkSets("s-vk2", "2026-05-04", 85, 3),
+      ...mkSets("s-vk3", "2026-05-11", 90, 0), // V0!
+    ];
+    const ctx = makeRecommendCtx({
+      startDateISO: startISO, dateISO: "2026-05-18",
+      mesocycle: meso, sessions, allSets,
+    });
+    const rec = await recommend(ctx);
+    const cfgDrift = rec.cfgDriftApplied;
+    // V0 rikkoo perfect-execution → counter=0 → ei drift
+    assertEqual(cfgDrift?.driftPct ?? 0, 0, "S14: V0-fail resetoi (driftPct=0)");
+  });
+
+  // S15: CFG-DRIFT — velocity-trend signaali (priority kun n>=5)
+  await scenario("v4.34.43 CFG-DRIFT — velocity-trend ottaa prioriteetin", async () => {
+    const startISO = "2026-04-27";
+    const meso = makeStreetMeso(startISO);
+    const sessions = Array.from({length: 6}, (_, i) => ({
+      sessionId: `s-${i}`, dateISO: `2026-04-${27 + i*2}`.replace(/-(\d)$/, '-0$1')
+    }));
+    // 6 primer-mittausta: ekka 4 baseline ~0.62 m/s, viim. 2 nopeammat ~0.72 m/s
+    // recent3 median (s-3, s-4, s-5) > baseline (10 viim) median × 1.05
+    const primerSets = [];
+    for (let i = 0; i < 6; i++) {
+      const vel = i < 3 ? 0.62 : 0.72; // nopeampi loppupäässä
+      primerSets.push({
+        setId: `prim-${i}`, sessionId: `s-${i}`, movementId: PRIMARY_MOV_ID,
+        externalLoadKg: 50, reps: 1, targetReps: null, targetVx: null, actualVx: null,
+        setRole: "readiness_test", completed: true,
+        timestamp: `2026-04-${(27 + i*2).toString().padStart(2, '0')}T07:00:00Z`,
+        dateISO: `2026-04-${(27 + i*2).toString().padStart(2, '0')}`,
+        velocityRep1: vel, velocityMean: vel, velocityPeak: vel,
+      });
+    }
+    const ctx = makeRecommendCtx({
+      startDateISO: startISO, dateISO: "2026-05-11",
+      mesocycle: meso, sessions, allSets: primerSets,
+    });
+    const rec = await recommend(ctx);
+    const cfgDrift = rec.cfgDriftApplied;
+    assert(cfgDrift?.signal === "velocity-trend", `S15: signal velocity-trend (got ${cfgDrift?.signal})`);
+    assert(cfgDrift?.driftPct > 0, `S15: driftPct > 0 (got ${cfgDrift?.driftPct})`);
+  });
+
+  // S16: CFG-DRIFT — velocity stable (ei drift vaikka n>=5)
+  await scenario("v4.34.43 CFG-DRIFT — velocity stable ei laukaise", async () => {
+    const startISO = "2026-04-27";
+    const meso = makeStreetMeso(startISO);
+    const sessions = Array.from({length: 6}, (_, i) => ({
+      sessionId: `s-${i}`, dateISO: `2026-04-${(27 + i*2).toString().padStart(2, '0')}`
+    }));
+    // Kaikki primerit ~0.62 m/s (stabiili)
+    const primerSets = Array.from({length: 6}, (_, i) => ({
+      setId: `prim-${i}`, sessionId: `s-${i}`, movementId: PRIMARY_MOV_ID,
+      externalLoadKg: 50, reps: 1, setRole: "readiness_test", completed: true,
+      timestamp: `2026-04-${(27 + i*2).toString().padStart(2, '0')}T07:00:00Z`,
+      dateISO: `2026-04-${(27 + i*2).toString().padStart(2, '0')}`,
+      velocityRep1: 0.62 + (i * 0.001), // pieni vaihtelu, alle 5%
+      velocityMean: 0.62, velocityPeak: 0.62,
+    }));
+    const ctx = makeRecommendCtx({
+      startDateISO: startISO, dateISO: "2026-05-11",
+      mesocycle: meso, sessions, allSets: primerSets,
+    });
+    const rec = await recommend(ctx);
+    const cfgDrift = rec.cfgDriftApplied;
+    assertEqual(cfgDrift?.driftPct ?? 0, 0, "S16: velocity stable → driftPct=0");
+  });
+
   // S11 (v4.34.42 B+): 1 V0-fail viimeisimpänä → streak resetoituu (= 0)
   await scenario("v4.34.42 B+ — V0-fail resetoi streakin", async () => {
     const startISO = "2026-04-27";

@@ -1211,6 +1211,51 @@ async function computeRecommendation(forDateISO = null) {
     primaryMovementId: primaryMov?.movementId || null,
     dryRun: true,
   });
+
+  // v4.34.43: CFG-DRIFT persistointi. Engine ehdottaa cfg-arvon nostoa
+  // jos atletti ylittää baseline:n toistuvasti (vx-overshoot tai velocity-trend).
+  // Persistoi vain jos drift > 0 ja cfg muuttuu merkittävästi (>0.5 kg).
+  await persistCfgDriftIfApplicable(state.recommendation);
+}
+
+async function persistCfgDriftIfApplicable(rec) {
+  if (!rec?.cfgDriftApplied) return;
+  const drift = rec.cfgDriftApplied;
+  if (!drift.driftPct || drift.driftPct <= 0 || !drift.key || !drift.toCfg) return;
+
+  const meso = state.mesocycle;
+  if (!meso || meso.type !== "streetlifting_16w") return;
+  if (!meso.streetliftingConfig) meso.streetliftingConfig = {};
+  if (!meso.streetliftingConfig.calibration) meso.streetliftingConfig.calibration = {};
+  const cal = meso.streetliftingConfig.calibration;
+  const currentCfg = cal[drift.key];
+
+  // Idempotency-suoja: jos cfg on jo lähellä toCfg:tä, älä persistoi
+  if (currentCfg && Math.abs(currentCfg - drift.toCfg) < 0.5) return;
+
+  // Päivitä cfg
+  const newCfg = Math.round(drift.toCfg * 2) / 2; // 0.5 kg tarkkuus
+  cal[drift.key] = newCfg;
+
+  // Lisää drift-history
+  if (!Array.isArray(meso.streetliftingConfig.cfgDriftHistory)) {
+    meso.streetliftingConfig.cfgDriftHistory = [];
+  }
+  meso.streetliftingConfig.cfgDriftHistory.push({
+    dateISO: drift.dateISO || todayISO(),
+    movName: drift.movName,
+    key: drift.key,
+    fromCfg: currentCfg,
+    toCfg: newCfg,
+    driftPct: drift.driftPct,
+    signal: drift.signal,
+    source: drift.source,
+    counter: drift.counter,
+    velDeltaPct: drift.velDeltaPct ?? null,
+  });
+
+  await saveMesocycle(meso);
+  console.info(`[CFG-DRIFT] ${drift.movName} ${currentCfg?.toFixed(1) || '?'} → ${newCfg.toFixed(1)} kg (+${(drift.driftPct*100).toFixed(1)}%, signal=${drift.signal})`);
 }
 
 // ═══════════════════════════════════════════════════════════════
