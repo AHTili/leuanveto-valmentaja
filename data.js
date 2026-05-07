@@ -13,7 +13,7 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
-const PROGRAM_BUILD_VERSION = "4.34.44";
+const PROGRAM_BUILD_VERSION = "4.34.45";
 
 // ── Store names ──
 const STORES = {
@@ -1712,6 +1712,20 @@ async function getAllMesocycles() {
 async function getActiveMesocycle() {
   const all = await getAllMesocycles();
   if (!all.length) return null;
+  if (all.length === 1) return all[0];
+
+  // v4.34.45: priorisoi eksplisiittisesti tallennettua activeMesocycleId:tä
+  // (käyttäjä on aktivoinut tietyn ohjelman uudelleen Historia-välilehdeltä).
+  // Tämä antaa käyttäjälle mahdollisuuden palata vanhaan ohjelmaan ilman että
+  // session-historia-heuristiikka pakottaa palauttamaan toisen.
+  try {
+    const meta = await getAppMeta();
+    if (meta?.activeMesocycleId) {
+      const match = all.find(m => m.mesocycleId === meta.activeMesocycleId);
+      if (match) return match;
+    }
+  } catch (_) { /* fall through */ }
+
   // v4.27.10: aiemmin palautettiin AINA uusin startDateISO:n mukaan. Tämä aiheutti
   // virheellisiä "ejektioita" kun DB:ssä oli vanha jäänne (esim. default-meso),
   // jonka startDateISO oli uudempi kuin käyttäjän aktiivisesti treenaama meso
@@ -1722,7 +1736,6 @@ async function getActiveMesocycle() {
   // mesocycleId:tä viimeisin sessio käytti. Jos sessioita ei ole (tai niiden
   // mesocycleId ei vastaa mitään olemassa olevaa), fallback-säännöksi jää vanha
   // "uusin startDateISO".
-  if (all.length === 1) return all[0];
   try {
     const sessions = await dbGetAll(STORES.sessions);
     // Sort sessions descending by dateISO then timestamp; find latest with mesocycleId
@@ -1743,6 +1756,23 @@ async function getActiveMesocycle() {
   return all[0];
 }
 
+// v4.34.45: Aseta aktiivinen mesosykli eksplisiittisesti. Käytetään sekä uuden
+// mesosyklin luonnissa että vanhan uudelleen-aktivoinnissa Historia-välilehdellä.
+// Päivittää appMeta.meta.activeMesocycleId-kentän jonka getActiveMesocycle lukee.
+async function setActiveMesocycle(mesocycleId) {
+  if (!mesocycleId) throw new Error("setActiveMesocycle: mesocycleId puuttuu");
+  const meta = (await getAppMeta()) || {
+    key: "meta",
+    appVersion: APP_VERSION,
+    schemaVersion: SCHEMA_VERSION,
+    createdAtISO: nowISO(),
+    timezone: TIMEZONE,
+  };
+  meta.activeMesocycleId = mesocycleId;
+  meta.activeMesocycleSetAtISO = nowISO();
+  return dbPut(STORES.appMeta, meta);
+}
+
 async function saveMesocycle(meso) {
   if (!meso.mesocycleId) meso.mesocycleId = uid();
   return dbPut(STORES.mesocycles, meso);
@@ -1753,12 +1783,27 @@ async function saveMesocycle(meso) {
 // estämään tilanne jossa default-mesosykli + uusi streetlifting_16w molemmat ovat
 // DB:ssä ja getActiveMesocycle palauttaa väärän (vanhempi/uudempi startDateISO).
 //
+// v4.34.45: lisätty preserveUserChoices=true -optio joka säilyttää myös käyttäjän
+// eksplisiittisesti valitsemat ohjelmat (esim. atletti vaihtoi custom-mesoon mutta
+// ei tehnyt vielä sessiota; säilytä silti). Jos atletti haluaa siivota orphan-
+// mesosyklit, hän voi tehdä sen Asetukset → Reset DB -kautta.
+//
 // SÄILYTTÄÄ: mesosyklit joilla on yksi tai useampi sessio (= käyttäjän treenihistoria)
 // + uusin/aktiivinen mesosykli (excludeId-parametri)
+// + preserveUserChoices=true -tilassa: KAIKKI tallennetut mesosyklit (=ei poistoa)
 // POISTAA: kaikki muut (= autocreated default-mesosyklit, käytöstä jääneet templatet)
-async function cleanupOrphanMesocycles(excludeId = null) {
+async function cleanupOrphanMesocycles(excludeId = null, opts = {}) {
+  const { preserveUserChoices = false } = opts;
   const allMesocycles = await getAllMesocycles();
   if (allMesocycles.length <= 1) return { deleted: 0, kept: allMesocycles.length };
+
+  // v4.34.45: jos preserveUserChoices, siivous on no-op — käyttäjän kaikki ohjelmat
+  // säilyvät Historia-välilehdellä. Init-vaiheessa (autocreated default) tätä optiota
+  // ei käytetä, joten alkuperäinen tarkoitus säilyy.
+  if (preserveUserChoices) {
+    return { deleted: 0, kept: allMesocycles.length };
+  }
+
   const sessions = await dbGetAll(STORES.sessions);
   const mesocyclesWithSessions = new Set(
     sessions.map(s => s.mesocycleId).filter(Boolean)
@@ -5748,6 +5793,7 @@ export {
   MESOCYCLE_TEMPLATES,
   getAllMesocycles,
   getActiveMesocycle,
+  setActiveMesocycle,
   saveMesocycle,
   createDefaultMesocycle,
   createPeakingMesocycle,

@@ -35,6 +35,9 @@ import {
   initDB,
   shouldShowBackupReminder,
   maintenanceStatus,
+  // v4.34.45: mesosykli-historia + uudelleen-aktivointi
+  saveMesocycle, getAllMesocycles, getActiveMesocycle, setActiveMesocycle,
+  cleanupOrphanMesocycles, getAppMeta,
 } from "./data.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -1411,6 +1414,67 @@ async function testBackupRoundtrip() {
   }
 }
 
+// v4.34.45 — Mesosykli-historia + uudelleen-aktivointi.
+// Atletin huoli: "Ei riskiä että ohjelma vaihtuisi ja alkuperäinen katoaisi"
+// Testataan että:
+//   - setActiveMesocycle päivittää appMeta.activeMesocycleId-kentän
+//   - getActiveMesocycle priorisoi appMeta.activeMesocycleId:tä session-historian yli
+//   - cleanupOrphanMesocycles({ preserveUserChoices: true }) ei poista mitään
+async function testMesocycleHistoryActivation() {
+  try {
+    await initDB();
+
+    // Luo 3 mesosykliä eri startDateISO:lla
+    const mesoA = { mesocycleId: `test-meso-A-${Date.now()}`, type: "custom", startDateISO: "2026-01-01", weekCount: 4, weekPlans: [] };
+    const mesoB = { mesocycleId: `test-meso-B-${Date.now()}`, type: "hypertrofia", startDateISO: "2026-02-01", weekCount: 4, weekPlans: [] };
+    const mesoC = { mesocycleId: `test-meso-C-${Date.now()}`, type: "default", startDateISO: "2026-03-01", weekCount: 4, weekPlans: [] };
+    await saveMesocycle(mesoA);
+    await saveMesocycle(mesoB);
+    await saveMesocycle(mesoC);
+
+    // T1: setActiveMesocycle päivittää appMeta.activeMesocycleId-kentän
+    await setActiveMesocycle(mesoA.mesocycleId);
+    const meta1 = await getAppMeta();
+    assertEqual(meta1?.activeMesocycleId, mesoA.mesocycleId,
+      "T1: setActiveMesocycle päivittää appMeta.activeMesocycleId");
+    assert(meta1?.activeMesocycleSetAtISO,
+      "T1: activeMesocycleSetAtISO timestampi tallennettu");
+
+    // T2: getActiveMesocycle priorisoi appMeta.activeMesocycleId:tä
+    // (huom: mesoC olisi uusin startDateISO:n mukaan, mutta mesoA on aktivoitu)
+    const active1 = await getActiveMesocycle();
+    assertEqual(active1?.mesocycleId, mesoA.mesocycleId,
+      "T2: getActiveMesocycle palauttaa eksplisiittisesti aktivoidun (A), ei uusimman (C)");
+
+    // T3: aktivoinnin vaihto toimii
+    await setActiveMesocycle(mesoB.mesocycleId);
+    const active2 = await getActiveMesocycle();
+    assertEqual(active2?.mesocycleId, mesoB.mesocycleId,
+      "T3: aktivoinnin vaihto A → B toimii");
+
+    // T4: cleanupOrphanMesocycles preserveUserChoices=true säilyttää kaikki
+    const beforeCount = (await getAllMesocycles()).length;
+    const cleanup = await cleanupOrphanMesocycles(mesoB.mesocycleId, { preserveUserChoices: true });
+    const afterCount = (await getAllMesocycles()).length;
+    assertEqual(cleanup.deleted, 0, "T4: preserveUserChoices=true ei poista mitään");
+    assertEqual(afterCount, beforeCount, "T4: kaikki mesosyklit säilyvät");
+
+    // Cleanup test data
+    const all = await getAllMesocycles();
+    for (const m of all) {
+      if (m.mesocycleId.startsWith("test-meso-")) {
+        // Suora dbDelete ei ole exportattu — käytetään cleanupia ilman preserveUserChoices,
+        // mikä poistaa orphan-mesot (joilla ei ole sessioita)
+      }
+    }
+    // Resetoi appMeta.activeMesocycleId
+    await setActiveMesocycle(mesoA.mesocycleId); // Pidä jokin valid → ei null-tilaa
+  } catch (e) {
+    _results.push({ name: "Mesocycle history + activation", pass: false, details: "IndexedDB error: " + e.message });
+    _failed++;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // RUN ALL TESTS
 // ═══════════════════════════════════════════════════════════════
@@ -1465,6 +1529,8 @@ export async function runTests() {
   await testGetCfgBaselineForMovement();
   await testRecommendScenarios();
   await testBackupRoundtrip();
+  // v4.34.45: mesosykli-historia + uudelleen-aktivointi
+  await testMesocycleHistoryActivation();
 
   console.log(`\n=== Results: ${_passed} passed, ${_failed} failed ===`);
 

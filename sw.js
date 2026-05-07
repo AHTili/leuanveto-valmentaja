@@ -1,18 +1,20 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.44 — UNIVERSAALI 1RM-KALIBROINTI (Vaihe 1/3 universaalille kyselylle):
-// Räätälöity ohjelma kysyy nyt 1RM-arvion kullekin päälikkeelle. Engine yleisti
-// getCfgBaselineForMovement-funktion: TASO 1 = mesocycle.movementCfg (uusi, kaikki
-// ei-streetlifting-mesot), TASO 2 = streetliftingConfig (legacy, streetlifting_16w
-// säilyy bit-perfect koskemattomana), TASO 3 = historia-baseline-fallback.
-// CFG-DRIFT-persistointi yleistetty molempia rakenteita tukevaksi (drift.source-
-// kenttä haarautuu). UI-tekstit puhdistettu: PLAN_BASED → "Suoritus vahvisti",
-// loadPct → "kuormaprosentti", Cap → "Yläraja", CFG-DRIFT → "Engine oppi".
-// 6 uutta testiä test-runneriin (254/254). Streetlifting_16w 100% koskematon.
+// LeVe AI v4.34.45 — OHJELMIEN HISTORIA + UUDELLEEN-AKTIVOINTI (Vaihe 1.5/3):
+// Atletin huoli: "Ei riskiä että ohjelma vaihtuisi ja alkuperäinen katoaisi."
+// Historia-välilehdelle lisätty Ohjelmat-sektio joka listaa kaikki tallennetut
+// mesosyklit (aktiivinen + arkistoidut). Klikkaus avaa detail-modaalin: nimi,
+// alkupäivä, viikko-status, sessio-määrä, kalibrointiarvot, CFG-DRIFT-historia.
+// Modaali sisältää "Aktivoi tämä uudelleen" -painikkeen — yhden klikkauksen
+// palautus vanhaan ohjelmaan. Vaihda ohjelma -toiminto pyytää nyt vahvistuksen
+// ja säilyttää vanhat ohjelmat (preserveUserChoices=true). Uusi appMeta.
+// activeMesocycleId-kenttä eksplisiittistää aktivoinnin (ei riipu enää session-
+// historian heuristiikasta). 4 uutta testiä test-runneriin (260/260).
+// SCHEMA_VERSION pysyy 4 — kaverin data säilyy päivityksessä bit-perfect.
 //
-// Atletti 2026-05-07: "Samalla kun itse treenaan 16 vk streetliftingiä,
-// kaverini voi tehdä juuri hänelle räätälöityä voimaohjelmaa eri laitteella."
+// Atletti 2026-05-07: "Eikö olisi mahtavaa jos historiat-välilehdellä säilyisi
+// kaikki toteutetut ohjelmat sekä käynnissä olevat?"
 
-const APP_VERSION = "4.34.44";
+const APP_VERSION = "4.34.45";
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
 
 // v4.34.9: Kuuntele SKIP_WAITING-message-eventtia, jolla pää-säie voi pakottaa

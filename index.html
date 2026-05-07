@@ -838,7 +838,7 @@ import {
   saveMeasurement, getMeasurementsByType, getLatestBodyweight, saveBodyweightEntry,
   getAllPRs, savePR, deletePR, seedHistoricalPRsIfNeeded,
   MESOCYCLE_TEMPLATES,
-  getActiveMesocycle, saveMesocycle, createDefaultMesocycle, createPeakingMesocycle, getAllMesocycles,
+  getActiveMesocycle, setActiveMesocycle, saveMesocycle, createDefaultMesocycle, createPeakingMesocycle, getAllMesocycles,
   createHypertrofiaMesocycle, createMaksimivoimaMesocycle, createEksenterinenMesocycle,
   createDUPMesocycle, createSiirtymaMesocycle, createPalautuminenMesocycle, createStreetlifting16WMesocycle,
   generateCustomMesocycle,
@@ -6289,9 +6289,55 @@ function renderHistory() {
     ? `<button class="btn btn-outline btn-full" id="btn-hist-load-more" style="font-size:13px;margin-top:4px">Lataa lisää (${filtered.length - shown.length} sessiota)</button>`
     : "";
 
+  // v4.34.45: Ohjelmat-sektio Historia-välilehden ylälaitaan.
+  // Listaa kaikki tallennetut mesosyklit (aktiivinen + arkistoidut), näyttää
+  // sessio-määrän + viikko-statuksen + aktivointimahdollisuuden. Tämä takaa
+  // että vanhat ohjelmat eivät katoa näkyvistä ohjelman vaihdon yhteydessä.
+  const allMesos = (state.allMesocycles || []).slice().sort((a, b) => {
+    // Aktiivinen ensin, muut startDateISO desc
+    const aActive = a.mesocycleId === state.mesocycle?.mesocycleId ? 1 : 0;
+    const bActive = b.mesocycleId === state.mesocycle?.mesocycleId ? 1 : 0;
+    if (aActive !== bActive) return bActive - aActive;
+    return (b.startDateISO || "").localeCompare(a.startDateISO || "");
+  });
+
+  const mesocyclesSectionHTML = allMesos.length === 0 ? "" : `
+    <div class="card" style="margin-bottom:10px;padding:10px">
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px">🎯 Ohjelmat (${allMesos.length})</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${allMesos.map(m => {
+          const tpl = MESOCYCLE_TEMPLATES.find(t => t.id === m.type);
+          const icon = tpl?.icon || "📋";
+          const label = tpl?.label || m.type || "Tuntematon";
+          const isActive = m.mesocycleId === state.mesocycle?.mesocycleId;
+          const sessionCount = state.sessions.filter(s => s.mesocycleId === m.mesocycleId).length;
+          const weekNum = isActive
+            ? getMesocycleWeek(m, todayISO())
+            : null;
+          const weekStr = weekNum != null && weekNum > 0
+            ? `Vk ${weekNum}/${m.weekCount || "?"}`
+            : (sessionCount > 0 ? "Arkistoitu" : "Ei aloitettu");
+          const startStr = m.startDateISO ? ` · ${formatDateShort(m.startDateISO)}` : "";
+          return `<div class="card" style="cursor:pointer;padding:8px 10px;${isActive ? 'border-left:3px solid var(--ok);background:rgba(34,197,94,0.04)' : 'opacity:0.85'}" data-open-mesocycle="${m.mesocycleId}">
+            <div class="flex-between" style="align-items:center">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:600;font-size:13px">${icon} ${label}</div>
+                <div class="muted" style="font-size:11px;margin-top:2px">${weekStr} · ${sessionCount} sessio${sessionCount === 1 ? "" : "ta"}${startStr}</div>
+              </div>
+              ${isActive
+                ? `<span class="chip chip-green" style="font-size:10px;padding:2px 8px">🟢 Aktiivinen</span>`
+                : `<span class="chip" style="font-size:10px;padding:2px 8px;background:rgba(255,255,255,0.06)">📦 Arkistoitu</span>`}
+            </div>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>
+  `;
+
   return `<div class="fade-in">
     <div class="section-header">Historia</div>
     <button class="btn btn-outline btn-full mb" id="btn-backfill-past" style="font-size:13px">+ Lisää mennyt treeni</button>
+    ${mesocyclesSectionHTML}
     ${filterBarHTML}
     ${countLineHTML}
     ${filtered.length === 0 && state.sessions.length === 0 ? '<div class="card"><div class="muted">Ei treenejä vielä</div></div>' : ""}
@@ -6305,6 +6351,146 @@ function renderHistory() {
  * tavoite vs toteuma, velocity, tempo, restSec. Inline-editointi
  * setille showEditSetModal:n kautta.
  */
+/**
+ * v4.34.45 — Mesosykli-detail-modaali (Historia-välilehden ohjelmakortin klikkaus).
+ * Näyttää: nimi, alkupäivä, viikko-status, sessio-määrä, sessiolista.
+ * Mahdollistaa: "Aktivoi tämä uudelleen" jos ohjelma ei ole aktiivinen.
+ *
+ * Atletin alkuperäinen huoli: "Ei riskiä että ohjelma vaihtuisi ja alkuperäinen
+ * katoaisi" — tämä modaali näyttää että vanha ohjelma on tallessa ja antaa
+ * yhden klikkauksen palauttaa sen.
+ */
+async function showMesocycleDetailModal(mesocycleId) {
+  const meso = (state.allMesocycles || []).find(m => m.mesocycleId === mesocycleId);
+  if (!meso) { showToast("Mesosykliä ei löydy", "bad"); return; }
+  const tpl = MESOCYCLE_TEMPLATES.find(t => t.id === meso.type);
+  const icon = tpl?.icon || "📋";
+  const label = tpl?.label || meso.type || "Tuntematon";
+  const isActive = meso.mesocycleId === state.mesocycle?.mesocycleId;
+  const sessions = state.sessions
+    .filter(s => s.mesocycleId === mesocycleId)
+    .sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""));
+  const sessionCount = sessions.length;
+  const weekNum = isActive ? getMesocycleWeek(meso, todayISO()) : null;
+  const weekStr = weekNum != null && weekNum > 0
+    ? `Vk ${weekNum}/${meso.weekCount || "?"}`
+    : (sessionCount > 0 ? "Arkistoitu" : "Ei aloitettu");
+
+  // CFG-DRIFT-historiaa jos on (streetlifting tai movementCfg)
+  const cfgDriftEntries = [
+    ...((meso.streetliftingConfig?.cfgDriftHistory || [])),
+    ...((meso.cfgDriftHistory || [])),
+  ];
+
+  // Movement-kalibrointi (uusi, custom-mesoille)
+  const movementCfgEntries = Object.entries(meso.movementCfg || {});
+
+  const sessionListHTML = sessions.length === 0
+    ? `<div class="muted" style="font-size:12px;padding:8px;text-align:center">Ei sessioita tässä ohjelmassa</div>`
+    : sessions.slice(0, 10).map(s => {
+      const setCount = state.allSets.filter(set => set.sessionId === s.sessionId && set.setRole !== "readiness_test" && set.setRole !== "warmup").length;
+      return `<div style="padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:4px;font-size:12px;margin-bottom:4px;cursor:pointer" data-meso-session="${s.sessionId}">
+        <span style="font-weight:600">${formatDateShort(s.dateISO)}</span>
+        <span class="muted">${setCount} sarjaa${s.mesocycleWeek ? ` · Vk ${s.mesocycleWeek}` : ""}</span>
+      </div>`;
+    }).join("") + (sessions.length > 10 ? `<div class="muted" style="font-size:11px;text-align:center;margin-top:4px">…ja ${sessions.length - 10} sessiota lisää</div>` : "");
+
+  const calHTML = movementCfgEntries.length > 0
+    ? `<div style="margin-top:10px;padding:8px;background:rgba(79,140,255,0.06);border-radius:4px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">📊 Kalibrointi</div>
+        ${movementCfgEntries.map(([name, cfg]) => `<div style="font-size:12px">${name}: <b>${cfg.e1rmExternal} kg</b></div>`).join("")}
+      </div>`
+    : (meso.streetliftingConfig?.calibration ? `<div style="margin-top:10px;padding:8px;background:rgba(79,140,255,0.06);border-radius:4px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">📊 Kalibrointi</div>
+        ${meso.streetliftingConfig.calibration.leukaExtKg ? `<div style="font-size:12px">Lisäpainoleuanveto: <b>${meso.streetliftingConfig.calibration.leukaExtKg} kg</b></div>` : ""}
+        ${meso.streetliftingConfig.calibration.dippiExtKg ? `<div style="font-size:12px">Lisäpainodippi: <b>${meso.streetliftingConfig.calibration.dippiExtKg} kg</b></div>` : ""}
+        ${meso.streetliftingConfig.calibration.kyykkyExtKg ? `<div style="font-size:12px">Takakyykky: <b>${meso.streetliftingConfig.calibration.kyykkyExtKg} kg</b></div>` : ""}
+      </div>` : "");
+
+  const driftHTML = cfgDriftEntries.length > 0
+    ? `<div style="margin-top:10px;padding:8px;background:rgba(34,197,94,0.06);border-radius:4px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">🚀 Engine oppi (${cfgDriftEntries.length})</div>
+        ${cfgDriftEntries.slice(-3).reverse().map(d => `<div style="font-size:11px">${formatDateShort(d.dateISO)}: ${d.movName} ${d.fromCfg?.toFixed(1) || '?'} → <b>${d.toCfg?.toFixed(1) || '?'} kg</b> (+${(d.driftPct*100).toFixed(1)}%)</div>`).join("")}
+      </div>`
+    : "";
+
+  closeModal();
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-sheet" style="max-width:480px;max-height:90vh;overflow-y:auto">
+      <div class="modal-handle"></div>
+      <div class="modal-title">${icon} ${label}</div>
+      <div style="padding:0 4px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+          ${isActive
+            ? `<span class="chip chip-green" style="font-size:11px;padding:3px 10px">🟢 Aktiivinen</span>`
+            : `<span class="chip" style="font-size:11px;padding:3px 10px;background:rgba(255,255,255,0.06)">📦 Arkistoitu</span>`}
+          <span class="chip chip-acc" style="font-size:11px;padding:3px 10px">${weekStr}</span>
+          <span class="chip chip-acc" style="font-size:11px;padding:3px 10px">${sessionCount} sessio${sessionCount === 1 ? "" : "ta"}</span>
+        </div>
+        <div class="muted" style="font-size:12px;margin-bottom:10px">
+          Aloitettu: <b>${formatDateShort(meso.startDateISO)}</b> · Pituus: <b>${meso.weekCount || "?"} vk</b>
+        </div>
+
+        ${calHTML}
+        ${driftHTML}
+
+        <div style="margin-top:14px">
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">📅 Sessiot</div>
+          ${sessionListHTML}
+        </div>
+
+        <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button class="btn btn-outline" data-modal-cancel>Sulje</button>
+          ${isActive
+            ? `<button class="btn" disabled style="opacity:0.5;cursor:not-allowed">Jo aktiivinen</button>`
+            : `<button class="btn" data-meso-activate>🔄 Aktivoi tämä uudelleen</button>`}
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => closeModal());
+  overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
+
+  // Sessio-kortin klikkaus → avaa session detail
+  overlay.querySelectorAll("[data-meso-session]").forEach(el => {
+    el.addEventListener("click", () => {
+      const sid = el.dataset.mesoSession;
+      closeModal();
+      openSessionDetail(sid);
+    });
+  });
+
+  // Aktivointi-painike
+  const activateBtn = overlay.querySelector("[data-meso-activate]");
+  if (activateBtn) {
+    activateBtn.addEventListener("click", async () => {
+      const oldTpl = MESOCYCLE_TEMPLATES.find(t => t.id === state.mesocycle?.type);
+      const oldLabel = oldTpl?.label || state.mesocycle?.type || "Aktiivinen ohjelma";
+      const ok = confirm(
+        `Aktivoidaanko ohjelma uudelleen?\n\n` +
+        `Nykyinen aktiivinen:\n  ${oldLabel}\n\n` +
+        `Uusi aktiivinen:\n  ${label}\n\n` +
+        `Nykyinen ohjelma säilyy Historia-välilehdellä. Voit vaihtaa milloin tahansa.`
+      );
+      if (!ok) return;
+      try {
+        await setActiveMesocycle(meso.mesocycleId);
+        state.mesocycle = meso;
+        await computeRecommendation();
+        closeModal();
+        showToast(`${icon} ${label} aktivoitu uudelleen`, "ok", 4000);
+        render();
+      } catch (e) {
+        console.error("Mesosyklin aktivointi epäonnistui:", e);
+        showToast("Aktivointi epäonnistui: " + e.message, "bad", 5000);
+      }
+    });
+  }
+}
+
 async function openSessionDetail(sessionId) {
   const sess = state.sessions.find(s => s.sessionId === sessionId);
   if (!sess) { showToast("Sessiota ei löydy", "bad"); return; }
@@ -8450,6 +8636,22 @@ function bind() {
 
     const template = orderedTemplates[chosen];
 
+    // v4.34.45: vahvistus jos vaihdetaan toisesta aktiivisesta ohjelmasta.
+    // Atletti saa varmuuden että vanha ohjelma säilyy Historia-välilehdellä ja
+    // voi aktivoida sen uudelleen — ei riskiä että alkuperäinen kadottaa.
+    if (state.mesocycle) {
+      const oldType = state.mesocycle.type;
+      const oldTpl = MESOCYCLE_TEMPLATES.find(t => t.id === oldType);
+      const oldLabel = oldTpl?.label || oldType || "Aktiivinen ohjelma";
+      const ok = confirm(
+        `Vaihdetaanko ohjelmaa?\n\n` +
+        `Aktiivinen ohjelma:\n  ${oldLabel}\n\n` +
+        `Uusi ohjelma:\n  ${template.label}\n\n` +
+        `Aktiivinen ohjelma säilyy Historia-välilehdellä — voit aktivoida sen uudelleen koska tahansa.`
+      );
+      if (!ok) return;
+    }
+
     // Peaking needs special handling (requires e1RM)
     if (template.id === "peaking") {
       const bw = state.settings?.bodyweightKg || 91;
@@ -8472,6 +8674,7 @@ function bind() {
 
       const peakMeso = createPeakingMesocycle(todayISO(), e1rmExt, bw);
       await saveMesocycle(peakMeso);
+      await setActiveMesocycle(peakMeso.mesocycleId);
       state.mesocycle = peakMeso;
       await computeRecommendation();
       showToast("🏆 Peaking-ohjelma aloitettu!", "ok", 4000);
@@ -8486,18 +8689,20 @@ function bind() {
       if (!cal) return;
       const slMeso = createStreetlifting16WMesocycle(todayISO(), cal);
       await saveMesocycle(slMeso);
+      await setActiveMesocycle(slMeso.mesocycleId);
       state.mesocycle = slMeso;
       // Päivitä myös settings.bodyweightKg mikäli käyttäjä muutti sitä kalibroinnissa
       if (cal.bwKg && cal.bwKg !== state.settings.bodyweightKg) {
         state.settings.bodyweightKg = cal.bwKg;
         await saveSettings(state.settings);
       }
-      // v4.34.7: poista orphan-mesosyklit (esim. autocreated default-mesosykli) jotta
-      // getActiveMesocycle ei voi sotkea toistuvia init()-kutsuja. Sessio-mesosyklit säilyvät.
+      // v4.34.45: säilytä kaikki vanhat ohjelmat (preserveUserChoices=true) — atletti
+      // voi aktivoida ne uudelleen Historia-välilehdeltä. Aiempi v4.34.7 -käyttäytyminen
+      // (orphan-poisto) säilyy init()-vaiheessa, missä sitä yhä tarvitaan.
       try {
-        const cleanup = await cleanupOrphanMesocycles(slMeso.mesocycleId);
+        const cleanup = await cleanupOrphanMesocycles(slMeso.mesocycleId, { preserveUserChoices: true });
         if (cleanup.deleted > 0) {
-          console.info(`[LeVe] Vaihda ohjelma: poistettu ${cleanup.deleted} orphan-mesosyklia (default/jäänne ilman session-historiaa)`);
+          console.info(`[LeVe] Vaihda ohjelma: poistettu ${cleanup.deleted} orphan-mesosyklia`);
         }
       } catch (e) {
         console.warn("[LeVe] cleanupOrphanMesocycles failed (jatketaan):", e);
@@ -8535,15 +8740,16 @@ function bind() {
         }
         assignVariantRotation(customMeso.weekPlans);
         await saveMesocycle(customMeso);
+        await setActiveMesocycle(customMeso.mesocycleId);
         state.mesocycle = customMeso;
         // Päivitä BW jos käyttäjä muutti sitä kalibroinnissa
         if (cal.bwKg && cal.bwKg !== state.settings.bodyweightKg) {
           state.settings.bodyweightKg = cal.bwKg;
           await saveSettings(state.settings);
         }
-        // v4.34.7: cleanup orphan mesocycles (sama logiikka kuin streetlifting/peaking)
+        // v4.34.45: säilytä vanhat ohjelmat (preserveUserChoices=true) Historia-välilehdellä
         try {
-          const cleanup = await cleanupOrphanMesocycles(customMeso.mesocycleId);
+          const cleanup = await cleanupOrphanMesocycles(customMeso.mesocycleId, { preserveUserChoices: true });
           if (cleanup.deleted > 0) {
             console.info(`[LeVe] Vaihda ohjelma: poistettu ${cleanup.deleted} orphan-mesosyklia`);
           }
@@ -8572,10 +8778,11 @@ function bind() {
       assignVariantRotation(meso.weekPlans);
     }
     await saveMesocycle(meso);
+    await setActiveMesocycle(meso.mesocycleId);
     state.mesocycle = meso;
-    // v4.34.7: cleanup orphan mesocycles (sama logiikka kuin streetlifting + custom + peaking)
+    // v4.34.45: säilytä vanhat ohjelmat (preserveUserChoices=true) Historia-välilehdellä
     try {
-      const cleanup = await cleanupOrphanMesocycles(meso.mesocycleId);
+      const cleanup = await cleanupOrphanMesocycles(meso.mesocycleId, { preserveUserChoices: true });
       if (cleanup.deleted > 0) {
         console.info(`[LeVe] Vaihda ohjelma: poistettu ${cleanup.deleted} orphan-mesosyklia`);
       }
@@ -8764,6 +8971,14 @@ function bind() {
       const sid = card.dataset.openSession;
       state.historyDetailSessionId = sid;
       openSessionDetail(sid);
+    });
+  });
+
+  // v4.34.45: Mesosykli-kortin klikkaus → avaa detail-modaali (showMesocycleDetailModal)
+  $$("[data-open-mesocycle]").forEach(card => {
+    card.addEventListener("click", () => {
+      const mid = card.dataset.openMesocycle;
+      showMesocycleDetailModal(mid);
     });
   });
 
