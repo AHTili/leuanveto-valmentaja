@@ -1,5 +1,20 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.47 — LIIKEPANKKI-MODAALI WIZARDIIN (Vaihe 2-Lite):
+// LeVe AI v4.34.48 — AI-BLOCK-TUNING YLEISTYS (Vaihe 3/3):
+// generateBlockTuningPackage on hardkoodattu streetlifting_16w-mesolle (foundation/
+// strength/intensity/peaking-blokit, kisaliikkeet, vk 4/8/12 deload-mappi).
+// Atletti: "Olisi tärkeää että AI-block-tuning toimisi muillekin mesotyypeille
+// jotta sovellus on 9/10 koko järjestelmänä." Uusi yleinen versio:
+//   - generateGenericBlockTuningPackage: deload-tunnistus weekDef.deltaPctBase < 0
+//   - Etsii primary-liikkeet weekPlans:sta dynaamisesti (ei hardkoodattuja)
+//   - Käyttää movementCfg:tä jos olemassa (v4.34.44 yleistys)
+//   - Sama markdown + json + AI-prompt -output kuin streetlifting-versio
+// UI-kytkentä: btn-generate-block-tuning käyttää nyt streetlifting_16w:lle
+// alkuperäistä funktiota, muille mesoille uutta yleistä versiota.
+// 4 uutta testiä test-runneriin (276/276), mukaan lukien KAVERI-FIXTURE
+// (Maija: penkki+mave, ei velocity-mittaria, 1RM-kalibroitu) joka todistaa
+// että koko Vaihe 1-3 -ketju toimii kuvitteelliselle uudelle käyttäjälle.
+//
+// v4.34.47 (edellinen) — LIIKEPANKKI-MODAALI WIZARDIIN (Vaihe 2-Lite):
 // Wizardin Päälikkeet-valinta tarjosi vain 8 hardkoodattua liikettä — 122
 // liikepankin liikettä jäi piiloon. Lisätty "+ Lisää muu liike" -chip joka
 // avaa showMovementBankModal:in. Modaalissa: tekstihaku + kategoria-suodatus

@@ -4980,6 +4980,281 @@ function generateBlockTuningPackage(ctx) {
   };
 }
 
+// ═══════════════════════════════════════════════════════════════
+// v4.34.48 — GENERIC AI-BLOCK-TUNING (kaikille ei-streetlifting-mesoille)
+// ═══════════════════════════════════════════════════════════════
+//
+// generateBlockTuningPackage on hardkoodattu streetlifting_16w-mesolle:
+// blokki-mappi (foundation/strength/intensity/peaking), kisaliikkeet
+// (4 hardkoodattua), block.prevWeeks/nextWeeks. Tämä funktio on yleistys
+// MILLE TAHANSA mesotyypille — käyttää weekDef.deltaPctBase < 0 -heuristiikkaa
+// deload-tunnistukseen ja löytää primary-liikkeet dynaamisesti weekPlans:sta.
+//
+// Streetlifting_16w säilyy alkuperäisessä funktiossa (delegoidaan jos type matchaa).
+
+function generateGenericBlockTuningPackage(ctx) {
+  const { mesocycle, sessions, allSets, prs, currentWeekNum, settings } = ctx;
+
+  if (!mesocycle) {
+    return { error: "AI-Block-Tuning vaatii aktiivisen mesosyklin." };
+  }
+  // Streetlifting_16w käyttää alkuperäistä funktiota — ei tätä
+  if (mesocycle.type === "streetlifting_16w") {
+    return generateBlockTuningPackage(ctx);
+  }
+
+  const wk = currentWeekNum;
+  const weekDefs = mesocycle.weekDefs || [];
+  const weekDef = weekDefs.find(w => w.week === wk);
+
+  // Deload-tunnistus: viikon deltaPctBase < 0
+  if (!weekDef || weekDef.deltaPctBase >= 0) {
+    const nextDeload = weekDefs.find(w => w.week > wk && w.deltaPctBase < 0);
+    return {
+      error: nextDeload
+        ? `AI-Block-Tuning aktivoituu deload-viikoilla. Olet vk ${wk}. Seuraava deload: vk ${nextDeload.week}.`
+        : `AI-Block-Tuning aktivoituu deload-viikoilla. Olet vk ${wk}. Tässä mesosyklissä ei ole tulevia deload-viikkoja.`,
+    };
+  }
+
+  // Edellinen blokki = viikot ennen tätä deloadia, alkaen edellisestä deloadista (tai 1)
+  const prevDeloads = weekDefs.filter(w => w.week < wk && w.deltaPctBase < 0).map(w => w.week);
+  const blockStart = prevDeloads.length > 0 ? prevDeloads[prevDeloads.length - 1] + 1 : 1;
+  const prevWeeks = [];
+  for (let w = blockStart; w < wk; w++) prevWeeks.push(w);
+
+  // Tuleva blokki = viikot tämän deloadin jälkeen, ennen seuraavaa deloadia (tai loppuun)
+  const nextDeloads = weekDefs.filter(w => w.week > wk && w.deltaPctBase < 0).map(w => w.week);
+  const blockEnd = nextDeloads.length > 0 ? nextDeloads[0] - 1 : (mesocycle.weekCount || wk);
+  const nextWeeks = [];
+  for (let w = wk + 1; w <= blockEnd; w++) nextWeeks.push(w);
+
+  const blockLabel = prevWeeks.length > 0 ? `Vk ${prevWeeks[0]}-${prevWeeks[prevWeeks.length - 1]}` : `Vk ${wk}`;
+  const nextBlockLabel = nextWeeks.length > 0 ? `Vk ${nextWeeks[0]}-${nextWeeks[nextWeeks.length - 1]}` : "Mesosykli päättyy";
+
+  // Atleettiprofile
+  const movementCfg = mesocycle.movementCfg || {};
+  const bw = settings?.bodyweightKg || 80;
+  const profile = {
+    bw,
+    weekCount: mesocycle.weekCount || 4,
+    mesocycleType: mesocycle.type,
+    movementCfg,
+    cfgDriftHistory: (mesocycle.cfgDriftHistory || [])
+      .filter(d => prevWeeks.includes(getMesocycleWeek(mesocycle, d.dateISO))),
+    prs: (prs || []).map(p => ({ movement: p.movementName, value: p.value, dateISO: p.dateISO, context: p.context })),
+  };
+
+  // Edellisen blokin sessio-data
+  const prevBlockSessions = (sessions || []).filter(s => {
+    const sw = getMesocycleWeek(mesocycle, s.dateISO);
+    return prevWeeks.includes(sw);
+  }).sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+
+  const sessionAnalysis = prevBlockSessions.map(sess => {
+    const sessSets = (allSets || []).filter(set => set.sessionId === sess.sessionId);
+    const sw = getMesocycleWeek(mesocycle, sess.dateISO);
+    const slots = sessSets.map(set => ({
+      movementName: set.movementName,
+      role: set.setRole,
+      prescribed: { reps: set.targetReps, vx: set.targetVx, loadKg: set.targetLoadKg, loadPct: set.targetLoadPct },
+      actual: { reps: set.reps, actualVx: set.actualVx, loadKg: set.externalLoadKg, velocity: set.velocityMs },
+      vxDelta: (set.targetVx != null && set.actualVx != null) ? (set.targetVx - set.actualVx) : null,
+    }));
+    return { week: sw, dateISO: sess.dateISO, label: sess.label, dayType: sess.dayType, slots };
+  });
+
+  // Etsi uniikit primary-liikkeet weekPlans:sta dynaamisesti
+  const primaryMovements = new Set();
+  for (const wp of (mesocycle.weekPlans || [])) {
+    for (const d of (wp.days || [])) {
+      for (const slot of (d.slots || [])) {
+        if (slot.role === "primary" && slot.defaultMovementName) {
+          primaryMovements.add(slot.defaultMovementName);
+        }
+      }
+    }
+  }
+
+  // e1RM-trendit per primary-liike (käyttää e1rmAccessory:ia — generic, ei BW-laskua)
+  const e1rmTrends = {};
+  for (const liftName of primaryMovements) {
+    const liftSets = (allSets || []).filter(set => set.movementName === liftName && set.externalLoadKg > 0);
+    if (liftSets.length === 0) continue;
+    const sortedSets = liftSets.sort((a, b) => (a.timestamp || a.dateISO || "").localeCompare(b.timestamp || b.dateISO || ""));
+    const dataPoints = sortedSets.slice(-12).map(s => {
+      const vara = s.actualVx ?? s.targetVx ?? 1;
+      const e1rm = e1rmAccessory(s.externalLoadKg || 0, s.reps || 1, vara);
+      return { dateISO: s.dateISO, e1rm: Math.round(e1rm * 10) / 10, load: s.externalLoadKg, reps: s.reps, vx: s.actualVx };
+    });
+    if (dataPoints.length >= 2) {
+      const first = dataPoints[0].e1rm;
+      const latest = dataPoints[dataPoints.length - 1].e1rm;
+      const deltaPct = first > 0 ? ((latest - first) / first) * 100 : 0;
+      e1rmTrends[liftName] = { first, latest, deltaPct: Math.round(deltaPct * 10) / 10, dataPoints };
+    }
+  }
+
+  // Anomaliat
+  const anomalies = [];
+  for (const sess of sessionAnalysis) {
+    for (const slot of sess.slots) {
+      if (slot.actual.actualVx === 0 && slot.role === "primary") {
+        anomalies.push({ type: "failure-primary", week: sess.week, day: sess.label, movement: slot.movementName, prescribed: slot.prescribed, actual: slot.actual });
+      }
+      if (slot.vxDelta != null && Math.abs(slot.vxDelta) >= 2 && slot.role === "primary") {
+        anomalies.push({ type: "vx-mismatch", week: sess.week, day: sess.label, movement: slot.movementName, vxDelta: slot.vxDelta, prescribed: slot.prescribed, actual: slot.actual });
+      }
+    }
+  }
+
+  const totalSessions = sessionAnalysis.length;
+  const completedSets = sessionAnalysis.reduce((sum, s) => sum + s.slots.length, 0);
+  const vxHits = sessionAnalysis.reduce((acc, s) => {
+    for (const slot of s.slots) {
+      if (slot.prescribed.vx != null && slot.actual.actualVx != null) {
+        acc.total++;
+        if (Math.abs(slot.vxDelta || 0) <= 1) acc.hits++;
+      }
+    }
+    return acc;
+  }, { hits: 0, total: 0 });
+  const aggregates = {
+    totalSessions, completedSets,
+    vxHitRate: vxHits.total > 0 ? Math.round((vxHits.hits / vxHits.total) * 100) : null,
+    failureCount: anomalies.filter(a => a.type === "failure-primary").length,
+  };
+
+  // Markdown-narratiivi
+  const lines = [];
+  lines.push(`# AI-Block-Tuning -analyysi (${mesocycle.type}, vk ${wk} deload)`);
+  lines.push("");
+  lines.push(`**Generoitu**: ${new Date().toLocaleDateString("fi-FI")}`);
+  lines.push(`**Mesosykli**: ${mesocycle.type}, vk ${wk}/${profile.weekCount}`);
+  lines.push(`**Atleettiprofile**: ${profile.bw} kg bw`);
+  if (Object.keys(movementCfg).length > 0) {
+    lines.push(`**Kalibrointi (1RM-arviot)**:`);
+    for (const [name, cfg] of Object.entries(movementCfg)) {
+      lines.push(`  - ${name}: ${cfg.e1rmExternal} kg`);
+    }
+  }
+  lines.push("");
+  lines.push(`## Edellisen blokin yhteenveto (${blockLabel})`);
+  lines.push("");
+  lines.push(`- Sessioita kirjattu: **${aggregates.totalSessions}**`);
+  lines.push(`- Sarjoja yhteensä: **${aggregates.completedSets}**`);
+  if (aggregates.vxHitRate != null) lines.push(`- Vx-target-hit-rate (±1): **${aggregates.vxHitRate}%**`);
+  lines.push(`- Failure-tapauksia (V0 primary): **${aggregates.failureCount}**`);
+  lines.push("");
+
+  if (Object.keys(e1rmTrends).length > 0) {
+    lines.push("### e1RM-trendit per päälike");
+    lines.push("");
+    lines.push("| Liike | Lähtö | Loppu | Δ% |");
+    lines.push("|---|---|---|---|");
+    for (const [name, t] of Object.entries(e1rmTrends)) {
+      const arrow = t.deltaPct > 0 ? "📈" : t.deltaPct < 0 ? "📉" : "→";
+      lines.push(`| ${name} | ${t.first} kg | ${t.latest} kg | ${arrow} ${t.deltaPct >= 0 ? "+" : ""}${t.deltaPct}% |`);
+    }
+    lines.push("");
+  }
+
+  if (profile.cfgDriftHistory && profile.cfgDriftHistory.length > 0) {
+    lines.push("### Engine oppi tämän blokin aikana (CFG-DRIFT)");
+    lines.push("");
+    for (const d of profile.cfgDriftHistory) {
+      lines.push(`- ${d.dateISO}: ${d.movName} ${d.fromCfg?.toFixed(1) || '?'} → **${d.toCfg?.toFixed(1)} kg** (+${(d.driftPct*100).toFixed(1)}%)`);
+    }
+    lines.push("");
+  }
+
+  if (anomalies.length > 0) {
+    lines.push("### Anomaliat / risk-flags");
+    lines.push("");
+    for (const a of anomalies.slice(0, 8)) {
+      if (a.type === "failure-primary") {
+        lines.push(`- 🔴 **Failure (V0)** vk ${a.week}: ${a.movement} prescribed Vx${a.prescribed.vx}`);
+      } else if (a.type === "vx-mismatch") {
+        const direction = a.vxDelta > 0 ? "raskaampaa" : "kevyempää";
+        lines.push(`- ⚠️ **Vx-mismatch** vk ${a.week}: ${a.movement} target Vx${a.prescribed.vx}, actual V${a.actual.actualVx} (${direction} kuin target)`);
+      }
+    }
+    lines.push("");
+  }
+
+  lines.push(`## Tuleva blokki (${nextBlockLabel})`);
+  lines.push("");
+  lines.push(nextWeeks.length > 0
+    ? `${nextWeeks.length} viikkoa, alkaa vk ${nextWeeks[0]}.`
+    : "Tämä on viimeinen deload — mesosykli päättyy.");
+  lines.push("");
+
+  const markdown = lines.join("\n");
+
+  // JSON
+  const json = {
+    meta: {
+      version: "4.34.48",
+      generatedAt: new Date().toISOString(),
+      mesocycleType: mesocycle.type,
+      currentWeek: wk,
+      blockLabel,
+      nextBlockLabel,
+    },
+    profile,
+    completedBlock: {
+      label: blockLabel, weeks: prevWeeks,
+      sessions: sessionAnalysis, e1rmTrends, anomalies, aggregates,
+    },
+    upcomingBlock: { label: nextBlockLabel, weeks: nextWeeks },
+  };
+
+  // AI-prompt (yleinen versio, ei streetlifting-spesifi)
+  const prompt = [
+    `# AI-Block-Tuning analyysipyyntö`,
+    ``,
+    `Olet voimaharjoittelu-coach jolla on syvä ymmärrys progressiivisesta`,
+    `ylikuormituksesta, periodisaatiosta ja autoregulaatiosta. Atletti on`,
+    `juuri suorittanut deload-viikon ${mesocycle.type}-mesosyklissä ja siirtyy`,
+    `seuraavaan blokkiin. Analysoi alla oleva data.`,
+    ``,
+    `## ATLETIN MESOSYKLI`,
+    `Tyyppi: ${mesocycle.type}, ${profile.weekCount} viikkoa`,
+    `Suoritettu blokki: ${blockLabel}`,
+    `Tuleva blokki: ${nextBlockLabel}`,
+    `Bodyweight: ${profile.bw} kg`,
+    Object.keys(movementCfg).length > 0
+      ? `\n### Kalibrointi (1RM-arviot)\n${Object.entries(movementCfg).map(([n, c]) => `- ${n}: ${c.e1rmExternal} kg`).join("\n")}`
+      : "",
+    ``,
+    `## EDELLISEN BLOKIN DATA`,
+    `\`\`\`json`,
+    JSON.stringify(json.completedBlock, null, 2),
+    `\`\`\``,
+    ``,
+    `## VASTAUKSESI MUOTO`,
+    ``,
+    `Anna 3 kategoriassa:`,
+    `(A) **Sovellus-tason muutokset**: mitä atletti voi tehdä UI:ssa nyt`,
+    `(B) **Rakenteelliset muutokset**: koodi-muutosehdotukset seuraavalle blokille`,
+    `(C) **Mentaalinen koutsaus**: tekniikkavinkit, palautuminen, riskimanagement`,
+    ``,
+    `Älä myöntäile — jos blokki-toteutus oli puutteellinen, sano se rehellisesti.`,
+  ].filter(Boolean).join("\n");
+
+  return {
+    markdown, json, prompt,
+    meta: {
+      mesocycleType: mesocycle.type,
+      currentWeek: wk,
+      blockLabel, nextBlockLabel,
+      generatedAt: new Date().toISOString(),
+      sessionsAnalyzed: totalSessions,
+      anomaliesFound: anomalies.length,
+    },
+  };
+}
+
 function buildMarkdownNarrative({ profile, block, currentWeek, sessionAnalysis, e1rmTrends, trends, anomalies, aggregates, nextBlockPrescribed }) {
   const lines = [];
   lines.push(`# AI-Block-Tuning -analyysi — ${block.prevBlock} → ${block.nextBlock} (vk ${currentWeek})`);
@@ -5560,6 +5835,8 @@ export {
   upperBodyMpvReadiness,
   // v4.34.0 AI-Block-Tuning
   generateBlockTuningPackage,
+  // v4.34.48 — yleinen versio, toimii kaikille ei-streetlifting-mesoille
+  generateGenericBlockTuningPackage,
   generateEndOfCycleTuningPackage,
   combineReadiness,
   // Mesocycle

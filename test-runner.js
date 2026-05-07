@@ -25,6 +25,8 @@ import {
   computeRateLimitAnchor,
   // v4.34.44: cfg-baseline-resolveri (TASO 1: movementCfg, TASO 2: streetliftingConfig)
   getCfgBaselineForMovement,
+  // v4.34.48: generic AI-block-tuning kaikille ei-streetlifting-mesoille
+  generateGenericBlockTuningPackage,
 } from "./engine.js";
 
 import {
@@ -1393,6 +1395,113 @@ async function testGetCfgBaselineForMovement() {
   assertEqual(r6.source, 'streetliftingConfig', "T6: Takakyykky source = streetliftingConfig");
 }
 
+// v4.34.48 — generic AI-block-tuning kaikille ei-streetlifting-mesoille.
+// Atletti: "Sinä treenaat 16 vk streetliftingiä, kaverisi voi tehdä custom-mesoa
+// — molemmat tarvitsevat AI-block-tuningin omille mesotyypeilleen."
+// Testaa että:
+//   - T1: Streetlifting_16w delegoi alkuperäiseen funktioon
+//   - T2: Mesosyklissä joka ei ole deload-viikolla → palauttaa virheen + seuraavan deload-vinkin
+//   - T3: Deload-viikolla custom-meso aktivoituu, sisältää aggregaatit ja markdown-narratiivin
+//   - T4: KAVERI-FIXTURE — Maija (penkki+mave, 1RM-kalibrointi, ei velocity-mittaria) saa
+//         täydellisen output-paketin (markdown + json + prompt) ilman virheitä
+function testGenericBlockTuningPackage() {
+  // Apuri: rakenna minimal mesocycle weekDefs + weekPlans + sessions
+  const mkMeso = (type, weekDefs, weekPlans, extra = {}) => ({
+    mesocycleId: `test-${type}-${Date.now()}`,
+    type,
+    startDateISO: "2026-01-05", // monday
+    weekCount: weekDefs.length,
+    weekDefs,
+    weekPlans,
+    ...extra,
+  });
+
+  // T1: Streetlifting delegoi alkuperäiseen funktioon
+  const slMeso = mkMeso("streetlifting_16w",
+    Array.from({length: 16}, (_, i) => ({ week: i + 1, deltaPctBase: i === 3 ? -0.25 : 0.025 })),
+    Array.from({length: 16}, (_, i) => ({ week: i + 1, days: [] })),
+    { streetliftingConfig: { calibration: { leukaExtKg: 88, dippiExtKg: 80, kyykkyExtKg: 175 } } }
+  );
+  const r1 = generateGenericBlockTuningPackage({
+    mesocycle: slMeso, sessions: [], allSets: [], measurements: [], prs: [],
+    currentWeekNum: 5, settings: { bodyweightKg: 91 }, decisionTraces: [],
+  });
+  // Streetlifting vk 5 ei ole deload (vain vk 4, 8, 12) → error vagosta alkuperäisestä funktiosta
+  assert(r1.error && r1.error.includes("deload-viikoilla"),
+    "T1: Streetlifting_16w delegoi alkuperäiseen funktioon (vk 5 → ei deload, error returned)");
+
+  // T2: Custom-meso, current vk 2, deload vk 4 → ei aktivoitu
+  const customMeso = mkMeso("custom",
+    [{ week: 1, deltaPctBase: 0 }, { week: 2, deltaPctBase: 0.025 }, { week: 3, deltaPctBase: 0.05 }, { week: 4, deltaPctBase: -0.25 }],
+    Array.from({length: 4}, (_, i) => ({ week: i + 1, days: [{ dayOfWeek: 1, label: `Vk${i+1}`, dayType: "heavy",
+      slots: [{ role: "primary", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 4, reps: 6, targetVx: 3 }] }] }))
+  );
+  const r2 = generateGenericBlockTuningPackage({
+    mesocycle: customMeso, sessions: [], allSets: [], measurements: [], prs: [],
+    currentWeekNum: 2, settings: { bodyweightKg: 80 }, decisionTraces: [],
+  });
+  assert(r2.error, "T2: Vk 2 (ei deload) → error returned");
+  assert(r2.error.includes("vk 4"), "T2: error vinkkaa seuraavan deloadin (vk 4)");
+
+  // T3: Custom-meso vk 4 deloadissa → aktivoitu, sisältää aggregaatit
+  const r3 = generateGenericBlockTuningPackage({
+    mesocycle: customMeso, sessions: [], allSets: [], measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 80 }, decisionTraces: [],
+  });
+  assert(!r3.error, "T3: Vk 4 (deload) → ei error");
+  assert(r3.markdown && r3.markdown.includes("AI-Block-Tuning"), "T3: markdown sisältää otsikon");
+  assert(r3.json && r3.json.completedBlock, "T3: json.completedBlock olemassa");
+  assertEqual(r3.json.completedBlock.weeks.join(","), "1,2,3", "T3: completedBlock.weeks = vk 1-3");
+  assert(r3.prompt && r3.prompt.includes("AI-Block-Tuning analyysipyyntö"), "T3: prompt sisältää AI-pyynnön");
+
+  // T4: KAVERI-FIXTURE — Maija (penkki+mave, ei velocity-mittaria, 130kg penkki, 200kg mave)
+  const maijaMeso = mkMeso("custom",
+    [{ week: 1, deltaPctBase: 0 }, { week: 2, deltaPctBase: 0.025 }, { week: 3, deltaPctBase: 0.05 }, { week: 4, deltaPctBase: -0.25 }],
+    [
+      { week: 1, days: [
+        { dayOfWeek: 1, label: "MA Penkki", dayType: "heavy", slots: [{ role: "primary", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 4, reps: 5, targetVx: 2 }] },
+        { dayOfWeek: 4, label: "TO Mave", dayType: "heavy", slots: [{ role: "primary", category: "alaraaja", defaultMovementName: "Maastaveto", sets: 3, reps: 5, targetVx: 2 }] },
+      ]},
+      { week: 2, days: [
+        { dayOfWeek: 1, label: "MA Penkki", dayType: "heavy", slots: [{ role: "primary", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 4, reps: 5, targetVx: 2 }] },
+        { dayOfWeek: 4, label: "TO Mave", dayType: "heavy", slots: [{ role: "primary", category: "alaraaja", defaultMovementName: "Maastaveto", sets: 3, reps: 5, targetVx: 2 }] },
+      ]},
+      { week: 3, days: [] },
+      { week: 4, days: [] },
+    ],
+    {
+      // Atletin Maija on käyttänyt v4.34.44 1RM-kalibrointia
+      movementCfg: {
+        "Penkkipunnerrus": { e1rmExternal: 130, dateISO: "2026-01-05", source: "manual-calibration" },
+        "Maastaveto":      { e1rmExternal: 200, dateISO: "2026-01-05", source: "manual-calibration" },
+      },
+    }
+  );
+  const maijaSets = [
+    { sessionId: "m-s1", movementName: "Penkkipunnerrus", setRole: "primary", externalLoadKg: 100, reps: 5, actualVx: 3, targetVx: 2, targetReps: 5, dateISO: "2026-01-05", timestamp: "2026-01-05T10:00:00" },
+    { sessionId: "m-s1", movementName: "Penkkipunnerrus", setRole: "primary", externalLoadKg: 100, reps: 5, actualVx: 2, targetVx: 2, targetReps: 5, dateISO: "2026-01-05", timestamp: "2026-01-05T10:05:00" },
+    { sessionId: "m-s2", movementName: "Maastaveto", setRole: "primary", externalLoadKg: 160, reps: 5, actualVx: 3, targetVx: 2, targetReps: 5, dateISO: "2026-01-08", timestamp: "2026-01-08T10:00:00" },
+  ];
+  const maijaSessions = [
+    { sessionId: "m-s1", dateISO: "2026-01-05", label: "MA Penkki", dayType: "heavy" },
+    { sessionId: "m-s2", dateISO: "2026-01-08", label: "TO Mave", dayType: "heavy" },
+  ];
+  const r4 = generateGenericBlockTuningPackage({
+    mesocycle: maijaMeso, sessions: maijaSessions, allSets: maijaSets,
+    measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 75 }, // Maijan paino
+    decisionTraces: [],
+  });
+  assert(!r4.error, "T4: Maija fresh-deload → ei error");
+  assert(r4.markdown.includes("Penkkipunnerrus"), "T4: Maijan markdown listaa Penkkipunnerruksen");
+  assert(r4.markdown.includes("Maastaveto"), "T4: Maijan markdown listaa Maastavedon");
+  assert(r4.markdown.includes("130"), "T4: Maijan markdown sisältää 1RM 130 (penkki)");
+  assert(r4.markdown.includes("200"), "T4: Maijan markdown sisältää 1RM 200 (mave)");
+  assert(r4.json.profile.movementCfg.Penkkipunnerrus.e1rmExternal === 130, "T4: json sisältää movementCfg-kalibroinnin");
+  assertEqual(r4.json.completedBlock.aggregates.totalSessions, 2, "T4: 2 sessiota löydetty");
+  assert(r4.prompt.includes("Maastaveto") || r4.prompt.includes("Penkkipunnerrus"), "T4: AI-prompt sisältää atletin 1RM-kalibroinnit");
+}
+
 async function testBackupRoundtrip() {
   // This test requires IndexedDB — skip if not available
   try {
@@ -1527,6 +1636,8 @@ export async function runTests() {
   testRateLimitAnchorDateISO();
   // v4.34.44: hybridi cfg-baseline (movementCfg + streetliftingConfig)
   await testGetCfgBaselineForMovement();
+  // v4.34.48: generic AI-block-tuning kaikille ei-streetlifting-mesoille (kaveri-fixture)
+  testGenericBlockTuningPackage();
   await testRecommendScenarios();
   await testBackupRoundtrip();
   // v4.34.45: mesosykli-historia + uudelleen-aktivointi

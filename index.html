@@ -888,6 +888,8 @@ import {
   predictE1RMEndOfProgram, computeStreetliftingFinalProjection,
   // v4.34.0 AI-Block-Tuning
   generateBlockTuningPackage,
+  // v4.34.48 — yleinen versio (toimii kaikille ei-streetlifting-mesoille)
+  generateGenericBlockTuningPackage,
   // v4.34.27 End-of-Cycle Tuning
   generateEndOfCycleTuningPackage,
   // v4.34.28 Vk 14 peaking decision-tree
@@ -8263,16 +8265,43 @@ function renderSettingsView() {
     </div>
 
     ${(() => {
-      // v4.34.0 AI-Block-Tuning -kortti — näkyy vain streetlifting_16w-mesosyklissä
+      // v4.34.0 AI-Block-Tuning -kortti
+      // v4.34.48: laajennettu kaikille mesotyypeille — streetlifting_16w käyttää
+      // hardkoodattua deload-mappia, muut weekDef.deltaPctBase < 0 -heuristiikkaa.
       const meso = state.mesocycle;
-      if (!meso || meso.type !== "streetlifting_16w") return "";
+      if (!meso) return "";
       const rec = state.recommendation;
       const wk = typeof rec?.weekNum === "number" ? rec.weekNum : null;
-      const deloadWeeks = [4, 8, 12];
-      const isDeloadWeek = wk && deloadWeeks.includes(wk);
-      const nextDeload = wk ? deloadWeeks.find(d => d > wk) : 4;
-      const blockMap = { 4: "Foundation → Strength", 8: "Strength → Intensity", 12: "Intensity → Peaking" };
-      const transition = isDeloadWeek ? blockMap[wk] : null;
+
+      let isDeloadWeek = false;
+      let transition = null;
+      let nextDeloadWk = null;
+      let activationHint = "";
+
+      if (meso.type === "streetlifting_16w") {
+        const deloadWeeks = [4, 8, 12];
+        isDeloadWeek = wk && deloadWeeks.includes(wk);
+        nextDeloadWk = wk ? deloadWeeks.find(d => d > wk) : 4;
+        const blockMap = { 4: "Foundation → Strength", 8: "Strength → Intensity", 12: "Intensity → Peaking" };
+        transition = isDeloadWeek ? blockMap[wk] : null;
+        activationHint = `aktivoituu vain deload-viikoilla (vk 4, 8, 12 — block-transitiot)`;
+      } else {
+        // Yleinen mesotyyppi: deload = weekDef.deltaPctBase < 0
+        const weekDefs = meso.weekDefs || [];
+        const wd = weekDefs.find(w => w.week === wk);
+        isDeloadWeek = wd && wd.deltaPctBase < 0;
+        const nextWd = weekDefs.find(w => w.week > (wk || 0) && w.deltaPctBase < 0);
+        nextDeloadWk = nextWd?.week || null;
+        if (isDeloadWeek) {
+          // Etsi edellinen ja seuraava blokki
+          const prevDeloads = weekDefs.filter(w => w.week < wk && w.deltaPctBase < 0).map(w => w.week);
+          const blockStart = prevDeloads.length > 0 ? prevDeloads[prevDeloads.length - 1] + 1 : 1;
+          const blockEnd = nextWd ? nextWd.week - 1 : (meso.weekCount || wk);
+          transition = `Vk ${blockStart}-${wk - 1} → Vk ${wk + 1}-${blockEnd}`;
+        }
+        activationHint = `aktivoituu deload-viikoilla (joiden kuorma laskee, deltaPctBase &lt; 0)`;
+      }
+
       return `<div class="card" style="border:1px solid rgba(99, 102, 241, 0.4); background: linear-gradient(135deg, rgba(99,102,241,0.04), rgba(168,85,247,0.04))">
         <div class="card-title">🤖 AI-Block-Tuning <span style="font-size:10px;font-weight:400;color:var(--muted)">v4.34.0</span></div>
         <div class="muted" style="font-size:12px;margin-bottom:10px;line-height:1.5">
@@ -8281,12 +8310,12 @@ function renderSettingsView() {
         ${isDeloadWeek
           ? `<div style="padding:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.4);border-radius:6px;margin-bottom:10px">
               <div style="font-size:13px;font-weight:600;color:var(--ok)">✓ Vk ${wk} deload — AI-Block-Tuning aktiivinen</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:2px">Block-transition: <b>${transition}</b></div>
+              ${transition ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">Blokki-siirtymä: <b>${transition}</b></div>` : ""}
             </div>
             <button class="btn btn-primary btn-full" id="btn-generate-block-tuning">🤖 Generoi AI-analyysipaketti</button>`
           : `<div style="padding:10px;background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.3);border-radius:6px">
-              <div style="font-size:12px;color:var(--muted)">AI-Block-Tuning aktivoituu vain deload-viikoilla (vk 4, 8, 12 — block-transitiot).</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px">Olet vk ${wk || "?"}/16. Seuraava deload: <b>vk ${nextDeload || "kisaviikko"}</b>.</div>
+              <div style="font-size:12px;color:var(--muted)">AI-Block-Tuning ${activationHint}.</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">Olet vk ${wk || "?"}/${meso.weekCount || "?"}. ${nextDeloadWk ? `Seuraava deload: <b>vk ${nextDeloadWk}</b>.` : "Ei tulevia deload-viikkoja tässä mesosyklissä."}</div>
             </div>`
         }
         <div id="block-tuning-history" style="margin-top:10px"></div>
@@ -9489,13 +9518,18 @@ function bind() {
   });
 
   // v4.34.0: AI-Block-Tuning generaattori
+  // v4.34.48: tukee myös ei-streetlifting-mesoja (generateGenericBlockTuningPackage)
   const aiTuningBtn = $("#btn-generate-block-tuning");
   if (aiTuningBtn) aiTuningBtn.addEventListener("click", async () => {
     try {
       const meso = state.mesocycle;
       const rec = state.recommendation;
       const wk = typeof rec?.weekNum === "number" ? rec.weekNum : null;
-      const pkg = generateBlockTuningPackage({
+      // Streetlifting_16w käyttää alkuperäistä, muut yleistä versiota
+      const tuningFn = (meso?.type === "streetlifting_16w")
+        ? generateBlockTuningPackage
+        : generateGenericBlockTuningPackage;
+      const pkg = tuningFn({
         mesocycle: meso,
         sessions: state.sessions,
         allSets: state.allSets,
