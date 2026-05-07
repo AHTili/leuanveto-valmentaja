@@ -1016,6 +1016,9 @@ async function init() {
     state.mesocycle = createDefaultMesocycle(todayISO());
     assignVariantRotation(state.mesocycle.weekPlans);
     await saveMesocycle(state.mesocycle);
+    // v4.34.46: aktivoi heti uusi default niin ettei seuraavalla init-kierroksella
+    // luoda jälleen uutta default-mesoa (juurisyy 44 orphan-default-tilanteelle).
+    await setActiveMesocycle(state.mesocycle.mesocycleId);
   } else {
     // v4.30.2: AUTO-REBUILD jos ohjelma on päivittynyt sitten mesocyclen luomisen
     if (state.mesocycle.type === "streetlifting_16w" &&
@@ -6290,10 +6293,23 @@ function renderHistory() {
     : "";
 
   // v4.34.45: Ohjelmat-sektio Historia-välilehden ylälaitaan.
-  // Listaa kaikki tallennetut mesosyklit (aktiivinen + arkistoidut), näyttää
-  // sessio-määrän + viikko-statuksen + aktivointimahdollisuuden. Tämä takaa
-  // että vanhat ohjelmat eivät katoa näkyvistä ohjelman vaihdon yhteydessä.
-  const allMesos = (state.allMesocycles || []).slice().sort((a, b) => {
+  // v4.34.46: suodata orphan-mesot (ei sessioita + ei aktiivinen) oletuksena pois,
+  // näytä erillinen siivoa-nappi jos niitä on. Atletilla saattaa olla aikojen
+  // saatossa kerääntynyt 10+ autocreated default-mesoa — ne eivät ole sisältöä,
+  // vaan init-vaiheen sivuvaikutuksia jotka pitää voida puhdistaa.
+  const allMesosRaw = (state.allMesocycles || []).slice();
+  const sessionCountByMesocycleId = new Map();
+  for (const s of (state.sessions || [])) {
+    if (!s.mesocycleId) continue;
+    sessionCountByMesocycleId.set(s.mesocycleId, (sessionCountByMesocycleId.get(s.mesocycleId) || 0) + 1);
+  }
+  const isOrphan = (m) => {
+    const isActive = m.mesocycleId === state.mesocycle?.mesocycleId;
+    const sessionCount = sessionCountByMesocycleId.get(m.mesocycleId) || 0;
+    return !isActive && sessionCount === 0;
+  };
+  const orphanMesos = allMesosRaw.filter(isOrphan);
+  const visibleMesos = allMesosRaw.filter(m => !isOrphan(m)).sort((a, b) => {
     // Aktiivinen ensin, muut startDateISO desc
     const aActive = a.mesocycleId === state.mesocycle?.mesocycleId ? 1 : 0;
     const bActive = b.mesocycleId === state.mesocycle?.mesocycleId ? 1 : 0;
@@ -6301,36 +6317,46 @@ function renderHistory() {
     return (b.startDateISO || "").localeCompare(a.startDateISO || "");
   });
 
-  const mesocyclesSectionHTML = allMesos.length === 0 ? "" : `
+  const orphanCleanupHTML = orphanMesos.length > 0 ? `
+    <div style="margin-top:8px;padding:8px 10px;background:rgba(245,158,11,0.08);border-left:3px solid #f59e0b;border-radius:4px;font-size:11px;line-height:1.5">
+      <div style="margin-bottom:6px">📦 <b>${orphanMesos.length} tyhjää ohjelmaa</b> piilotettu (luotu automaattisesti, ei sessioita).</div>
+      <button class="btn btn-sm btn-outline" id="btn-cleanup-orphan-mesos" style="font-size:11px;padding:4px 10px">🧹 Siivoa tyhjät</button>
+    </div>
+  ` : "";
+
+  const mesocyclesSectionHTML = (visibleMesos.length === 0 && orphanMesos.length === 0) ? "" : `
     <div class="card" style="margin-bottom:10px;padding:10px">
-      <div style="font-weight:600;font-size:13px;margin-bottom:8px">🎯 Ohjelmat (${allMesos.length})</div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        ${allMesos.map(m => {
-          const tpl = MESOCYCLE_TEMPLATES.find(t => t.id === m.type);
-          const icon = tpl?.icon || "📋";
-          const label = tpl?.label || m.type || "Tuntematon";
-          const isActive = m.mesocycleId === state.mesocycle?.mesocycleId;
-          const sessionCount = state.sessions.filter(s => s.mesocycleId === m.mesocycleId).length;
-          const weekNum = isActive
-            ? getMesocycleWeek(m, todayISO())
-            : null;
-          const weekStr = weekNum != null && weekNum > 0
-            ? `Vk ${weekNum}/${m.weekCount || "?"}`
-            : (sessionCount > 0 ? "Arkistoitu" : "Ei aloitettu");
-          const startStr = m.startDateISO ? ` · ${formatDateShort(m.startDateISO)}` : "";
-          return `<div class="card" style="cursor:pointer;padding:8px 10px;${isActive ? 'border-left:3px solid var(--ok);background:rgba(34,197,94,0.04)' : 'opacity:0.85'}" data-open-mesocycle="${m.mesocycleId}">
-            <div class="flex-between" style="align-items:center">
-              <div style="flex:1;min-width:0">
-                <div style="font-weight:600;font-size:13px">${icon} ${label}</div>
-                <div class="muted" style="font-size:11px;margin-top:2px">${weekStr} · ${sessionCount} sessio${sessionCount === 1 ? "" : "ta"}${startStr}</div>
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px">🎯 Ohjelmat (${visibleMesos.length})</div>
+      ${visibleMesos.length === 0 ? '<div class="muted" style="font-size:12px;padding:6px 0">Ei ohjelmia.</div>' : `
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${visibleMesos.map(m => {
+            const tpl = MESOCYCLE_TEMPLATES.find(t => t.id === m.type);
+            const icon = tpl?.icon || "📋";
+            const label = tpl?.label || m.type || "Tuntematon";
+            const isActive = m.mesocycleId === state.mesocycle?.mesocycleId;
+            const sessionCount = sessionCountByMesocycleId.get(m.mesocycleId) || 0;
+            const weekNum = isActive
+              ? getMesocycleWeek(m, todayISO())
+              : null;
+            const weekStr = weekNum != null && weekNum > 0
+              ? `Vk ${weekNum}/${m.weekCount || "?"}`
+              : (sessionCount > 0 ? "Arkistoitu" : "Ei aloitettu");
+            const startStr = m.startDateISO ? ` · ${formatDateShort(m.startDateISO)}` : "";
+            return `<div class="card" style="cursor:pointer;padding:8px 10px;${isActive ? 'border-left:3px solid var(--ok);background:rgba(34,197,94,0.04)' : 'opacity:0.85'}" data-open-mesocycle="${m.mesocycleId}">
+              <div class="flex-between" style="align-items:center">
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:600;font-size:13px">${icon} ${label}</div>
+                  <div class="muted" style="font-size:11px;margin-top:2px">${weekStr} · ${sessionCount} sessio${sessionCount === 1 ? "" : "ta"}${startStr}</div>
+                </div>
+                ${isActive
+                  ? `<span class="chip chip-green" style="font-size:10px;padding:2px 8px">🟢 Aktiivinen</span>`
+                  : `<span class="chip" style="font-size:10px;padding:2px 8px;background:rgba(255,255,255,0.06)">📦 Arkistoitu</span>`}
               </div>
-              ${isActive
-                ? `<span class="chip chip-green" style="font-size:10px;padding:2px 8px">🟢 Aktiivinen</span>`
-                : `<span class="chip" style="font-size:10px;padding:2px 8px;background:rgba(255,255,255,0.06)">📦 Arkistoitu</span>`}
-            </div>
-          </div>`;
-        }).join("")}
-      </div>
+            </div>`;
+          }).join("")}
+        </div>
+      `}
+      ${orphanCleanupHTML}
     </div>
   `;
 
@@ -8982,6 +9008,39 @@ function bind() {
     });
   });
 
+  // v4.34.46: Siivoa-nappi orphan-mesoille (ei sessioita + ei aktiivinen).
+  // Ennen poistoa vahvistus joka kertoo kuinka monta poistetaan ja mitä säilyy.
+  const cleanupOrphanBtn = $("#btn-cleanup-orphan-mesos");
+  if (cleanupOrphanBtn) cleanupOrphanBtn.addEventListener("click", async () => {
+    const sessionCounts = new Map();
+    for (const s of (state.sessions || [])) {
+      if (!s.mesocycleId) continue;
+      sessionCounts.set(s.mesocycleId, (sessionCounts.get(s.mesocycleId) || 0) + 1);
+    }
+    const orphans = (state.allMesocycles || []).filter(m =>
+      m.mesocycleId !== state.mesocycle?.mesocycleId &&
+      (sessionCounts.get(m.mesocycleId) || 0) === 0
+    );
+    if (orphans.length === 0) { showToast("Ei tyhjiä ohjelmia siivottavaksi", "ok"); return; }
+    const ok = confirm(
+      `Siivotaanko ${orphans.length} tyhjää ohjelmaa?\n\n` +
+      `Nämä ovat autocreated default-mesoja jotka eivät sisällä yhtäkään sessiota.\n\n` +
+      `Aktiivinen ohjelma ja kaikki sessio-historian sisältävät ohjelmat säilyvät.\n\n` +
+      `Tätä ei voi perua.`
+    );
+    if (!ok) return;
+    try {
+      // cleanupOrphanMesocycles ilman preserveUserChoices = poistaa orphan-mesot
+      const result = await cleanupOrphanMesocycles(state.mesocycle?.mesocycleId);
+      state.allMesocycles = await getAllMesocycles();
+      showToast(`🧹 Poistettu ${result.deleted} tyhjää ohjelmaa`, "ok", 4000);
+      render();
+    } catch (e) {
+      console.error("[LeVe] cleanupOrphanMesocycles failed:", e);
+      showToast("Siivous epäonnistui: " + e.message, "bad", 5000);
+    }
+  });
+
   // History: suodattimet
   const histMovSel = $("#hist-filter-movement");
   if (histMovSel) histMovSel.addEventListener("change", () => {
@@ -11234,6 +11293,11 @@ function showMovementDetail(mov) {
     detailDiv.classList.add("hidden");
     detailDiv.innerHTML = "";
   });
+
+  // v4.34.46: vieritä detail-kortin kohdalle automaattisesti. Ilman tätä kortti
+  // aukeaa pitkän liikelistan alle ja käyttäjä luulee ettei nappi tee mitään.
+  // Käytä smooth-scrollia ja sijoita kortti viewportin yläosaan (block:'start').
+  setTimeout(() => detailDiv.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
 }
 
 // ═══════════════════════════════════════════════════════════════

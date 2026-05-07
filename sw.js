@@ -1,20 +1,22 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.45 — OHJELMIEN HISTORIA + UUDELLEEN-AKTIVOINTI (Vaihe 1.5/3):
-// Atletin huoli: "Ei riskiä että ohjelma vaihtuisi ja alkuperäinen katoaisi."
-// Historia-välilehdelle lisätty Ohjelmat-sektio joka listaa kaikki tallennetut
-// mesosyklit (aktiivinen + arkistoidut). Klikkaus avaa detail-modaalin: nimi,
-// alkupäivä, viikko-status, sessio-määrä, kalibrointiarvot, CFG-DRIFT-historia.
-// Modaali sisältää "Aktivoi tämä uudelleen" -painikkeen — yhden klikkauksen
-// palautus vanhaan ohjelmaan. Vaihda ohjelma -toiminto pyytää nyt vahvistuksen
-// ja säilyttää vanhat ohjelmat (preserveUserChoices=true). Uusi appMeta.
-// activeMesocycleId-kenttä eksplisiittistää aktivoinnin (ei riipu enää session-
-// historian heuristiikasta). 4 uutta testiä test-runneriin (260/260).
-// SCHEMA_VERSION pysyy 4 — kaverin data säilyy päivityksessä bit-perfect.
-//
-// Atletti 2026-05-07: "Eikö olisi mahtavaa jos historiat-välilehdellä säilyisi
-// kaikki toteutetut ohjelmat sekä käynnissä olevat?"
+// LeVe AI v4.34.46 — OHJELMAT-NÄKYMÄN PIKAKORJAUKSET (Vaihe 1.6/3):
+// Atletin palaute v4.34.45-pushin jälkeen: "1) miksi liikepankin historia-nappi
+// ei toimi? 2) perusjaksot (44 kpl) on tyhjiä ja turhia ohjelmia."
+// (1) Liikepankin 📊-painike avasi detail-kortin sivun pohjalle piiloon
+// liikelistan alle — käyttäjä luuli ettei nappi tee mitään. KORJAUS:
+// scrollIntoView({ behavior: 'smooth', block: 'start' }) detail-divin avauksen
+// jälkeen, viewporttiin nyt automaattisesti.
+// (2) 44 autocreated default-mesoa olivat kerääntyneet aikojen saatossa init-
+// vaiheen sivuvaikutuksena (createDefaultMesocycle joka init jossa active=null
+// → save). Vain "Vaihda ohjelma" -toiminto siivosi orphanit. Aiemmin nämä
+// olivat näkymättömissä, mutta v4.34.45:n Ohjelmat-sektio paljasti kaikki.
+// KORJAUKSET 1.6b-d: (b) Ohjelmat-näkymä suodattaa orphan-mesot pois
+// oletuksena (näytä vain merkitykselliset). (c) "🧹 Siivoa tyhjät" -nappi
+// jolla atletti voi puhdistaa orphanit yhdellä klikkauksella + vahvistus.
+// (d) Init-vaiheessa autocreated default aktivoidaan heti setActiveMesocycle:lla
+// → estää uuden orphan-tilanteen kerääntymisen tulevaisuudessa.
 
-const APP_VERSION = "4.34.45";
+const APP_VERSION = "4.34.46";
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
 
 // v4.34.9: Kuuntele SKIP_WAITING-message-eventtia, jolla pää-säie voi pakottaa
