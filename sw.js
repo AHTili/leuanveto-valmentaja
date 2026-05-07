@@ -1,5 +1,15 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.46 — OHJELMAT-NÄKYMÄN PIKAKORJAUKSET (Vaihe 1.6/3):
+// LeVe AI v4.34.47 — LIIKEPANKKI-MODAALI WIZARDIIN (Vaihe 2-Lite):
+// Wizardin Päälikkeet-valinta tarjosi vain 8 hardkoodattua liikettä — 122
+// liikepankin liikettä jäi piiloon. Lisätty "+ Lisää muu liike" -chip joka
+// avaa showMovementBankModal:in. Modaalissa: tekstihaku + kategoria-suodatus
+// (9 kategoriaa) + lista (max 80 näkyvää, lisää-vinkki jos enemmän).
+// Klikkaus liikkeelle lisää sen wizardin extraPrimaries-listaan + valinnan-
+// listaan. Säilyttää max-3-päälike-rajan. State.movements luetaan suoraan
+// (122 liikettä, IDB-pohjainen).
+// 260/260 testiä OK, ei regressiota.
+//
+// v4.34.46 (edellinen) — OHJELMAT-NÄKYMÄN PIKAKORJAUKSET (Vaihe 1.6/3):
 // Atletin palaute v4.34.45-pushin jälkeen: "1) miksi liikepankin historia-nappi
 // ei toimi? 2) perusjaksot (44 kpl) on tyhjiä ja turhia ohjelmia."
 // (1) Liikepankin 📊-painike avasi detail-kortin sivun pohjalle piiloon

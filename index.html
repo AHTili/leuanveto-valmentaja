@@ -1588,6 +1588,133 @@ function showGenericCalibrationModal(primaries, defaultBw = 80) {
 }
 
 /**
+ * v4.34.47 — Liikepankki-modaali. Avaa modaalin jossa atletti voi etsiä ja
+ * valita liikkeen 122-liikkeisestä liikepankista. Käytetään wizardista kun
+ * käyttäjä haluaa lisätä päälikkeen joka EI ole hardkoodattujen 8 valinnan
+ * joukossa (esim. "Romanian DL", "Etukyykky", "Larsen press").
+ *
+ * @param {Array} movements - state.movements (122 liikettä, kategorisoitu)
+ * @param {Set<string>} excludeNames - jo valitut liikkeet (älä näytä)
+ * @returns {Promise<{ name, category } | null>} valittu liike tai null peruutus
+ */
+function showMovementBankModal(movements, excludeNames = new Set()) {
+  return new Promise(resolve => {
+    closeModal();
+
+    const CATEGORY_LABELS = {
+      vertikaaliveto: "Vertikaaliveto",
+      horisontaaliveto: "Horisontaaliveto",
+      hauisfleksio: "Hauisfleksio",
+      vertikaalityöntö: "Vertikaalityöntö",
+      horisontaalityöntö: "Horisontaalityöntö",
+      ojentajaekstensio: "Ojentajaekstensio",
+      core: "Core",
+      alaraaja: "Alaraaja",
+      muu: "Muu",
+    };
+    const CATEGORY_ICONS = {
+      vertikaaliveto: "🏋️", horisontaaliveto: "↔️",
+      hauisfleksio: "💪", vertikaalityöntö: "⬆️",
+      horisontaalityöntö: "💪", ojentajaekstensio: "🔽",
+      core: "🌀", alaraaja: "🦵", muu: "🔹",
+    };
+
+    // Filtteröi pois jo valitut + ei-preset (käyttäjän omat lisäykset säilyvät erikseen)
+    const available = movements
+      .filter(m => !excludeNames.has(m.name))
+      .sort((a, b) => a.name.localeCompare(b.name, "fi"));
+
+    // Suodatusstate
+    const st = {
+      query: "",
+      selectedCategories: new Set(), // tyhjä = kaikki
+    };
+
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal-sheet" style="max-width:520px;max-height:90vh;display:flex;flex-direction:column">
+        <div class="modal-handle"></div>
+        <div class="modal-title">📚 Valitse liike liikepankista</div>
+        <div style="padding:0 4px">
+          <input type="text" id="mb-search" placeholder="🔍 Etsi liikettä…" style="width:100%;font-size:14px">
+          <div id="mb-cat-chips" class="wiz-chips" style="margin-top:8px;margin-bottom:8px"></div>
+        </div>
+        <div id="mb-list" style="flex:1;overflow-y:auto;padding:0 4px;min-height:200px"></div>
+        <div style="padding:8px 4px 4px 4px">
+          <button class="btn btn-outline btn-full" data-modal-cancel>Peruuta</button>
+        </div>
+      </div>
+      <style>
+        #mb-list .mb-row { padding:8px 10px; border-bottom:1px solid var(--border); cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s; }
+        #mb-list .mb-row:hover { background:rgba(79,140,255,0.08); }
+        #mb-list .mb-row:last-child { border-bottom:none; }
+      </style>`;
+    document.body.appendChild(overlay);
+
+    // Kategoria-chipit (kaikki kategoriat joilla on liikkeitä)
+    const cats = [...new Set(available.map(m => m.category))].sort();
+    const catChipsCont = overlay.querySelector("#mb-cat-chips");
+    catChipsCont.innerHTML = cats.map(c => {
+      const count = available.filter(m => m.category === c).length;
+      return `<div class="wiz-chip" data-cat="${c}">${CATEGORY_ICONS[c] || "🔹"} ${CATEGORY_LABELS[c] || c} (${count})</div>`;
+    }).join("");
+    catChipsCont.querySelectorAll(".wiz-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        const cat = chip.dataset.cat;
+        if (st.selectedCategories.has(cat)) st.selectedCategories.delete(cat);
+        else st.selectedCategories.add(cat);
+        chip.classList.toggle("selected");
+        renderList();
+      });
+    });
+
+    const renderList = () => {
+      const q = st.query.toLowerCase().trim();
+      const cats = st.selectedCategories;
+      const filtered = available.filter(m => {
+        if (cats.size > 0 && !cats.has(m.category)) return false;
+        if (q && !m.name.toLowerCase().includes(q)) return false;
+        return true;
+      });
+      const listCont = overlay.querySelector("#mb-list");
+      if (filtered.length === 0) {
+        listCont.innerHTML = `<div class="muted" style="padding:20px;text-align:center;font-size:13px">Ei tuloksia hakuehdoilla.</div>`;
+        return;
+      }
+      listCont.innerHTML = filtered.slice(0, 80).map(m => `
+        <div class="mb-row" data-mov-name="${m.name.replace(/"/g, '&quot;')}" data-mov-cat="${m.category}">
+          <div>
+            <div style="font-size:13px;font-weight:600">${m.name}</div>
+            <div class="muted" style="font-size:11px">${CATEGORY_LABELS[m.category] || m.category}</div>
+          </div>
+          <span style="color:var(--acc);font-size:18px">+</span>
+        </div>
+      `).join("") + (filtered.length > 80 ? `<div class="muted" style="text-align:center;font-size:11px;padding:8px">…ja ${filtered.length - 80} liikettä lisää (tarkenna hakua)</div>` : "");
+      // Kytke klikkaajat
+      listCont.querySelectorAll(".mb-row").forEach(row => {
+        row.addEventListener("click", () => {
+          const name = row.dataset.movName;
+          const category = row.dataset.movCat;
+          closeModal();
+          resolve({ name, category });
+        });
+      });
+    };
+    renderList();
+
+    overlay.querySelector("#mb-search").addEventListener("input", (e) => {
+      st.query = e.target.value;
+      renderList();
+    });
+
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); resolve(null); });
+    overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
+    setTimeout(() => overlay.querySelector("#mb-search")?.focus(), 50);
+  });
+}
+
+/**
  * Program wizard modal (v4.27) — käyttäjän räätälöidyn mesosyklin rakennuskysely.
  *
  * 5 kysymystä yhdellä ruudulla:
@@ -1623,6 +1750,9 @@ function showProgramWizardModal() {
       daysPerWeek: 3,
       weekCount: 4,
       recoveryCapacity: "keski",
+      // v4.34.47: liikepankki-valinnoista lisätyt päälikkeet (objekteja { name, category, icon, shortLabel })
+      // — lisätään WIZARD_PRIMARY_OPTIONS-pohjaan dynaamisesti renderöityessä.
+      extraPrimaries: [],
     };
 
     const overlay = document.createElement("div");
@@ -1728,10 +1858,40 @@ function showProgramWizardModal() {
       overlay.querySelector("#wiz-goal-desc").textContent = GOAL_META[st.goal].desc;
 
       // Primaries (multi-select, max 3)
+      // v4.34.47: yhdistä WIZARD_PRIMARY_OPTIONS + atletin liikepankki-valinnat
+      // + erityinen "+ Lisää muu liike" -chip joka avaa liikepankki-modaalin.
+      const allPrimaryItems = [
+        ...WIZARD_PRIMARY_OPTIONS.map(p => ({ key: p.name, html: `${p.icon} ${p.shortLabel}`, ref: p })),
+        ...st.extraPrimaries.map(p => ({ key: p.name, html: `${p.icon || "📚"} ${p.shortLabel || p.name}`, ref: p })),
+        { key: "__add_from_bank__", html: `➕ Lisää muu liike`, ref: null, isAddBtn: true },
+      ];
       buildChips("wiz-primaries",
-        WIZARD_PRIMARY_OPTIONS.map(p => ({ key: p.name, html: `${p.icon} ${p.shortLabel}`, ref: p })),
-        (it) => st.selectedPrimaryNames.includes(it.key),
-        (it) => {
+        allPrimaryItems,
+        (it) => !it.isAddBtn && st.selectedPrimaryNames.includes(it.key),
+        async (it) => {
+          if (it.isAddBtn) {
+            // Avaa liikepankki-modaali
+            if (st.selectedPrimaryNames.length >= 3) {
+              showToast("Maksimi 3 päälikettä — poista ensin yksi", "warn");
+              return;
+            }
+            const excluded = new Set([
+              ...WIZARD_PRIMARY_OPTIONS.map(p => p.name),
+              ...st.extraPrimaries.map(p => p.name),
+            ]);
+            const picked = await showMovementBankModal(state.movements || [], excluded);
+            if (!picked) return;
+            // Lisää extraPrimaries-listaan + valinnan-listaan
+            st.extraPrimaries.push({
+              name: picked.name,
+              category: picked.category,
+              icon: "📚",
+              shortLabel: picked.name,
+            });
+            st.selectedPrimaryNames.push(picked.name);
+            render();
+            return;
+          }
           const idx = st.selectedPrimaryNames.indexOf(it.key);
           if (idx >= 0) {
             if (st.selectedPrimaryNames.length <= 1) return; // pidä vähintään 1
@@ -1742,7 +1902,7 @@ function showProgramWizardModal() {
           }
           render();
         },
-        (it) => !st.selectedPrimaryNames.includes(it.key) && st.selectedPrimaryNames.length >= 3
+        (it) => !it.isAddBtn && !st.selectedPrimaryNames.includes(it.key) && st.selectedPrimaryNames.length >= 3
       );
 
       // Days/week
@@ -1778,7 +1938,9 @@ function showProgramWizardModal() {
         const answerPreview = {
           goal: st.goal,
           primaries: st.selectedPrimaryNames.map(name => {
-            const opt = WIZARD_PRIMARY_OPTIONS.find(p => p.name === name);
+            // v4.34.47: liike voi olla WIZARD_PRIMARY_OPTIONS:issa TAI extraPrimaries:issa (liikepankki)
+            const opt = WIZARD_PRIMARY_OPTIONS.find(p => p.name === name)
+                     || st.extraPrimaries.find(p => p.name === name);
             return { name: opt.name, category: opt.category };
           }),
           daysPerWeek: st.daysPerWeek,
@@ -1865,7 +2027,9 @@ function showProgramWizardModal() {
         return;
       }
       const primaries = st.selectedPrimaryNames.map(name => {
-        const opt = WIZARD_PRIMARY_OPTIONS.find(p => p.name === name);
+        // v4.34.47: liike voi olla WIZARD_PRIMARY_OPTIONS:issa TAI extraPrimaries:issa (liikepankki)
+        const opt = WIZARD_PRIMARY_OPTIONS.find(p => p.name === name)
+                 || st.extraPrimaries.find(p => p.name === name);
         return { name: opt.name, category: opt.category };
       });
       closeModal();
