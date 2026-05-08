@@ -1,5 +1,33 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.49 — KAKSI KENTTÄTESTI-BUG-FIXIÄ (atletin palaute 2026-05-08):
+// LeVe AI v4.34.50 — PROGRESSION_FLOOR_CAP_CROSSREF (regression-suoja
+// secondary-sloteille, atletin 2. palaute 2026-05-08):
+//
+// Atletti suoraan: "Jos olen tehnyt secondary kyykyn 120 kg viime lauantaina,
+// et voi laskea 102 kg seuraavalle. Jokin on pahasti pielessä."
+//
+// JUURISYY: Primary-slotille on ollut PROGRESSION_FLOOR_CAP (engine.js:3131)
+// joka estää kuorman laskun viime sessiosta — mutta cross-reference-haara
+// (engine.js:3300+, secondary-slotit kuten LA Takakyykky streetlifting_16w:ssä)
+// ei tunnistanut tätä suojaa. v4.34.49:n cfg-floor parani tilannetta vain
+// osittain (94 → 102 kg), mutta atletin todellinen suoritus 120 kg jäi alaksi.
+//
+// KORJAUS engine.js:3370 (kun PROGRESSION_RATE_LIMIT_CROSSREF on käsitelty):
+// Lisätty PROGRESSION_FLOOR_CAP_CROSSREF samoilla säännöillä kuin primary:
+//   - useLastAnchor (uusi Vx >= viim. Vx)
+//   - !lastSession.isCalibration
+//   - weekDef.deltaPctBase >= 0
+//   - dayPlan.dayType !== "speed"
+// Floor: lastSession.medianLoad SUORAAN (ei -2.5%). Atletti pystyi tähän
+// kuormaan viim. session targetin Vx:llä → seuraavan sessio sama-Vx target
+// ei saa olla pienempi.
+//
+// VAIKUTUS ATLETIN VK 2 LA -SESSIOON
+// - Ennen v4.34.49: 94 kg (= 0.55 × 170 historia)
+// - v4.34.49 (cfg-floor): 102 kg (= 0.55 × 185 cfg)
+// - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
+// Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
+
+const APP_VERSION = "4.34.50";
 // (1) MU eksentrinen näytti "+64.5 kg" skill-vaiheessa (vk 1-4) vaikka slot on
 //     BW + kuminauha (suggestedLoadKg=0). Syy: UI:n primary-slot-rendering käytti
 //     rec.targetExternalLoad fallbackia kun aktiivisen liikkeen e1RM=0, mikä

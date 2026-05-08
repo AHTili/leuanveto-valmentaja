@@ -3366,6 +3366,39 @@ async function recommend(options = {}) {
                   slotMovement: slot.defaultMovementName },
                 `${slot.defaultMovementName} rate-limit (${cappedBy}): ${original} → ${baseLoad} kg (heaviest ${selfAnchor.medianLoad.toFixed(1)}@V${selfAnchor.medianVx.toFixed(1)} +${(weeklyCap*100).toFixed(0)}% = ${cappedHeaviest.toFixed(1)} | ${lastNote})`);
             }
+
+            // v4.34.50 PROGRESSION_FLOOR_CAP_CROSSREF — regression-suoja secondary-sloteille.
+            // Atletin palaute 2026-05-08: vk 1 LA Takakyykky 120 kg V4 helposti, mutta
+            // vk 2 LA UI ehdotti 102 kg = LASKU 120:sta. Primary-slotilla tämä on jo
+            // estetty (engine.js:3131), mutta cross-reference-haara puuttui suojan.
+            // Säännöt samat kuin primary-haaran floor-capissa:
+            //   - useLastAnchor (uusi Vx >= viim. Vx) — atletti pystyi tähän kuormaan
+            //   - !lastSession.isCalibration — cal-sessio on tarkoituksella matala
+            //   - weekDef.deltaPctBase >= 0 — ei deload-vk eikä peaking-cut
+            //   - dayPlan.dayType ei "speed" — speed-päivä on tarkoituksella kevyempi
+            // Floor: lastSession.medianLoad SUORAAN (ei -2.5 %). Atletti pystyi tähän
+            // → seuraavan session sama-Vx target ei saa olla pienempi.
+            const wkDef = mesocycle?.weekDefs?.find(w => w.week === weekNum);
+            const isSpeedDay = dayPlan?.dayType === "speed";
+            if (useLastAnchor
+                && !selfAnchor.lastSession.isCalibration
+                && (wkDef?.deltaPctBase ?? 0) >= 0
+                && !isSpeedDay) {
+              const floor = selfAnchor.lastSession.medianLoad;
+              if (baseLoad < floor - 0.25) { // 0.25 kg toleranssi pyöristykselle
+                const originalLow = baseLoad;
+                baseLoad = roundToHalf(floor);
+                trace("PROGRESSION_FLOOR_CAP_CROSSREF",
+                  { resolvedLoadKg: originalLow },
+                  { resolvedLoadKg: baseLoad,
+                    lastLoad: selfAnchor.lastSession.medianLoad,
+                    lastVx: selfAnchor.lastSession.medianVx,
+                    newVx, floor,
+                    slotMovement: slot.defaultMovementName,
+                    referenceMovement: slot.loadPctReferenceMovementName },
+                  `${slot.defaultMovementName} floor-cap: ${originalLow} → ${baseLoad} kg (regression-suoja: viim. sessio ${selfAnchor.lastSession.medianLoad.toFixed(1)} kg @V${selfAnchor.lastSession.medianVx.toFixed(1)} meni targetin Vx:llä — uutta sessiota ei pudoteta tämän alle).`);
+              }
+            }
           }
         }
 
