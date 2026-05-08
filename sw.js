@@ -1,5 +1,30 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.36.0 — Lämmittelynäkymä-redesign (Claude Design "Variant A").
+// LeVe AI v4.37.0 — Sykli-välilehden redesign (Claude Design "Cycle View v3").
+//
+// Atletin pyyntö 2026-05-08: parempi yleisnäkymä jossa atletti näkee yhdellä
+// silmäyksellä missä blokin osassa on, kuinka edistynyt suhteessa suunnitelmaan,
+// ja milloin seuraava kriittinen vaihe (deload + AI-tuning vk 4/8/12).
+//
+// MUUTOKSET v4.37.0:
+// - CSS: uudet luokat .cv-hero, .cv-tl-wrap, .cv-tl-wk, .cv-week-card, .cv-day,
+//   .cv-crit, .cv-nw, .cv-legend (säilyttää aiemmat .card-luokat)
+// - Block colors --b-found / --b-strength / --b-intens / --b-peak / --b-deload
+//   lisätty :root-tasolle
+// - renderMesocycle() yläosa korvattu Cycle View Variant -komponenteilla:
+//   1. Block-hero-kortti (eyebrow + name + sub + progress-meter + foot)
+//   2. 16 vk timeline (horisontaalinen scroll, värikoodatut pylväät)
+//   3. Tämä viikko -kortti (status-bullet + päivänpäivä + fokus + load)
+//   4. Ensi viikko -preview (delta-pilli + day-pillit)
+//   5. Kriittinen ikkuna -banneri kun deload < 14 pv
+// - Säilyttää: ohjelman idea, autoreg, volyymi, ohjelma-overview details-elementit
+// - Ei AI Block Tuning -modaalia tässä versiossa (handoff Tier 2 tulee myöhemmin)
+//
+// VERIFIOINTI:
+// - 304/304 selaintestiä OK
+// - UI-rendering ei kaadu (Claude Preview testattu)
+// - Timeline + komponentit renderöityvät oikein
+//
+// v4.36.0 — Lämmittelynäkymä-redesign (Claude Design "Variant A").
 //
 // Atletin palaute 2026-05-08: nykyinen yksirivinen warmup-näkymä on epäselkkeä
 // (anatomia, sitaatit, version-bumput sekoittuneet yhdeksi tekstiksi). Claude
@@ -117,7 +142,7 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.36.0";
+const APP_VERSION = "4.37.0";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

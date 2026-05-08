@@ -14,11 +14,22 @@
     :root {
       --bg: #0b1220; --card: #121d33; --card2: #182744;
       --border: #26385d; --border2: #314976;
+      --border-soft: #1d2742;
       --txt: #e8eefc; --muted: #8899bb; --dim: #5a6a8a;
       --acc: #4f8cff; --acc2: #3a6fd8;
+      --acc-soft: rgba(79,140,255,.14);
       --ok: #22c55e; --ok2: #166534;
+      --ok-soft: rgba(34,197,94,.14);
       --warn: #f59e0b; --warn2: #92400e;
+      --warn-soft: rgba(245,158,11,.14);
       --bad: #ef4444; --bad2: #991b1b;
+      --bad-soft: rgba(239,68,68,.14);
+      /* v4.37.0 — Block colors (Cycle View Variant) */
+      --b-found: #4f8cff;     /* Hypertrofia/Foundation — sininen */
+      --b-strength: #22c55e;  /* Voima/Strength — vihreä */
+      --b-intens: #f59e0b;    /* Intensifikaatio/Intensity — oranssi */
+      --b-peak: #ef4444;      /* Peak/Realization — punainen */
+      --b-deload: #5e6b8e;    /* Deload — harmaa */
       --radius: 12px; --radius-sm: 8px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -426,6 +437,111 @@
     .wu-more { display: block; margin-top: 8px; padding: 6px 8px; width: 100%; background: var(--acc-soft, rgba(79,140,255,.14)); border: 1px solid rgba(79,140,255,.18); border-radius: 8px; color: var(--acc); font-size: 11px; font-weight: 600; text-align: center; cursor: pointer; }
     .wu-more:hover { background: rgba(79,140,255,.20); }
     .wu-row.is-hidden { display: none; }
+
+    /* v4.37.0 — Cycle View Variant (Claude Design handoff) */
+    /* Korvaa Sykli-välilehden yläosan (nykyhetki + tämä viikko + tulevat 14 pv)
+       block-aware visualisoinnilla: hero-kortti + 16 vk timeline + this/next-week. */
+
+    .cv-page-title { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin: 6px 4px 14px; }
+    .cv-page-title .sub { display: block; font-size: 12px; color: var(--muted); font-weight: 600; margin-top: 3px; letter-spacing: 0; }
+
+    /* Block hero */
+    .cv-hero { background: var(--card); border: 1px solid var(--border-soft); border-radius: 14px; padding: 14px; margin-bottom: 10px; position: relative; overflow: hidden; }
+    .cv-hero::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--b-found); }
+    .cv-hero.b-strength::before { background: var(--b-strength); }
+    .cv-hero.b-intens::before { background: var(--b-intens); }
+    .cv-hero.b-peak::before { background: var(--b-peak); }
+    .cv-hero.b-deload::before { background: var(--b-deload); }
+    .cv-hero .b-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 0.6px; color: var(--b-found); text-transform: uppercase; margin-bottom: 6px; }
+    .cv-hero.b-strength .b-eyebrow { color: var(--b-strength); }
+    .cv-hero.b-intens .b-eyebrow { color: var(--b-intens); }
+    .cv-hero.b-peak .b-eyebrow { color: var(--b-peak); }
+    .cv-hero.b-deload .b-eyebrow { color: var(--b-deload); }
+    .cv-hero .b-name { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.1; margin-bottom: 2px; }
+    .cv-hero .b-sub { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .cv-hero .b-meter { height: 8px; background: var(--card2); border-radius: 4px; overflow: hidden; display: flex; gap: 2px; padding: 1px; }
+    .cv-hero .b-seg { flex: 1; background: rgba(79,140,255,.18); border-radius: 2px; }
+    .cv-hero .b-seg.done { background: var(--b-found); }
+    .cv-hero .b-seg.now { background: var(--b-found); box-shadow: 0 0 0 1.5px #fff inset; }
+    .cv-hero.b-strength .b-seg.done, .cv-hero.b-strength .b-seg.now { background: var(--b-strength); }
+    .cv-hero.b-intens .b-seg.done, .cv-hero.b-intens .b-seg.now { background: var(--b-intens); }
+    .cv-hero.b-peak .b-seg.done, .cv-hero.b-peak .b-seg.now { background: var(--b-peak); }
+    .cv-hero.b-deload .b-seg.done, .cv-hero.b-deload .b-seg.now { background: var(--b-deload); }
+    .cv-hero .b-foot { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 8px; font-weight: 600; }
+    .cv-hero .b-foot strong { color: var(--txt); font-weight: 700; }
+
+    /* 16 wk timeline */
+    .cv-tl-wrap { background: var(--card); border: 1px solid var(--border-soft); border-radius: 14px; padding: 12px 0 14px; margin-bottom: 10px; }
+    .cv-tl-head { display: flex; justify-content: space-between; align-items: center; padding: 0 14px 10px; }
+    .cv-tl-head .label { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .cv-tl-head .hint { font-size: 10px; color: var(--dim); font-weight: 600; }
+    .cv-tl-scroll { overflow-x: auto; padding: 0 14px 4px; scrollbar-width: none; }
+    .cv-tl-scroll::-webkit-scrollbar { display: none; }
+    .cv-tl { display: flex; gap: 3px; min-width: max-content; }
+    .cv-tl-wk { flex: 0 0 auto; width: 22px; display: flex; flex-direction: column; align-items: center; cursor: pointer; }
+    .cv-tl-wk .bar { width: 18px; height: 46px; border-radius: 5px; background: var(--b-found); position: relative; transition: transform 0.15s; }
+    .cv-tl-wk:hover .bar { transform: scaleY(1.05); }
+    .cv-tl-wk.b-strength .bar { background: var(--b-strength); }
+    .cv-tl-wk.b-intens .bar { background: var(--b-intens); }
+    .cv-tl-wk.b-peak .bar { background: var(--b-peak); }
+    .cv-tl-wk.b-deload .bar { background: var(--b-deload); }
+    .cv-tl-wk.future .bar { opacity: 0.35; }
+    .cv-tl-wk.now .bar { box-shadow: 0 0 0 2px #fff, 0 0 16px var(--b-found); transform: scaleY(1.08); }
+    .cv-tl-wk.now.b-strength .bar { box-shadow: 0 0 0 2px #fff, 0 0 16px var(--b-strength); }
+    .cv-tl-wk.now.b-intens .bar { box-shadow: 0 0 0 2px #fff, 0 0 16px var(--b-intens); }
+    .cv-tl-wk.now.b-peak .bar { box-shadow: 0 0 0 2px #fff, 0 0 16px var(--b-peak); }
+    .cv-tl-wk.now.b-deload .bar { box-shadow: 0 0 0 2px #fff, 0 0 16px var(--b-deload); }
+    .cv-tl-wk.done .bar::after { content: "✓"; position: absolute; top: 2px; left: 50%; transform: translateX(-50%); font-size: 9px; color: rgba(255,255,255,.95); font-weight: 700; }
+    .cv-tl-wk.tune .bar::before { content: "⏰"; position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 11px; }
+    .cv-tl-wk .lbl { font-size: 9px; color: var(--dim); font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .cv-tl-wk.now .lbl { color: var(--txt); }
+    .cv-you-here { margin-top: 8px; padding: 6px 12px; font-size: 10px; color: var(--acc); background: var(--acc-soft); border: 1px solid rgba(79,140,255,.25); border-radius: 6px; display: inline-flex; gap: 5px; align-items: center; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; margin-left: 14px; }
+    .cv-legend { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px 0; font-size: 10px; color: var(--muted); font-weight: 600; }
+    .cv-legend .l { display: flex; align-items: center; gap: 5px; }
+    .cv-legend .sw { width: 9px; height: 9px; border-radius: 2px; }
+
+    /* This week card */
+    .cv-week-card { background: var(--card); border: 1px solid var(--border-soft); border-radius: 14px; padding: 14px; margin-bottom: 10px; }
+    .cv-week-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+    .cv-week-title { font-size: 13px; font-weight: 700; }
+    .cv-week-title .vk { font-size: 11px; color: var(--muted); font-weight: 600; margin-left: 4px; }
+    .cv-week-tag { font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 5px; background: rgba(79,140,255,.12); color: var(--acc); border: 1px solid rgba(79,140,255,.25); text-transform: uppercase; letter-spacing: 0.4px; }
+    .cv-day-grid { display: grid; gap: 4px; }
+    .cv-day { display: grid; grid-template-columns: 32px 16px 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px dashed var(--border-soft); }
+    .cv-day:first-child { border-top: none; }
+    .cv-day .dn { font-size: 11px; font-weight: 700; color: var(--muted); }
+    .cv-day .stat { width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; }
+    .cv-day .stat.done { background: var(--ok-soft); color: var(--ok); border: 1px solid rgba(34,197,94,.3); }
+    .cv-day .stat.now { background: var(--acc-soft); color: var(--acc); border: 1px solid rgba(79,140,255,.4); box-shadow: 0 0 8px rgba(79,140,255,.4); }
+    .cv-day .stat.next { background: var(--card2); color: var(--muted); border: 1px solid var(--border); }
+    .cv-day .stat.skip { background: var(--bad-soft); color: var(--bad); border: 1px solid rgba(239,68,68,.3); }
+    .cv-day .focus { font-size: 12.5px; font-weight: 600; }
+    .cv-day .focus .why { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 1px; }
+    .cv-day .load { font-size: 11px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .cv-day.now .load { color: var(--acc); }
+    .cv-day.skipped { opacity: 0.5; }
+    .cv-day.skipped .focus { text-decoration: line-through; text-decoration-color: var(--dim); }
+
+    /* Critical / AI tune banner */
+    .cv-crit { margin-top: 12px; padding: 11px 12px; border-radius: 10px; background: linear-gradient(135deg, rgba(79,140,255,.10), rgba(79,140,255,.02)); border: 1px solid rgba(79,140,255,.30); display: flex; gap: 10px; align-items: flex-start; cursor: pointer; transition: background 0.15s; }
+    .cv-crit:hover { background: linear-gradient(135deg, rgba(79,140,255,.16), rgba(79,140,255,.04)); }
+    .cv-crit-ic { flex: 0 0 26px; height: 26px; border-radius: 7px; background: var(--acc-soft); color: var(--acc); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(79,140,255,.3); font-size: 14px; }
+    .cv-crit-body { flex: 1; min-width: 0; }
+    .cv-crit-title { font-size: 12px; font-weight: 700; color: var(--acc); letter-spacing: 0.3px; text-transform: uppercase; }
+    .cv-crit-msg { font-size: 12px; color: var(--txt); margin-top: 3px; line-height: 1.4; }
+    .cv-crit-msg strong { font-weight: 700; }
+    .cv-crit-cta { font-size: 11px; font-weight: 700; color: var(--acc); margin-top: 6px; display: inline-flex; align-items: center; gap: 4px; }
+
+    /* Next week preview */
+    .cv-nw { background: var(--card); border: 1px solid var(--border-soft); border-radius: 14px; padding: 14px; margin-bottom: 10px; }
+    .cv-nw-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .cv-nw-l { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .cv-nw-prev { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+    .cv-nw-prev .delta { font-size: 11px; font-weight: 700; color: var(--ok); margin-left: 6px; background: var(--ok-soft); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(34,197,94,.3); }
+    .cv-nw-prev .delta.neg { color: var(--warn); background: var(--warn-soft); border-color: rgba(245,158,11,.3); }
+    .cv-nw-pcts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .cv-nw-pct { font-size: 10px; color: var(--muted); background: var(--card2); border: 1px solid var(--border-soft); padding: 4px 7px; border-radius: 5px; display: flex; gap: 4px; align-items: center; font-variant-numeric: tabular-nums; }
+    .cv-nw-pct strong { color: var(--txt); font-weight: 700; }
 
     .slot-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; padding: 7px 0; align-items: center; }
     .slot-row + .slot-row { border-top: 1px dashed #1e2a45; }
@@ -5716,48 +5832,215 @@ function renderMesocycle() {
   const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
   const futureWorkouts = getFutureWorkouts(meso, todayISO(), 14);
   const isStreet16 = meso.type === "streetlifting_16w";
-  const blockName = (w) => w <= 4 ? "Hypertrofia" : w <= 8 ? "Voima" : w <= 12 ? "Intensifikaatio" : "Peak";
-  const blockColor = (w) => w <= 4 ? "#3a6b5c" : w <= 8 ? "#5a4e7a" : w <= 12 ? "#7a5a3e" : "#8a3e3e";
+
+  // v4.37.0 — Cycle View Variant helpers
+  const _cvBlockInfo = (w) => {
+    if (!isStreet16) {
+      const wdef = meso.weekDefs?.find(d => d.week === w);
+      const isDeload = (wdef?.deltaPctBase ?? 0) < 0;
+      return { cls: isDeload ? "b-deload" : "b-found", name: isDeload ? "Deload" : "Volyymi", num: w, total: meso.weekCount, sub: wdef?.label || "" };
+    }
+    // Streetlifting_16w: 4 blokkia + deload-vk:t (4, 8, 12)
+    if (w === 4 || w === 8 || w === 12) return { cls: "b-deload", name: "Deload + kalibrointi", num: w, total: 16, sub: "Cal-sessio + AI-tuning" };
+    if (w >= 1 && w <= 3) return { cls: "b-found", name: "Hypertrofia: kasvu", num: 1, total: 4, blockStart: 1, blockEnd: 4, sub: "Volyymi-pohja · 6 reps · target Vx 3" };
+    if (w >= 5 && w <= 7) return { cls: "b-strength", name: "Voima: rakentaminen", num: 2, total: 4, blockStart: 5, blockEnd: 8, sub: "Voima-pohja · 4-5 reps · target Vx 2-3" };
+    if (w >= 9 && w <= 11) return { cls: "b-intens", name: "Intensifikaatio: terävyys", num: 3, total: 4, blockStart: 9, blockEnd: 12, sub: "Intensiteetti · 2-4 reps · target Vx 1-2" };
+    if (w >= 13 && w <= 14) return { cls: "b-peak", name: "Realization: peakaus", num: 4, total: 4, blockStart: 13, blockEnd: 16, sub: "Singles + openerit · target Vx 1" };
+    if (w >= 15 && w <= 16) return { cls: "b-peak", name: "Taper / Kisa", num: 4, total: 4, blockStart: 13, blockEnd: 16, sub: "CNS-konservointi" };
+    return { cls: "b-found", name: "—", num: w, total: meso.weekCount, sub: "" };
+  };
+  const _cvIsTuningWeek = (w) => isStreet16 ? (w === 4 || w === 8 || w === 12) : ((meso.weekDefs?.find(d => d.week === w)?.deltaPctBase ?? 0) < 0);
+  const _cvNextTuningWeek = (curr) => {
+    for (let w = curr + 1; w <= meso.weekCount; w++) if (_cvIsTuningWeek(w)) return w;
+    return null;
+  };
+  const _cvDaysUntilWeek = (targetWeek) => {
+    if (!targetWeek || !meso.startDateISO) return null;
+    const start = new Date(meso.startDateISO);
+    const targetDate = new Date(start.getTime() + (targetWeek - 1) * 7 * 86400000);
+    const today = new Date(todayISO());
+    const diff = Math.round((targetDate.getTime() - today.getTime()) / 86400000);
+    return Math.max(0, diff);
+  };
+  const _cvSessionByDate = (() => {
+    const m = new Map();
+    (state.sessions || []).forEach(s => { if (s.dateISO) m.set(s.dateISO, s); });
+    return m;
+  })();
+  const _cvWeekStatus = (w) => {
+    if (currentWeek === null || currentWeek === undefined) return "future";
+    if (w < currentWeek) return "done";
+    if (w === currentWeek) return "now";
+    return "future";
+  };
+
+  // Hero-kortin data
+  const heroInfo = currentWeek ? _cvBlockInfo(currentWeek) : null;
+  const nextTuneWeek = currentWeek ? _cvNextTuningWeek(currentWeek) : null;
+  const daysToTune = nextTuneWeek ? _cvDaysUntilWeek(nextTuneWeek) : null;
+
+  // Block progress meter — montako blokin vk on tehty
+  let heroSegmentsHTML = "";
+  if (heroInfo && heroInfo.blockStart) {
+    const total = heroInfo.blockEnd - heroInfo.blockStart + 1; // tyypillisesti 4
+    const segs = [];
+    for (let bw = heroInfo.blockStart; bw <= heroInfo.blockEnd; bw++) {
+      const cls = bw < currentWeek ? "done" : bw === currentWeek ? "now" : "";
+      segs.push(`<div class="b-seg ${cls}"></div>`);
+    }
+    heroSegmentsHTML = `<div class="b-meter">${segs.join("")}</div>`;
+  }
+
+  // Timeline-pylväät
+  const timelineHTML = (() => {
+    const bars = [];
+    for (let w = 1; w <= meso.weekCount; w++) {
+      const info = _cvBlockInfo(w);
+      const status = _cvWeekStatus(w);
+      const isTune = _cvIsTuningWeek(w);
+      const classes = [info.cls];
+      if (status === "done") classes.push("done");
+      if (status === "now") classes.push("now");
+      if (status === "future") classes.push("future");
+      if (isTune) classes.push("tune");
+      bars.push(`<div class="cv-tl-wk ${classes.join(" ")}" data-cv-week="${w}" title="Vk ${w}: ${info.name}">
+        <div class="bar"></div>
+        <div class="lbl">${w}</div>
+      </div>`);
+    }
+    return bars.join("");
+  })();
+
+  // Tämä viikko -kortti: 4-5 päivärivin näkymä
+  const thisWeekHTML = (() => {
+    if (!currentWeek) return "";
+    const wdef = meso.weekDefs?.find(d => d.week === currentWeek);
+    const wp = meso.weekPlans?.find(p => p.week === currentWeek);
+    if (!wdef || !wp) return "";
+    const today = todayISO();
+    const start = new Date(meso.startDateISO);
+    const weekStart = new Date(start.getTime() + (currentWeek - 1) * 7 * 86400000);
+    const days = (wp.days || []).filter(d => d.dayOfWeek <= 6).sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+    const rowsHTML = days.map(d => {
+      const dayDate = new Date(weekStart.getTime() + (d.dayOfWeek - 1) * 86400000);
+      const dayISO = dayDate.toISOString().slice(0, 10);
+      const sess = _cvSessionByDate.get(dayISO);
+      let statusCls = "next";
+      let statusIcon = "○";
+      if (sess && sess.completed) { statusCls = "done"; statusIcon = "✓"; }
+      else if (dayISO === today) { statusCls = "now"; statusIcon = "●"; }
+      else if (dayISO < today) { statusCls = "skip"; statusIcon = "✕"; }
+      const primary = (d.slots || []).find(s => s.role === "primary");
+      const focus = stripRedundantDayPrefix(d.label) || dayTypeLabel(d.dayType) || "?";
+      const load = primary ? `${primary.sets}×${primary.reps}${primary.targetVx != null ? ` V${primary.targetVx}` : ""}` : "";
+      const isSkipped = statusCls === "skip";
+      return `<div class="cv-day ${statusCls === "now" ? "now" : ""}${isSkipped ? " skipped" : ""}">
+        <div class="dn">${dayNames[d.dayOfWeek]} ${dayDate.getDate()}.${dayDate.getMonth() + 1}.</div>
+        <div class="stat ${statusCls}">${statusIcon}</div>
+        <div class="focus">${focus}${primary ? `<span class="why">${primary.defaultMovementName || ""}</span>` : ""}</div>
+        <div class="load">${load}</div>
+      </div>`;
+    }).join("");
+    const tagLabel = (() => {
+      if (heroInfo?.cls === "b-deload") return "Deload";
+      if (heroInfo?.cls === "b-strength") return "Voima";
+      if (heroInfo?.cls === "b-intens") return "Intens.";
+      if (heroInfo?.cls === "b-peak") return "Peak";
+      return "Loading";
+    })();
+    const critHTML = (daysToTune !== null && daysToTune <= 14 && nextTuneWeek)
+      ? `<div class="cv-crit" id="cv-crit-banner" data-cv-target-week="${nextTuneWeek}">
+          <div class="cv-crit-ic">⏰</div>
+          <div class="cv-crit-body">
+            <div class="cv-crit-title">Kriittinen ikkuna · ${daysToTune} pv</div>
+            <div class="cv-crit-msg">Seuraava <strong>deload + AI-tuning vk ${nextTuneWeek}</strong> — kalibrointi ja blokin hionta. Klikkaa nähdäksesi.</div>
+          </div>
+        </div>`
+      : "";
+    return `<div class="cv-week-card">
+      <div class="cv-week-head">
+        <div class="cv-week-title">Tämä viikko<span class="vk">· vk ${currentWeek}/${meso.weekCount}</span></div>
+        <div class="cv-week-tag">${tagLabel}</div>
+      </div>
+      <div class="cv-day-grid">${rowsHTML}</div>
+      ${critHTML}
+    </div>`;
+  })();
+
+  // Ensi viikko -preview
+  const nextWeekHTML = (() => {
+    const nextW = currentWeek ? currentWeek + 1 : null;
+    if (!nextW || nextW > meso.weekCount) return "";
+    const wp = meso.weekPlans?.find(p => p.week === nextW);
+    const wdef = meso.weekDefs?.find(d => d.week === nextW);
+    if (!wp || !wdef) return "";
+    const days = (wp.days || []).filter(d => d.dayOfWeek <= 6).sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+    const pillsHTML = days.map(d => {
+      const primary = (d.slots || []).find(s => s.role === "primary");
+      if (!primary) return "";
+      const load = `${primary.sets}×${primary.reps}${primary.targetVx != null ? ` V${primary.targetVx}` : ""}`;
+      return `<div class="cv-nw-pct"><strong>${dayNames[d.dayOfWeek]}</strong> ${load}</div>`;
+    }).filter(Boolean).join("");
+    const delta = wdef.deltaPctBase || 0;
+    const deltaStr = delta === 0 ? "" : `<span class="delta${delta < 0 ? " neg" : ""}">${delta > 0 ? "+" : ""}${(delta * 100).toFixed(1)} % loadPct</span>`;
+    const nextInfo = _cvBlockInfo(nextW);
+    return `<div class="cv-nw">
+      <div class="cv-nw-head">
+        <div class="cv-nw-l">Ensi viikko</div>
+      </div>
+      <div class="cv-nw-prev">Vk ${nextW} — ${nextInfo.name}${deltaStr}</div>
+      <div class="cv-nw-pcts">${pillsHTML}</div>
+    </div>`;
+  })();
+
+  // Block hero
+  const heroHTML = heroInfo ? `<div class="cv-hero ${heroInfo.cls}">
+    <div class="b-eyebrow">${heroInfo.blockStart ? `Blokki ${heroInfo.num} / ${heroInfo.total} · ` : ""}${heroInfo.cls === "b-deload" ? "Deload" : heroInfo.name.split(":")[0]}</div>
+    <div class="b-name">Vk ${currentWeek} — ${heroInfo.name}</div>
+    <div class="b-sub">${heroInfo.sub}</div>
+    ${heroSegmentsHTML}
+    <div class="b-foot">
+      <span>${heroInfo.blockStart ? `<strong>${currentWeek - heroInfo.blockStart + 1} / ${heroInfo.blockEnd - heroInfo.blockStart + 1} vk</strong>${nextTuneWeek ? ` · seur. deload + AI-tuning vk ${nextTuneWeek}` : ""}` : `<strong>Vk ${currentWeek} / ${meso.weekCount}</strong>`}</span>
+      <span>${daysToTune !== null ? `${daysToTune} pv` : ""}</span>
+    </div>
+  </div>` : "";
 
   return `<div class="fade-in">
-    <div class="section-header">Mesosykli</div>
-
-    <!-- 1. NYKYHETKI — meta + viikko -->
-    <div class="card">
-      <div class="flex-between">
-        <div>
-          <div style="font-weight:600">${MESO_TYPE_LABELS[meso.type] || meso.type}</div>
-          <div class="muted" style="font-size:12px">Aloitus: ${formatDateShort(meso.startDateISO)} · ${meso.weekCount} vk</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-          <div class="chip" style="font-weight:700">${currentWeek ? `Viikko ${currentWeek}/${meso.weekCount}` : "Päättynyt"}</div>
-          ${isStreet16 && currentWeek ? `<span style="padding:2px 8px;border-radius:4px;background:${blockColor(currentWeek)};color:#fff;font-size:10px;font-weight:600">${blockName(currentWeek)}</span>` : ""}
-        </div>
-      </div>
+    <div class="cv-page-title">
+      Sykli
+      <span class="sub">${MESO_TYPE_LABELS[meso.type] || meso.type} · alkoi ${formatDateShort(meso.startDateISO)}</span>
     </div>
+
+    ${heroHTML}
+
+    <div class="cv-tl-wrap">
+      <div class="cv-tl-head">
+        <span class="label">${meso.weekCount} vk timeline</span>
+        <span class="hint">${currentWeek ? `Vk ${currentWeek}/${meso.weekCount}` : "Päättynyt"}</span>
+      </div>
+      <div class="cv-tl-scroll"><div class="cv-tl">${timelineHTML}</div></div>
+      ${currentWeek ? `<span class="cv-you-here">📍 Olet tässä · vk ${currentWeek}</span>` : ""}
+      ${isStreet16 ? `<div class="cv-legend">
+        <span class="l"><span class="sw" style="background:var(--b-found)"></span>Hypertrofia</span>
+        <span class="l"><span class="sw" style="background:var(--b-strength)"></span>Voima</span>
+        <span class="l"><span class="sw" style="background:var(--b-intens)"></span>Intens.</span>
+        <span class="l"><span class="sw" style="background:var(--b-peak)"></span>Peak</span>
+        <span class="l"><span class="sw" style="background:var(--b-deload)"></span>Deload + AI</span>
+      </div>` : ""}
+    </div>
+
+    ${thisWeekHTML}
+    ${nextWeekHTML}
 
     <!-- 1b. OHJELMAN IDEA — v4.26.3: tarkoitus + käyttötapa kaikille ohjelmatyypeille -->
     ${(() => {
       const tpl = MESOCYCLE_TEMPLATES.find(t => t.id === meso.type);
       if (!tpl?.about) return "";
-      return `<details class="card" style="padding:0;background:var(--card2)">
+      return `<details class="card" style="padding:0;background:var(--card2);margin-top:10px">
         <summary style="cursor:pointer;padding:14px;list-style:none;font-weight:600">💡 Ohjelman idea: ${tpl.label}</summary>
         <div style="padding:0 14px 14px;font-size:13px;line-height:1.55;color:var(--muted)">${tpl.about}</div>
       </details>`;
     })()}
-
-    <!-- 2. TÄMÄ VIIKKO — yksityiskohdat -->
-    ${currentWeek ? (() => {
-      const wdef = meso.weekDefs.find(w => w.week === currentWeek);
-      if (!wdef) return "";
-      return `<div class="card" style="border-color:var(--acc)">
-        <div class="flex-between">
-          <div style="font-weight:700;color:var(--acc)">📍 Viikko ${currentWeek}: ${wdef.label}</div>
-          <span class="chip" style="font-size:11px">NYT</span>
-        </div>
-        ${renderWeekPlanDays(meso, currentWeek, dayNames)}
-      </div>`;
-    })() : ""}
 
     <!-- 3. TULEVAT — seuraavat 14 pv (v4.30.4: klikattavissa auki) -->
     ${futureWorkouts.length > 0 ? `<div class="card">
