@@ -4502,6 +4502,133 @@ function computeMovementE1RM(movementSets, movementOrIsSystem, bodyweightKg) {
 }
 
 /**
+ * v4.35.1 — Yhtenäinen e1RM-laskenta UI:n ja recommend()-funktion välillä.
+ *
+ * Aiempi computeMovementE1RM palautti pelkkä median(Epley+Vara viim. 6 setistä),
+ * eikä huomioinut PLAN_BASED_E1RM-mekanismia (engine.js:2467) eikä cal-historiaa.
+ * Tämä aiheutti epäjohdonmukaisuuden Edistyminen-välilehden ja recommend()-funktion
+ * välillä (atletin palaute 2026-05-08: e1RM 170.8 vs 184.9 vs 156).
+ *
+ * Tämä funktio käyttää SAMAA priorisointia kuin recommend() (engine.js:2440-2589):
+ *   1. Cal-historia (kalibrointisarjat, setRole === "calibration") — voittaa kun saatavilla
+ *   2. PLAN_BASED (viim. ei-cal-session perfect-execution → lastLoad / loadPct) — kun saatavilla
+ *   3. Median Epley+Vara (= legacy computeMovementE1RM) — fallback
+ *
+ * Palauttaa { value: number|null, source: "cal"|"plan-based"|"median"|null, details }.
+ *
+ * @param {Array} movementSets - viim. liikkeen sarjat (movementId-suodatettu)
+ * @param {Array} sessions - kaikki sessiot (PLAN_BASED tarvitsee viim. session loadPct:n)
+ * @param {Object|null} mesocycle - aktiivinen mesosykli (PLAN_BASED tarvitsee weekPlans:n)
+ * @param {Object} movement - movement-objekti (loadType, isPrimary)
+ * @param {number} bodyweightKg
+ * @returns {{value: number|null, source: string|null, details: object}}
+ */
+function computeMovementE1RMBest(movementSets, sessions, mesocycle, movement, bodyweightKg) {
+  if (!movementSets || movementSets.length === 0) {
+    return { value: null, source: null, details: {} };
+  }
+  const isSystem = isSystemLoadMovement(movement);
+  const isBarbell = !isSystem;
+
+  // 1. Cal-priority: kalibrointi-sarjat ovat tarkin mittaus (DiStasio 2014: ±2.7 kg)
+  const calSets = movementSets.filter(s => s.setRole === "calibration");
+  const recentCalSets = calSets.slice(-3);
+  if (recentCalSets.length > 0) {
+    const calE1RMs = recentCalSets.map(s => {
+      const vara = s.actualVx ?? s.targetVx ?? 1;
+      if (isBarbell) return e1rmAccessory(s.externalLoadKg || 0, s.reps || 1, vara);
+      return e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || 1, vara);
+    }).filter(v => v !== null);
+    if (calE1RMs.length > 0) {
+      const calE1RM = median(calE1RMs);
+      const value = isBarbell ? calE1RM : Math.max(0, calE1RM - bodyweightKg);
+      return { value, source: "cal", details: { calCount: recentCalSets.length, raw: calE1RM } };
+    }
+  }
+
+  // 2. PLAN_BASED-priority: jos viim. ei-cal-session oli perfect-execution
+  //    JA loadPct on luettavissa mesosyklistä, palauta lastLoad / lastLoadPct
+  if (mesocycle && sessions && movement) {
+    // Hae primary-work-sarjat (top), suodata accessoryt
+    const primaryWorkSets = movementSets.filter(s => s.setRole === "top");
+    if (primaryWorkSets.length > 0) {
+      // Ryhmitä sessionId:n mukaan, järjestys ascending
+      const sessGroups = new Map();
+      const sessOrder = [];
+      for (const s of primaryWorkSets) {
+        const sid = s.sessionId || `__nosess_${s.timestamp}`;
+        if (!sessGroups.has(sid)) { sessGroups.set(sid, []); sessOrder.push(sid); }
+        sessGroups.get(sid).push(s);
+      }
+      // Etsi viim. ei-cal-sessio (cal-set-osuus < 50%)
+      let lastSessionSets = null;
+      let lastSessionId = null;
+      for (let i = sessOrder.length - 1; i >= 0; i--) {
+        const sets = sessGroups.get(sessOrder[i]);
+        const calCount = sets.filter(s => s.setRole === "calibration").length;
+        if (calCount < sets.length * 0.5) {
+          lastSessionSets = sets;
+          lastSessionId = sessOrder[i];
+          break;
+        }
+      }
+      if (lastSessionSets && lastSessionSets.length > 0) {
+        // Tarkista perfect execution: kaikki sarjat actualVx >= targetVx JA reps >= targetReps
+        const allHitTarget = lastSessionSets.every(s =>
+          s.actualVx !== null && s.actualVx !== undefined && s.targetVx !== null && s.targetVx !== undefined
+          && s.actualVx >= s.targetVx
+          && (s.reps ?? 0) >= (s.targetReps ?? 0)
+        );
+        if (allHitTarget) {
+          // Hae viim. session date → mesocycle-vk → primary-slot loadPct
+          const lastDateISO = (lastSessionId && sessions.find(s => s.sessionId === lastSessionId)?.dateISO)
+            || lastSessionSets[0]?.dateISO
+            || lastSessionSets[0]?.timestamp?.slice(0, 10);
+          if (lastDateISO) {
+            const lastWk = getMesocycleWeek(mesocycle, lastDateISO);
+            const lastDow = (new Date(lastDateISO).getDay() || 7);
+            const lastDayPlan = (lastWk !== null) && mesocycle.weekPlans?.[lastWk - 1]?.days?.find(d => d.dayOfWeek === lastDow);
+            // Etsi slot joka match-aa tämän liikkeen — primary VAI cross-ref
+            let lastLoadPct = null;
+            if (lastDayPlan?.slots) {
+              const matchSlot = lastDayPlan.slots.find(s =>
+                s.defaultMovementName === movement.name
+                || s.loadPctReferenceMovementName === movement.name
+              );
+              lastLoadPct = matchSlot?.loadPct;
+            }
+            if (lastLoadPct && lastLoadPct > 0 && lastLoadPct <= 1.0) {
+              const lastMedianLoad = median(lastSessionSets.map(s => s.externalLoadKg).filter(v => v > 0));
+              if (lastMedianLoad && lastMedianLoad > 0) {
+                // Vx-overshoot bonus (sama kuin recommend():ssa)
+                const meanOvershoot = lastSessionSets.reduce((sum, s) =>
+                  sum + ((s.actualVx ?? 0) - (s.targetVx ?? 0)), 0) / lastSessionSets.length;
+                const vxBonusPct = Math.max(0, meanOvershoot) * 0.025;
+                const planBasedExternal = (lastMedianLoad / lastLoadPct) * (1 + vxBonusPct);
+                return {
+                  value: planBasedExternal,
+                  source: "plan-based",
+                  details: { lastLoad: lastMedianLoad, lastLoadPct, lastWk,
+                             vxBonusPct, perfectExecution: true },
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Fallback: median Epley+Vara (= legacy computeMovementE1RM-logiikka)
+  const fallback = computeMovementE1RM(movementSets, movement, bodyweightKg);
+  if (fallback === null) return { value: null, source: null, details: {} };
+  // computeMovementE1RM palauttaa system-load barbell-liikkeille suoraan,
+  // accessory-liikkeille systemLoad joka pitää muuntaa external:ksi
+  const value = isBarbell ? fallback : Math.max(0, fallback - bodyweightKg);
+  return { value, source: "median", details: { raw: fallback } };
+}
+
+/**
  * Compute e1RM history (time series) for any movement.
  * v4.34.34: 3. argumentti hyväksyy joko booleanin tai movement-objektin (kuten yllä).
  */
@@ -6227,6 +6354,8 @@ export {
   // Movement e1RM
   computeMovementE1RM,
   computeMovementE1RMHistory,
+  // v4.35.1: yhtenäinen e1RM (cal → plan-based → median, sama kuin recommend())
+  computeMovementE1RMBest,
   // v4.34.34 movement-load-style resolver
   isSystemLoadMovement,
   // v4.34.44: cfg-baseline-resolveri (TASO 1: movementCfg, TASO 2: streetliftingConfig)

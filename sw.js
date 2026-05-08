@@ -1,5 +1,12 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.35.0 — ELIITTITASON PROGRESSIO-MALLI (Helms 2018, Cumming 2024,
+// LeVe AI v4.35.1 — Edistyminen-välilehden e1RM yhtenäistetty recommend()-funktion
+// kanssa. Atletin palaute 2026-05-08: e1RM näytti 170.8 (median) Edistyminen-
+// näkymässä mutta 184.9 (PLAN_BASED) recommend-tracessa → epäjohdonmukainen.
+// Korjaus: uusi computeMovementE1RMBest-funktio joka käyttää SAMAA priorisointia
+// kuin recommend() (cal → plan-based → median). Edistyminen-välilehti kutsuu nyt
+// tätä, joten kaikkialla näkyy sama luku. Ei muuta progressio-target-laskentaa.
+//
+// v4.35.0 — ELIITTITASON PROGRESSIO-MALLI (Helms 2018, Cumming 2024,
 // Issurin 2010): refaktoroitu rikkinäinen cap-only-pohja tutkimuspohjaiseksi.
 //
 // Yhdenseuraussessio (2026-05-08): atletin palaute "kymmeniä auditointeja ja silti
@@ -55,7 +62,7 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.35.0";
+const APP_VERSION = "4.35.1";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

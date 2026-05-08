@@ -881,6 +881,8 @@ import {
   findMissedPriorSessions,
   eliteVolumeCheck,
   computeMovementE1RM, computeMovementE1RMHistory,
+  // v4.35.1: yhtenäinen e1RM (cal → plan-based → median)
+  computeMovementE1RMBest,
   // v4.34.34: keskitetty totuudenlähde "lisätäänkö BW e1RM-laskuun?" -kysymykseen
   isSystemLoadMovement,
   computeStreetliftingOpenerStrategy,
@@ -5839,7 +5841,11 @@ function renderPerLiftAutoregStatus(meso) {
     const last = sets[sets.length - 1];
     // v4.34.34 BUG 1 -fix: käytä movement-objektia computeMovementE1RM:lle
     // (taaksepäin yhteensopiva — engine osaa molemmat boolean+movement -signatuurit)
-    const e1rm = computeMovementE1RM(sets, mov, bw);
+    // v4.35.1: yhtenäisetty recommend()-funktion kanssa — käytä cal-priority
+    // → PLAN_BASED → median -priorisointia (atletin palaute 2026-05-08:
+    // Edistyminen-välilehti 170.8 vs recommend-trace 184.9 oli epäjohdonmukainen).
+    const e1rmBest = computeMovementE1RMBest(sets, state.sessions, meso, mov, bw);
+    const e1rm = e1rmBest.value;
     const movIsSystem = isSystemLoadMovement(mov);
 
     const recentN = sets.slice(-6).filter(s => s.actualVx !== null && s.targetVx !== null);
