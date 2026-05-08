@@ -1,5 +1,17 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.35.1 — Edistyminen-välilehden e1RM yhtenäistetty recommend()-funktion
+// LeVe AI v4.35.2 — Edistyminen-välilehden e1RM yhtenäistäminen JATKUU.
+// v4.35.1 korjasi vain renderPerLiftAutoregStatus-funktion (Koti-näkymän kortin),
+// MUTTA käyttäjän näkemä Edistyminen-välilehti käyttää eri funktioita:
+// renderProgress() (kisaliike-kortit) + renderTrends() (per-liike trendit).
+// Atletin palaute 2026-05-08 v4.35.1:n jälkeen: "ei mikään muuttunut" — koska
+// tämä funktio ei vaikuttanut hänen näkemäänsä lukemaan.
+// v4.35.2 korjaa kaikki kolme funktiota:
+//   - renderPerLiftAutoregStatus (v4.35.1) — Koti-näkymän kortit
+//   - renderProgress (v4.35.2) — Edistyminen-välilehden kisaliike-kortit (current-arvo)
+//   - renderTrends (v4.35.2) — Trendit-välilehden per-liike-kortit
+// Kaikki kolme käyttävät nyt computeMovementE1RMBest:iä → yhtenäinen luku.
+//
+// v4.35.1 — Edistyminen-välilehden e1RM yhtenäistetty recommend()-funktion
 // kanssa. Atletin palaute 2026-05-08: e1RM näytti 170.8 (median) Edistyminen-
 // näkymässä mutta 184.9 (PLAN_BASED) recommend-tracessa → epäjohdonmukainen.
 // Korjaus: uusi computeMovementE1RMBest-funktio joka käyttää SAMAA priorisointia
@@ -62,7 +74,7 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.35.1";
+const APP_VERSION = "4.35.2";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

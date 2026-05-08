@@ -7183,7 +7183,13 @@ function renderProgress() {
 
   const moveCardsHTML = moveCards.map(({ mov, sets, annotated, fullWeekly }) => {
     const n = annotated.length;
-    const current = n > 0 ? annotated[n-1].e1rm : 0;
+    // v4.35.2: Edistyminen-välilehden current-arvo käyttää nyt computeMovementE1RMBest:iä
+    // (sama kuin recommend-tracen 184.9 kg PLAN_BASED-haarassa). Atletin palaute
+    // 2026-05-08: weekly-max Epley+Vara (170.8) erosi recommend-tracesta (184.9).
+    // History-kuvaaja säilyy weekly-max-formaatissa (visualisointi monimutkaisempi).
+    const e1rmBest = computeMovementE1RMBest(sets, state.sessions, state.activeMesocycle, mov, bw);
+    const fallbackCurrent = n > 0 ? annotated[n-1].e1rm : 0;
+    const current = (e1rmBest && e1rmBest.value != null) ? e1rmBest.value : fallbackCurrent;
     const first = n > 0 ? annotated[0].e1rm : 0;
     const delta = current - first;
     const allVals = annotated.map(p => p.e1rm);
@@ -7476,13 +7482,18 @@ function renderTrends() {
 
   // Compute e1RM for all movements that have data
   // v4.34.34 BUG 1 -fix: anna koko movement-objekti computeMovementE1RMHistory:lle
+  // v4.35.2: current-arvo käyttää computeMovementE1RMBest:iä (cal → plan-based →
+  // median) — sama kuin recommend()-funktio. History-time-series säilyy raw
+  // Epley+Vara -muodossa (visualisointi).
   const movementTrends = [];
   for (const m of state.movements) {
     const sets = state.allSets.filter(s => s.movementId === m.movementId);
     if (sets.length === 0) continue;
     const history = computeMovementE1RMHistory(sets, state.sessions, m, bw);
     if (history.length === 0) continue;
-    const current = history[history.length - 1].e1rm;
+    const e1rmBest = computeMovementE1RMBest(sets, state.sessions, state.activeMesocycle, m, bw);
+    const fallbackCurrent = history[history.length - 1].e1rm;
+    const current = (e1rmBest && e1rmBest.value != null) ? e1rmBest.value : fallbackCurrent;
     const first = history[0].e1rm;
     const change = history.length > 1 ? current - first : 0;
     movementTrends.push({ movement: m, history, current, change, totalSets: sets.length });
