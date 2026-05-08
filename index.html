@@ -2761,10 +2761,17 @@ function renderDashboard() {
       if (!mov) continue;
       const sets = state.allSets.filter(s => s.movementId === mov.movementId);
       // v4.34.34 BUG 1 -fix: anna mov-objekti (sisältää loadType:n)
-      const history = computeMovementE1RMHistory(sets, state.sessions, mov, bw);
-      if (history.length > 0) {
-        const lastE1rm = history[history.length - 1].e1rm;
-        if (lastE1rm > 0) e1rms[liftName] = lastE1rm;
+      // v4.35.3: ENNUSTE KISAAN -näkymä käyttää computeMovementE1RMBest:iä
+      // jotta luvut ovat yhtenäisiä recommend()-funktion kanssa (PLAN_BASED).
+      const e1rmBest = computeMovementE1RMBest(sets, state.sessions, state.activeMesocycle, mov, bw);
+      if (e1rmBest && e1rmBest.value != null && e1rmBest.value > 0) {
+        e1rms[liftName] = e1rmBest.value;
+      } else {
+        const history = computeMovementE1RMHistory(sets, state.sessions, mov, bw);
+        if (history.length > 0) {
+          const lastE1rm = history[history.length - 1].e1rm;
+          if (lastE1rm > 0) e1rms[liftName] = lastE1rm;
+        }
       }
     }
     const strategy = computeStreetliftingOpenerStrategy(e1rms);
@@ -6182,10 +6189,13 @@ function renderMovements() {
   // Compute e1RM for every movement
   // v4.34.34 BUG 1 -fix: anna koko movement-objekti (joka sisältää loadType:n)
   // computeMovementE1RM:lle, ei vain m.isPrimary-flagia.
+  // v4.35.3: Liikepankki käyttää computeMovementE1RMBest:iä (cal → plan-based →
+  // median) jotta luvut ovat yhtenäisiä Edistyminen-välilehden ja recommend():n kanssa.
   const movementE1RMs = {};
   for (const m of state.movements) {
     const sets = state.allSets.filter(s => s.movementId === m.movementId);
-    movementE1RMs[m.movementId] = computeMovementE1RM(sets, m, bw);
+    const e1rmBest = computeMovementE1RMBest(sets, state.sessions, state.activeMesocycle, m, bw);
+    movementE1RMs[m.movementId] = e1rmBest ? e1rmBest.value : null;
   }
 
   return `<div class="fade-in">
@@ -10441,9 +10451,15 @@ function bindWorkoutEvents() {
           let e1rmSource = "history"; // "history" tai "PR"
           if (allLiftSets.length > 0) {
             // v4.34.34 BUG 1 -fix: anna m-objekti (sisältää loadType:n)
-            const history = computeMovementE1RMHistory(allLiftSets, state.sessions, m, bw);
-            if (history.length > 0 && history[history.length - 1].e1rm > 0) {
-              currentE1RM = history[history.length - 1].e1rm;
+            // v4.35.3: KUORMITETUT-näkymä käyttää computeMovementE1RMBest:iä yhtenäisyyden takia
+            const e1rmBest = computeMovementE1RMBest(allLiftSets, state.sessions, state.activeMesocycle, m, bw);
+            if (e1rmBest && e1rmBest.value != null && e1rmBest.value > 0) {
+              currentE1RM = e1rmBest.value;
+            } else {
+              const history = computeMovementE1RMHistory(allLiftSets, state.sessions, m, bw);
+              if (history.length > 0 && history[history.length - 1].e1rm > 0) {
+                currentE1RM = history[history.length - 1].e1rm;
+              }
             }
           }
           // v4.32.4: PR-fallback jos historiaa ei ole
@@ -11428,7 +11444,11 @@ function showMovementDetail(mov) {
   const sets = state.allSets.filter(s => s.movementId === mov.movementId);
   // v4.34.34 BUG 1 -fix: anna mov-objekti (sisältää loadType:n)
   const history = computeMovementE1RMHistory(sets, state.sessions, mov, bw);
-  const currentE1RM = history.length > 0 ? history[history.length - 1].e1rm : null;
+  // v4.35.3: liike-detail-modaali käyttää computeMovementE1RMBest:iä (cal →
+  // plan-based → median) jotta luvut ovat yhtenäisiä recommend()-funktion kanssa.
+  const e1rmBest = computeMovementE1RMBest(sets, state.sessions, state.activeMesocycle, mov, bw);
+  const fallbackE1RM = history.length > 0 ? history[history.length - 1].e1rm : null;
+  const currentE1RM = (e1rmBest && e1rmBest.value != null) ? e1rmBest.value : fallbackE1RM;
   const totalSets = sets.length;
   const totalSessions = new Set(sets.map(s => s.sessionId)).size;
 

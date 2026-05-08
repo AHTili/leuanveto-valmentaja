@@ -4531,6 +4531,9 @@ function computeMovementE1RMBest(movementSets, sessions, mesocycle, movement, bo
   const isBarbell = !isSystem;
 
   // 1. Cal-priority: kalibrointi-sarjat ovat tarkin mittaus (DiStasio 2014: ±2.7 kg)
+  // v4.35.3: yksikkö-yhteensopivuus — palauta SAMA yksikkö kuin computeMovementE1RM:
+  //   barbell → ext (e1rmAccessory output)
+  //   system-load → system (e1rmSystem output, sis. bodyweight)
   const calSets = movementSets.filter(s => s.setRole === "calibration");
   const recentCalSets = calSets.slice(-3);
   if (recentCalSets.length > 0) {
@@ -4541,8 +4544,8 @@ function computeMovementE1RMBest(movementSets, sessions, mesocycle, movement, bo
     }).filter(v => v !== null);
     if (calE1RMs.length > 0) {
       const calE1RM = median(calE1RMs);
-      const value = isBarbell ? calE1RM : Math.max(0, calE1RM - bodyweightKg);
-      return { value, source: "cal", details: { calCount: recentCalSets.length, raw: calE1RM } };
+      // Säilytä yksikkö (ext barbell:lle, system system-load:lle)
+      return { value: calE1RM, source: "cal", details: { calCount: recentCalSets.length, raw: calE1RM } };
     }
   }
 
@@ -4605,11 +4608,16 @@ function computeMovementE1RMBest(movementSets, sessions, mesocycle, movement, bo
                   sum + ((s.actualVx ?? 0) - (s.targetVx ?? 0)), 0) / lastSessionSets.length;
                 const vxBonusPct = Math.max(0, meanOvershoot) * 0.025;
                 const planBasedExternal = (lastMedianLoad / lastLoadPct) * (1 + vxBonusPct);
+                // v4.35.3: yksikkö-yhteensopivuus — palauta SAMA yksikkö kuin computeMovementE1RM:
+                //   barbell → ext (planBasedExternal suoraan)
+                //   system-load → system (= ext + bodyweight, kuten engine.js:2572)
+                const value = isBarbell ? planBasedExternal : (planBasedExternal + bodyweightKg);
                 return {
-                  value: planBasedExternal,
+                  value,
                   source: "plan-based",
                   details: { lastLoad: lastMedianLoad, lastLoadPct, lastWk,
-                             vxBonusPct, perfectExecution: true },
+                             vxBonusPct, perfectExecution: true,
+                             planBasedExternal, isSystemLoad: !isBarbell },
                 };
               }
             }
@@ -4620,12 +4628,11 @@ function computeMovementE1RMBest(movementSets, sessions, mesocycle, movement, bo
   }
 
   // 3. Fallback: median Epley+Vara (= legacy computeMovementE1RM-logiikka)
+  // v4.35.3: yksikkö-yhteensopivuus — säilytä legacy-palautus sellaisenaan
+  // (computeMovementE1RM palauttaa ext barbell:lle, system system-load:lle)
   const fallback = computeMovementE1RM(movementSets, movement, bodyweightKg);
   if (fallback === null) return { value: null, source: null, details: {} };
-  // computeMovementE1RM palauttaa system-load barbell-liikkeille suoraan,
-  // accessory-liikkeille systemLoad joka pitää muuntaa external:ksi
-  const value = isBarbell ? fallback : Math.max(0, fallback - bodyweightKg);
-  return { value, source: "median", details: { raw: fallback } };
+  return { value: fallback, source: "median", details: { raw: fallback } };
 }
 
 /**

@@ -1,5 +1,26 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.35.2 — Edistyminen-välilehden e1RM yhtenäistäminen JATKUU.
+// LeVe AI v4.35.3 — KOKO sovelluksen e1RM-yhtenäistäminen + yksikkö-bug-korjaus.
+// Atletin palaute v4.35.2:n jälkeen 2026-05-08: "et näytä ratkaisevan selkeitä
+// ongelmia" + Lisäpainodippi näkyi 100.9 ↓-92.4 kg (= -92 kg pudotus).
+//
+// JUURISYYT v4.35.3:ssa korjattu:
+// 1) Yksikkö-bug: computeMovementE1RMBest palautti aina ext-arvon, mutta
+//    legacy computeMovementE1RM palauttaa system-arvon system-load-liikkeille.
+//    Lisäpainodippi (system-load): UI näytti ext-luvun system-otsikon alla
+//    → näytti -92 kg pudotuksena. KORJATTU: palautusarvon yksikkö matchaa
+//    legacy-funktioon (barbell → ext, system-load → system).
+// 2) UI-näkymät joita v4.35.1/.2 ei korjannut:
+//    - ENNUSTE KISAAN -näkymä (computeStreetliftingOpenerStrategy syöte)
+//    - Liikepankki-näkymä (movementE1RMs-kartta)
+//    - KUORMITETUT-näkymä (currentE1RM)
+//    - showMovementDetail-modaali (currentE1RM)
+//    Kaikki kutsuvat nyt computeMovementE1RMBest:iä → yhtenäinen luku
+//    KAIKKIALLA sovelluksessa.
+//
+// Yhteensä 6 erillistä UI-kohtaa korjattu (3 v4.35.1/.2:ssa + 4 v4.35.3:ssa,
+// josta 1 päällekkäinen, joten +4 uutta v4.35.3:ssa).
+//
+// v4.35.2 — Edistyminen-välilehden e1RM yhtenäistäminen JATKUU.
 // v4.35.1 korjasi vain renderPerLiftAutoregStatus-funktion (Koti-näkymän kortin),
 // MUTTA käyttäjän näkemä Edistyminen-välilehti käyttää eri funktioita:
 // renderProgress() (kisaliike-kortit) + renderTrends() (per-liike trendit).
@@ -74,7 +95,7 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.35.2";
+const APP_VERSION = "4.35.3";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
