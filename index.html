@@ -398,6 +398,35 @@
     .warmup-line { display: flex; gap: 6px; align-items: baseline; font-size: 11px; color: var(--warn); font-weight: 600; letter-spacing: 0.3px; margin-bottom: 10px; flex-wrap: wrap; }
     .warmup-line .dots { color: var(--dim); font-weight: 400; }
 
+    /* v4.36.0 — Warmup row listing (Claude Design "Variant A") */
+    /* Korvaa yksirivinen .warmup-line:n laajennettavalla kompaktilla rivilistalla.
+       Atletti voi yhdellä silmäyksellä nähdä lämmittelyn osamäärän ja keston. */
+    .wu-block { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px dashed var(--border-soft, #1d2742); font-feature-settings: "tabular-nums" 1; }
+    .wu-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px; }
+    .wu-label { font-size: 12px; font-weight: 700; color: var(--warn); letter-spacing: 0.5px; }
+    .wu-meta { font-size: 11px; font-weight: 600; color: var(--muted); }
+    .wu-meta strong { font-weight: 700; color: var(--txt); }
+    .wu-rows { display: flex; flex-direction: column; }
+    .wu-row { display: grid; grid-template-columns: 18px 1fr auto; gap: 10px; padding: 9px 0; align-items: center; cursor: pointer; user-select: none; }
+    .wu-row + .wu-row { border-top: 1px dashed var(--border-soft, #1d2742); }
+    .wu-row:active { background: rgba(79,140,255,.06); }
+    .wu-row.is-open { background: rgba(79,140,255,.04); }
+    .wu-num { font-size: 11px; font-weight: 700; color: var(--dim); text-align: center; }
+    .wu-body { min-width: 0; }
+    .wu-name { font-size: 13px; font-weight: 600; color: var(--txt); line-height: 1.3; }
+    .wu-why { font-size: 11px; font-weight: 400; color: var(--muted); margin-top: 1px; line-height: 1.3; }
+    .wu-dose { font-size: 11px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+    .wu-detail { padding: 8px 0 12px 28px; border-top: 1px dashed var(--border-soft, #1d2742); display: none; }
+    .wu-detail.is-open { display: block; }
+    .wu-detail .wu-steps { margin: 0 0 8px 0; padding-left: 16px; }
+    .wu-detail .wu-steps li { font-size: 12px; color: var(--txt); line-height: 1.5; margin-bottom: 2px; }
+    .wu-detail .wu-cue { font-size: 12px; font-weight: 600; color: var(--ok, #4cd964); margin: 6px 0; padding: 4px 8px; background: rgba(76,217,100,.08); border-left: 2px solid var(--ok, #4cd964); border-radius: 3px; }
+    .wu-detail .wu-meta-line { font-size: 10px; color: var(--dim); margin-top: 4px; }
+    .wu-detail-legacy { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .wu-more { display: block; margin-top: 8px; padding: 6px 8px; width: 100%; background: var(--acc-soft, rgba(79,140,255,.14)); border: 1px solid rgba(79,140,255,.18); border-radius: 8px; color: var(--acc); font-size: 11px; font-weight: 600; text-align: center; cursor: pointer; }
+    .wu-more:hover { background: rgba(79,140,255,.20); }
+    .wu-row.is-hidden { display: none; }
+
     .slot-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; padding: 7px 0; align-items: center; }
     .slot-row + .slot-row { border-top: 1px dashed #1e2a45; }
     .slot-role { font-size: 13px; text-align: center; }
@@ -2623,10 +2652,96 @@ function renderDashboard() {
   if (deloadMode) heroSubParts.push("kuormat pienennetty");
   const heroSub = heroSubParts.length ? heroSubParts.join(" · ") : "Ei ohjelmaa tänään";
 
+  // v4.36.0 — Warmup row listing (Claude Design Variant A, atletin palaute 2026-05-08).
+  // Korvaa yksirivinen warmup-line scannattavalla rivilistalla. Atletti näkee
+  // yhdellä silmäyksellä lämmittelyn osamäärän + arvioidun keston, sekä jokaisen
+  // liikkeen tarkoituksen (why) ja annoksen (dose). Tap-rivi → inline detail
+  // (uusi schema: steps + cue + meta; legacy: full desc).
+  //
+  // Data-schema (non-breaking): item voi olla legacy { name, desc } TAI uusi
+  // { name, dose, why, steps[], cue, citation, changelog }. Jos uusi schema
+  // puuttuu, fallback-render käyttää desc-kenttää (lyhennetty 60 merkkiin).
   const warmupItems = rec?.dayPlan?.warmup || [];
-  const warmupLineHTML = warmupItems.length > 0
-    ? `<div class="warmup-line">🔥 LÄMMITTELY <span class="dots">· ${warmupItems.slice(0, 3).map(w => w.desc ? `${w.name} ${w.desc}` : w.name).join(" · ")}${warmupItems.length > 3 ? ` · +${warmupItems.length - 3}` : ""}</span></div>`
+  const warmupMeta = rec?.dayPlan?.warmup_meta || {};
+
+  const _wuParseDose = (item) => {
+    if (item.dose) return item.dose;
+    // Heuristic: yritä poimia dose-tieto desc:istä (esim. "90 s reipas tahti", "2 settiä", "10 toistoa")
+    if (!item.desc) return "";
+    const m = item.desc.match(/^([\d]+\s*(?:s|settiä|toistoa|kg|min|kierrettä|x[\d]+))\s/i);
+    return m ? m[1] : "";
+  };
+  const _wuParseWhy = (item) => {
+    if (item.why) return item.why;
+    if (!item.desc) return "";
+    // Heuristic: ota ensimmäinen lyhyt lause (esim. ennen ensimmäistä numerolueteloa)
+    const m = item.desc.match(/^[^(0-9]{8,80}/);
+    if (m) {
+      let why = m[0].trim().replace(/[—:]\s*$/, "").trim();
+      if (why.length > 60) why = why.slice(0, 57) + "…";
+      return why;
+    }
+    return "";
+  };
+  const _wuEstSec = (item) => {
+    if (item.est_sec) return item.est_sec;
+    const dose = _wuParseDose(item);
+    const sm = dose.match(/(\d+)\s*s/i);
+    if (sm) return parseInt(sm[1], 10) * (dose.includes("/") || dose.includes("settiä") || dose.match(/^\d+\s*x/i) ? 2 : 1);
+    return 60; // oletus
+  };
+  const _wuEstMin = warmupItems.length > 0
+    ? (warmupMeta.est_min || Math.round(warmupItems.reduce((sum, it) => sum + _wuEstSec(it), 0) / 60))
+    : 0;
+
+  const _wuRenderRow = (item, idx, isHidden) => {
+    const dose = _wuParseDose(item);
+    const why = _wuParseWhy(item);
+    const escName = String(item.name || "").replace(/</g, "&lt;");
+    const escWhy = String(why).replace(/</g, "&lt;");
+    const escDose = String(dose).replace(/</g, "&lt;");
+    const num = String(idx + 1);
+    return `<div class="wu-row${isHidden ? " is-hidden" : ""}" data-wu-idx="${idx}">
+      <div class="wu-num">${num}</div>
+      <div class="wu-body">
+        <div class="wu-name">${escName}</div>
+        ${escWhy ? `<div class="wu-why">${escWhy}</div>` : ""}
+      </div>
+      <div class="wu-dose">${escDose}</div>
+    </div>
+    <div class="wu-detail" data-wu-detail="${idx}">${_wuRenderDetail(item)}</div>`;
+  };
+  const _wuRenderDetail = (item) => {
+    const escDesc = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    if (item.steps && Array.isArray(item.steps) && item.steps.length > 0) {
+      const stepsHTML = `<ol class="wu-steps">${item.steps.map(s => `<li>${escDesc(s)}</li>`).join("")}</ol>`;
+      const cueHTML = item.cue ? `<div class="wu-cue">${escDesc(item.cue)}</div>` : "";
+      const metaParts = [];
+      if (item.citation) metaParts.push(escDesc(item.citation));
+      if (item.changelog) metaParts.push(escDesc(item.changelog));
+      const metaHTML = metaParts.length ? `<div class="wu-meta-line">${metaParts.join(" · ")}</div>` : "";
+      return `${stepsHTML}${cueHTML}${metaHTML}`;
+    }
+    // Legacy fallback: koko desc-paragraph
+    return `<div class="wu-detail-legacy">${escDesc(item.desc || "")}</div>`;
+  };
+
+  const _wuMaxVisible = 5;
+  const warmupBlockHTML = warmupItems.length > 0
+    ? `<div class="wu-block">
+        <div class="wu-head">
+          <span class="wu-label">🔥 LÄMMITTELY</span>
+          <span class="wu-meta"><strong>${warmupItems.length} osaa</strong>${_wuEstMin > 0 ? ` · ~${_wuEstMin} min` : ""}</span>
+        </div>
+        <div class="wu-rows">
+          ${warmupItems.map((it, i) => _wuRenderRow(it, i, i >= _wuMaxVisible)).join("")}
+        </div>
+        ${warmupItems.length > _wuMaxVisible
+          ? `<button class="wu-more" id="btn-wu-more" data-wu-more="show">Näytä loput ${warmupItems.length - _wuMaxVisible} · ohjeet ja askeleet ›</button>`
+          : ""}
+      </div>`
     : "";
+  const warmupLineHTML = warmupBlockHTML; // alias säilytys (käytetty alempana)
 
   let slotRowsHTML = "";
   if (slots.length > 0) {
@@ -8457,6 +8572,41 @@ function bind() {
 
   const readinessBtn = $("#btn-readiness");
   if (readinessBtn) readinessBtn.addEventListener("click", () => { state.view = "readiness"; render(); });
+
+  // v4.36.0 — Warmup row tap (inline expand) + reveal-more
+  $$(".wu-row").forEach(row => {
+    row.addEventListener("click", () => {
+      const idx = row.dataset.wuIdx;
+      if (idx === undefined) return;
+      const detail = document.querySelector(`.wu-detail[data-wu-detail="${idx}"]`);
+      if (!detail) return;
+      const isOpen = detail.classList.contains("is-open");
+      detail.classList.toggle("is-open", !isOpen);
+      row.classList.toggle("is-open", !isOpen);
+    });
+  });
+  const wuMoreBtn = $("#btn-wu-more");
+  if (wuMoreBtn) wuMoreBtn.addEventListener("click", () => {
+    const state = wuMoreBtn.dataset.wuMore || "show";
+    const hidden = $$(".wu-row.is-hidden");
+    const visibleHidden = $$(".wu-row:not(.is-hidden)").length;
+    if (state === "show") {
+      hidden.forEach(r => r.classList.remove("is-hidden"));
+      wuMoreBtn.dataset.wuMore = "hide";
+      wuMoreBtn.textContent = "Piilota lisätiedot";
+    } else {
+      // Piilotetaan rivi indeksi >= 5 + suljetaan kaikki avoimet detail-paneelit
+      $$(".wu-row").forEach(r => {
+        const idx = parseInt(r.dataset.wuIdx, 10);
+        if (idx >= 5) r.classList.add("is-hidden");
+        r.classList.remove("is-open");
+      });
+      $$(".wu-detail").forEach(d => d.classList.remove("is-open"));
+      wuMoreBtn.dataset.wuMore = "show";
+      const total = $$(".wu-row").length;
+      wuMoreBtn.textContent = `Näytä loput ${total - 5} · ohjeet ja askeleet ›`;
+    }
+  });
 
   // Missed-session banner: "Tee nyt" → käynnistä treeni mennyt-päivän planilla
   $$("[data-backfill]").forEach(btn => {

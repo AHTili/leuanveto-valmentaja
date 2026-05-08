@@ -1,5 +1,27 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.35.3 — KOKO sovelluksen e1RM-yhtenäistäminen + yksikkö-bug-korjaus.
+// LeVe AI v4.36.0 — Lämmittelynäkymä-redesign (Claude Design "Variant A").
+//
+// Atletin palaute 2026-05-08: nykyinen yksirivinen warmup-näkymä on epäselkkeä
+// (anatomia, sitaatit, version-bumput sekoittuneet yhdeksi tekstiksi). Claude
+// Designin tuotos: kompakti rivilistaus 5 rivillä + reveal-nappi loppuihin +
+// tap-rivi avaa inline detail-paneelin (uusi schema: steps + cue + meta;
+// legacy: full desc).
+//
+// MUUTOKSET v4.36.0:
+// - CSS: uudet luokat .wu-block, .wu-head, .wu-row, .wu-more, .wu-detail
+//   (säilyttää legacy .warmup-line:n koskemattomana)
+// - Render: warmupBlockHTML korvaa warmupLineHTML:n koti-näkymässä
+// - Helper-funktiot _wuParseDose/_wuParseWhy parsivat dose+why legacy desc:istä
+//   jos uusi schema (item.dose, item.why) puuttuu → non-breaking fallback
+// - Event delegation: tap-rivi → inline expand, "Näytä loput N" → reveal kaikki
+// - Migration: vaiheittainen — data.js warmup-blokit voivat lisätä uudet kentät
+//   (dose, why, steps, cue, citation, changelog) yksitellen ilman flag:ia
+//
+// VERIFIOINTI:
+// - 304/304 selaintestiä OK (engine ennallaan)
+// - UI-rendering ei kaadu kun warmup-data puuttuu
+//
+// v4.35.3 — KOKO sovelluksen e1RM-yhtenäistäminen + yksikkö-bug-korjaus.
 // Atletin palaute v4.35.2:n jälkeen 2026-05-08: "et näytä ratkaisevan selkeitä
 // ongelmia" + Lisäpainodippi näkyi 100.9 ↓-92.4 kg (= -92 kg pudotus).
 //
@@ -95,7 +117,7 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.35.3";
+const APP_VERSION = "4.36.0";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
