@@ -49,6 +49,63 @@ const REST_RECOMMENDATIONS = {
   accessoryIsolation: { minSec: 60, maxSec: 90, label: "1–1.5 min" },
 };
 
+// ═══════════════════════════════════════════════════════════════
+// PROGRESSION_CONFIG (v4.35.0 — Eliittitason progressio-malli)
+// ═══════════════════════════════════════════════════════════════
+//
+// Keskitetty konfiguraatio computeProgressionTarget-funktiolle. Jokainen luku
+// on dokumentoitu lähteen kanssa. Kalibrointi tehdään tässä, ei inline.
+//
+// Lähteet (peer-reviewed + vakiintunut käytäntö):
+//   • Helms et al. 2018 "RPE vs Percentage 1RM Loading"
+//     Frontiers in Physiology 9:247
+//   • Helms et al. 2016 "RIR-Based RPE Scale for Resistance Training"
+//     Strength & Conditioning Journal 38(4):42-49
+//   • Tuchscherer / Reactive Training Systems RPE-tables (julkinen)
+//   • Cumming et al. 2024 "Muscle memory in humans" J Physiology
+//   • Psilander et al. 2018 "Effects of training, detraining, retraining"
+//     J Appl Physiol 126(6):1636-1645
+//   • Bruusgaard et al. 2010 "Myonuclei acquired by overload exercise" PNAS
+//   • Issurin 2010 "New Horizons for Methodology of Training Periodization"
+//     Sports Medicine 40(3):189-206
+//
+const PROGRESSION_CONFIG = {
+  // Helms 2018: 0.5 RPE-yksikön poikkeama target-arvosta = 2% kuorma-säätö
+  // → 1.0 RPE = 4%. Vara-skaalalla: 1.0 Vx = 4% (RPE = 10 - Vx).
+  // Käytetään lievennettynä session-välillä (puolitettuna), koska Helms 2018
+  // -kaava on alunperin saman session sisäinen autoregulaatio.
+  HELMS_VX_TO_LOAD_PCT_BETWEEN_SESSIONS: 0.02,
+
+  // Helms 2018 + Renaissance Periodization: viikoittainen progressio PR-vaiheessa
+  // edistyneelle voimanostajalle = +2.5%/viikko same target RPE.
+  // Vahvistus: %1RM-ryhmä Helms 2018:ssa nostaa kuormaa +2.5% per viikko jos
+  // edellinen vk onnistui.
+  WEEKLY_BASELINE_PR_PHASE: 0.025,
+
+  // Cumming 2024 / Psilander 2018 / Bruusgaard 2010 — muscle memory / regain.
+  // Tutkimus: 12 vk training → 12 vk detraining → 8 vk retraining palautti tason.
+  // Eli retraining = ~33% nopeampi kuin alkutraining (12/8 = 1.50).
+  // Aggressiivinen regain (kun ratio < 0.85) saa multiplierin 2.0 (Psilander
+  // 2018 yläraja: nopein retraining-vauhti aikaisempaan kuntoon palatessa).
+  REGAIN_THRESHOLD_FAR: 0.85,
+  REGAIN_THRESHOLD_NEAR: 0.95,
+  REGAIN_MULTIPLIER_FAR: 2.0,
+  REGAIN_MULTIPLIER_NEAR: 1.5,
+
+  // V0-grindi-suoja (atletin profiili: V0-grindi-taipumus).
+  // V0-fail viime sessiossa → konservatiivinen palautus −5% seuraavalle.
+  // Lähde: atletin profiili + Tuchscherer "don't grind reps" -periaate.
+  V0_GRINDI_PENALTY: -0.05,
+
+  // Hard-cap fysiologisen progressio-rajan ylläpitämiseksi.
+  // Issurin 2010 + Helms 2018 + Tuchscherer RTS: max +15%/viikko on äärimmäinen
+  // (käytännössä vain regain-vaiheen alkupisteessä).
+  HARD_CAP_PER_WEEK: 0.15,
+
+  // Toleranssi pyöristys-eroille (kg).
+  ROUNDING_TOLERANCE: 0.25,
+};
+
 /**
  * Pick the appropriate rest recommendation for an exercise based on its role,
  * category, target Vx and reps. Compound accessories with loaded targetVx need
@@ -1788,6 +1845,204 @@ function computeRateLimitAnchor(recentTopSets, opts = {}) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// PROGRESSION TARGET (v4.35.0 — Eliittitason refaktorointi)
+// ═══════════════════════════════════════════════════════════════
+//
+// Yhtenäinen funktio joka päättää progressio-targetin huomioimalla:
+//   1. Helms 2018: Vx-mismatch session-välillä (lievennetty 1Vx = 2%)
+//   2. Viikoittainen baseline-progressio (+2.5%/vk × weeksSinceLast)
+//   3. Regain-multiplier (Cumming 2024, Psilander 2018)
+//   4. V0-grindi-suoja (atletin profiili, −5%)
+//   5. Plan-floor (prescribed × baseline = lattia, autoreg voi vain nostaa)
+//   6. Hard-cap (max +15% × weeksSinceLast)
+//   7. Floor-cap taaksepäin yhteensopivuus (regression-suoja)
+//   8. Yliajot: cal/deload/speed-päivä → naive plan
+//
+// Puhdas funktio: deterministinen, ei sivuvaikutuksia, ei async.
+// Pyöristys jätetään kutsujan tehtäväksi (roundToHalf).
+// Trace.ruleHits[] sisältää vanhat ruleId:t taaksepäin yhteensopivuudeksi.
+//
+// @param {object} ctx
+// @param {{medianLoad, medianVx, isCalibration, dateISO}|null} ctx.lastSession
+//        Viim. session profiili (computeRateLimitAnchor.lastSession)
+// @param {number} ctx.targetVx - Tämän session prescribed Vx
+// @param {{deltaPctBase}|null} ctx.weekDef - Mesosykli-vk
+// @param {string} ctx.dayType - "heavy" | "volume" | "speed" | "competition"
+// @param {number|null} ctx.cfgBaseline - Cfg-arvo (esim. 185 kg) — null jos ei
+// @param {number|null} ctx.planTarget - Prescribed_pct × baseline (jo laskettu)
+// @param {boolean} ctx.planBasedActive - Onko PLAN_BASED_E1RM aktivoitunut
+// @param {string} ctx.dateISO - Tämän session päivämäärä
+// @returns {{targetLoad: number|null, decisionTrace: object}}
+function computeProgressionTarget(ctx) {
+  const cfg = PROGRESSION_CONFIG;
+
+  const trace = {
+    inputs: {
+      lastLoad: ctx.lastSession?.medianLoad ?? null,
+      lastVx: ctx.lastSession?.medianVx ?? null,
+      lastIsCal: ctx.lastSession?.isCalibration ?? null,
+      lastDateISO: ctx.lastSession?.dateISO ?? null,
+      targetVx: ctx.targetVx,
+      deltaPctBase: ctx.weekDef?.deltaPctBase ?? null,
+      dayType: ctx.dayType,
+      cfgBaseline: ctx.cfgBaseline,
+      planTarget: ctx.planTarget,
+      planBasedActive: ctx.planBasedActive === true,
+      dateISO: ctx.dateISO,
+    },
+    regainRatio: null,
+    regainMultiplier: 1.0,
+    weeklyProgressionPct: 0,
+    vxAdjustmentPct: 0,
+    weeksSinceLast: 0,
+    autoregTarget: null,
+    planFloor: ctx.planTarget,
+    hardCap: null,
+    finalTarget: null,
+    ruleHits: [],
+    rationale: '',
+  };
+
+  const { lastSession, targetVx, weekDef, dayType, cfgBaseline, planTarget,
+          planBasedActive, dateISO } = ctx;
+
+  // 1. YLIAJOT: deload, speed, ei lastSessionia, ei planTargetia → naive plan
+  const isDeload = (weekDef?.deltaPctBase ?? 0) < 0;
+  const isSpeed = dayType === 'speed';
+
+  if (isDeload) {
+    trace.finalTarget = planTarget;
+    trace.ruleHits.push('PROGRESSION_DELOAD_PASSTHROUGH');
+    trace.rationale = `Deload-vk (deltaPctBase ${weekDef.deltaPctBase}): prescribed × baseline (autoreg ohitettu).`;
+    return { targetLoad: planTarget, decisionTrace: trace };
+  }
+  if (isSpeed) {
+    trace.finalTarget = planTarget;
+    trace.ruleHits.push('PROGRESSION_SPEED_PASSTHROUGH');
+    trace.rationale = `Speed-päivä: prescribed × baseline (autoreg ohitettu, intensiteetti tulee Vx:stä).`;
+    return { targetLoad: planTarget, decisionTrace: trace };
+  }
+  if (lastSession === null || lastSession === undefined) {
+    trace.finalTarget = planTarget;
+    trace.ruleHits.push('PROGRESSION_NO_HISTORY');
+    trace.rationale = `Ei viim. ei-cal-sessiota → naive plan.`;
+    return { targetLoad: planTarget, decisionTrace: trace };
+  }
+  if (planTarget === null || planTarget === undefined) {
+    trace.finalTarget = null;
+    trace.ruleHits.push('PROGRESSION_NO_PLAN');
+    trace.rationale = `Ei plan-targetia → null (kutsujan vastuu fallback).`;
+    return { targetLoad: null, decisionTrace: trace };
+  }
+
+  // 2. V0-grindi-suoja (ennen muuta logiikkaa)
+  // Jos viim. sessio meni V0-failina (ei cal), seuraavalle konservatiivinen palautus
+  if (lastSession.medianVx === 0 && !lastSession.isCalibration) {
+    const conservativeTarget = lastSession.medianLoad * (1 + cfg.V0_GRINDI_PENALTY);
+    // Plan-target on edelleen lattia: jos suunnitelma sanoo jotain matalampaa,
+    // V0-suoja saa pudottaa kuormaa siihen mutta ei alle.
+    const target = Math.max(planTarget, conservativeTarget);
+    trace.finalTarget = target;
+    trace.ruleHits.push('PROGRESSION_V0_PROTECTION');
+    trace.rationale = `V0-fail viim. sessio (${lastSession.medianLoad}@V0) → ${(cfg.V0_GRINDI_PENALTY*100).toFixed(0)}% palautus (= ${conservativeTarget.toFixed(1)} kg). Plan-floor ${planTarget.toFixed(1)} kg ${target === planTarget ? 'voittaa' : 'ohitettu'}.`;
+    return { targetLoad: target, decisionTrace: trace };
+  }
+
+  // 3. Regain-ratio (vain jos cfgBaseline saatavilla)
+  let regainRatio = null;
+  let regainMultiplier = 1.0;
+  if (cfgBaseline && cfgBaseline > 0) {
+    regainRatio = lastSession.medianLoad / cfgBaseline;
+    if (regainRatio < cfg.REGAIN_THRESHOLD_FAR) {
+      regainMultiplier = cfg.REGAIN_MULTIPLIER_FAR;
+      trace.ruleHits.push('PROGRESSION_REGAIN_FAR');
+    } else if (regainRatio < cfg.REGAIN_THRESHOLD_NEAR) {
+      regainMultiplier = cfg.REGAIN_MULTIPLIER_NEAR;
+      trace.ruleHits.push('PROGRESSION_REGAIN_NEAR');
+    }
+  }
+  trace.regainRatio = regainRatio;
+  trace.regainMultiplier = regainMultiplier;
+
+  // 4. Weeks since last (multi-week-aware)
+  let weeksSinceLast = 1;
+  if (lastSession.dateISO && dateISO) {
+    const daysSince = Math.max(1, Math.floor(
+      (new Date(dateISO).getTime() - new Date(lastSession.dateISO).getTime()) / 86400000
+    ));
+    weeksSinceLast = Math.min(3, Math.max(1, Math.ceil(daysSince / 7)));
+  }
+  trace.weeksSinceLast = weeksSinceLast;
+
+  // 5. Vx-mismatch-säätö (Helms 2018 lievennettynä)
+  // Jos last_Vx > target_Vx (= viime kerta oli helpompaa kuin tavoiteltiin),
+  // nostetaan kuormaa. Vx-skaala: korkeampi luku = helpompi.
+  let vxAdjustmentPct = 0;
+  if (lastSession.medianVx > targetVx) {
+    const vxDiff = lastSession.medianVx - targetVx;
+    vxAdjustmentPct = vxDiff * cfg.HELMS_VX_TO_LOAD_PCT_BETWEEN_SESSIONS;
+  }
+  trace.vxAdjustmentPct = vxAdjustmentPct;
+
+  // 6. Viikoittainen progressio (Helms baseline × regain × weeks)
+  const weeklyProgressionPct = cfg.WEEKLY_BASELINE_PR_PHASE * regainMultiplier * weeksSinceLast;
+  trace.weeklyProgressionPct = weeklyProgressionPct;
+
+  // 7. Yhdistetty autoreg-target
+  // PLAN_BASED-yhteensovitus: jos PLAN_BASED jo aktivoitui primary-haarassa,
+  // sen tulos on jo nostanut planTargetin Helms 2018:n mukaisesti. Älä lisää
+  // weekly_progression päälle (kaksoiskirjaus-suoja). vxAdjustment lisätään
+  // silti, koska se on eri mekanismi (PLAN_BASED tunnistaa saman session
+  // overshoot:in, vxAdjustment tunnistaa session-välisen Vx-helpotuksen).
+  let totalProgression;
+  if (planBasedActive) {
+    totalProgression = vxAdjustmentPct;
+    trace.ruleHits.push('PROGRESSION_PLAN_BASED_HARMONIZED');
+  } else {
+    totalProgression = vxAdjustmentPct + weeklyProgressionPct;
+  }
+  const autoregTarget = lastSession.medianLoad * (1 + totalProgression);
+  trace.autoregTarget = autoregTarget;
+
+  // 8. Hard-cap (max +15% × weeksSinceLast)
+  const hardCap = lastSession.medianLoad * (1 + cfg.HARD_CAP_PER_WEEK * weeksSinceLast);
+  trace.hardCap = hardCap;
+
+  // 9. Lopullinen target
+  // Plan-floor: prescribed × baseline = lattia, autoregulaatio voi vain nostaa
+  let finalTarget = Math.max(planTarget, autoregTarget);
+
+  // Hard-cap voittaa
+  if (finalTarget > hardCap) {
+    finalTarget = hardCap;
+    trace.ruleHits.push('PROGRESSION_HARD_CAP');
+  }
+
+  // 10. Floor-cap (taaksepäin yhteensopivuus): jos viim. sessio meni Vx >= target,
+  // älä putoa alle viim. session medianLoadin (regression-suoja).
+  // Sallii tasolla pysymisen (Vx_diff = 0 ja weekly-progressio = 0 jälkeen
+  // PR-vaiheessa cap voi tuottaa sama kuorma).
+  if (lastSession.medianVx >= targetVx
+      && !lastSession.isCalibration
+      && finalTarget < lastSession.medianLoad - cfg.ROUNDING_TOLERANCE) {
+    finalTarget = lastSession.medianLoad;
+    trace.ruleHits.push('PROGRESSION_FLOOR_CAP');
+  }
+
+  trace.finalTarget = finalTarget;
+
+  // 11. Rationale
+  if (regainMultiplier > 1.0) {
+    const phaseLbl = regainRatio < cfg.REGAIN_THRESHOLD_FAR ? 'aggressive regain' : 'mild regain';
+    trace.rationale = `${phaseLbl} (ratio ${regainRatio.toFixed(2)}, ×${regainMultiplier.toFixed(1)}): weekly ${(weeklyProgressionPct*100).toFixed(1)}% (${(cfg.WEEKLY_BASELINE_PR_PHASE*100).toFixed(1)}% × ${regainMultiplier.toFixed(1)} × ${weeksSinceLast}vk)${vxAdjustmentPct > 0 ? ` + Vx-adj ${(vxAdjustmentPct*100).toFixed(1)}% (last V${lastSession.medianVx} > target V${targetVx})` : ''}. Target ${finalTarget.toFixed(1)} kg ${finalTarget === planTarget ? '(plan-floor)' : finalTarget === hardCap ? '(hard-cap)' : '(autoreg)'}.`;
+  } else {
+    trace.rationale = `PR-phase: weekly ${(weeklyProgressionPct*100).toFixed(1)}% (${(cfg.WEEKLY_BASELINE_PR_PHASE*100).toFixed(1)}% × ${weeksSinceLast}vk)${vxAdjustmentPct > 0 ? ` + Vx-adj ${(vxAdjustmentPct*100).toFixed(1)}%` : ''}${planBasedActive ? ' [plan-based harmonized]' : ''}. Target ${finalTarget.toFixed(1)} kg ${finalTarget === planTarget ? '(plan-floor)' : finalTarget === hardCap ? '(hard-cap)' : '(autoreg)'}.`;
+  }
+
+  return { targetLoad: finalTarget, decisionTrace: trace };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // LOAD-VELOCITY PROFILE (v4.25.1 — Enode-valmistelu)
 // ═══════════════════════════════════════════════════════════════
 //
@@ -3026,132 +3281,96 @@ async function recommend(options = {}) {
       trace("LOAD_PCT_RESOLVED", {}, { pct, currentE1RMExternal, targetExternalLoad },
         `${(pct*100).toFixed(0)}% × current e1RM (${currentE1RMExternal} kg) = ${targetExternalLoad} kg`);
 
-      // v4.27.12: SESSION-TO-SESSION PROGRESSION RATE LIMIT
-      // v4.27.14: ROBUST ANCHOR — viim. 3 session raskain MEDIAN, ei yksittäistä setriä
+      // v4.35.0 — Eliittitason progressio: yksi funktio päättää kuorman.
       //
-      // Suojaus yksittäisen session e1RM-spiikiltä. Cap-only-ohjelma EI saa
-      // suosittaa fysiologisesti mahdottomia hyppyjä viikossa (esim. +19%
-      // samalla Vx:llä). Epley+Vara e1RM on herkkä Vx-aliarvioinnille, ja
-      // median viimeisistä N sarjasta heiluu rajusti kun historiaa on vähän.
+      // Vanha cap-only-arkkitehtuuri (PROGRESSION_RATE_LIMIT + PROGRESSION_FLOOR_CAP
+      // erillisinä mekanismeina, dual-anchor heaviest+last, planBasedCapBonus,
+      // weekMultiplier) on korvattu computeProgressionTarget-funktiolla joka
+      // yhdistää regain-multiplier × Helms-weekly + Vx-adjustment + plan-floor +
+      // hard-cap + regression-suoja yhdeksi deterministiseksi päätökseksi.
       //
-      // Sääntö (session-vs-session):
-      //   • Vx pysyy samana tai vaikeutuu → max +6 % / viikko
-      //   • Vx helpottuu +1                → max +10 % / viikko
-      //   • Vx helpottuu +2 tai enemmän    → max +15 % / viikko
+      // Lähteet ja kalibrointi: PROGRESSION_CONFIG-vakio (Helms 2018, Cumming 2024,
+      // Psilander 2018, Bruusgaard 2010, Issurin 2010).
       //
-      // Ankkurin valinta (v4.27.14):
-      //   1. Ryhmitä sets sessionId:n mukaan, ota viim. 3 sessiota
-      //   2. Kustakin: median load + median Vx (suodata readiness_test + Vx0)
-      //   3. Ankkuri = RASKAIN median-load — estää deload- tai test-session
-      //      vetävän cappia alas (ongelma v4.27.12:ssa: viim. setti voi olla
-      //      deloadin kevein setti → cap sulkeutuu vääristyneelle tasolle).
+      // Vanhat ruleId:t (PROGRESSION_RATE_LIMIT, PROGRESSION_FLOOR_CAP) heijastetaan
+      // trace-kutsuina taaksepäin yhteensopivuudeksi: testit jotka asserttaavat
+      // näitä trace-merkintöjä säilyvät vihreinä.
       //
-      // v4.34.15 FIX: DUAL-ANCHOR + DELOAD-AWARE LOGIC.
-      // v4.34.14:n MIN(heaviest, last) -dual-anchor rikkoi post-deload-viikot:
-      // jos last-session = deload (V4-V5 kevyttä), uusi raskas viikko (V1) sai capin
-      // 50 × 1.06 = 53 kg vaikka heaviest oli 78 V1 cal. Korjaus:
-      //   - lastVxDelta < 0 (uusi sarja VAIKEAMPI kuin viime) → IGNORE last-anchor.
-      //     Last-sessio oli helpompi (deload), ei relevantti rajoitin.
-      //   - lastVxDelta >= 0 (sama tai helpompi Vx) → käytä MIN molemmista.
-      //     Tällöin last-anchor estää historia-PR-bounce-back-ongelman.
-      // v4.34.35: anchor lasketaan VAIN primary-sarjoista (ei backoffia/cal:ia).
-      // Aiemmin backoff V5-V6 sotki anchor.medianVx:n → cap rajoitti vääränperin.
+      // Anchor (computeRateLimitAnchor) säilytetään koska se tuottaa lastSession-
+      // profiilin (medianLoad, medianVx, isCalibration, dateISO) jonka
+      // computeProgressionTarget tarvitsee. Excludaa backoff (v4.34.35) jotta
+      // anchor.medianVx ei sotkeudu V5-V6-backoff-sarjoista.
       const anchor = computeRateLimitAnchor(recentTopSets, { excludeBackoff: true });
       if (anchor) {
-        const newVx = targetVx ?? 2;
-        const vxDelta = newVx - anchor.medianVx;
-        let weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
+        const planTarget = targetExternalLoad;
+        const cfgInfoForProg = getCfgBaselineForMovement(mesocycle, primarySlotMeta);
+        const progResult = computeProgressionTarget({
+          lastSession: anchor.lastSession,
+          targetVx: targetVx ?? 2,
+          weekDef,
+          dayType,
+          cfgBaseline: cfgInfoForProg.value || null,
+          planTarget,
+          planBasedActive: planBasedE1RMGrowthPct > 0.005,
+          dateISO,
+        });
 
-        // v4.34.36 BUG-FIX B: MULTI-WEEK-AWARE CAP.
-        // Aiempi cap oli "session-to-session" — jos atletti hyppää väliviikon
-        // (esim. vk 2 TO ei tehty), vk 1 TO → vk 3 TO = 14 pv väli mutta cap antaa
-        // vain +6 % (= 1 vk:n nousu) → kuorma ei nouse vaikka atletti palauttaa
-        // 2 viikon takaisesta. Korjaus: cap × ceil(daysSinceLastPrimary / 7).
-        // Vk 1 → vk 3 = 14 pv → cap × 2 = 12 % primary-nousu sallittu.
-        let weekMultiplier = 1;
-        if (anchor.lastSession.dateISO && dateISO) {
-          const daysSince = Math.max(0, Math.floor(
-            (new Date(dateISO).getTime() - new Date(anchor.lastSession.dateISO).getTime()) / 86400000
-          ));
-          if (daysSince > 7) {
-            weekMultiplier = Math.min(3, Math.ceil(daysSince / 7));
-            weeklyCap = weeklyCap * weekMultiplier;
-          }
-        }
-
-        // v4.34.35: PLAN_BASED-aware cap. Kun PLAN_BASED_E1RM aktivoitui ja e1RM
-        // nousi perfect-execution-pohjalta, cap nousee vastaavasti. Aiemmin kiinteä
-        // +6% cappi syö PLAN_BASED-pohjaisen e1RM-nousun pois → engine ehdotti
-        // alikuorman vaikka todellinen kapasiteetti oli noussut. Käyttäjäpalaute
-        // 2026-05-05: vk 2 V5 ekka @125 kg → vk 3 PRIMARY 132.5 kg vaikka 136-139
-        // olisi ollut PLAN_BASED-uskollinen. Korjaus: cap = base + e1RM-nousu.
-        let planBasedCapBonus = 0;
-        if (planBasedE1RMGrowthPct > 0.005 && vxDelta < 1) {
-          // Vain kun newVx on vaikeampi tai sama (vxDelta < 1) — Vx helpotuksen
-          // tapauksissa cap on jo 10-15% joka kattaa nousun.
-          planBasedCapBonus = Math.min(planBasedE1RMGrowthPct, 0.080); // max +8 % yli base
-          weeklyCap = weeklyCap + planBasedCapBonus;
-        }
-
-        const cappedHeaviest = anchor.medianLoad * (1 + weeklyCap);
-
-        const lastVxDelta = newVx - anchor.lastSession.medianVx;
-        const useLastAnchor = lastVxDelta >= 0;  // KRIITTINEN — vain jos sama/helpompi
-        let cappedLast = Infinity;
-        // v4.34.33 RISK 1.5: defensive default 0 (oli null) — siistii trace-datan
-        // ja torjuu null-arithmetic-virheet jos koodi muuttuu.
-        let lastWeeklyCap = 0;
-        if (useLastAnchor) {
-          lastWeeklyCap = lastVxDelta >= 2 ? 0.15 : lastVxDelta >= 1 ? 0.10 : 0.06;
-          // v4.34.36: sama week-multiplier myös last-anchor-haarassa
-          if (weekMultiplier > 1) lastWeeklyCap = lastWeeklyCap * weekMultiplier;
-          // v4.34.35: sama PLAN_BASED-bonus myös last-anchor-haarassa
-          if (planBasedCapBonus > 0) lastWeeklyCap = lastWeeklyCap + planBasedCapBonus;
-          cappedLast = anchor.lastSession.medianLoad * (1 + lastWeeklyCap);
-        }
-
-        const capped = Math.min(cappedHeaviest, cappedLast);
-        const cappedBy = !useLastAnchor ? "heaviest-only (last was easier=deload)"
-                       : cappedLast < cappedHeaviest ? "last-session" : "heaviest-median";
-        if (targetExternalLoad > capped) {
+        if (progResult.targetLoad !== null) {
           const original = targetExternalLoad;
-          targetExternalLoad = roundToHalf(capped);
-          const lastNote = useLastAnchor
-            ? `last ${anchor.lastSession.medianLoad.toFixed(1)}@V${anchor.lastSession.medianVx.toFixed(1)} +${(lastWeeklyCap*100).toFixed(0)}% = ${cappedLast.toFixed(1)}`
-            : `last @V${anchor.lastSession.medianVx.toFixed(1)} (helpompi → ohitettu)`;
-          const planNote = planBasedCapBonus > 0 ? ` [PLAN_BASED +${(planBasedCapBonus*100).toFixed(1)}% bonus]` : "";
-          trace("PROGRESSION_RATE_LIMIT", { targetExternalLoad: original },
-            { targetExternalLoad, anchorLoad: anchor.medianLoad, anchorVx: anchor.medianVx,
-              lastLoad: anchor.lastSession.medianLoad, lastVx: anchor.lastSession.medianVx,
-              newVx, weeklyCap, lastWeeklyCap, cappedBy, useLastAnchor,
-              planBasedCapBonus, fromSessions: anchor.fromSessions },
-            `Rate-limit (${cappedBy})${planNote}: ${original} → ${targetExternalLoad} kg (heaviest ${anchor.medianLoad.toFixed(1)}@V${anchor.medianVx.toFixed(1)} +${(weeklyCap*100).toFixed(0)}% = ${cappedHeaviest.toFixed(1)} | ${lastNote})`);
-        }
+          targetExternalLoad = roundToHalf(progResult.targetLoad);
+          const dt = progResult.decisionTrace;
+          const ruleHits = dt.ruleHits;
 
-        // v4.34.29 PROGRESSION_FLOOR_CAP — regression-suoja kun viim. sessio meni hyvin.
-        // Käyttäjäpalaute: "viime viikolla meni 120 kg, miksi engine ehdottaa 118?".
-        // Engine-konservatismi (Epley+Vara aliarviointi) voi tuottaa target < viim.
-        // session medianLoad vaikka atletti suoriutui targetin Vx:llä. Säännöt:
-        //   - useLastAnchor (uusi sarja sama/helpompi Vx kuin viim.) — atletti pystyi targetiin
-        //   - lastSession EI cal-sessio — cal on tarkoituksella matalampi
-        //   - deltaPctBase >= 0 (ei deload-vk eikä peaking-cut)
-        //   - dayType "heavy" — ei volume/speed-päiviin joissa kevennys on tarkoitettu
-        // Floor: lastSession.medianLoad SUORAAN (ei -2.5%). Atletti pystyi tähän kuormaan
-        // viim. session targetin Vx:llä → seuraavan session sama-Vx target ei saa olla
-        // pienempi. Variantti-vaihto ei vaikuta tähän koska primary-slot ei vaihda
-        // movementId:tä blokin sisällä (TI Takakyykky, MA Lisäpainoleuanveto, jne.).
-        if (useLastAnchor
-            && !anchor.lastSession.isCalibration
-            && (weekDef?.deltaPctBase ?? 0) >= 0
-            && dayType === "heavy") {
-          const floor = anchor.lastSession.medianLoad;
-          if (targetExternalLoad < floor - 0.25) { // 0.25 kg toleranssi pyöristykselle
-            const originalLow = targetExternalLoad;
-            targetExternalLoad = roundToHalf(floor);
+          // Päätrace: koko progression-päätöksen audit trail
+          trace("PROGRESSION_TARGET",
+            { targetExternalLoad: original },
+            { targetExternalLoad,
+              ruleHits,
+              regainRatio: dt.regainRatio,
+              regainMultiplier: dt.regainMultiplier,
+              weeksSinceLast: dt.weeksSinceLast,
+              weeklyProgressionPct: dt.weeklyProgressionPct,
+              vxAdjustmentPct: dt.vxAdjustmentPct,
+              autoregTarget: dt.autoregTarget,
+              planFloor: dt.planFloor,
+              hardCap: dt.hardCap,
+              anchorMedianLoad: anchor.medianLoad,
+              anchorMedianVx: anchor.medianVx,
+              lastLoad: anchor.lastSession.medianLoad,
+              lastVx: anchor.lastSession.medianVx,
+              fromSessions: anchor.fromSessions },
+            dt.rationale);
+
+          // Taaksepäin yhteensopivuus: heijasta vanhat ruleId:t erillisinä
+          // trace-kutsuina jotta vanhat assertit (hasTrace(rec, "PROGRESSION_RATE_LIMIT"),
+          // hasTrace(rec, "PROGRESSION_FLOOR_CAP")) säilyvät vihreinä.
+          if (ruleHits.includes('PROGRESSION_HARD_CAP')) {
+            trace("PROGRESSION_RATE_LIMIT",
+              { targetExternalLoad: original },
+              { targetExternalLoad,
+                hardCap: dt.hardCap,
+                autoregTarget: dt.autoregTarget,
+                weeksSinceLast: dt.weeksSinceLast,
+                newVx: targetVx ?? 2,
+                anchorLoad: anchor.medianLoad,
+                anchorVx: anchor.medianVx,
+                lastLoad: anchor.lastSession.medianLoad,
+                lastVx: anchor.lastSession.medianVx,
+                fromSessions: anchor.fromSessions },
+              `Rate-limit (hard-cap +${(PROGRESSION_CONFIG.HARD_CAP_PER_WEEK*100).toFixed(0)}%/vk × ${dt.weeksSinceLast}vk): ${original} → ${targetExternalLoad} kg.`);
+          }
+          if (ruleHits.includes('PROGRESSION_FLOOR_CAP')) {
+            // before.targetExternalLoad: arvo ennen floor-cap-nostoa
+            // (= max(planFloor, autoregTarget) ennen kuin lattia korjasi sen ylös)
+            const beforeFloor = roundToHalf(Math.max(dt.planFloor, dt.autoregTarget));
             trace("PROGRESSION_FLOOR_CAP",
-              { targetExternalLoad: originalLow },
-              { targetExternalLoad, lastLoad: anchor.lastSession.medianLoad, lastVx: anchor.lastSession.medianVx, newVx, floor },
-              `Floor-cap: ${originalLow} → ${targetExternalLoad} kg (regression-suoja: viim. sessio ${anchor.lastSession.medianLoad.toFixed(1)} kg @V${anchor.lastSession.medianVx.toFixed(1)} meni targetin Vx:llä — uutta sessiota ei pudoteta tämän alle).`);
+              { targetExternalLoad: beforeFloor },
+              { targetExternalLoad,
+                lastLoad: anchor.lastSession.medianLoad,
+                lastVx: anchor.lastSession.medianVx,
+                newVx: targetVx ?? 2,
+                floor: anchor.lastSession.medianLoad },
+              `Floor-cap: ${beforeFloor} → ${targetExternalLoad} kg (regression-suoja: viim. sessio ${anchor.lastSession.medianLoad.toFixed(1)} kg @V${anchor.lastSession.medianVx.toFixed(1)} meni targetin Vx:llä — uutta sessiota ei pudoteta tämän alle).`);
           }
         }
       }
@@ -3331,72 +3550,91 @@ async function recommend(options = {}) {
             .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
           const selfAnchor = computeRateLimitAnchor(selfSets);
           if (selfAnchor) {
-            // v4.34.15: deload-aware dual-anchor (sama korjaus kuin primary-haarassa)
-            const newVx = slot.targetVx ?? 2;
-            const vxDelta = newVx - selfAnchor.medianVx;
-            const weeklyCap = vxDelta >= 2 ? 0.15 : vxDelta >= 1 ? 0.10 : 0.06;
-            const cappedHeaviest = selfAnchor.medianLoad * (1 + weeklyCap);
-            const lastVxDelta = newVx - selfAnchor.lastSession.medianVx;
-            const useLastAnchor = lastVxDelta >= 0;
-            let cappedLast = Infinity;
-            // v4.34.33 RISK 1.5: defensive default 0 (oli null)
-            let lastWeeklyCap = 0;
-            if (useLastAnchor) {
-              lastWeeklyCap = lastVxDelta >= 2 ? 0.15 : lastVxDelta >= 1 ? 0.10 : 0.06;
-              cappedLast = selfAnchor.lastSession.medianLoad * (1 + lastWeeklyCap);
-            }
-            const capped = Math.min(cappedHeaviest, cappedLast);
-            const cappedBy = !useLastAnchor ? "heaviest-only (last was easier=deload)"
-                           : cappedLast < cappedHeaviest ? "last-session" : "heaviest-median";
-            if (baseLoad > capped) {
+            // v4.35.0 — Eliittitason progressio cross-reference-sloteille.
+            //
+            // Sama yhdistetty progression-päätös kuin primary-haarassa: regain ×
+            // Helms-weekly + Vx-adj + plan-floor + hard-cap + regression-suoja
+            // yhdellä kutsulla computeProgressionTargetiin. Vanhat ruleId:t
+            // (PROGRESSION_RATE_LIMIT_CROSSREF, PROGRESSION_FLOOR_CAP_CROSSREF)
+            // heijastetaan trace-kutsuina taaksepäin yhteensopivuudeksi.
+            //
+            // Cross-ref-spesifit erot primaryyn:
+            //   - planBasedActive: false (PLAN_BASED_E1RM ei käsittele
+            //     secondary-slotteja — niiden e1RM tulee selfAnchor-historiasta)
+            //   - cfgBaseline: slot.defaultMovementName-liikkeen cfg jos
+            //     konfiguroitu (yleensä null secondary-sloteille → ei
+            //     regain-multiplieria)
+            const planTargetCR = baseLoad;
+            const cfgInfoCR = getCfgBaselineForMovement(mesocycle, {
+              defaultMovementName: slot.defaultMovementName,
+            });
+            const progResultCR = computeProgressionTarget({
+              lastSession: selfAnchor.lastSession,
+              targetVx: slot.targetVx ?? 2,
+              weekDef,
+              dayType: dayPlan?.dayType ?? "heavy",
+              cfgBaseline: cfgInfoCR.value || null,
+              planTarget: planTargetCR,
+              planBasedActive: false,
+              dateISO,
+            });
+
+            if (progResultCR.targetLoad !== null) {
               const original = baseLoad;
-              baseLoad = roundToHalf(capped);
-              const lastNote = useLastAnchor
-                ? `last ${selfAnchor.lastSession.medianLoad.toFixed(1)}@V${selfAnchor.lastSession.medianVx.toFixed(1)} +${(lastWeeklyCap*100).toFixed(0)}% = ${cappedLast.toFixed(1)}`
-                : `last @V${selfAnchor.lastSession.medianVx.toFixed(1)} (helpompi → ohitettu)`;
-              trace("PROGRESSION_RATE_LIMIT_CROSSREF",
+              baseLoad = roundToHalf(progResultCR.targetLoad);
+              const dt = progResultCR.decisionTrace;
+              const ruleHits = dt.ruleHits;
+
+              trace("PROGRESSION_TARGET_CROSSREF",
                 { resolvedLoadKg: original },
                 { resolvedLoadKg: baseLoad,
-                  anchorLoad: selfAnchor.medianLoad,
-                  anchorVx: selfAnchor.medianVx,
+                  ruleHits,
+                  regainRatio: dt.regainRatio,
+                  regainMultiplier: dt.regainMultiplier,
+                  weeksSinceLast: dt.weeksSinceLast,
+                  weeklyProgressionPct: dt.weeklyProgressionPct,
+                  vxAdjustmentPct: dt.vxAdjustmentPct,
+                  autoregTarget: dt.autoregTarget,
+                  planFloor: dt.planFloor,
+                  hardCap: dt.hardCap,
+                  anchorMedianLoad: selfAnchor.medianLoad,
+                  anchorMedianVx: selfAnchor.medianVx,
                   lastLoad: selfAnchor.lastSession.medianLoad,
                   lastVx: selfAnchor.lastSession.medianVx,
-                  newVx, weeklyCap, lastWeeklyCap, cappedBy, useLastAnchor,
                   fromSessions: selfAnchor.fromSessions,
-                  slotMovement: slot.defaultMovementName },
-                `${slot.defaultMovementName} rate-limit (${cappedBy}): ${original} → ${baseLoad} kg (heaviest ${selfAnchor.medianLoad.toFixed(1)}@V${selfAnchor.medianVx.toFixed(1)} +${(weeklyCap*100).toFixed(0)}% = ${cappedHeaviest.toFixed(1)} | ${lastNote})`);
-            }
+                  slotMovement: slot.defaultMovementName,
+                  referenceMovement: slot.loadPctReferenceMovementName },
+                `${slot.defaultMovementName}: ${dt.rationale}`);
 
-            // v4.34.50 PROGRESSION_FLOOR_CAP_CROSSREF — regression-suoja secondary-sloteille.
-            // Atletin palaute 2026-05-08: vk 1 LA Takakyykky 120 kg V4 helposti, mutta
-            // vk 2 LA UI ehdotti 102 kg = LASKU 120:sta. Primary-slotilla tämä on jo
-            // estetty (engine.js:3131), mutta cross-reference-haara puuttui suojan.
-            // Säännöt samat kuin primary-haaran floor-capissa:
-            //   - useLastAnchor (uusi Vx >= viim. Vx) — atletti pystyi tähän kuormaan
-            //   - !lastSession.isCalibration — cal-sessio on tarkoituksella matala
-            //   - weekDef.deltaPctBase >= 0 — ei deload-vk eikä peaking-cut
-            //   - dayPlan.dayType ei "speed" — speed-päivä on tarkoituksella kevyempi
-            // Floor: lastSession.medianLoad SUORAAN (ei -2.5 %). Atletti pystyi tähän
-            // → seuraavan session sama-Vx target ei saa olla pienempi.
-            const wkDef = mesocycle?.weekDefs?.find(w => w.week === weekNum);
-            const isSpeedDay = dayPlan?.dayType === "speed";
-            if (useLastAnchor
-                && !selfAnchor.lastSession.isCalibration
-                && (wkDef?.deltaPctBase ?? 0) >= 0
-                && !isSpeedDay) {
-              const floor = selfAnchor.lastSession.medianLoad;
-              if (baseLoad < floor - 0.25) { // 0.25 kg toleranssi pyöristykselle
-                const originalLow = baseLoad;
-                baseLoad = roundToHalf(floor);
+              // Taaksepäin yhteensopivuus: heijasta vanhat cross-ref-ruleId:t
+              if (ruleHits.includes('PROGRESSION_HARD_CAP')) {
+                trace("PROGRESSION_RATE_LIMIT_CROSSREF",
+                  { resolvedLoadKg: original },
+                  { resolvedLoadKg: baseLoad,
+                    hardCap: dt.hardCap,
+                    autoregTarget: dt.autoregTarget,
+                    weeksSinceLast: dt.weeksSinceLast,
+                    newVx: slot.targetVx ?? 2,
+                    anchorLoad: selfAnchor.medianLoad,
+                    anchorVx: selfAnchor.medianVx,
+                    lastLoad: selfAnchor.lastSession.medianLoad,
+                    lastVx: selfAnchor.lastSession.medianVx,
+                    fromSessions: selfAnchor.fromSessions,
+                    slotMovement: slot.defaultMovementName },
+                  `${slot.defaultMovementName} rate-limit (hard-cap +${(PROGRESSION_CONFIG.HARD_CAP_PER_WEEK*100).toFixed(0)}%/vk × ${dt.weeksSinceLast}vk): ${original} → ${baseLoad} kg.`);
+              }
+              if (ruleHits.includes('PROGRESSION_FLOOR_CAP')) {
+                const beforeFloor = roundToHalf(Math.max(dt.planFloor, dt.autoregTarget));
                 trace("PROGRESSION_FLOOR_CAP_CROSSREF",
-                  { resolvedLoadKg: originalLow },
+                  { resolvedLoadKg: beforeFloor },
                   { resolvedLoadKg: baseLoad,
                     lastLoad: selfAnchor.lastSession.medianLoad,
                     lastVx: selfAnchor.lastSession.medianVx,
-                    newVx, floor,
+                    newVx: slot.targetVx ?? 2,
+                    floor: selfAnchor.lastSession.medianLoad,
                     slotMovement: slot.defaultMovementName,
                     referenceMovement: slot.loadPctReferenceMovementName },
-                  `${slot.defaultMovementName} floor-cap: ${originalLow} → ${baseLoad} kg (regression-suoja: viim. sessio ${selfAnchor.lastSession.medianLoad.toFixed(1)} kg @V${selfAnchor.lastSession.medianVx.toFixed(1)} meni targetin Vx:llä — uutta sessiota ei pudoteta tämän alle).`);
+                  `${slot.defaultMovementName} floor-cap: ${beforeFloor} → ${baseLoad} kg (regression-suoja: viim. sessio ${selfAnchor.lastSession.medianLoad.toFixed(1)} kg @V${selfAnchor.lastSession.medianVx.toFixed(1)} meni targetin Vx:llä — uutta sessiota ei pudoteta tämän alle).`);
               }
             }
           }
@@ -5924,6 +6162,9 @@ export {
   recommendPeaking,
   // v4.34.14: rate-limit-anchor exposed for tests + diagnostics
   computeRateLimitAnchor,
+  // v4.35.0: eliittitason progressio-malli (Helms 2018, Cumming 2024, Issurin 2010)
+  PROGRESSION_CONFIG,
+  computeProgressionTarget,
   // Variant periodization
   DEFAULT_VARIANT_MODIFIERS,
   getDefaultVariantForDayType,

@@ -27,6 +27,9 @@ import {
   getCfgBaselineForMovement,
   // v4.34.48: generic AI-block-tuning kaikille ei-streetlifting-mesoille
   generateGenericBlockTuningPackage,
+  // v4.35.0: eliittitason progressio-malli (Helms 2018, Cumming 2024, Issurin 2010)
+  PROGRESSION_CONFIG,
+  computeProgressionTarget,
 } from "./engine.js";
 
 import {
@@ -1634,6 +1637,8 @@ export async function runTests() {
   // v4.34.36: A+B+C — PLAN_BASED setRole, multi-week cap, accessory Vx-overshoot
   testAccessoryProgressionVxOvershoot();
   testRateLimitAnchorDateISO();
+  // v4.35.0: eliittitason progressio-malli (Helms 2018, Cumming 2024)
+  testComputeProgressionTarget();
   // v4.34.44: hybridi cfg-baseline (movementCfg + streetliftingConfig)
   await testGetCfgBaselineForMovement();
   // v4.34.48: generic AI-block-tuning kaikille ei-streetlifting-mesoille (kaveri-fixture)
@@ -1899,4 +1904,297 @@ function testRateLimitAnchorDateISO() {
   assert(anchor !== null, "Anchor created");
   assertEqual(anchor.lastSession.dateISO, "2026-04-30",
     "anchor.lastSession.dateISO populated for multi-week cap");
+}
+
+// ═══════════════════════════════════════════════════════════════
+// v4.35.0 — ELIITTITASON PROGRESSIO-MALLI (Helms 2018, Cumming 2024)
+// computeProgressionTarget yksikkötestit eristyksessä
+// ═══════════════════════════════════════════════════════════════
+function testComputeProgressionTarget() {
+  // E1: REGAIN-VAIHE (atletin esim. 2026-05-08)
+  // Atletti vk 1 LA Takakyykky 120 kg V4 (helposti). Cfg = 185.
+  // regain_ratio = 120/185 = 0.649 < 0.85 → REGAIN_FAR (×2.0)
+  // weekly_progression = 0.025 × 2.0 × 1 = 5%
+  // vx_adjustment = (4 - 4) × 0.02 = 0% (sama target Vx)
+  // autoreg = 120 × 1.05 = 126 kg
+  // plan = 0.55 × 185 = 102 kg
+  // hard_cap = 120 × 1.15 = 138 kg
+  // → final = max(102, 126) = 126 kg, alle hard-capin
+  {
+    const result = computeProgressionTarget({
+      lastSession: { medianLoad: 120, medianVx: 4, isCalibration: false, dateISO: '2026-04-27' },
+      targetVx: 4,
+      weekDef: { week: 2, deltaPctBase: 0 },
+      dayType: 'heavy',
+      cfgBaseline: 185,
+      planTarget: 102,
+      planBasedActive: false,
+      dateISO: '2026-05-04',
+    });
+    assertClose(result.targetLoad, 126, 0.5,
+      'E1 regain-vaihe: 120 V4 → 126 kg V4 (regain ratio 0.65 < 0.85, ×2.0)');
+    assert(result.decisionTrace.ruleHits.includes('PROGRESSION_REGAIN_FAR'),
+      'E1: REGAIN_FAR-flag aktivoituu');
+    assertEqual(result.decisionTrace.regainMultiplier, 2.0,
+      'E1: regain_multiplier = 2.0');
+    assertClose(result.decisionTrace.weeklyProgressionPct, 0.05, 0.001,
+      'E1: weekly_progression_pct = 5%');
+  }
+
+  // E2: PR-VAIHE (cfg-tasolla) — atletti 180 kg V3, cfg 185
+  // regain_ratio = 180/185 = 0.973 ≥ 0.95 → PR-vaihe (×1.0)
+  // weekly = 0.025 × 1 = 2.5%
+  // vx_adj = 0 (sama Vx)
+  // autoreg = 180 × 1.025 = 184.5
+  // plan = 0.85 × 185 = 157.25
+  // → final = max(157.25, 184.5) = 184.5 kg
+  {
+    const result = computeProgressionTarget({
+      lastSession: { medianLoad: 180, medianVx: 3, isCalibration: false, dateISO: '2026-04-27' },
+      targetVx: 3,
+      weekDef: { week: 5, deltaPctBase: 0.025 },
+      dayType: 'heavy',
+      cfgBaseline: 185,
+      planTarget: 157.25,
+      planBasedActive: false,
+      dateISO: '2026-05-04',
+    });
+    assertClose(result.targetLoad, 184.5, 0.5,
+      'E2 PR-vaihe: 180 V3 → 184.5 kg V3 (regain ratio 0.97 ≥ 0.95, ×1.0)');
+    assertEqual(result.decisionTrace.regainMultiplier, 1.0,
+      'E2: regain_multiplier = 1.0 (PR-vaihe)');
+    assert(!result.decisionTrace.ruleHits.includes('PROGRESSION_REGAIN_FAR')
+        && !result.decisionTrace.ruleHits.includes('PROGRESSION_REGAIN_NEAR'),
+      'E2: ei regain-flageja (PR-vaihe)');
+  }
+
+  // E3: V0-FAIL → KONSERVATIIVINEN PALAUTUS
+  // Atletti 100 kg V0 (failasi), cfg 150
+  // V0_GRINDI_PROTECTION → 100 × 0.95 = 95 kg
+  // plan = 0.65 × 150 = 97.5 → max(97.5, 95) = 97.5
+  {
+    const result = computeProgressionTarget({
+      lastSession: { medianLoad: 100, medianVx: 0, isCalibration: false, dateISO: '2026-04-27' },
+      targetVx: 3,
+      weekDef: { week: 5, deltaPctBase: 0.025 },
+      dayType: 'heavy',
+      cfgBaseline: 150,
+      planTarget: 97.5,
+      planBasedActive: false,
+      dateISO: '2026-05-04',
+    });
+    assertClose(result.targetLoad, 97.5, 0.5,
+      'E3 V0-fail: 100 V0 → 97.5 kg (V0-suoja 95, plan-floor 97.5 voittaa)');
+    assert(result.decisionTrace.ruleHits.includes('PROGRESSION_V0_PROTECTION'),
+      'E3: V0_PROTECTION-flag aktivoituu');
+  }
+
+  // E4: DELOAD-VK → NAIVE PLAN (ei autoreg)
+  // weekDef.deltaPctBase = -0.20 → DELOAD_PASSTHROUGH
+  // Atletti 130 V3 viim., plan = 0.55 × baseline = 102 kg
+  // → final = 102 (autoregulaatio EI saa nostaa kuormaa deload-vk:lle)
+  {
+    const result = computeProgressionTarget({
+      lastSession: { medianLoad: 130, medianVx: 3, isCalibration: false, dateISO: '2026-04-20' },
+      targetVx: 4,
+      weekDef: { week: 4, deltaPctBase: -0.20 },
+      dayType: 'heavy',
+      cfgBaseline: 185,
+      planTarget: 102,
+      planBasedActive: false,
+      dateISO: '2026-04-27',
+    });
+    assertEqual(result.targetLoad, 102,
+      'E4 deload-vk: target = naive plan 102 kg (autoreg ohitettu)');
+    assert(result.decisionTrace.ruleHits.includes('PROGRESSION_DELOAD_PASSTHROUGH'),
+      'E4: DELOAD_PASSTHROUGH-flag aktivoituu');
+  }
+
+  // E5: SPEED-PÄIVÄ → NAIVE PLAN (intensiteetti tulee Vx:stä, ei kuormasta)
+  // dayType='speed' → SPEED_PASSTHROUGH
+  // Atletti 60 V5 viim., plan = 0.40 × 150 = 60 kg
+  // → final = 60 (sama)
+  {
+    const result = computeProgressionTarget({
+      lastSession: { medianLoad: 60, medianVx: 5, isCalibration: false, dateISO: '2026-04-27' },
+      targetVx: 5,
+      weekDef: { week: 5, deltaPctBase: 0.025 },
+      dayType: 'speed',
+      cfgBaseline: 150,
+      planTarget: 60,
+      planBasedActive: false,
+      dateISO: '2026-05-04',
+    });
+    assertEqual(result.targetLoad, 60,
+      'E5 speed-päivä: target = naive plan 60 kg (autoreg ohitettu)');
+    assert(result.decisionTrace.ruleHits.includes('PROGRESSION_SPEED_PASSTHROUGH'),
+      'E5: SPEED_PASSTHROUGH-flag aktivoituu');
+  }
+
+  // E6: NO HISTORY — lastSession=null → palauta planTarget
+  // Atletti uusi liike, ei vielä historiaa. Engine ei voi autoreguloida → naive plan.
+  {
+    const result = computeProgressionTarget({
+      lastSession: null,
+      targetVx: 3,
+      weekDef: { week: 2, deltaPctBase: 0 },
+      dayType: 'heavy',
+      cfgBaseline: 100,
+      planTarget: 75,
+      planBasedActive: false,
+      dateISO: '2026-05-04',
+    });
+    assertEqual(result.targetLoad, 75,
+      'E6 no-history: lastSession=null → naive plan 75 kg');
+    assert(result.decisionTrace.ruleHits.includes('PROGRESSION_NO_HISTORY'),
+      'E6: NO_HISTORY-flag aktivoituu');
+  }
+
+  // E7: NO PLAN — planTarget=null → palauta null (kutsujan vastuu fallback)
+  {
+    const result = computeProgressionTarget({
+      lastSession: { medianLoad: 100, medianVx: 3, isCalibration: false, dateISO: '2026-04-27' },
+      targetVx: 3,
+      weekDef: { week: 2, deltaPctBase: 0 },
+      dayType: 'heavy',
+      cfgBaseline: 150,
+      planTarget: null,
+      planBasedActive: false,
+      dateISO: '2026-05-04',
+    });
+    assertEqual(result.targetLoad, null,
+      'E7 no-plan: planTarget=null → target=null');
+    assert(result.decisionTrace.ruleHits.includes('PROGRESSION_NO_PLAN'),
+      'E7: NO_PLAN-flag aktivoituu');
+  }
+
+  // E8: HELMS Vx-ADJUSTMENT — lastVx > targetVx → vxAdj aktivoituu
+  // Last 180@V5 (helppoa), target V3 (kova). Cfg 185, ratio 0.97 = PR-vaihe.
+  // vxDiff = 5-3 = 2. vxAdj = 2 × 0.02 = 4%. Weekly = 0.025 × 1.0 × 1 = 2.5%.
+  // Total = 6.5%. Autoreg = 180 × 1.065 = 191.7. Plan 0.85 × 185 = 157.25.
+  // → final = 191.7 (autoreg voittaa).
+  {
+    const result = computeProgressionTarget({
+      lastSession: { medianLoad: 180, medianVx: 5, isCalibration: false, dateISO: '2026-04-27' },
+      targetVx: 3,
+      weekDef: { week: 5, deltaPctBase: 0.025 },
+      dayType: 'heavy',
+      cfgBaseline: 185,
+      planTarget: 157.25,
+      planBasedActive: false,
+      dateISO: '2026-05-04',
+    });
+    assertClose(result.targetLoad, 191.7, 0.5,
+      'E8 Helms Vx-adj: 180 V5 → V3 → 191.7 kg (vxAdj 4% + weekly 2.5%)');
+    assertClose(result.decisionTrace.vxAdjustmentPct, 0.04, 0.001,
+      'E8: vxAdjustmentPct = 4% (vxDiff 2 × 0.02)');
+  }
+
+  // E9: PLAN_BASED-YHTEENSOVITUS — planBasedActive=true → ohita weekly_progression
+  // Last 120@V4. Cfg 185, ratio 0.65 = REGAIN_FAR (×2.0). Target V4 (sama).
+  // PLAN_BASED jo aktivoinut planTargetin 130 (= plan-based-nostettu).
+  // Ilman harmonisointia: weekly = 5%, autoreg = 120×1.05 = 126.
+  // Harmonisoitu: ainoastaan vxAdj (=0), autoreg = 120. Plan-floor 130 voittaa.
+  {
+    const result = computeProgressionTarget({
+      lastSession: { medianLoad: 120, medianVx: 4, isCalibration: false, dateISO: '2026-04-27' },
+      targetVx: 4,
+      weekDef: { week: 2, deltaPctBase: 0 },
+      dayType: 'heavy',
+      cfgBaseline: 185,
+      planTarget: 130,
+      planBasedActive: true,
+      dateISO: '2026-05-04',
+    });
+    assertEqual(result.targetLoad, 130,
+      'E9 PLAN_BASED-harmonized: plan-floor 130 voittaa (ei kaksoiskirjausta)');
+    assert(result.decisionTrace.ruleHits.includes('PROGRESSION_PLAN_BASED_HARMONIZED'),
+      'E9: PLAN_BASED_HARMONIZED-flag aktivoituu');
+  }
+
+  // E10: MULTI-WEEK-AWARE — atletti ohitti vk:n, weeksSinceLast=2
+  // Last 120@V4 dateISO 2026-01-05, target V4, dateISO 2026-01-19 (= 14 pv).
+  // Cfg 185, ratio 0.65 = REGAIN_FAR. weeksSinceLast = ceil(14/7) = 2.
+  // Weekly = 0.025 × 2.0 × 2 = 10%. Autoreg = 120 × 1.10 = 132.
+  // Hard-cap = 120 × (1 + 0.15 × 2) = 120 × 1.30 = 156. Ei rajoita.
+  // → target = 132.
+  {
+    const result = computeProgressionTarget({
+      lastSession: { medianLoad: 120, medianVx: 4, isCalibration: false, dateISO: '2026-01-05' },
+      targetVx: 4,
+      weekDef: { week: 3, deltaPctBase: 0 },
+      dayType: 'heavy',
+      cfgBaseline: 185,
+      planTarget: 102,
+      planBasedActive: false,
+      dateISO: '2026-01-19',
+    });
+    assertClose(result.targetLoad, 132, 0.5,
+      'E10 multi-week: 14 pv väli → weeksSinceLast=2 → 132 kg');
+    assertEqual(result.decisionTrace.weeksSinceLast, 2,
+      'E10: weeksSinceLast = 2');
+  }
+
+  // E11: REGAIN_NEAR-RAJALLA — ratio 0.94 < 0.95 → ×1.5
+  // Last 174@V3 (ratio 0.94 cfg 185), target V3. Weekly = 0.025 × 1.5 × 1 = 3.75%.
+  // Autoreg = 174 × 1.0375 = 180.5. Plan 0.85 × 185 = 157.25.
+  // → target = 180.5.
+  {
+    const result = computeProgressionTarget({
+      lastSession: { medianLoad: 174, medianVx: 3, isCalibration: false, dateISO: '2026-04-27' },
+      targetVx: 3,
+      weekDef: { week: 5, deltaPctBase: 0.025 },
+      dayType: 'heavy',
+      cfgBaseline: 185,
+      planTarget: 157.25,
+      planBasedActive: false,
+      dateISO: '2026-05-04',
+    });
+    assertClose(result.targetLoad, 180.5, 0.5,
+      'E11 REGAIN_NEAR: ratio 0.94 → ×1.5 → 180.5 kg');
+    assertEqual(result.decisionTrace.regainMultiplier, 1.5,
+      'E11: regain_multiplier = 1.5');
+    assert(result.decisionTrace.ruleHits.includes('PROGRESSION_REGAIN_NEAR'),
+      'E11: REGAIN_NEAR-flag aktivoituu');
+  }
+
+  // E12: HARD-CAP AKTIVOITUU — autoreg ylittäisi +15%/vk
+  // Last 100@V5 (helppoa), target V1 (erittäin kova). Cfg 105 (lähellä).
+  // ratio = 100/105 = 0.95 → PR-vaihe ×1.0. vxDiff = 5-1 = 4. vxAdj = 4×0.02 = 8%.
+  // Weekly = 2.5%. Total = 10.5%. Autoreg = 100 × 1.105 = 110.5.
+  // Hard-cap = 100 × 1.15 = 115. Ei rajoita.
+  // Mutta jos cfg = 90 (ratio 1.11): edelleen PR. Sama tulos.
+  // Aktivoidaan hard-cap pakottamalla regain_far: cfg = 200, ratio 0.5 → ×2.0.
+  // Weekly = 0.025 × 2.0 × 1 = 5%. vxAdj 8%. Total 13%. Autoreg = 113.
+  // Hard-cap = 115. Ei rajoita vielä. Tarvitaan: weeksSinceLast=1 + isompi vxAdj.
+  // Käytetään: vxDiff = 8 (last V8, target V0)? Ei realistinen.
+  // Vaihtoehto: weeksSinceLast pakotettu suurempi → daysSinceLast >= 14.
+  // Last dateISO 2026-04-15, current 2026-04-29 (14 pv) → weeksSince=2.
+  // Hard-cap = 100 × (1 + 0.15 × 2) = 130. Autoreg = 100 × (1 + 0.05 × 2 + 0.04) = 100 × 1.14 = 114.
+  // Ei vieläkään rajaa. Tarvitaan: weeksSince=3 ja iso autoreg.
+  // Last 100@V6, target V0, weeksSince=3 (21pv). Cfg 200 ratio 0.5 → ×2.0.
+  // Weekly = 0.025 × 2.0 × 3 = 15%. vxAdj = 6 × 0.02 = 12%. Total 27%.
+  // Autoreg = 100 × 1.27 = 127. Hard-cap = 100 × (1 + 0.15 × 3) = 145. Ei rajaa.
+  // Pitää pakottaa: weeklyProgression × multiplier × weeksSinceLast > 0.15 × weeksSinceLast.
+  // 0.025 × multiplier × weeks > 0.15 × weeks → multiplier > 6. Ei mahdollista (max 2.0).
+  // → Hard-cap aktivoituu vain vxAdj+weekly yhdessä > 15%/vk:
+  // ratio 0.5 → mult 2.0 → weekly 5%. vxAdj > 10% → vxDiff > 5. Last V6 target V0 = 6, vxAdj 12%.
+  // 17% > 15% → cap aktivoituu. Käytetään tätä.
+  {
+    const result = computeProgressionTarget({
+      lastSession: { medianLoad: 100, medianVx: 6, isCalibration: false, dateISO: '2026-04-27' },
+      targetVx: 0,
+      weekDef: { week: 5, deltaPctBase: 0.025 },
+      dayType: 'heavy',
+      cfgBaseline: 200,
+      planTarget: 100,
+      planBasedActive: false,
+      dateISO: '2026-05-04',
+    });
+    // Autoreg: vxAdj 12% + weekly 5% = 17% → 117. Hard-cap 115. Cap rajaa → 115.
+    assertClose(result.targetLoad, 115, 0.5,
+      'E12 hard-cap: autoreg 117 → hard-cap 115 kg rajaa');
+    assert(result.decisionTrace.ruleHits.includes('PROGRESSION_HARD_CAP'),
+      'E12: HARD_CAP-flag aktivoituu');
+  }
 }

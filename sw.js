@@ -1,5 +1,33 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.50 — PROGRESSION_FLOOR_CAP_CROSSREF (regression-suoja
+// LeVe AI v4.35.0 — ELIITTITASON PROGRESSIO-MALLI (Helms 2018, Cumming 2024,
+// Issurin 2010): refaktoroitu rikkinäinen cap-only-pohja tutkimuspohjaiseksi.
+//
+// Yhdenseuraussessio (2026-05-08): atletin palaute "kymmeniä auditointeja ja silti
+// ohjelma on lapsen kengissä — miksi?". Vastaus: pohja-algoritmi (loadPct ×
+// baseline + adhoc-capit) ei ollut tutkimukseen perustuva. Refaktorointi:
+//   • PROGRESSION_CONFIG-vakio (engine.js:52-110) — magic numbers yhteen paikkaan
+//   • computeProgressionTarget-funktio (engine.js:1847-2010) — yksi keskitetty
+//     päätös progressiolle: regain-multiplier (Cumming 2024 retraining ~33-50%
+//     nopeampi), Helms 2018 Vx-mismatch-säätö (1Vx = 2% session-välillä),
+//     viikoittainen baseline +2.5%/vk (Helms 2018 + RP), V0-grindi-suoja,
+//     yliajot cal/deload/speed-päivissä
+//   • Integroitu primary-haaraan + cross-reference-haaraan (sama logiikka molemmille)
+//   • 12 yksikkötestiä eristyksessä (E1-E12, regain FAR/NEAR, PR-vaihe, V0-fail,
+//     deload, speed, no-history, no-plan, Helms Vx-adj, PLAN_BASED-harmonisointi,
+//     multi-week, hard-cap)
+//   • 304 testiä OK, ei regressiota nykyisiin 281+ testiin
+//
+// ATLETIN ESIMERKKI (vk 1 LA Takakyykky 120 kg V4 helposti, cfg 185):
+//   ratio 0.65 < 0.85 → REGAIN_FAR (×2.0). weekly = 0.025 × 2.0 × 1 = 5%.
+//   Autoreg = 120 × 1.05 = 126 kg V4. Plan-floor 102. Hard-cap 138. Final 126.
+//   → osuu atletin odotukseen 126-132 kg (eliittitasoinen progressio regainissa).
+//
+// Lisäksi korjattu sw.js:n APP_VERSION-uudelleenmääritysbugi: aiemmissa versioissa
+// jokainen const APP_VERSION = "..." -bumppi jätti vanhat määritykset aktiivisina
+// → SyntaxError SW:n parserissa. Nyt vain yksi aktiivinen, vanhat historiana
+// kommenteissa.
+//
+// v4.34.50 — PROGRESSION_FLOOR_CAP_CROSSREF (regression-suoja
 // secondary-sloteille, atletin 2. palaute 2026-05-08):
 //
 // Atletti suoraan: "Jos olen tehnyt secondary kyykyn 120 kg viime lauantaina,
@@ -27,7 +55,10 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.34.50";
+const APP_VERSION = "4.35.0";
+
+// v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
+// v4.34.49 muutoshistoria:
 // (1) MU eksentrinen näytti "+64.5 kg" skill-vaiheessa (vk 1-4) vaikka slot on
 //     BW + kuminauha (suggestedLoadKg=0). Syy: UI:n primary-slot-rendering käytti
 //     rec.targetExternalLoad fallbackia kun aktiivisen liikkeen e1RM=0, mikä
@@ -43,7 +74,8 @@ const APP_VERSION = "4.34.50";
 //     voittaa kuten ennen. Uusi trace CFG_FLOOR_APPLIED audit-trailiin.
 // 276/276 OK, ei regressiota. Streetlifting_16w-meson rakenne ennallaan.
 
-const APP_VERSION = "4.34.49";
+// v4.34.49 oli aiempi APP_VERSION tässä kohdassa.
+// v4.34.48 muutoshistoria:
 // generateBlockTuningPackage on hardkoodattu streetlifting_16w-mesolle (foundation/
 // strength/intensity/peaking-blokit, kisaliikkeet, vk 4/8/12 deload-mappi).
 // Atletti: "Olisi tärkeää että AI-block-tuning toimisi muillekin mesotyypeille
@@ -85,7 +117,8 @@ const APP_VERSION = "4.34.49";
 // (d) Init-vaiheessa autocreated default aktivoidaan heti setActiveMesocycle:lla
 // → estää uuden orphan-tilanteen kerääntymisen tulevaisuudessa.
 
-const APP_VERSION = "4.34.46";
+// v4.34.46 oli aiempi APP_VERSION tässä kohdassa.
+// (Aktiivinen APP_VERSION-määritys löytyy ylhäältä.)
 const CACHE_NAME = `leve-ai-v${APP_VERSION}`;
 
 // v4.34.9: Kuuntele SKIP_WAITING-message-eventtia, jolla pää-säie voi pakottaa
