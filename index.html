@@ -2653,8 +2653,17 @@ function renderDashboard() {
         else if (slot.role === "attempt2") { loadStr = `+${loads.second} kg`; loadCls = "attempt2"; }
         else if (slot.role === "attempt3") { loadStr = `+${loads.third} kg 🎯`; loadCls = "attempt3"; }
       } else if (isPrimary && rec?.targetExternalLoad !== null && rec?.targetExternalLoad !== undefined) {
-        loadStr = `+${rec.targetExternalLoad} kg`;
-        if (deloadMode) loadCls = "deload";
+        // v4.34.49: skill-vaiheen primary-slot (esim. Muscle-up eksentrinen vk 1-4) on
+        // BW-pohjainen — slot.suggestedLoadKg === 0 eksplisiittisesti. Älä näytä
+        // rec.targetExternalLoad joka voi vuotaa toisen liikkeen targetia (engine
+        // fallbackeaa kun aktiivisen liikkeen e1RM = 0). Skill = "BW + kuminauha/avustus".
+        if (slot.suggestedLoadKg === 0 || slot.muSkillPhase === true) {
+          loadStr = "BW";
+          loadCls = "backoff";
+        } else {
+          loadStr = `+${rec.targetExternalLoad} kg`;
+          if (deloadMode) loadCls = "deload";
+        }
       } else if (isBackoff && typeof slot.resolvedLoadKg === "number") {
         // v4.34.33 BUG-FIX 5.1: engine resolvoi backoff-kuorman slot.loadPct × current e1RM:llä.
         // Aiempi 0.85 × primary -hardcode ei tunnista slot-spesifiä loadPct:tä (esim.
@@ -3428,6 +3437,7 @@ const RULE_LABELS_FI = {
   E1RM_COMPUTED: "1RM-arvio laskettu",
   E1RM_MOMENTUM_BONUS: "Etenemisbonus",
   CFG_DRIFT_APPLIED: "Engine oppi uuden 1RM-arvion",
+  CFG_FLOOR_APPLIED: "1RM-arvio toimi alarajana",
   VBT_E1RM_CROSSCHECK: "Velocity-vertailu",
   VBT_PRIMARY_USED: "Velocity-pohjainen 1RM käytössä",
   VBT_DEFERRED_TO_PLAN: "Velocity ohitettu (suunnitelma voittaa)",

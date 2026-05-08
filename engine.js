@@ -3297,7 +3297,28 @@ async function recommend(options = {}) {
         const refE1RM = refVals.length ? median(refVals) : null;
         if (refE1RM === null || refE1RM <= 0) continue;
 
-        let baseLoad = roundToHalf(Math.max(0, refE1RM * slot.loadPct));
+        // v4.34.49: CFG-FLOOR cross-reference-haaralle.
+        // Atletin palaute 2026-05-08: vk 1 LA Takakyykky 120 kg V4 helposti, mutta
+        // vk 2 LA UI ehdotti 94 kg = 0.55 × 170 (historia-mediani). Atletin Asetuksissa
+        // cfg.kyykkyExtKg = 185, mutta cross-reference-haara ohitti tämän kokonaan.
+        // Ratkaisu: käytä max(historia-mediani, cfg-baseline) → atletin intentionaalinen
+        // cfg-arvo toimii alarajana. Jos atletti suoriutuu yli cfg:n, historia voittaa.
+        // Säilyttää konservatismin (cfg ei voi LASKEA kuormaa) mutta antaa cfg:n
+        // intentionaalisen arvon vaikuttaa secondary-sloteihin (esim. LA Takakyykky).
+        let effectiveBaseE1RM = refE1RM;
+        const refCfgInfo = getCfgBaselineForMovement(mesocycle, {
+          defaultMovementName: slot.loadPctReferenceMovementName,
+        });
+        if (refCfgInfo.value && refCfgInfo.value > refE1RM) {
+          effectiveBaseE1RM = refCfgInfo.value;
+          trace("CFG_FLOOR_APPLIED",
+            { historyMedian: refE1RM.toFixed(1) },
+            { cfgFloor: refCfgInfo.value, source: refCfgInfo.source, key: refCfgInfo.key,
+              slotMovement: slot.defaultMovementName,
+              referenceMovement: slot.loadPctReferenceMovementName },
+            `Cfg-floor: ${slot.loadPctReferenceMovementName} cfg ${refCfgInfo.value} > historia ${refE1RM.toFixed(1)} → käytetään cfg-arvoa baselinena`);
+        }
+        let baseLoad = roundToHalf(Math.max(0, effectiveBaseE1RM * slot.loadPct));
 
         // Rate-limit slotin oman liikkeen historiasta
         // v4.27.14: käyttää computeRateLimitAnchor-helperiä (viim. 3 session

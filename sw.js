@@ -1,5 +1,21 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.34.48 — AI-BLOCK-TUNING YLEISTYS (Vaihe 3/3):
+// LeVe AI v4.34.49 — KAKSI KENTTÄTESTI-BUG-FIXIÄ (atletin palaute 2026-05-08):
+// (1) MU eksentrinen näytti "+64.5 kg" skill-vaiheessa (vk 1-4) vaikka slot on
+//     BW + kuminauha (suggestedLoadKg=0). Syy: UI:n primary-slot-rendering käytti
+//     rec.targetExternalLoad fallbackia kun aktiivisen liikkeen e1RM=0, mikä
+//     vuoti Lisäpainoleuanveto-targetin (0.55 × leuka-e1RM ≈ 64.5) MU-rivillä.
+//     KORJAUS index.html:2655 — jos slot.suggestedLoadKg===0 tai muSkillPhase===true,
+//     näytä "BW" (ei rec.targetExternalLoad). Vaikuttaa MU eksentrinen vk 1-4.
+// (2) Vk 2 LA Takakyykky näytti 94 kg (= 0.55 × 170 historia-mediani) vaikka
+//     atletin Asetuksissa cfg.kyykkyExtKg = 185 (= 102 kg). Syy: cross-reference-
+//     haara engine.js:3300 käytti pelkkää historia-mediania ja ohitti cfg-arvon.
+//     KORJAUS: cfg-floor — käytä max(historia-mediani, cfg-arvo) × loadPct.
+//     Säilyttää konservatismin (cfg ei voi LASKEA kuormaa), mutta atletin
+//     intentionaalinen cfg-arvo toimii alarajana. Jos historia > cfg, historia
+//     voittaa kuten ennen. Uusi trace CFG_FLOOR_APPLIED audit-trailiin.
+// 276/276 OK, ei regressiota. Streetlifting_16w-meson rakenne ennallaan.
+
+const APP_VERSION = "4.34.49";
 // generateBlockTuningPackage on hardkoodattu streetlifting_16w-mesolle (foundation/
 // strength/intensity/peaking-blokit, kisaliikkeet, vk 4/8/12 deload-mappi).
 // Atletti: "Olisi tärkeää että AI-block-tuning toimisi muillekin mesotyypeille
