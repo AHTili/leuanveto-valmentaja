@@ -2643,6 +2643,24 @@ function computeRtfVelocityModel(allSets, movementId) {
 const DEFAULT_RTF_SLOPE = 0.045;  // m/s/RIR proxy ennen yksilöllistä mallia
 const REP1_RANGE_HALFWIDTH_RIR = 1.5;
 
+// v4.38.5 (käyttäjäpalaute 2026-05-10): Kisaliikkeiden tunnistus pitää
+// toimia myös kun movement-tietokannassa ei ole isCompetitionLift-flagia
+// (vanhoissa rekisteröidyissä movements:eissa flag puuttuu — uudet
+// PRESET_MOVEMENTS-asennukset saavat sen, mutta jo perustetut eivät).
+// Fallback-nimet kattavat streetlifting + voimanosto + yleisimmät variantit.
+const COMPETITION_LIFT_NAMES_FALLBACK = new Set([
+  // Streetlifting
+  "Lisäpainoleuanveto", "Lisäpainodippi", "Takakyykky", "Muscle-up",
+  // Voimanosto
+  "Penkkipunnerrus", "Maastaveto",
+]);
+
+function isCompetitionLiftMovement(movement) {
+  if (!movement) return false;
+  if (movement.isCompetitionLift === true) return true;
+  return COMPETITION_LIFT_NAMES_FALLBACK.has(movement.name);
+}
+
 function targetRep1VelocityRange(movementName, blockPhase, rtfModel = null) {
   // Resolvoi efektiivinen blokki-vaihe (sama logiikka kuin vlCapForContext:issa)
   let effectivePhase = blockPhase;
@@ -6866,6 +6884,9 @@ export {
   // v4.38.4 (Phase 2.7) kaksisuuntainen autoregulaatio
   targetRep1VelocityRange,
   DEFAULT_RTF_SLOPE,
+  // v4.38.5 — kisaliikkeiden tunnistus fallback nimellä
+  isCompetitionLiftMovement,
+  COMPETITION_LIFT_NAMES_FALLBACK,
   computePeakingDecisionTreeCard,
   // Readiness test
   readinessTestLoad,
