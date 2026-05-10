@@ -20,6 +20,22 @@ import {
   ouraHRVtoLnRMSSD,
   computeLoadVelocityProfile,
   MOVEMENT_MVT,
+  // v4.38.1 (Phase 2)
+  VL_CAP_PER_BLOCK,
+  vlCapForContext,
+  // v4.38.2 (Phase 3)
+  computeRtfVelocityModel,
+  vlCapFromRtfModel,
+  RTF_MIN_REPS_PER_SET,
+  RTF_R2_THRESHOLD_RELIABLE,
+  // v4.38.3 (Phase 3.5)
+  BLOCK_PHASE_TARGET_RIR,
+  // v4.38.3 (Phase 4)
+  predictVxFromVelocity,
+  VX_CONFLICT_DELTA,
+  // v4.38.4 (Phase 2.7) kaksisuuntainen autoregulaatio
+  targetRep1VelocityRange,
+  DEFAULT_RTF_SLOPE,
   recommend,
   computeVBTPromotionStatus,
   computeRateLimitAnchor,
@@ -33,7 +49,7 @@ import {
 } from "./engine.js";
 
 import {
-  validateVelocity, validateLoad, validateReps, validateHRV, validateBodyweight,
+  validateVelocity, validateMvReps, validateLoad, validateReps, validateHRV, validateBodyweight,
   isVelocityTypo, parseNumericInput,
   uid, createDefaultMesocycle,
   exportFullBackup, importFullBackup,
@@ -478,6 +494,12 @@ function testLoadVelocityProfile() {
   assert(MOVEMENT_MVT["Penkkipunnerrus"] === 0.17, "MVT bench = 0.17 m/s (Pareja-Blanco)");
   assert(MOVEMENT_MVT["Takakyykky"] === 0.30, "MVT back squat = 0.30 m/s");
 
+  // v4.38.0 (Phase 1A): Räjähtävän leuanvedon variantit aliasoituvat
+  // Lisäpainoleuanvetoon (V1RM = liikemekaniikka, ei sub-max intent).
+  assert(MOVEMENT_MVT["Räjähtävä leuanveto"] === 0.23, "MVT räjähtävä leuanveto alias = 0.23");
+  assert(MOVEMENT_MVT["Räjähtävä leuka"] === 0.23, "MVT räjähtävä leuka alias = 0.23");
+  assert(MOVEMENT_MVT["Räjähtävä leuka (vyö)"] === 0.23, "MVT räjähtävä leuka (vyö) alias = 0.23");
+
   // Synteettinen LV-data: pull-up, BW 90 kg, atleetin tunnettu 1RM-piste = 90+95=185 kg @ MVT 0.23.
   // Generoidaan 3 ankkuripistettä kuvitteellisesta lineaarisesta LV-suhteesta:
   // Kun load = 60kg ext (sys 150), v = 0.65; load = 75kg (sys 165), v = 0.45; load = 85kg (sys 175), v = 0.31.
@@ -558,6 +580,16 @@ function testValidators() {
   // Bodyweight
   assert(validateBodyweight(91).valid, "Validate BW 91 → valid");
   assert(!validateBodyweight(20).valid, "Validate BW 20 → invalid");
+
+  // v4.38.0 (Phase 1B): mvReps[] per-rep MPV-array.
+  assert(validateMvReps(null).valid, "Validate mvReps null → valid (ei kerätty)");
+  assert(validateMvReps([]).valid, "Validate mvReps [] → valid (tyhjä = ei kerätty)");
+  const mvOk = validateMvReps([0.57, 0.56, 0.54, 0.54, 0.48]);
+  assert(mvOk.valid && mvOk.value.length === 5, "Validate mvReps array OK → 5 arvoa");
+  assert(!validateMvReps([0.57, 4.0]).valid, "Validate mvReps [yli 3.0] → invalid");
+  assert(!validateMvReps([0.57, -0.1]).valid, "Validate mvReps [negatiivinen] → invalid");
+  assert(!validateMvReps([0.57, null]).valid, "Validate mvReps [null elem] → invalid");
+  assert(!validateMvReps("0.5,0.4").valid, "Validate mvReps string → invalid (ei array)");
 }
 
 function testParseNumeric() {
@@ -1263,6 +1295,443 @@ function testVBTPromotionStatus() {
     "VBT hysteree: diffPct on luku tai null");
   assert(["promoted", "candidate", "not-eligible"].includes(r5withHysteresis.status),
     "VBT hysteree: status validi enum-arvo");
+
+  // v4.38.0 (Phase 1D): Freshness-aikatriggeri.
+  // Stale-test: 15 pv vanha latest-anchor, today=2026-05-10 → ankkuri 2026-04-25.
+  // Pitää 28 pv ikkunan sisällä, mutta yli 14 pv → freshness="stale", status edelleen toimii.
+  const staleSets = [];
+  for (let i = 0; i < 10; i++) {
+    const ext = 60 + (i % 4) * 5;
+    const v = 0.65 - (ext - 60) * 0.014;
+    staleSets.push({
+      movementId: "test-mov", externalLoadKg: ext, velocityMean: v,
+      dateISO: "2026-04-25",  // 15 pv ennen 2026-05-10 → stale-alueella
+    });
+  }
+  const rStale = computeVBTPromotionStatus(staleSets, "test-mov", 88, {
+    bodyweightKg: 91, isBarbell: false, movementName: "Lisäpainoleuanveto",
+    todayISO: "2026-05-10",
+  });
+  assertEqual(rStale.freshness, "stale", "VBT freshness: 15 pv vanha → stale");
+  assert(rStale.daysSinceLastAnchor === 15, "VBT freshness: daysSinceLastAnchor = 15");
+  assert(rStale.status !== "not-eligible", "VBT freshness stale: status edelleen toimii (ei not-eligible pelkän iän takia)");
+  assert(typeof rStale.reason === "string" && rStale.reason.includes("Stale profile"),
+    "VBT freshness stale: reason sisältää Stale-warning");
+
+  // Force-recal-test: 22 pv vanha latest-anchor → freshness="needs-recalibration",
+  // status=not-eligible, blokkaa promotion.
+  const recalSets = [];
+  for (let i = 0; i < 10; i++) {
+    const ext = 60 + (i % 4) * 5;
+    const v = 0.65 - (ext - 60) * 0.014;
+    recalSets.push({
+      movementId: "test-mov", externalLoadKg: ext, velocityMean: v,
+      dateISO: "2026-04-18",  // 22 pv ennen 2026-05-10 → recal-alueella
+    });
+  }
+  const rRecal = computeVBTPromotionStatus(recalSets, "test-mov", 88, {
+    bodyweightKg: 91, isBarbell: false, movementName: "Lisäpainoleuanveto",
+    todayISO: "2026-05-10",
+  });
+  assertEqual(rRecal.freshness, "needs-recalibration", "VBT freshness: 22 pv vanha → needs-recalibration");
+  assertEqual(rRecal.status, "not-eligible", "VBT freshness needs-recalibration: blokkaa promotion");
+  assert(rRecal.reason.includes("vanhentunut"), "VBT freshness needs-recalibration: reason kuvaa tilanteen");
+
+  // Fresh-test: viimeinen ankkuri tänään → freshness="fresh".
+  const freshSets = [];
+  for (let i = 0; i < 10; i++) {
+    const ext = 60 + (i % 4) * 5;
+    const v = 0.65 - (ext - 60) * 0.014;
+    freshSets.push({
+      movementId: "test-mov", externalLoadKg: ext, velocityMean: v,
+      dateISO: "2026-05-08",  // 2 pv vanha
+    });
+  }
+  const rFresh = computeVBTPromotionStatus(freshSets, "test-mov", 88, {
+    bodyweightKg: 91, isBarbell: false, movementName: "Lisäpainoleuanveto",
+    todayISO: "2026-05-10",
+  });
+  assertEqual(rFresh.freshness, "fresh", "VBT freshness: 2 pv vanha → fresh");
+  assert(rFresh.daysSinceLastAnchor === 2, "VBT freshness: daysSinceLastAnchor = 2");
+}
+
+// v4.38.1 (Phase 2): VL-cap per blokki — within-set stop -autoregulaatio.
+function testVlCapPerBlock() {
+  // Defaults — VL_CAP_PER_BLOCK on Object.frozen, joten varmistetaan lukukelpoiset
+  // arvot ja että ne vastaavat synteesin range-keskellä-suosituksia.
+  assertEqual(VL_CAP_PER_BLOCK.foundation, 30, "VL cap foundation = 30 % (range-keskellä 25–35)");
+  assertEqual(VL_CAP_PER_BLOCK.strength, 17.5, "VL cap strength = 17.5 % (range-keskellä 15–20)");
+  assertEqual(VL_CAP_PER_BLOCK.intensity, 12.5, "VL cap intensity = 12.5 % (range-keskellä 10–15)");
+  assertEqual(VL_CAP_PER_BLOCK.peaking, 7.5, "VL cap peaking = 7.5 % (range-keskellä 5–10)");
+  assertEqual(VL_CAP_PER_BLOCK["speed-strength"], 12.5, "VL cap speed-strength = 12.5 % (Sánchez-Moreno 2020 pull-up)");
+
+  // vlCapForContext — blokki-vaihe oikealla cap-arvolla (settings tyhjä → defaults)
+  const cFound = vlCapForContext({ blockPhase: "foundation", settings: {} });
+  assertEqual(cFound.cap, 30, "ctx foundation → 30 %");
+  assertEqual(cFound.phase, "foundation", "ctx foundation phase tag");
+  assertEqual(cFound.source, "block-phase", "ctx foundation source = block-phase");
+
+  const cStr = vlCapForContext({ blockPhase: "strength", settings: {} });
+  assertEqual(cStr.cap, 17.5, "ctx strength → 17.5 %");
+
+  const cInt = vlCapForContext({ blockPhase: "intensity", settings: {} });
+  assertEqual(cInt.cap, 12.5, "ctx intensity → 12.5 %");
+
+  const cPeak = vlCapForContext({ blockPhase: "peaking", settings: {} });
+  assertEqual(cPeak.cap, 7.5, "ctx peaking → 7.5 %");
+
+  // Speed-strength etusija liikenimen kautta — käytössä missä tahansa blokki-vaiheessa
+  const cSpeedByName = vlCapForContext({
+    blockPhase: "strength",
+    exerciseName: "Räjähtävä leuanveto",
+    settings: {},
+  });
+  assertEqual(cSpeedByName.cap, 12.5, "ctx räjähtävä leuanveto (strength-blokissa) → speed-strength 12.5 %");
+  assertEqual(cSpeedByName.phase, "speed-strength", "ctx räjähtävä leuanveto → phase tag speed-strength");
+  assertEqual(cSpeedByName.source, "movement-name", "ctx räjähtävä leuanveto → source movement-name");
+
+  // Räjähtävä leuka -aliaksen tunnistus
+  const cSpeedAlias = vlCapForContext({
+    blockPhase: "intensity",
+    exerciseName: "Räjähtävä leuka (vyö)",
+    settings: {},
+  });
+  assertEqual(cSpeedAlias.phase, "speed-strength", "ctx Räjähtävä leuka (vyö) alias → speed-strength");
+
+  // Speed-day + targetVx ≥ 4 → speed-strength
+  const cSpeedDay = vlCapForContext({
+    blockPhase: "foundation",
+    dayType: "speed",
+    targetVx: 5,
+    settings: {},
+  });
+  assertEqual(cSpeedDay.phase, "speed-strength", "ctx speed-day + Vx 5 → speed-strength");
+  assertEqual(cSpeedDay.source, "speed-day", "ctx speed-day source");
+
+  // Settings-override — vlCapStrength=10 voittaa default 17.5
+  const cOverride = vlCapForContext({
+    blockPhase: "strength",
+    settings: { vlCapStrength: 10 },
+  });
+  assertEqual(cOverride.cap, 10, "ctx settings override → 10 %");
+
+  // Tuntematon blokki → fallback (legacy vlStopPercent jos settings, muuten strength-default)
+  const cUnknown = vlCapForContext({ blockPhase: null, settings: {} });
+  assertEqual(cUnknown.cap, 17.5, "ctx tuntematon blokki → fallback 17.5 % (strength default)");
+
+  const cLegacy = vlCapForContext({ blockPhase: null, settings: { vlStopPercent: 25 } });
+  assertEqual(cLegacy.cap, 25, "ctx tuntematon blokki + legacy vlStopPercent → 25 %");
+}
+
+// v4.38.2 (Phase 3): RTF-velocity-malli (Jukic 2024 yksilöllinen RIR-velocity).
+function testRtfVelocityModel() {
+  // No data
+  const r0 = computeRtfVelocityModel([], "mov-1");
+  assertEqual(r0.status, "no-data", "RTF: ei dataa → no-data");
+  assertEqual(r0.n, 0, "RTF: n=0 ilman dataa");
+
+  // Yksi RTF-setti, lineaarisesti laskeva MV (typical AMRAP)
+  // 8 rep AMRAP @ 75 % e1RM, MV laskee tasaisesti 0.65 → 0.18
+  // RIR = 8-1-i, eli rep 0 RIR=7, rep 7 RIR=0
+  // Odotettu: slope ~0.067 m/s/RIR (positiivinen), intercept ~0.18, r² ~1.0
+  const oneSet = [{
+    movementId: "mov-leuka",
+    setRole: "rtf_test",
+    externalLoadKg: 75,
+    sessionId: "sess-1",
+    mvReps: [0.65, 0.59, 0.53, 0.47, 0.41, 0.35, 0.27, 0.18],
+  }];
+  const r1 = computeRtfVelocityModel(oneSet, "mov-leuka");
+  assertEqual(r1.status, "reliable", "RTF: 1 sessio + lineaarinen data → reliable");
+  assertEqual(r1.n, 8, "RTF: n=8 datapistettä");
+  assertEqual(r1.sessionsCount, 1, "RTF: 1 sessio");
+  assertClose(r1.intercept, 0.18, 0.05, "RTF: intercept ≈ V@failure ≈ 0.18");
+  assert(r1.slope > 0, "RTF: slope > 0 (enemmän RIR → nopeampi)");
+  assert(r1.r2 >= 0.85, "RTF: r² ≥ 0.85 lineaariselle datalle");
+  assertClose(r1.velocityAtRir[0], r1.intercept, 0.001, "RTF: V@RIR0 = intercept");
+  assert(r1.velocityAtRir[5] > r1.velocityAtRir[1], "RTF: V@RIR5 > V@RIR1");
+  assert(Array.isArray(r1.loadsUsed) && r1.loadsUsed.includes(75), "RTF: loadsUsed sisältää 75");
+
+  // Liian vähän dataa (3 rep < RTF_MIN_REPS_PER_SET=4)
+  const tooFew = [{
+    movementId: "mov-leuka",
+    setRole: "rtf_test",
+    mvReps: [0.6, 0.5, 0.4],
+  }];
+  const r2 = computeRtfVelocityModel(tooFew, "mov-leuka");
+  assertEqual(r2.status, "no-data", "RTF: 3 rep < min=4 → no-data");
+
+  // Useita sessioita yhdistettynä
+  const multipleSets = [
+    { movementId: "mov-leuka", setRole: "rtf_test", externalLoadKg: 70, sessionId: "s1",
+      mvReps: [0.70, 0.62, 0.55, 0.48, 0.40, 0.32, 0.24, 0.18] },
+    { movementId: "mov-leuka", setRole: "rtf_test", externalLoadKg: 85, sessionId: "s2",
+      mvReps: [0.55, 0.48, 0.40, 0.32, 0.24, 0.18] },
+  ];
+  const r3 = computeRtfVelocityModel(multipleSets, "mov-leuka");
+  assertEqual(r3.status, "reliable", "RTF: 2 sessiota → reliable");
+  assertEqual(r3.sessionsCount, 2, "RTF: 2 sessiota laskettuna");
+  assertEqual(r3.n, 14, "RTF: 8+6=14 datapistettä");
+  assert(r3.loadsUsed.length === 2, "RTF: 2 eri kuormaa");
+
+  // Väärä movementId → no-data
+  const r4 = computeRtfVelocityModel(oneSet, "mov-eri");
+  assertEqual(r4.status, "no-data", "RTF: väärä movementId → no-data");
+
+  // Väärä setRole → no-data
+  const wrongRole = [{ ...oneSet[0], setRole: "top" }];
+  const r5 = computeRtfVelocityModel(wrongRole, "mov-leuka");
+  assertEqual(r5.status, "no-data", "RTF: väärä setRole → no-data");
+
+  // vlCapFromRtfModel — yksilöllinen cap RIR-tavoitteesta
+  // Käytä r1:n mallia: intercept 0.18, slope ~0.067
+  // targetRir 1 → V_target = 0.18 + 0.067 = 0.247
+  // rep1Velocity 0.65 → cap = (0.65 - 0.247) / 0.65 * 100 = 62 %
+  const cap1 = vlCapFromRtfModel(r1, 1, 0.65);
+  assert(cap1 !== null && cap1 > 50 && cap1 < 80, `vlCapFromRtfModel: RIR=1, rep1=0.65 → cap ${cap1?.toFixed(1)}% (odotus 50–80)`);
+
+  // RIR 0 → V_target = intercept = 0.18 → cap = (0.65-0.18)/0.65 = ~72 %
+  const cap0 = vlCapFromRtfModel(r1, 0, 0.65);
+  assert(cap0 !== null && cap0 > 65, "vlCapFromRtfModel: RIR=0 → korkein cap");
+
+  // Unreliable malli → null
+  const unreliableModel = { status: "unreliable", slope: 0.05, intercept: 0.2 };
+  const capUnreliable = vlCapFromRtfModel(unreliableModel, 1, 0.65);
+  assertEqual(capUnreliable, null, "vlCapFromRtfModel: unreliable → null");
+
+  // Negatiivinen rep1Velocity → null
+  const capBad = vlCapFromRtfModel(r1, 1, -0.5);
+  assertEqual(capBad, null, "vlCapFromRtfModel: negatiivinen rep1 → null");
+}
+
+// v4.38.3 (Phase 3.5): vlCapForContext käyttää RTF-mallia kun saatavilla.
+function testVlCapWithRtfModel() {
+  // BLOCK_PHASE_TARGET_RIR: mid-arvot blokki-rangeista
+  assertEqual(BLOCK_PHASE_TARGET_RIR.foundation, 4, "TargetRIR foundation = 4 (mid 4-5)");
+  assertEqual(BLOCK_PHASE_TARGET_RIR.strength, 2.5, "TargetRIR strength = 2.5 (mid 2-3)");
+  assertEqual(BLOCK_PHASE_TARGET_RIR.intensity, 1.5, "TargetRIR intensity = 1.5 (mid 1-2)");
+  assertEqual(BLOCK_PHASE_TARGET_RIR.peaking, 1, "TargetRIR peaking = 1 (mid 0-1)");
+  assertEqual(BLOCK_PHASE_TARGET_RIR["speed-strength"], 4, "TargetRIR speed-strength = 4");
+
+  // Rakennetaan reliable RTF-malli synteettisellä lineaarisella datalla
+  // 8 rep AMRAP, MV 0.65 → 0.18, RIR 7→0, slope ~0.067, intercept ~0.18
+  const rtfSets = [{
+    movementId: "mov-A",
+    setRole: "rtf_test",
+    externalLoadKg: 75,
+    sessionId: "s1",
+    mvReps: [0.65, 0.59, 0.53, 0.47, 0.41, 0.35, 0.27, 0.18],
+  }];
+  const rtfModel = computeRtfVelocityModel(rtfSets, "mov-A");
+  assertEqual(rtfModel.status, "reliable", "RTF-malli reliable testidatalla");
+
+  // Strength-blokki, rep1 0.65, RTF reliable → yksilöllinen cap
+  // V@RIR2.5 = 0.18 + 0.067 × 2.5 ≈ 0.348 → cap ≈ (0.65-0.348)/0.65 = 46.4 %
+  const capStrIndividual = vlCapForContext({
+    blockPhase: "strength",
+    rtfModel,
+    rep1Velocity: 0.65,
+    settings: {},
+  });
+  assertEqual(capStrIndividual.source, "rtf-individual", "Strength + reliable RTF → source rtf-individual");
+  assertEqual(capStrIndividual.phase, "strength", "Strength + reliable RTF → phase säilyy");
+  assertEqual(capStrIndividual.targetRir, 2.5, "Strength targetRir = 2.5");
+  assert(capStrIndividual.cap > 30 && capStrIndividual.cap < 60, `Strength yksilöllinen cap ${capStrIndividual.cap.toFixed(1)}% (odotus 30-60)`);
+
+  // Peaking-blokki: targetRir 1 → V_target ≈ 0.247 → cap ≈ (0.65-0.247)/0.65 = 62 %
+  const capPeakIndividual = vlCapForContext({
+    blockPhase: "peaking",
+    rtfModel,
+    rep1Velocity: 0.65,
+    settings: {},
+  });
+  assertEqual(capPeakIndividual.source, "rtf-individual", "Peaking + reliable RTF → source rtf-individual");
+  assert(capPeakIndividual.cap > capStrIndividual.cap, "Peaking yksilöllinen cap > Strength (RIR 1 < RIR 2.5 → enemmän VL)");
+
+  // Foundation-blokki: targetRir 4 → V_target ≈ 0.448 → cap ≈ (0.65-0.448)/0.65 = 31 %
+  const capFoundIndividual = vlCapForContext({
+    blockPhase: "foundation",
+    rtfModel,
+    rep1Velocity: 0.65,
+    settings: {},
+  });
+  assertEqual(capFoundIndividual.source, "rtf-individual", "Foundation + reliable RTF → source rtf-individual");
+  assert(capFoundIndividual.cap < capStrIndividual.cap, "Foundation yksilöllinen cap < Strength (RIR 4 > RIR 2.5 → vähemmän VL)");
+
+  // Speed-strength-liike (Räjähtävä leuanveto): targetRir 4 → sama logiikka kuin foundation
+  const capSpeedIndividual = vlCapForContext({
+    blockPhase: "strength",  // strength-blokki, mutta speed-liike → speed-strength etusija
+    exerciseName: "Räjähtävä leuanveto",
+    rtfModel,
+    rep1Velocity: 0.65,
+    settings: {},
+  });
+  assertEqual(capSpeedIndividual.phase, "speed-strength", "Räjähtävä leuanveto → speed-strength phase");
+  assertEqual(capSpeedIndividual.targetRir, 4, "Speed-strength targetRir = 4");
+  assertEqual(capSpeedIndividual.source, "rtf-individual", "Speed-strength + reliable RTF → source rtf-individual");
+
+  // Unreliable malli (preview-tasoinen) → fallback default
+  const previewModel = { ...rtfModel, status: "preview" };
+  const capPreviewFallback = vlCapForContext({
+    blockPhase: "strength",
+    rtfModel: previewModel,
+    rep1Velocity: 0.65,
+    settings: {},
+  });
+  assertEqual(capPreviewFallback.source, "block-phase", "Preview-tasoinen RTF → fallback block-phase");
+  assertEqual(capPreviewFallback.cap, 17.5, "Preview-fallback → strength default 17.5");
+
+  // Ei rep1Velocity → fallback (yksilöllistä cap-arvoa ei voi laskea)
+  const capNoRep1 = vlCapForContext({
+    blockPhase: "strength",
+    rtfModel,
+    settings: {},
+  });
+  assertEqual(capNoRep1.source, "block-phase", "Ei rep1Velocity → fallback block-phase");
+
+  // Ei RTF-mallia → Phase 2 -käyttäytyminen säilyy
+  const capNoModel = vlCapForContext({
+    blockPhase: "strength",
+    rep1Velocity: 0.65,
+    settings: {},
+  });
+  assertEqual(capNoModel.source, "block-phase", "Ei RTF-mallia → fallback block-phase");
+  assertEqual(capNoModel.cap, 17.5, "Ei RTF-mallia → strength default");
+
+  // Edge: yksilöllinen cap ulkopuolelle [3, 60] → fallback (sanity-check)
+  // Synteettinen tilanne: rtfModel ennustaa V_target > rep1V (epärealistinen)
+  const weirdModel = { status: "reliable", slope: 0.5, intercept: 0.8, r2: 0.95 };
+  const capWeird = vlCapForContext({
+    blockPhase: "strength",
+    rtfModel: weirdModel,
+    rep1Velocity: 0.65,
+    settings: {},
+  });
+  assertEqual(capWeird.source, "block-phase", "Epärealistinen RTF (V_target > rep1V) → fallback");
+}
+
+// v4.38.3 (Phase 4): Vx-velocity-konfliktin tunnistus työsarjatasolla.
+function testVxVelocityConflict() {
+  // VX_CONFLICT_DELTA arvon validointi
+  assertEqual(VX_CONFLICT_DELTA, 1.5, "VX_CONFLICT_DELTA = 1.5 (DR-suositus)");
+
+  // Reliable RTF-malli (kuten Phase 3 testissä): intercept ~0.18, slope ~0.067
+  const rtfSets = [{
+    movementId: "mov-A",
+    setRole: "rtf_test",
+    externalLoadKg: 75,
+    sessionId: "s1",
+    mvReps: [0.65, 0.59, 0.53, 0.47, 0.41, 0.35, 0.27, 0.18],
+  }];
+  const rtfModel = computeRtfVelocityModel(rtfSets, "mov-A");
+  assertEqual(rtfModel.status, "reliable", "Phase 4 testidata: RTF-malli reliable");
+
+  // Skenaario A: atletti raportoi Vx 3 (3 RIR, helppo) mutta viim. rep MV 0.20 m/s
+  // → predicted Vx (RIR) = (0.20 - 0.18) / 0.067 ≈ 0.3 → atletti yliarvioi varaa
+  // → delta = 3 - 0.3 = 2.7 → conflicted = true (≥ 1.5)
+  const grindBias = predictVxFromVelocity([0.55, 0.45, 0.35, 0.20], rtfModel, 3);
+  assertEqual(grindBias.status, "ok", "Grindaus-bias: status ok");
+  assert(grindBias.conflicted, "Grindaus-bias: conflicted = true");
+  assert(grindBias.delta >= VX_CONFLICT_DELTA, `Grindaus-bias: delta ≥ 1.5 (sai ${grindBias.delta?.toFixed(2)})`);
+  assertEqual(grindBias.direction, "athlete-overestimates-rir", "Grindaus-bias: direction athlete-overestimates-rir");
+  assert(grindBias.predictedVx < grindBias.reportedVx, "Grindaus-bias: predicted < reported");
+
+  // Skenaario B: yhtenevät — atletti raportoi Vx 2, viim. rep MV 0.32 m/s
+  // → predicted RIR = (0.32 - 0.18) / 0.067 ≈ 2.1 → delta ~−0.1 → no conflict
+  const aligned = predictVxFromVelocity([0.55, 0.48, 0.40, 0.32], rtfModel, 2);
+  assertEqual(aligned.status, "ok", "Aligned: status ok");
+  assert(!aligned.conflicted, "Aligned: conflicted = false");
+  assert(Math.abs(aligned.delta) < VX_CONFLICT_DELTA, "Aligned: delta < 1.5");
+
+  // Skenaario C: atletti raportoi Vx 0 (failure) mutta MV viittaa varaan
+  // → predicted RIR = e.g. 2 → atletti aliarvioi varaa (lopetti aikaisin)
+  const earlyStop = predictVxFromVelocity([0.55, 0.48, 0.40, 0.32], rtfModel, 0);
+  assertEqual(earlyStop.direction, "athlete-underestimates-rir", "Early stop: direction athlete-underestimates-rir");
+  assert(earlyStop.conflicted, "Early stop: conflicted = true (delta ≥ 1.5)");
+
+  // Pre-condition: ei mvReps → no-data
+  const r1 = predictVxFromVelocity(null, rtfModel, 2);
+  assertEqual(r1.status, "no-data", "predictVxFromVelocity: null mvReps → no-data");
+  const r2 = predictVxFromVelocity([], rtfModel, 2);
+  assertEqual(r2.status, "no-data", "predictVxFromVelocity: tyhjä mvReps → no-data");
+
+  // Pre-condition: ei RTF-mallia tai unreliable → no-rtf-model
+  const r3 = predictVxFromVelocity([0.5, 0.4], null, 2);
+  assertEqual(r3.status, "no-rtf-model", "predictVxFromVelocity: null rtfModel → no-rtf-model");
+  const r4 = predictVxFromVelocity([0.5, 0.4], { status: "preview", slope: 0.05, intercept: 0.2 }, 2);
+  assertEqual(r4.status, "no-rtf-model", "predictVxFromVelocity: preview-status → no-rtf-model");
+
+  // Pre-condition: slope ≤ 0 → rtf-slope-invalid
+  const r5 = predictVxFromVelocity([0.5, 0.4], { status: "reliable", slope: 0, intercept: 0.2, r2: 0.9 }, 2);
+  assertEqual(r5.status, "rtf-slope-invalid", "predictVxFromVelocity: slope 0 → invalid");
+
+  // Pre-condition: invalid lastMV
+  const r6 = predictVxFromVelocity([0.5, 0], rtfModel, 2);
+  assertEqual(r6.status, "invalid-last-mv", "predictVxFromVelocity: lastMV 0 → invalid");
+
+  // Ei reportedVx → conflicted = false (mutta status ok, predictedVx silti laskettu)
+  const noReported = predictVxFromVelocity([0.55, 0.20], rtfModel, null);
+  assertEqual(noReported.status, "ok", "Ei reportedVx: status ok");
+  assertEqual(noReported.conflicted, false, "Ei reportedVx: conflicted = false");
+  assert(typeof noReported.predictedVx === "number", "Ei reportedVx: predictedVx silti laskettu");
+}
+
+// v4.38.4 (Phase 2.7): targetRep1VelocityRange — kaksisuuntainen autoregulaatio.
+function testTargetRep1VelocityRange() {
+  // Default-slope-vakio
+  assertEqual(DEFAULT_RTF_SLOPE, 0.045, "DEFAULT_RTF_SLOPE = 0.045 m/s/RIR");
+
+  // Ilman RTF-mallia: käytä MOVEMENT_MVT-taulun arvoa interceptinä
+  // Lisäpainoleuanveto MVT 0.23, default slope 0.045, strength targetRir 2.5
+  // Range halfwidth ±1.5 RIR → lower = MVT + 0.045 × 1 = 0.275, upper = MVT + 0.045 × 4 = 0.41
+  const r1 = targetRep1VelocityRange("Lisäpainoleuanveto", "strength");
+  assertEqual(r1.source, "default", "Ilman RTF: source default");
+  assertEqual(r1.targetRir, 2.5, "Strength targetRir = 2.5");
+  assertEqual(r1.phase, "strength", "Phase strength");
+  assertClose(r1.lower, 0.275, 0.01, "Strength rep1 lower ≈ 0.275 m/s");
+  assertClose(r1.upper, 0.41, 0.01, "Strength rep1 upper ≈ 0.41 m/s");
+  assertClose(r1.center, 0.3425, 0.01, "Strength rep1 center ≈ 0.34 m/s");
+
+  // Foundation: targetRir 4 → range RIR 2.5–5.5, V@2.5 = 0.3425, V@5.5 = 0.4775
+  const r2 = targetRep1VelocityRange("Lisäpainoleuanveto", "foundation");
+  assertEqual(r2.targetRir, 4, "Foundation targetRir = 4");
+  assertClose(r2.lower, 0.3425, 0.01, "Foundation rep1 lower ≈ 0.34 m/s");
+  assertClose(r2.upper, 0.4775, 0.01, "Foundation rep1 upper ≈ 0.48 m/s");
+
+  // Peaking: targetRir 1 → range RIR 0–2.5
+  // lower = max(0, MVT + slope × max(0, 1-1.5)) = MVT + slope × 0 = 0.23 (kun targetRir-1.5 < 0, käytä 0)
+  // upper = MVT + slope × 2.5 = 0.3425
+  const r3 = targetRep1VelocityRange("Lisäpainoleuanveto", "peaking");
+  assertEqual(r3.targetRir, 1, "Peaking targetRir = 1");
+  assertClose(r3.lower, 0.23, 0.01, "Peaking rep1 lower ≈ 0.23 m/s (rajoitettu RIR ≥ 0)");
+  assertClose(r3.upper, 0.3425, 0.01, "Peaking rep1 upper ≈ 0.34 m/s");
+
+  // Räjähtävä leuanveto → speed-strength etusija liikenimen mukaan
+  const r4 = targetRep1VelocityRange("Räjähtävä leuanveto", "strength");
+  assertEqual(r4.phase, "speed-strength", "Räjähtävä leuanveto → speed-strength");
+  assertEqual(r4.targetRir, 4, "Speed-strength targetRir = 4");
+
+  // Reliable RTF-malli ohittaa MOVEMENT_MVT:n
+  const rtfModel = {
+    status: "reliable",
+    intercept: 0.18,  // erilainen kuin populaatio 0.23
+    slope: 0.06,      // erilainen kuin default 0.045
+    r2: 0.92,
+  };
+  const r5 = targetRep1VelocityRange("Lisäpainoleuanveto", "strength", rtfModel);
+  assertEqual(r5.source, "rtf-individual", "Reliable RTF → source rtf-individual");
+  // Strength targetRir 2.5, ±1.5 → V@1 = 0.24, V@4 = 0.42
+  assertClose(r5.lower, 0.24, 0.01, "RTF rep1 lower käyttää RTF-mallia");
+  assertClose(r5.upper, 0.42, 0.01, "RTF rep1 upper käyttää RTF-mallia");
+
+  // Preview-tasoinen RTF → fallback default
+  const previewModel = { ...rtfModel, status: "preview" };
+  const r6 = targetRep1VelocityRange("Lisäpainoleuanveto", "strength", previewModel);
+  assertEqual(r6.source, "default", "Preview RTF → fallback default");
+
+  // Tuntematon liike → DEFAULT_MVT (0.25)
+  const r7 = targetRep1VelocityRange("Tuntematon", "strength");
+  assertClose(r7.intercept, 0.25, 0.001, "Tuntematon liike → DEFAULT_MVT");
 }
 
 // v4.34.26: Maintenance-tila (graceful degradation). Engine palauttaa minimum-
@@ -1626,6 +2095,11 @@ export async function runTests() {
   testBackupReminderLogic();
   testMaintenanceStatus();
   testVBTPromotionStatus();
+  testVlCapPerBlock();
+  testRtfVelocityModel();
+  testVlCapWithRtfModel();
+  testVxVelocityConflict();
+  testTargetRep1VelocityRange();
   testRateLimitAnchorCalFiltering();
   // v4.34.34: Phase 0 -löydösten korjaukset
   testIsSystemLoadMovement();
