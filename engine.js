@@ -2111,9 +2111,26 @@ const MOVEMENT_MVT = {
   "Paused DL":               0.12,  // pause-deadlift selvästi matalampi
   "Deficit DL":              0.14,
   "Muscle-up":               0.30,  // streetlifting, ei tarkkaa kirjallisuutta
+  // v4.38.0: Räjähtävän leuanvedon variantit aliasoituvat Lisäpainoleuanvetoon (0.23).
+  // Perustelu: MVT = velocity 1RM:llä, ei training-load-velocity. Sama atleetti +
+  // sama liikemekaniikka (vertikaaliveto + lisäpaino) → V@failure konvergoituu samaan
+  // riippumatta sub-max intent:istä. Räjähtävässä variantissa ei ole pausea, joten
+  // 0.20 (Paused pull-up) ei sovellu. Lähde: Sánchez-Moreno 2017 + Helms 2017 -baseline.
+  "Räjähtävä leuanveto":     0.23,
+  "Räjähtävä leuka":         0.23,
+  "Räjähtävä leuka (vyö)":   0.23,
 };
 // Default-MVT tuntemattomille liikkeille (konservatiivinen, kyykky-tasolla)
 const DEFAULT_MVT = 0.25;
+
+// v4.38.0: Behrmann et al. 2025 (Sensors) -löydös EnodePro-validaatiosta:
+// MAPE 4-42%, yliarviointi systemaattinen erityisesti hitailla nopeuksilla
+// (<0.5 m/s) bench/squat-pohjadatassa. Streetlifting-V1RM-alueella (squat 0.30,
+// bench 0.17, weighted pull-up 0.23, dip 0.20, deadlift 0.14) Enoden 1RM-prediktio
+// on epäluotettava. Käytä trendiseurantaan; älä valitse kisapäivän openeria
+// pelkän velocity-e1RM:n perusteella. Hernández-Belmonte 2025 + Lemus 2024
+// vahvistavat: GymAware RS on ainoa bias-vapaa LPT advanced-tason atleeteille.
+const ENODE_LOW_VELOCITY_CAVEAT = "Enode-mittaus tällä hidasalueella (alle 0,5 m/s) yliarvioi nopeutta hieman. Käytä mittauksia trendin seuraamiseen — älä luota yksittäiseen lukuun kisapäivän opener-valinnassa.";
 
 function computeLoadVelocityProfile(sets, bodyweightKg, options = {}) {
   // v4.34.25: movementName lisätty MVT-haulle
@@ -2315,6 +2332,17 @@ const VBT_ANCHOR_WINDOW_DAYS = 28;
 const VBT_PROMOTE_THRESHOLD = 0.05;  // 5%
 const VBT_DEMOTE_THRESHOLD = 0.08;   // 8% — hysteresis
 
+// v4.38.0 (Phase 1D): L-V-profiilin detraining decay -aikatriggerit.
+// Tutkimusaukko spesifiselle slope/intercept-driftille (Häkkinen 2000 / Hortobágyi
+// 1993 / Hwang 2017 lähimmät proxy:t — strength-decay 1 vk merkityksetön, 2 vk
+// pieni, ≥ 3 vk slope todennäköisesti loivenee). Kynnykset coaching-päätöksiä,
+// ei suoraa peer-reviewed-evidenssiä elite-tasolla.
+//   - 14 pv ilman uusia ankkureita → freshness="stale" (warning, regressio toimii)
+//   - 21 pv ilman uusia ankkureita → freshness="needs-recalibration" (blokkaa
+//     promotion, suosittelee 2-piste mini-L-V-vahvistustestiä)
+const VBT_STALE_PROFILE_DAYS = 14;
+const VBT_FORCE_RECAL_DAYS = 21;
+
 function computeVBTPromotionStatus(allSets, movementId, currentE1RMExternal, options = {}) {
   const isBarbell = options.isBarbell === true;
   const bodyweightKg = options.bodyweightKg || 91;
@@ -2331,6 +2359,12 @@ function computeVBTPromotionStatus(allSets, movementId, currentE1RMExternal, opt
       recommendedE1RM: null,
       velocityE1RM: null,
       vxE1RM: currentE1RMExternal || null,
+      // v4.38.3: rakenne yhdenmukainen muiden return-haarojen kanssa
+      mvt: null,
+      deviceCaveat: null,
+      freshness: "no-data",
+      daysSinceLastAnchor: null,
+      latestAnchorDate: null,
     };
   }
 
@@ -2354,6 +2388,45 @@ function computeVBTPromotionStatus(allSets, movementId, currentE1RMExternal, opt
       recommendedE1RM: null,
       velocityE1RM: null,
       vxE1RM: currentE1RMExternal,
+      mvt: null,
+      deviceCaveat: null,
+      freshness: "no-data",
+      daysSinceLastAnchor: null,
+      latestAnchorDate: null,
+    };
+  }
+
+  // v4.38.0 (Phase 1D): Freshness-tarkistus ennen regressiota. Etsi viim.
+  // ankkuripiste ja laske ikä päivinä today:hyn nähden. 14 pv → stale-flag,
+  // 21 pv → blokkaa promotion + suosittele mini-L-V-rekalibrointia.
+  const latestAnchorDate = anchors
+    .map(s => s.dateISO || (s.timestamp ? s.timestamp.slice(0, 10) : null))
+    .filter(Boolean)
+    .sort()
+    .pop() || null;
+  let freshness = "fresh";
+  let daysSinceLastAnchor = null;
+  if (latestAnchorDate) {
+    const today = new Date(todayISOArg);
+    const last = new Date(latestAnchorDate);
+    daysSinceLastAnchor = Math.floor((today - last) / (1000 * 60 * 60 * 24));
+    if (daysSinceLastAnchor >= VBT_FORCE_RECAL_DAYS) freshness = "needs-recalibration";
+    else if (daysSinceLastAnchor >= VBT_STALE_PROFILE_DAYS) freshness = "stale";
+  }
+  if (freshness === "needs-recalibration") {
+    return {
+      status: "not-eligible",
+      anchorCount: anchors.length,
+      diffPct: null,
+      reason: `Malli vanhentunut: ${daysSinceLastAnchor} päivää ilman uutta dataa (raja ${VBT_FORCE_RECAL_DAYS} pv). Suositus: aja uusi kalibrointitesti ennen kuin luotat malliin uudelleen.`,
+      recommendedE1RM: null,
+      velocityE1RM: null,
+      vxE1RM: currentE1RMExternal,
+      mvt: null,
+      deviceCaveat: null,
+      freshness,
+      daysSinceLastAnchor,
+      latestAnchorDate,
     };
   }
 
@@ -2370,6 +2443,11 @@ function computeVBTPromotionStatus(allSets, movementId, currentE1RMExternal, opt
       recommendedE1RM: null,
       velocityE1RM: null,
       vxE1RM: currentE1RMExternal,
+      mvt: lvProfile.mvt,
+      deviceCaveat: (lvProfile.mvt !== null && lvProfile.mvt < 0.5) ? ENODE_LOW_VELOCITY_CAVEAT : null,
+      freshness,
+      daysSinceLastAnchor,
+      latestAnchorDate,
     };
   }
 
@@ -2377,20 +2455,444 @@ function computeVBTPromotionStatus(allSets, movementId, currentE1RMExternal, opt
   const threshold = previouslyPromoted ? VBT_DEMOTE_THRESHOLD : VBT_PROMOTE_THRESHOLD;
   const status = diffPct <= threshold ? "promoted" : "candidate";
 
+  // v4.38.0 (Phase 1D): stale-warning lisätään reason-tekstiin jos profiili
+  // 14–20 päivää vanha (operationaalinen mutta käyttäjä saa varoituksen).
+  const staleWarn = freshness === "stale"
+    ? ` ⚠ Stale profile: ${daysSinceLastAnchor} pv ilman uutta ankkuria — Häkkinen-tyyppinen detraining-drift mahdollinen, harkitse mini-L-V-vahvistusta.`
+    : "";
+
   return {
     status,
     anchorCount: anchors.length,
     diffPct,
     promoteThreshold: VBT_PROMOTE_THRESHOLD,
     demoteThreshold: VBT_DEMOTE_THRESHOLD,
-    reason: status === "promoted"
+    reason: (status === "promoted"
       ? `${anchors.length} ankkuripistettä · ±${(diffPct * 100).toFixed(1)}% diff (${previouslyPromoted ? "demote" : "promote"} ≤ ${(threshold * 100)}%)`
-      : `${anchors.length} ankkuripistettä · ±${(diffPct * 100).toFixed(1)}% diff yli kynnyksen ${(threshold * 100)}%`,
+      : `${anchors.length} ankkuripistettä · ±${(diffPct * 100).toFixed(1)}% diff yli kynnyksen ${(threshold * 100)}%`) + staleWarn,
     recommendedE1RM: status === "promoted" ? lvProfile.e1rmCrossCheck : null,
     velocityE1RM: lvProfile.e1rmCrossCheck,
     vxE1RM: currentE1RMExternal,
     mvt: lvProfile.mvt,
+    deviceCaveat: (lvProfile.mvt !== null && lvProfile.mvt < 0.5) ? ENODE_LOW_VELOCITY_CAVEAT : null,
+    freshness,
+    daysSinceLastAnchor,
+    latestAnchorDate,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RTF (Reps-to-Failure) -velocity-malli — Jukic 2024 yksilöllinen RIR-velocity
+// ═══════════════════════════════════════════════════════════════
+//
+// v4.38.2 (Phase 3): Jukic et al. 2024 (Scand J Med Sci Sports) -metodi yksilöllisen
+// RIR-velocity-mallin rakentamiseen yhdestä RTF-testistä per liike. Mean error
+// alle 2 reps populaatio-mappauksesta (Halperin 2022, Mansfield 2023, Paulsen
+// 2025: yksilöllinen r² ~0.95+ vs populaatio 0.45–0.49).
+//
+// Datankeruu:
+//   AMRAP-sarja kiinteällä kuormalla, jokaisen rep:n MV mitattuna.
+//   Set-rooli "rtf_test", mvReps[] sisältää rep-by-rep MV:t.
+//
+// Mallin rakennus:
+//   Jokaisesta rtf-setistä rep i (0-indexed) kun M = total reps:
+//     RIR_i = M - 1 - i  (rep 0 → korkein RIR, rep M-1 → 0 RIR)
+//   Velocity_i = mvReps[i]
+//   Yhdistä kaikki (RIR, velocity) -pisteet → lineaarinen regressio:
+//     velocity = intercept + slope × RIR
+//   Tulkinta:
+//     - intercept = V@failure (RIR 0) = yksilöllinen MVT
+//     - slope     = m/s per RIR-yksikkö
+//
+// Käyttö (Phase 3.5):
+//   Kun targetRir tunnetaan (esim. peaking RIR 1):
+//     velocity_at_target = intercept + slope × targetRir
+//     VL_cap = (rep1_velocity - velocity_at_target) / rep1_velocity * 100
+//   → yksilöllinen VL-cap populaatio-arvon sijaan.
+//
+// Tutkimuspohja:
+//   - Jukic et al. 2024 (Scand J Med Sci Sports) — 1 RTF-testi riittää r² > 0.95
+//   - Halperin et al. 2022 (Sports Med scoping review) — RIR-tarkkuuden modulaattorit
+//   - Bastos et al. 2024 (Perceptual Motor Skills) — familiarisaatio-protokolla
+//   - Sánchez-Moreno 2017 — pull-up rep-velocity loss vs % completed reps r² 0.88
+
+const RTF_MIN_REPS_PER_SET = 4;        // Vähintään 4 rep AMRAPista regressioon
+const RTF_MIN_SESSIONS_FOR_MODEL = 1;  // Jukic 2024: 1 sessio riittää
+const RTF_R2_THRESHOLD_RELIABLE = 0.85; // Phase 3.5: yksilöllinen cap aktivoituu vain kun r² ≥ 0.85
+const RTF_R2_THRESHOLD_PREVIEW = 0.70;  // UI näyttää mallin mutta varoittaa
+
+function computeRtfVelocityModel(allSets, movementId) {
+  if (!movementId || !Array.isArray(allSets)) {
+    return { status: "no-data", n: 0, sessionsCount: 0, slope: null, intercept: null, r2: null };
+  }
+  const rtfSets = allSets.filter(s =>
+    s.movementId === movementId &&
+    s.setRole === "rtf_test" &&
+    Array.isArray(s.mvReps) &&
+    s.mvReps.length >= RTF_MIN_REPS_PER_SET
+  );
+  if (rtfSets.length === 0) {
+    return { status: "no-data", n: 0, sessionsCount: 0, slope: null, intercept: null, r2: null };
+  }
+  if (rtfSets.length < RTF_MIN_SESSIONS_FOR_MODEL) {
+    return { status: "insufficient-sessions", n: 0, sessionsCount: rtfSets.length, slope: null, intercept: null, r2: null };
+  }
+
+  // Kerää (RIR, velocity) -pisteet
+  const points = [];
+  const sessionIds = new Set();
+  const loadsUsed = new Set();
+  for (const s of rtfSets) {
+    const M = s.mvReps.length;
+    if (s.sessionId) sessionIds.add(s.sessionId);
+    if (s.externalLoadKg) loadsUsed.add(s.externalLoadKg);
+    for (let i = 0; i < M; i++) {
+      const v = s.mvReps[i];
+      if (typeof v === "number" && v > 0 && v <= 3.0) {
+        points.push({ rir: M - 1 - i, velocity: v });
+      }
+    }
+  }
+  if (points.length < RTF_MIN_REPS_PER_SET) {
+    return { status: "insufficient-points", n: points.length, sessionsCount: rtfSets.length, slope: null, intercept: null, r2: null };
+  }
+
+  // Lineaarinen regressio: velocity = intercept + slope × rir
+  const n = points.length;
+  const sumX = points.reduce((a, p) => a + p.rir, 0);
+  const sumY = points.reduce((a, p) => a + p.velocity, 0);
+  const sumXY = points.reduce((a, p) => a + p.rir * p.velocity, 0);
+  const sumXX = points.reduce((a, p) => a + p.rir * p.rir, 0);
+  const denom = n * sumXX - sumX * sumX;
+  if (denom === 0 || Math.abs(denom) < 1e-9) {
+    return { status: "degenerate", n, sessionsCount: rtfSets.length, slope: null, intercept: null, r2: null };
+  }
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+
+  // r² (selitysaste)
+  const meanY = sumY / n;
+  let ssTot = 0, ssRes = 0;
+  for (const p of points) {
+    const yPred = intercept + slope * p.rir;
+    ssTot += (p.velocity - meanY) ** 2;
+    ssRes += (p.velocity - yPred) ** 2;
+  }
+  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : null;
+
+  // Sanity: slope pitää olla positiivinen (enemmän RIR → nopeampi rep)
+  // Jos negatiivinen → epäluotettava (todennäköisesti datavirhe tai tekninen ongelma)
+  const isReliable = slope > 0 && r2 !== null && r2 >= RTF_R2_THRESHOLD_RELIABLE;
+  const isPreviewable = slope > 0 && r2 !== null && r2 >= RTF_R2_THRESHOLD_PREVIEW;
+
+  // Velocity ennustukset RIR 0/1/3/5 -arvoille
+  const predict = (rir) => Math.max(0, intercept + slope * rir);
+  const velocityAtRir = {
+    0: predict(0),
+    1: predict(1),
+    3: predict(3),
+    5: predict(5),
+  };
+
+  // Status
+  let status;
+  if (isReliable) status = "reliable";
+  else if (isPreviewable) status = "preview";
+  else status = "unreliable";
+
+  return {
+    status,
+    n,
+    sessionsCount: rtfSets.length,
+    sessionIdsCount: sessionIds.size,
+    loadsUsed: [...loadsUsed].sort((a, b) => a - b),
+    slope,
+    intercept,
+    r2,
+    velocityAtRir,
+    rtfMvtIndividual: intercept,  // = V@failure = MVT yksilölliselle atletille
+    builtAtISO: new Date().toISOString(),
+    movementId,
+    minR2Reliable: RTF_R2_THRESHOLD_RELIABLE,
+    minR2Preview: RTF_R2_THRESHOLD_PREVIEW,
+  };
+}
+
+// v4.38.4 (Phase 2.7A): rep 1 -tavoiterange per liike per blokki.
+//
+// Kaksisuuntaisen autoregulaation pohja: pelkkä VL-cap (sarjan loppupiste)
+// suojaa ylitreenamiselta mutta EI tunnista alistimulaatiota (kuorma kevyt
+// → rep 1 liian nopea). Range antaa rep 1 -velocity:lle hyväksyttävän
+// haarukan blokin tavoite-RIR:n ympärille.
+//
+// Logiikka:
+//   1. MVT (= V@RIR0) ≈ rtfModel.intercept jos saatavilla, muuten MOVEMENT_MVT-taulu
+//   2. Slope ≈ rtfModel.slope (yksilöllinen) tai default 0.045 m/s/RIR
+//      (Sánchez-Moreno 2017 -datasta keskiarvo pull-upille; toimii proxy:nä
+//      muille liikkeille kunnes oma data kertyy)
+//   3. Range RIR-keskelle ±1.5 RIR:
+//      lower = V@(targetRir - 1.5)  ← ali = kuorma raskas
+//      upper = V@(targetRir + 1.5)  ← yli = kuorma kevyt
+//
+// Esim. Lisäpainoleuanveto strength-blokissa (targetRir 2.5):
+//   intercept 0.23, slope 0.045
+//   lower = 0.23 + 0.045 × 1.0 = 0.275 m/s  (rep 1 hitaampi → kuorma liian raskas)
+//   upper = 0.23 + 0.045 × 4.0 = 0.410 m/s  (rep 1 nopeampi → kuorma kevyt)
+//   optimal: 0.275–0.410 m/s
+
+const DEFAULT_RTF_SLOPE = 0.045;  // m/s/RIR proxy ennen yksilöllistä mallia
+const REP1_RANGE_HALFWIDTH_RIR = 1.5;
+
+function targetRep1VelocityRange(movementName, blockPhase, rtfModel = null) {
+  // Resolvoi efektiivinen blokki-vaihe (sama logiikka kuin vlCapForContext:issa)
+  let effectivePhase = blockPhase;
+  if (movementName && /räjähtävä\s+(leuka|leuanveto)/i.test(movementName)) {
+    effectivePhase = "speed-strength";
+  }
+  const targetRir = BLOCK_PHASE_TARGET_RIR[effectivePhase] ?? BLOCK_PHASE_TARGET_RIR.strength;
+
+  // Intercept (V@failure): ensisijaisesti rtfModel, toissijaisesti MOVEMENT_MVT
+  let intercept, slope;
+  if (rtfModel && rtfModel.status === "reliable" &&
+      typeof rtfModel.slope === "number" && rtfModel.slope > 0 &&
+      typeof rtfModel.intercept === "number" && rtfModel.intercept > 0) {
+    intercept = rtfModel.intercept;
+    slope = rtfModel.slope;
+  } else {
+    intercept = (movementName && MOVEMENT_MVT[movementName] !== undefined)
+      ? MOVEMENT_MVT[movementName]
+      : DEFAULT_MVT;
+    slope = DEFAULT_RTF_SLOPE;
+  }
+
+  const lower = Math.max(0, intercept + slope * Math.max(0, targetRir - REP1_RANGE_HALFWIDTH_RIR));
+  const upper = intercept + slope * (targetRir + REP1_RANGE_HALFWIDTH_RIR);
+  const center = intercept + slope * targetRir;
+
+  return {
+    lower,
+    upper,
+    center,
+    targetRir,
+    phase: effectivePhase,
+    source: (rtfModel && rtfModel.status === "reliable") ? "rtf-individual" : "default",
+    intercept,
+    slope,
+  };
+}
+
+// Phase 3.5 helper: laskee VL-cap yksilöllisesti kun RTF-malli on saatavilla.
+//   targetRir: blokki-spesifi RIR-tavoite (peaking RIR 1, strength RIR 2-3, jne.)
+//   rep1Velocity: sarjan ensimmäisen rep:n MV (tarvitaan VL%-laskuun)
+//   rtfModel: computeRtfVelocityModel-paluu
+function vlCapFromRtfModel(rtfModel, targetRir, rep1Velocity) {
+  if (!rtfModel || rtfModel.status !== "reliable") return null;
+  if (typeof targetRir !== "number" || typeof rep1Velocity !== "number" || rep1Velocity <= 0) return null;
+  const targetVelocity = rtfModel.intercept + rtfModel.slope * targetRir;
+  if (targetVelocity <= 0 || targetVelocity >= rep1Velocity) return null;
+  return ((rep1Velocity - targetVelocity) / rep1Velocity) * 100;
+}
+
+// v4.38.3 (Phase 4): Vx-velocity-konfliktin tunnistus työsarjatasolla.
+//
+// Atleetin grindaus-bias: hän raportoi Vx 1 vaikka velocity-data implikoi Vx 0
+// tai jopa V−1. Tämä funktio käyttää RTF-mallia ennustamaan kuinka monta toistoa
+// jäljellä viimeisen rep:n velocity-arvon perusteella, ja vertaa atleetin
+// raportoimaan Vx:hen.
+//
+// Ennustelogiikka (RTF-mallin invertointi):
+//   velocity = intercept + slope × RIR
+//   → RIR = (velocity - intercept) / slope
+//
+// Käytetään viimeisen rep:n MV:tä = end-of-set proxy → predictedVx = predictedRir.
+// Konflikti = abs(predictedVx - reportedVx) ≥ VX_CONFLICT_DELTA (1.5).
+//
+// HUOMAA: tämä on havaintoraportointi, EI auto-override (DR-synteesin
+// suositus): "ÄLÄ käytä suoraa 'data overrides' -sääntöä — velocity-RIR-mallin
+// epävarmuus on liian suuri ilman individualisointia". Yksilöllinen RTF-malli
+// (Jukic 2024) tuo r² ~0.95, joten override on tutkimuspohjaisempi — mutta
+// MVP:ssä tallennamme vain decisionTracen + UI-disclaimerin. Käyttäjä päättää
+// muuttaa raportoidun Vx:n itse jos hyväksyy override:n. Phase 4.5 myöhemmin
+// voi lisätä auto-konservatiivisen min(reported, predicted) -ratkaisun.
+
+const VX_CONFLICT_DELTA = 1.5;  // Minimi-ero raportoidun ja ennustetun Vx:n välillä
+
+function predictVxFromVelocity(mvReps, rtfModel, reportedVx = null) {
+  // Pre-condition tarkistukset
+  if (!Array.isArray(mvReps) || mvReps.length < 1) {
+    return { status: "no-data", conflicted: false };
+  }
+  if (!rtfModel || rtfModel.status !== "reliable") {
+    return { status: "no-rtf-model", conflicted: false };
+  }
+  if (typeof rtfModel.slope !== "number" || rtfModel.slope <= 0) {
+    return { status: "rtf-slope-invalid", conflicted: false };
+  }
+
+  // Ennusta Vx (= RIR) viimeisen rep:n MV:stä
+  const lastMv = mvReps[mvReps.length - 1];
+  const rep1Mv = mvReps[0];
+  if (typeof lastMv !== "number" || lastMv <= 0) {
+    return { status: "invalid-last-mv", conflicted: false };
+  }
+
+  // RIR = (velocity - intercept) / slope
+  const predictedVxRaw = (lastMv - rtfModel.intercept) / rtfModel.slope;
+  // Clamp [0, 5] (Vx-skaala)
+  const predictedVx = Math.max(0, Math.min(5, predictedVxRaw));
+  const predictedVxRep1Raw = (rep1Mv - rtfModel.intercept) / rtfModel.slope;
+  const predictedVxRep1 = Math.max(0, Math.min(5, predictedVxRep1Raw));
+
+  // Konfliktin tunnistus
+  let conflicted = false;
+  let delta = null;
+  if (typeof reportedVx === "number") {
+    delta = reportedVx - predictedVx;  // positiivinen = atletti raportoi enemmän varaa
+    conflicted = Math.abs(delta) >= VX_CONFLICT_DELTA;
+  }
+
+  return {
+    status: "ok",
+    predictedVx,
+    predictedVxRaw,
+    predictedVxRep1,
+    reportedVx,
+    delta,
+    conflicted,
+    conflictDelta: VX_CONFLICT_DELTA,
+    direction: delta === null ? null : (delta > 0 ? "athlete-overestimates-rir" : "athlete-underestimates-rir"),
+    rtfR2: rtfModel.r2,
+    lastMvUsed: lastMv,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VL-CAP per blokki — within-set stop -autoregulaatio
+// ═══════════════════════════════════════════════════════════════
+//
+// v4.38.1 (Phase 2): Pareja-Blanco-tradition VL-cap-arvot per blokki, kytkettynä
+// päätösketjun ENSISIJAISEEN pisteeseen (within-set stop) eikä pelkkänä UI-warning.
+//
+// Tutkimuspohja (Pareja-Blanco 2017/2020/2023 -aalto + Galiano 2022 + Held 2022
+// + Lyu 2026 + Sánchez-Moreno 2020 + Jukic 2023 "One Velocity Loss Threshold
+// Does Not Fit All"):
+//   Foundation/hypertrofia: 25–35 % (CSA-kasvu maksimaalinen, korkea volyymi)
+//   Strength:               15–20 % (voima paremmin, väsymys minimissä)
+//   Intensity:              10–15 % (explosivinen kapasiteetti, low VL)
+//   Peaking:                 5–10 % (CMJ/sprint paras)
+//   Speed-strength (pull):  10–15 % (Sánchez-Moreno 2020 VL25 > VL50)
+//
+// Default-arvot ovat range-keskellä; settings-overridable per blokki.
+//
+// "Low-V1RM grinder" -profiilille (Akseli) konservatiivisemmat arvot ovat
+// perusteltuja koska sama VL-% kohdistuu alempaan absoluuttiseen velocity-
+// alueeseen → fatigue-kuormitus per VL-prosentti suurempi (Jukic 2023).
+//
+// Atleetin RTF-velocity-mallin (Phase 3) jälkeen nämä arvot voidaan kalibroida
+// yksilöllisesti — toistaiseksi default = range-keskellä.
+const VL_CAP_PER_BLOCK = Object.freeze({
+  foundation: 30,        // 25–35 % range-keskellä
+  strength: 17.5,        // 15–20 %
+  intensity: 12.5,       // 10–15 %
+  peaking: 7.5,          //  5–10 %
+  "speed-strength": 12.5,// 10–15 % räjähtäville pull-up-varianteille
+});
+
+// v4.38.3 (Phase 3.5): Blokki-spesifi target-RIR yksilölliselle cap-laskennalle
+// RTF-mallista. Mid-range-arvot synteesin VL-cap-rangeista, jotka karkeasti
+// vastaavat: korkea VL → korkea RIR (paljon väsymystä), matala VL → matala RIR.
+// Foundation 25-35% → RIR 4 (mid 4-5 = paljon varaa)
+// Strength    15-20% → RIR 2.5 (mid 2-3)
+// Intensity   10-15% → RIR 1.5 (mid 1-2)
+// Peaking      5-10% → RIR 1   (mid 0-1, peak-vaiheen raskaat singlet)
+// Speed       10-15% → RIR 4   (mid 4-5 = nopeuden säilytys, ei väsymystä)
+const BLOCK_PHASE_TARGET_RIR = Object.freeze({
+  foundation: 4,
+  strength: 2.5,
+  intensity: 1.5,
+  peaking: 1,
+  "speed-strength": 4,
+});
+
+// Blokki-vaihe heuristiikka exercise-kontekstista. Speed-strength tunnistetaan
+// liikkeen nimestä (Räjähtävä leuanveto / Räjähtävä leuka -variantit) tai
+// dayType==="speed" + targetVx >= 4.
+//
+// v4.38.3 (Phase 3.5): RTF-mallin yksilöllinen cap-laskenta.
+//   Jos rtfModel.status === "reliable" ja rep1Velocity > 0:
+//     1. Resolvoi blokki-vaihe (kuten ennen)
+//     2. Hae targetRir BLOCK_PHASE_TARGET_RIR-mapista
+//     3. Laske velocity_at_target = rtfModel.intercept + rtfModel.slope × targetRir
+//     4. cap_individual = (rep1Velocity - velocity_at_target) / rep1Velocity * 100
+//     5. Source = "rtf-individual" (UI näyttää badge:n)
+//   Muuten fallback nykyiseen logiikkaan (settings → defaults).
+function vlCapForContext(ctx = {}) {
+  const { blockPhase = null, exerciseName = null, dayType = null, targetVx = null, settings = {},
+          rtfModel = null, rep1Velocity = null } = ctx;
+
+  // Resolvoi efektiivinen blokki-vaihe (sama logiikka kuin defaultien valinnassa)
+  let effectivePhase;
+  let defaultSource;
+  const isSpeedStrengthMovement = exerciseName && /räjähtävä\s+(leuka|leuanveto)/i.test(exerciseName);
+  const isSpeedDay = dayType === "speed" && typeof targetVx === "number" && targetVx >= 4;
+  if (isSpeedStrengthMovement || isSpeedDay) {
+    effectivePhase = "speed-strength";
+    defaultSource = isSpeedStrengthMovement ? "movement-name" : "speed-day";
+  } else if (["foundation", "strength", "intensity", "peaking"].includes(blockPhase)) {
+    effectivePhase = blockPhase;
+    defaultSource = "block-phase";
+  } else {
+    effectivePhase = "default";
+    defaultSource = "fallback";
+  }
+
+  // RTF-yksilöllinen cap jos malli reliable + rep1Velocity saatavilla
+  if (rtfModel && rtfModel.status === "reliable" &&
+      typeof rep1Velocity === "number" && rep1Velocity > 0 &&
+      typeof rtfModel.slope === "number" && typeof rtfModel.intercept === "number") {
+    const targetRir = BLOCK_PHASE_TARGET_RIR[effectivePhase] ?? BLOCK_PHASE_TARGET_RIR.strength;
+    const velocityAtTarget = rtfModel.intercept + rtfModel.slope * targetRir;
+    if (velocityAtTarget > 0 && velocityAtTarget < rep1Velocity) {
+      const capIndividual = ((rep1Velocity - velocityAtTarget) / rep1Velocity) * 100;
+      // Sanity-check: yksilöllinen cap tulisi olla 3–60 % välillä — ulkopuolelle
+      // jäävät arvot viittaavat mallin epäluotettavuuteen tai poikkeavaan rep1:een.
+      if (capIndividual >= 3 && capIndividual <= 60) {
+        return {
+          cap: capIndividual,
+          phase: effectivePhase,
+          source: "rtf-individual",
+          targetRir,
+          velocityAtTargetRir: velocityAtTarget,
+          rtfR2: rtfModel.r2,
+        };
+      }
+    }
+  }
+
+  // Fallback: populaatio-default + settings-override (Phase 2 -käyttäytyminen)
+  if (effectivePhase === "speed-strength") {
+    return {
+      cap: settings.vlCapSpeedStrength ?? VL_CAP_PER_BLOCK["speed-strength"],
+      phase: "speed-strength",
+      source: defaultSource,
+    };
+  }
+  switch (effectivePhase) {
+    case "foundation":
+      return { cap: settings.vlCapFoundation ?? VL_CAP_PER_BLOCK.foundation, phase: "foundation", source: "block-phase" };
+    case "strength":
+      return { cap: settings.vlCapStrength ?? VL_CAP_PER_BLOCK.strength, phase: "strength", source: "block-phase" };
+    case "intensity":
+      return { cap: settings.vlCapIntensity ?? VL_CAP_PER_BLOCK.intensity, phase: "intensity", source: "block-phase" };
+    case "peaking":
+      return { cap: settings.vlCapPeaking ?? VL_CAP_PER_BLOCK.peaking, phase: "peaking", source: "block-phase" };
+    default:
+      return {
+        cap: settings.vlStopPercent ?? VL_CAP_PER_BLOCK.strength,
+        phase: "default",
+        source: "fallback",
+      };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -6338,10 +6840,32 @@ export {
   computeLoadVelocityProfile,
   MOVEMENT_MVT,
   DEFAULT_MVT,
+  ENODE_LOW_VELOCITY_CAVEAT,
   computeVBTPromotionStatus,
   VBT_MIN_ANCHORS,
+  VBT_ANCHOR_WINDOW_DAYS,
   VBT_PROMOTE_THRESHOLD,
   VBT_DEMOTE_THRESHOLD,
+  VBT_STALE_PROFILE_DAYS,
+  VBT_FORCE_RECAL_DAYS,
+  // v4.38.1 (Phase 2) VL-cap autoregulaatio
+  VL_CAP_PER_BLOCK,
+  vlCapForContext,
+  // v4.38.3 (Phase 3.5) Yksilöllinen cap RTF-mallista
+  BLOCK_PHASE_TARGET_RIR,
+  // v4.38.2 (Phase 3) RTF-velocity-malli (Jukic 2024)
+  computeRtfVelocityModel,
+  vlCapFromRtfModel,
+  RTF_MIN_REPS_PER_SET,
+  RTF_MIN_SESSIONS_FOR_MODEL,
+  RTF_R2_THRESHOLD_RELIABLE,
+  RTF_R2_THRESHOLD_PREVIEW,
+  // v4.38.3 (Phase 4) Vx-velocity-konfliktin tunnistus
+  predictVxFromVelocity,
+  VX_CONFLICT_DELTA,
+  // v4.38.4 (Phase 2.7) kaksisuuntainen autoregulaatio
+  targetRep1VelocityRange,
+  DEFAULT_RTF_SLOPE,
   computePeakingDecisionTreeCard,
   // Readiness test
   readinessTestLoad,

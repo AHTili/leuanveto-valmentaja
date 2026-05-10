@@ -1,5 +1,235 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.37.0 — Sykli-välilehden redesign (Claude Design "Cycle View v3").
+// LeVe AI v4.38.4 — Phase 2.7 (kaksisuuntainen autoregulaatio) + Phase 3.6
+// (RTF-testin auto-suggestio) + UI-stringien siivous.
+//
+// Käyttäjäpalaute v4.38.3 jälkeen: nopeus-vararajat-mallin yksisuuntaisuus
+// (vain ylitreenamissuoja) ei riittänyt eliittitason vaatimuksiin. Akselin
+// huoli alistimuloiduista sarjoista on perusteltu — Phase 2.7 lisää rep 1
+// -tavoiterangen ja kaksisuuntaisen palautteen.
+//
+// Käytettävyysparannus: tutkijanimet (Pareja-Blanco / Behrmann / Jukic /
+// Sánchez-Moreno) poistettu KÄYTTÄJÄLLE NÄKYVISTÄ stringeistä — säilyvät
+// koodikommenteissa kehittäjälle. Tämä noudattaa peruslinjaa: sovellus
+// puhuu suomeksi, akateemiset perustelut säilyvät dokumentaatiossa.
+//
+// MUUTOKSET v4.38.4:
+// (Phase 2.7A) targetRep1VelocityRange(movementName, blockPhase, rtfModel)
+//   — uusi engine-helper joka palauttaa rep 1:n hyväksyttävän nopeushaarukan
+//   blokin tavoite-RIR:n ympärille (±1.5 RIR). Käyttää reliable-RTF-mallia
+//   tai fallback MOVEMENT_MVT + DEFAULT_RTF_SLOPE (0.045 m/s/RIR).
+//   BLOCK_PHASE_TARGET_RIR-mappi: foundation 4, strength 2.5, intensity 1.5,
+//   peaking 1, speed-strength 4 (mid-arvot blokki-rangeista).
+// (Phase 2.7B) Live-summary 4-tilainen: ALI (sininen, kuorma kevyt) /
+//   OPTIMAALI (vihreä) / VAR (keltainen) / STOP (punainen). Värikoodit
+//   CSS:ssä: vl-state-under, vl-state-optimal, vl-cap-warn, vl-cap-stop.
+//   ALI-state-banner näyttää konkreetin tavoiterangen + nostosuosituksen.
+// (Phase 2.7C) Anomaly recovery: jos viimeinen rep on edellistä nopeampi
+//   (= "palautui"), käytä kahden viimeisen rep:n mediaania cap-vertailussa.
+//   Estää väärän STOP-ehdotuksen yksittäisestä teknisestä lipsahduksesta.
+// (Phase 2.7D) Post-set toastit + UNDER_STIMULATED-decisionTrace:
+//   - 🔵 ali-stim: rep 1 yli rangen + VL alle cap × 0.5 → "kuorma alle
+//     kapasiteettisi, harkitse nostoa"
+//   - 🟢 optimaali: rep 1 rangessa + VL cap × 0.5–0.95 (ei traceen, mutta
+//     yhteenvetotoast jos ei muita varoituksia)
+//   - 🛑 STOP-ehdotus laajennettu: cap-source näkyy ("oma malli" vs
+//     "blokki-oletus")
+// (Phase 3.6A) Dashboard-bannerin RTF-kalibrointimuistutus puuttuville
+//   kisaliikkeille. Klikkaus → Asetukset-välilehti. Näkyy vain kun
+//   velocity-mittaus on käytössä.
+// (Phase 3.6B) Treenin tallennushetkellä AMRAP-sarjojen tunnistus:
+//   primary + actualVx 0 + reps ≥ targetReps + 2 + mvReps[].length ≥ 4.
+//   Per-kandidaatti modal: "Tallenna kalibrointitestinä?" → luo rinnakkain
+//   rtf_calibration-session + rtf_test-set. Akselin yleisin käyttötapa:
+//   tee viimeinen sarja failureen → kalibrointimalli rakentuu ilman
+//   erillistä testiä.
+// (Phase 3.6C) Asetukset RTF-kortti merkityksellisempi: 🔴 "Testi puuttuu"
+//   -indikaattori + punainen vasen reuna kun status === "no-data". V@RIR
+//   -kentät käyttäjäystävällisesti ("Failurella" / "1 varaa" / "3 varaa" /
+//   "5 varaa" sen sijaan että "RIR 0" / "RIR 1" / jne.).
+// (UI-siivous) Pareja-Blanco / Behrmann / Jukic / Sánchez-Moreno -nimet
+//   poistettu kaikista käyttäjälle näkyvistä teksteistä:
+//   - STOP-suggestion: "Lopeta sarja tähän — lisätoistot eivät enää tuota
+//     voiman lisäystä, vain ylimääräistä väsymystä"
+//   - VL-cap settings: "Sarjan lopetusraja (%) per blokki" — kuvaus selkeää
+//     suomea ilman tutkijanimi-viittauksia
+//   - ENODE_LOW_VELOCITY_CAVEAT: "Enode-mittaus tällä hidasalueella…"
+//   - Stale profile reason: "Malli vanhentunut: N päivää ilman uutta dataa"
+//   - RTF-modaali: "Kalibrointitesti" tutkijanimien sijaan
+//   - Vx-konflikti-toast: "Raportoit varaa X mutta nopeusmittaus viittaa Y"
+//   - Tutkijaviittaukset säilyvät koodikommenteissa (kehittäjän referenssi)
+// (Phase 2.7-test) testTargetRep1VelocityRange — strength/foundation/peaking
+//   ranges, speed-strength etusija liikenimellä, RTF-mallin käyttö, preview-
+//   fallback, tuntematon liike → DEFAULT_MVT. ~12 uutta assertiota.
+//
+// v4.38.3 (edellinen) — Velocity DR Phase 3.5 + 4 (yksilöllinen cap RTF-mallista
+// + Vx-velocity-konfliktin tunnistus).
+//
+// Phase 3.5 sulkee silmukan datan ja autoregulaation välillä: kun atletti on
+// kerännyt yhden RTF-testin per kisaliike (Phase 3) ja malli on r² ≥ 0.85,
+// VL-cap muunnetaan automaattisesti yksilölliseksi populaatio-default-arvon
+// sijaan. Phase 4 tunnistaa Vx-velocity-konfliktit (grindaus-bias) ja kirjaa
+// päätösketjuun, mutta EI ylioppikkaa atletin raportoimaa Vx:ää automaattisesti
+// (DR-suositus: käyttäjä päättää).
+//
+// MUUTOKSET v4.38.3:
+// (3.5A) BLOCK_PHASE_TARGET_RIR-mappi engine.js:ssä — mid-arvot DR-rangeista:
+//        Foundation 4 (RIR 4-5), Strength 2.5 (RIR 2-3), Intensity 1.5 (RIR 1-2),
+//        Peaking 1 (RIR 0-1), Speed-strength 4 (RIR 4-5).
+// (3.5A) vlCapForContext laajennettu: rtfModel + rep1Velocity ctx-paramit.
+//        Kun rtfModel.status === "reliable" + rep1Velocity > 0:
+//          targetRir = BLOCK_PHASE_TARGET_RIR[effectivePhase]
+//          velocityAtTarget = intercept + slope × targetRir
+//          cap_individual = (rep1Velocity - velocityAtTarget) / rep1Velocity * 100
+//        Sanity-clamp [3, 60] — ulkopuoliset arvot → fallback default.
+//        Source: "rtf-individual" (Phase 3.5) vs "block-phase" / "fallback".
+// (3.5B) Live-summary rep-gridissä laskee cap-arvon dynaamisesti rep1V:n
+//        muuttuessa. UI-badge "🎯 RTF-yksilöllinen (RIR-tav. X, r² Y%)" kun
+//        source === "rtf-individual". STOP-ehdotus näyttää RTF-tagin selkeästi.
+// (3.5C) Save-layer-trace VL_CAP_TRIGGERED sisältää nyt rtfTargetRir + rtfR2 +
+//        velocityAtTargetRir-kentät, jotta blokki-vaihtoehdot ja kalibraation
+//        luotettavuus voidaan jälkikäteen analysoida.
+// (4A)   predictVxFromVelocity(mvReps, rtfModel, reportedVx) — engine.js:n uusi
+//        helperi joka invertoi RTF-mallin: predictedRir = (lastMv - intercept) /
+//        slope. Clamp [0, 5] (Vx-skaala). Konflikti = abs(reportedVx -
+//        predictedVx) ≥ VX_CONFLICT_DELTA (1.5). Direction:
+//        "athlete-overestimates-rir" (grindaus-bias) tai
+//        "athlete-underestimates-rir" (lopetti aikaisin).
+// (4B)   Save-layer: VX_VELOCITY_CONFLICT-trace kun mvReps + reliable RTF-malli
+//        + delta ≥ 1.5. Tallennus saveSets:in jälkeen, toast:
+//        "🎯 N sarjassa Vx-poikkeama ≥ 1.5 (RTF-malli): X× yliarvio varaa
+//        (grindaus-bias). Tarkista kalibraatio kun aikaa." HUOM: actualVx EI
+//        ylioppiku automaattisesti — käyttäjä päättää (DR-suositus).
+// (3.5D + 4C) Testit: testVlCapWithRtfModel + testVxVelocityConflict —
+//        BLOCK_PHASE_TARGET_RIR-arvot, yksilöllinen cap eri blokkivaiheissa
+//        (foundation/strength/intensity/peaking/speed-strength), preview-fallback,
+//        unreliable RTF, sanity-range [3, 60], grindaus-bias-skenaario,
+//        aligned-skenaario, early-stop-skenaario, pre-condition tarkistukset.
+//        ~25 uutta assertiota.
+//
+// Phase 4.5 (myöhemmin): auto-konservatiivinen min(reportedVx, predictedVx) -
+// ratkaisu kun konflikti on ylittynyt N peräkkäisessä sessiossa. Tällä hetkellä
+// vain havaintoraportointi.
+//
+// Phase 1+2+3+3.5+4 yhteenveto: VBT-syvätutkimuksen Pareja-Blanco-tradition
+// VL-cap, Jukic 2024 yksilöllinen RIR-velocity-malli, ja konfliktin tunnistus
+// kaikki integroitu. DR-synteesin "action list":sta kuitatut: 8/10
+// koodimuutosta. Avoinna: Phase 2.5 (between-set load-decrement +
+// recommend()-syöte), Phase 5 (2-piste mini-L-V-confirmation-sessio blokin
+// alussa), Phase 6 (vk 4/8/12 deload-kalibroinnin vaihto AMRAP @92 % →
+// 2-piste mini-L-V).
+//
+// v4.38.2 (edellinen) — Velocity DR Phase 3 (RTF-testi yksilölliselle RIR-velocity-mallille).
+//
+// VBT-syvätutkimuksen synteesi (Claude DR + ChatGPT DR + verifikaatio 2026-05-09)
+// → Phase 3 toteuttaa Jukic et al. 2024 (Scand J Med Sci Sports) yksilöllisen
+// RIR-velocity-mallin: yksi reps-to-failure -testi per kisaliike riittää
+// r² ≥ 0.85 -tarkkuuteen vs populaatio-mappauksen 0.45–0.49.
+//
+// MUUTOKSET v4.38.2:
+// (3A) computeRtfVelocityModel(allSets, movementId) — engine.js:n uusi funktio.
+//      Suodattaa rtf_test-roolin setit, kerää (RIR, MV) -pisteet rep-by-rep
+//      mvReps[]:istä (RIR_i = M-1-i), lineaarinen regressio velocity = intercept
+//      + slope × RIR. Palauttaa { status, n, slope, intercept, r2, velocityAtRir,
+//      rtfMvtIndividual, sessionsCount, loadsUsed }.
+//      Status: reliable (r²≥0.85, slope>0) / preview (r²≥0.70) / unreliable.
+//      vlCapFromRtfModel(rtfModel, targetRir, rep1Velocity) — Phase 3.5 helper
+//      yksilölliselle cap-arvolle (käyttöön myöhemmin).
+//      Vakiot: RTF_MIN_REPS_PER_SET=4, RTF_MIN_SESSIONS_FOR_MODEL=1 (Jukic 2024),
+//      RTF_R2_THRESHOLD_RELIABLE=0.85, RTF_R2_THRESHOLD_PREVIEW=0.70.
+// (3B) Asetukset → "🎯 RTF-kalibrointi (yksilöllinen RIR-velocity)" -kortti per
+//      kisaliike (isCompetitionLift): näkyvät tila-badge (no-data / preview /
+//      reliable + r²), datapisteet (n / sessiot / kuormat), V@RIR 0/1/3/5,
+//      slope, intercept (V@failure = yksilöllinen MVT). Vertailu populaatio-MVT:hen
+//      (esim. Lisäpainoleuanveto 0.23 m/s Sánchez-Moreno 2017).
+// (3C) openRtfTestModal(movementId, movementName) — bottom-sheet modaali RTF-testin
+//      tallennukseen. Pyytää: päivämäärä, kuorma (suositus ~75% e1RM auto-täytetty),
+//      mvReps[] rep-grid AMRAP-tyylisesti ("0,"-prefiksi-malli + "+ rep" / "− rep"),
+//      todelliset toistot failureen (auto = mvReps.length). Live-summary mean/peak/VL%.
+// (3D) Save-layer luo:
+//      - dummy session: { sessionType: "rtf_calibration", mesocycleId nykyinen }
+//      - set: { setRole: "rtf_test", externalLoadKg, reps=totalReps, targetVx=0,
+//        actualVx=0 (failure), velocityRep1=mvReps[0], velocityMean=mean, mvReps,
+//        deviceMeta: { source: "rtf-test-modal" }, dateISO }
+//      Re-render Asetukset päivittää RTF-kortin tilan välittömästi.
+// (3E) Testit: testRtfVelocityModel — no-data, lineaarinen 8-rep AMRAP (status
+//      reliable + slope > 0 + r² ≥ 0.85), liian vähän dataa, useat sessiot
+//      yhdistettynä, väärä movementId / setRole, vlCapFromRtfModel-helper RIR 0
+//      ja RIR 1 -tasoille. ~16 uutta assertiota.
+//
+// Phase 3.5 (myöhemmin): vlCapForContext laajennetaan käyttämään yksilöllistä
+// cap-arvoa kun rtfModel.status === "reliable" liikkeelle. Blokki-spesifi
+// targetRir (peaking RIR 1, strength RIR 2-3, foundation RIR 4-5) → V@target
+// → VL_cap%. Tämä korvaa populaatio-pohjaisen VL_CAP_PER_BLOCK-default-arvon.
+//
+// v4.38.1 (edellinen) — Velocity DR Phase 2 (VL-cap within-set stop -autoregulaatio).
+//
+// VBT-syvätutkimuksen synteesi (Claude DR + ChatGPT DR + verifikaatio 2026-05-09)
+// → Phase 2 nostaa Pareja-Blanco-tradition VL-cap-arvot ENSISIJAISEEN
+// päätösketjun pisteeseen (within-set stop) eikä pelkkänä UI-warning.
+//
+// MUUTOKSET v4.38.1:
+// (2A) VL_CAP_PER_BLOCK-vakio engine.js:ssä — Foundation 30 / Strength 17.5 /
+//      Intensity 12.5 / Peaking 7.5 / Speed-strength 12.5 (range-keskellä).
+//      Tutkimuspohja: Pareja-Blanco 2017/2020/2023 + Galiano 2022 + Held 2022 +
+//      Lyu 2026 + Sánchez-Moreno 2020 + Jukic 2023.
+// (2A) vlCapForContext({blockPhase, exerciseName, dayType, targetVx, settings})
+//      → resolvoi cap (settings-override → default), phase-tag, source.
+//      Speed-strength etusija liikenimen (Räjähtävä leuanveto/leuka) tai
+//      speed-day + Vx≥4 -kombo:n kautta.
+// (2B) Settings UI: viisi cap-input-kenttää per blokki Asetukset → Kynnysarvot.
+//      data.js settings-defaults: vlCapFoundation/Strength/Intensity/Peaking/
+//      SpeedStrength. vlStopPercent jää legacy-fallbackiksi.
+// (2C) Live-summary rep-gridissä käyttää nyt blokki-spesifiä cap-arvoa.
+//      Visualisointi 3-portaisesti: vl < cap×0.75 = OK,
+//      cap×0.75 ≤ vl < cap = WARN (keltainen), vl ≥ cap = STOP (punainen
+//      summary, punainen rep-input drop-kohdassa, "🛑 STOP-ehdotus" -panel).
+// (2D) saveDecisionTrace kun setti tallennetaan VL > cap -tilanteessa.
+//      ruleId="VL_CAP_TRIGGERED", before/after-rakenne kuten muut traces:
+//      before { plannedReps, vlCap, blockPhase, capSource },
+//      after  { actualReps, actualVl, droppedAtRep, rep1Velocity, lastRepVelocity }.
+//      Tallennus saveSets:in JÄLKEEN consistency:n vuoksi (jos sets fail → ei traces).
+//      Toast: "VL-cap ylitti N sarjassa — kirjattu päätösketjuun" (warn).
+// (2E) Testit: testVlCapPerBlock — defaults, blokki-vaihe, speed-strength
+//      etusija, settings-override, fallback. 11 uutta testiä.
+//
+// Phase 2.5 (myöhemmin): VL_CAP_TRIGGERED-tracejen analyysi recommend():issa →
+// between-set load-decrement (jos sarjan 1 within-set-VL ylittää cap-arvon ennen
+// 50% suunnitelluista repeistä, pudota seuraavan sarjan kuorma 2.5–5 %).
+// Coaching-konsensus, ei suoraa RCT-evidenssiä — odottaa pilotti-dataa.
+//
+// v4.38.0 (edellinen) — Velocity DR Phase 1 (mvReps[] + UI rep-grid + stale profile).
+//
+// VBT-syvätutkimuksen synteesi (Claude DR + ChatGPT DR + verifikaatio 2026-05-09)
+// → 4 sub-vaiheen velocity-arkkitehtuurin nostokertoimet:
+// (1A) MOVEMENT_MVT-aliakset Räjähtäville pull-up-varianteille (alias 0.23 =
+//      Lisäpainoleuanveto, perustelu: V1RM = liikemekaniikka, ei sub-max intent).
+// (1A) ENODE_LOW_VELOCITY_CAVEAT — Behrmann 2025 -laitevarauksen integraatio
+//      (MAPE 4–42 % < 0.5 m/s alueella) sekä VBT-promotion-tilan deviceCaveat-
+//      kentässä että UI-tasolla rep-gridin alla.
+// (1B) SCHEMA_VERSION 4 → 5: set-objektille uusi optional kenttä mvReps[]:
+//      number[] | null per-rep MPV-tallennukseen. Migration ei vaadi datakonver-
+//      siota — vanhat setit jäävät undefined-tilaan, lukulogiikka käyttää ?? null.
+//      Pre-migration backup ajetaan automaattisesti createPreMigrationBackupIfNeeded:ssa.
+// (1B) validateMvReps + GUARD-laajennus.
+// (1C) Working-set velocity entry UI: rep-grid (auto-fit minmax 72px), "0,"-prefiksi-
+//      malli (käyttäjä syöttää 2 numeroa "53" → 0.53 m/s), live-summary mean/peak/VL%
+//      (warn jos > vlStopPercent), gating laajennettu primary/backoff/top/calibration-
+//      sarjoille (ei enää pelkkä allowVelocityInput-flag).
+// (1C) Save-layer (index.html:11762+): mvReps[] suodatetaan validiksi arrayksi,
+//      velocityMean/Peak/Rep1/LossPercent johdetaan automaattisesti arrayn pohjalta.
+// (1D) Stale profile -aikatriggeri computeVBTPromotionStatus:issa:
+//      14 pv ilman uutta ankkuria → freshness="stale" (warning, regressio toimii)
+//      21 pv ilman uutta ankkuria → freshness="needs-recalibration" (blokkaa
+//      promotion, suosittelee 2-piste mini-L-V-vahvistustestiä, ~45 % + ~85 % e1RM).
+//      Tutkimuspohja: Häkkinen 2000 / Hortobágyi 1993 / Hwang 2017 strength-decay
+//      proxy:t — spesifit slope/intercept-decay-arvot ovat tutkimusaukko.
+//
+// Foundation Phase 2:lle (VL-cap within-set stop -autoregulaatio recommend()-funktioon),
+// Phase 3:lle (RTF-testi-sessiotyyppi Jukic 2024) ja Phase 4:lle (min(Vx_reported,
+// Vx_velocity) -konfliktiratkaisu) on nyt rakennettu — schema kestää, UI kerää,
+// laitevarauksen disclaimer näkyy oikeissa paikoissa.
+//
+// v4.37.0 (edellinen) — Sykli-välilehden redesign (Claude Design "Cycle View v3").
 //
 // Atletin pyyntö 2026-05-08: parempi yleisnäkymä jossa atletti näkee yhdellä
 // silmäyksellä missä blokin osassa on, kuinka edistynyt suhteessa suunnitelmaan,
@@ -142,7 +372,7 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.37.0";
+const APP_VERSION = "4.38.4";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

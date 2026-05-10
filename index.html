@@ -912,6 +912,30 @@
     .vel-panel label { margin-top: 0; font-size: 11px; }
     .vel-panel input { margin-top: 4px; }
 
+    /* v4.38.0 (Phase 1C): Per-rep MV-grid (mvReps[]) — Enode working-set syöttö */
+    .vel-rep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 6px; margin-top: 6px; }
+    .vel-rep-cell { display: flex; flex-direction: column; align-items: stretch; }
+    .vel-rep-cell label { font-size: 9px; color: var(--dim); text-align: center; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .vel-rep-input-wrap { position: relative; }
+    .vel-rep-input-wrap::before { content: "0,"; position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 12px; color: var(--dim); pointer-events: none; }
+    .vel-rep-input { width: 100%; padding: 6px 4px 6px 22px; font-size: 13px; text-align: left; box-sizing: border-box; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); }
+    .vel-rep-input:focus { outline: 1px solid var(--acc); border-color: var(--acc); }
+    .vel-rep-summary { font-size: 11px; color: var(--dim); margin-top: 6px; }
+    .vel-caveat { font-size: 10px; color: var(--warn, #c9a227); margin-top: 4px; line-height: 1.35; }
+
+    /* v4.38.1 (Phase 2): VL-cap stop-suggestion */
+    .vel-rep-summary.vl-cap-warn { color: var(--warn, #c9a227); font-weight: 600; }
+    .vel-rep-summary.vl-cap-stop { color: var(--bad, #d94545); font-weight: 700; }
+    /* v4.38.4 (Phase 2.7): Alistimulaatio + Optimaali */
+    .vel-rep-summary.vl-state-under { color: var(--info, #4aa3ff); font-weight: 600; }
+    .vel-rep-summary.vl-state-optimal { color: var(--ok, #37c668); font-weight: 600; }
+    .vel-rep-input.vl-over-cap { border-color: var(--bad, #d94545); background: color-mix(in srgb, var(--bad, #d94545) 10%, var(--card)); }
+    .vel-stop-suggestion { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 10px; background: color-mix(in srgb, var(--bad, #d94545) 12%, transparent); border-left: 3px solid var(--bad, #d94545); border-radius: var(--radius-sm); font-size: 11px; line-height: 1.35; }
+    .vel-stop-suggestion strong { color: var(--bad, #d94545); }
+    .vel-state-banner { display: block; margin-top: 8px; padding: 8px 10px; border-radius: var(--radius-sm); font-size: 11px; line-height: 1.35; }
+    .vel-state-banner.under { background: color-mix(in srgb, var(--info, #4aa3ff) 12%, transparent); border-left: 3px solid var(--info, #4aa3ff); }
+    .vel-state-banner.optimal { background: color-mix(in srgb, var(--ok, #37c668) 12%, transparent); border-left: 3px solid var(--ok, #37c668); }
+
     /* Utility row */
     .util-row { display: flex; justify-content: space-between; gap: 4px; margin-top: 10px; padding: 0 4px; }
     .util-row button { flex: 1; padding: 8px 4px; font-size: 10px; font-weight: 600; background: transparent; border: none; color: var(--muted); cursor: pointer; border-radius: var(--radius-sm); text-align: center; }
@@ -977,6 +1001,8 @@ import {
   getVariantsForMovement, getVariantByName, getAllVariants,
   getAllSessions, getSession, saveSession, deleteSession,
   getSetsForSession, getAllSets, saveSet, saveSets, deleteSet,
+  // v4.38.1 (Phase 2D): saveDecisionTrace VL_CAP_TRIGGERED-loggaukseen
+  saveDecisionTrace,
   savePendingWorkoutLocal, loadPendingWorkoutLocal, clearPendingWorkoutLocal,
   // v4.30.2: auto-rebuild mesocycle when program version changes
   PROGRAM_BUILD_VERSION, rebuildStreetlifting16WMesocycle,
@@ -1017,6 +1043,16 @@ import {
   intraSessionLoadAdjustSuggestion,
   accessoryProgression, updateMovementProgressFromSets, initialWeightFrom1RM,
   velocityLossPercent,
+  // v4.38.0 (Phase 1C): per-rep MV-grid Behrmann 2025 -caveatille (low-velocity-alue)
+  MOVEMENT_MVT, ENODE_LOW_VELOCITY_CAVEAT,
+  // v4.38.1 (Phase 2): VL-cap autoregulaatio (within-set stop)
+  VL_CAP_PER_BLOCK, vlCapForContext,
+  // v4.38.2 (Phase 3): RTF-velocity-malli (Jukic 2024 yksilöllinen RIR-velocity)
+  computeRtfVelocityModel, RTF_MIN_REPS_PER_SET,
+  // v4.38.3 (Phase 4): Vx-velocity-konfliktin tunnistus
+  predictVxFromVelocity,
+  // v4.38.4 (Phase 2.7): kaksisuuntainen autoregulaatio (rep 1 -tavoiterange)
+  targetRep1VelocityRange,
   weeklyStimulus, checkStagnation,
   getMesocycleWeek, getWeekDef, getTodayPlan,
   breakAnalysis, speedDayLoad,
@@ -1476,6 +1512,436 @@ function showToast(message, type = "", duration = 3000) {
 function closeModal() {
   const existing = document.querySelector(".modal-overlay");
   if (existing) existing.remove();
+}
+
+// v4.38.4 (Phase 2.7): kaksisuuntainen autoregulaatio + anomaly recovery.
+//
+// Live-summary näyttää nyt 4 tilaa:
+//   ALI    (sininen) — rep 1 yli oman target-rangen → kuorma kevyt
+//   OPTIMI (vihreä)  — rep 1 rangessa, VL alle warning-rajan
+//   VAR    (keltainen) — VL kasvanut warning-rajalle (cap × 0.75)
+//   STOP   (punainen)  — VL ylittänyt cap-arvon, ehdota sarjan päättämistä
+//
+// Anomaly recovery: jos viim. rep on edellistä nopeampi (= "palautui"),
+// älä laukaise STOP:ia — yksi hidas rep saattoi olla tekninen lipsahdus
+// tai mittausvirhe. Käytetään kahden viimeisen rep:n mediaania cap-vertailussa.
+//
+// Palauttaa updateSummary-funktion jotta caller voi triggeröidä päivityksen
+// käsin (esim. dynaamisesti lisätyn rep-cellin jälkeen RTF-modaalissa).
+function attachVelocityRepLiveSummary(velRepGrid, options = {}) {
+  const {
+    summaryEl,
+    panelEl = null,
+    exerciseName = null,
+    movementId = null,
+    targetVx = null,
+    blockPhase = null,
+    dayType = null,
+    settings = {},
+    allSets = [],
+    showStopSuggestion = true,
+  } = options;
+
+  if (!velRepGrid) return () => {};
+
+  // RTF-malli liikkeelle (Phase 3.5 yksilöllinen cap + Phase 2.7 target-range)
+  const rtfModelForCap = movementId
+    ? computeRtfVelocityModel(allSets, movementId)
+    : null;
+
+  const computeCapInfo = (rep1V) => vlCapForContext({
+    blockPhase, exerciseName, dayType, targetVx,
+    settings, rtfModel: rtfModelForCap, rep1Velocity: rep1V,
+  });
+  const rep1Range = targetRep1VelocityRange(exerciseName, blockPhase, rtfModelForCap);
+
+  // STOP-suggestion + state-banner -elementit luodaan kerran panel:n sisälle
+  let stopSuggestionEl = null;
+  let stateBannerEl = null;
+  if (showStopSuggestion && panelEl) {
+    stopSuggestionEl = panelEl.querySelector("#vel-stop-suggestion");
+    if (!stopSuggestionEl) {
+      stopSuggestionEl = document.createElement("div");
+      stopSuggestionEl.id = "vel-stop-suggestion";
+      stopSuggestionEl.className = "vel-stop-suggestion";
+      stopSuggestionEl.style.display = "none";
+      panelEl.appendChild(stopSuggestionEl);
+    }
+    stateBannerEl = panelEl.querySelector("#vel-state-banner");
+    if (!stateBannerEl) {
+      stateBannerEl = document.createElement("div");
+      stateBannerEl.id = "vel-state-banner";
+      stateBannerEl.className = "vel-state-banner";
+      stateBannerEl.style.display = "none";
+      panelEl.appendChild(stateBannerEl);
+    }
+  }
+
+  const sourceLabel = (source, phase) =>
+    source === "rtf-individual" ? `oma malli · ${phase}` : `${phase}-blokki`;
+
+  const updateSummary = () => {
+    const inputs = velRepGrid.querySelectorAll(".vel-rep-input");
+    const vals = [];
+    inputs.forEach(inp => {
+      const raw = parseInt(inp.value);
+      if (!isNaN(raw) && raw >= 1 && raw <= 299) vals.push({ inp, val: raw / 100 });
+    });
+    inputs.forEach(inp => inp.classList.remove("vl-over-cap"));
+    if (!summaryEl) return;
+    summaryEl.classList.remove("vl-cap-warn", "vl-cap-stop", "vl-state-under", "vl-state-optimal");
+    if (stopSuggestionEl) stopSuggestionEl.style.display = "none";
+    if (stateBannerEl) {
+      stateBannerEl.style.display = "none";
+      stateBannerEl.classList.remove("under", "optimal");
+    }
+
+    if (vals.length < 1) {
+      summaryEl.textContent = "";
+      return;
+    }
+
+    const valsOnly = vals.map(v => v.val);
+    const mean = valsOnly.reduce((a, b) => a + b, 0) / valsOnly.length;
+    const peak = Math.max(...valsOnly);
+    const rep1 = valsOnly[0];
+    const capInfo = computeCapInfo(rep1);
+    const capDisplay = capInfo.cap.toFixed(1);
+    const phaseLabel = sourceLabel(capInfo.source, capInfo.phase);
+
+    // Rep 1 -tila: ali / rangessa / yli
+    const rep1State = rep1 > rep1Range.upper ? "above" : (rep1 < rep1Range.lower ? "below" : "in-range");
+
+    // 1 toisto: vain rep 1 -arviointi
+    if (vals.length === 1) {
+      let suffix = ` · raja ${capDisplay} % (${phaseLabel})`;
+      if (rep1State === "above") {
+        summaryEl.classList.add("vl-state-under");
+        if (stateBannerEl) {
+          stateBannerEl.classList.add("under");
+          stateBannerEl.innerHTML = `🔵 Toiston nopeus ${rep1.toFixed(2)} m/s ylittää tavoitealueen (${rep1Range.lower.toFixed(2)}–${rep1Range.upper.toFixed(2)} m/s). Kuorma näyttää kevyeltä — harkitse +2,5 kg ensi sarjaan.`;
+          stateBannerEl.style.display = "block";
+        }
+      } else if (rep1State === "below") {
+        summaryEl.classList.add("vl-cap-warn");
+        suffix += " ⚠ rep 1 alle tavoitealueen — kuorma raskas";
+      }
+      summaryEl.textContent = `keskiarvo ${mean.toFixed(2)} m/s · 1 toisto${suffix}`;
+      return;
+    }
+
+    // 2+ toistoa: VL-arviointi + anomaly recovery
+    const lastVal = valsOnly[vals.length - 1];
+    const prevVal = valsOnly[vals.length - 2];
+    const vl = ((rep1 - lastVal) / rep1) * 100;
+    const cap = capInfo.cap;
+
+    // Anomaly recovery: jos lastVal > prevVal, viimeinen rep "palautui"
+    // → käytä kahden viimeisen mediaania cap-vertailussa, ei pelkkää viim. rep:tä
+    const recovered = vals.length >= 3 && lastVal > prevVal;
+    const compareVal = recovered ? (lastVal + prevVal) / 2 : lastVal;
+    const vlForCompare = ((rep1 - compareVal) / rep1) * 100;
+
+    // Tila-päätös:
+    //   1. rep 1 yli rangen + VL pieni → ALI (kuorma kevyt)
+    //   2. VL ≥ cap (compareVal:lla) → STOP
+    //   3. VL ≥ cap × 0.75 → VAR
+    //   4. rep 1 rangessa, VL alle warn-rajan → OPTIMI
+    let state = "neutral";
+    if (rep1State === "above" && vl < cap * 0.5) state = "under";
+    else if (vlForCompare >= cap) state = "stop";
+    else if (vlForCompare >= cap * 0.75) state = "warn";
+    else if (rep1State === "in-range") state = "optimal";
+
+    let suffix = "";
+    if (state === "under") {
+      summaryEl.classList.add("vl-state-under");
+      suffix = ` · 🔵 kuorma kevyt`;
+      if (stateBannerEl) {
+        stateBannerEl.classList.add("under");
+        stateBannerEl.innerHTML = `🔵 Rep 1 nopeus ${rep1.toFixed(2)} m/s ylittää tavoitealueen (${rep1Range.lower.toFixed(2)}–${rep1Range.upper.toFixed(2)} m/s) eikä sarja väsytä riittävästi. Kasvata kuormaa ensi kerralla.`;
+          stateBannerEl.style.display = "block";
+      }
+    } else if (state === "stop") {
+      summaryEl.classList.add("vl-cap-stop");
+      // Korosta rep jossa cap-arvo ylittyi
+      for (let i = 1; i < vals.length; i++) {
+        const cumulVl = ((rep1 - vals[i].val) / rep1) * 100;
+        if (cumulVl >= cap) {
+          vals[i].inp.classList.add("vl-over-cap");
+          break;
+        }
+      }
+      if (stopSuggestionEl) {
+        const sourceTag = capInfo.source === "rtf-individual"
+          ? `omasta mallistasi (${capInfo.phase}-blokki)`
+          : `${capInfo.phase}-blokin oletuksesta`;
+        stopSuggestionEl.innerHTML = `🛑 <strong>Lopeta sarja tähän</strong>: nopeuden hidastuminen ${vl.toFixed(1)} % ylittää rajan ${capDisplay} % (${sourceTag}). Lisätoistot eivät enää tuota voiman lisäystä — vain ylimääräistä väsymystä. Klikkaa "Seuraava sarja".`;
+        stopSuggestionEl.style.display = "block";
+      }
+      suffix = ` ⚠ STOP (raja ${capDisplay} %)`;
+    } else if (state === "warn") {
+      summaryEl.classList.add("vl-cap-warn");
+      suffix = ` · lähellä lopetusrajaa ${capDisplay} %${recovered ? " (viim. toisto palautui)" : ""}`;
+    } else if (state === "optimal") {
+      summaryEl.classList.add("vl-state-optimal");
+      suffix = ` · 🟢 optimaalinen kuormitus (${phaseLabel})`;
+    } else {
+      // Neutral: rep 1 alle rangen mutta VL ei vielä lähellä cap
+      suffix = ` · raja ${capDisplay} % (${phaseLabel})`;
+    }
+
+    summaryEl.textContent = `keskiarvo ${mean.toFixed(2)} · huippu ${peak.toFixed(2)} · hidastuminen ${vl.toFixed(1)} %${suffix} · ${vals.length} toistoa`;
+  };
+
+  velRepGrid.querySelectorAll(".vel-rep-input").forEach(inp => {
+    inp.addEventListener("input", updateSummary);
+  });
+
+  return updateSummary;
+}
+
+// v4.38.2 (Phase 3C+3D): RTF-testin (reps-to-failure) tallennus-modaali.
+//
+// AMRAP-sarja kiinteällä kuormalla, käyttäjä syöttää jokaisen rep:n MV ja
+// merkitsee failureen lopuksi. Tallennetaan dummy "rtf_calibration"-session
+// + yksi setti setRole "rtf_test":lla. mvReps[]:istä engine rakentaa yksilöllisen
+// RIR-velocity-mallin (Jukic 2024).
+//
+// "0,"-prefiksi-malli (sama kuin Phase 1C working-set MV-grid). Käyttäjä lisää
+// rep-kentät yksitellen "+ rep"-painikkeella ja syöttää MV:n.
+async function openRtfTestModal(movementId, movementName) {
+  closeModal();
+
+  // Esim. e1RM-haku — tarjotaan suositeltu kuorma jos saatavilla
+  // computeMovementE1RMBest(movementSets, sessions, mesocycle, movement, bw) palauttaa
+  // { value, source, details }. Suositus: ~75 % e1RM (Jukic 2024 keskialue).
+  let suggestedLoadKg = null;
+  try {
+    const movForLoad = state.movements.find(m => m.movementId === movementId);
+    if (movForLoad) {
+      const movSets = (state.allSets || []).filter(s => s.movementId === movementId);
+      const bw = state.settings?.bodyweightKg || 91;
+      const e1rmInfo = computeMovementE1RMBest(movSets, state.sessions || [], state.mesocycle, movForLoad, bw);
+      const e1rm = e1rmInfo?.value;
+      if (e1rm && e1rm > 0) {
+        suggestedLoadKg = roundToHalf(e1rm * 0.75);
+      }
+    }
+  } catch (e) { console.warn("RTF modal: e1RM lookup failed:", e); }
+
+  const todayDate = todayISO();
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-sheet" style="max-height:90vh;overflow-y:auto">
+      <div class="modal-handle"></div>
+      <div class="modal-title" style="display:flex;align-items:center;gap:8px">🎯 Kalibrointitesti · ${movementName}</div>
+      <div class="muted" style="font-size:12px;margin-top:4px;line-height:1.4">
+        Tee yksi sarja failureen asti kiinteällä kuormalla. Syötä jokaisen toiston nopeus
+        (kirjoita esim. "53" → tulkitaan 0,53 m/s). Vähintään ${RTF_MIN_REPS_PER_SET} toistoa
+        tarvitaan, suositeltu kuorma noin 70–85 % maksimistasi. Yksi testi per kisaliike
+        riittää — sovellus laskee tästä sinun oman nopeus–vararajat-mallin.
+      </div>
+
+      <div style="margin-top:12px">
+        <label style="font-size:11px;color:var(--muted)">Päivämäärä</label>
+        <input type="date" id="rtf-date" value="${todayDate}" style="width:100%;min-height:38px;font-size:14px">
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label style="font-size:11px;color:var(--muted)">Kuorma (kg, +lisäpaino)</label>
+          <input type="number" inputmode="decimal" step="0.5" id="rtf-load"
+                 value="${suggestedLoadKg !== null ? suggestedLoadKg : ""}"
+                 placeholder="esim. 70" style="min-height:38px;font-size:14px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted)">Toistot failureen</label>
+          <input type="number" inputmode="numeric" step="1" min="1" max="40" id="rtf-totalreps"
+                 placeholder="auto = MV-rivien määrä" style="min-height:38px;font-size:14px">
+        </div>
+      </div>
+
+      <div style="margin-top:12px">
+        <label style="font-size:11px;color:var(--muted)">Per-rep MPV (Enode, "0,XX"-prefiksi)</label>
+        <div id="rtf-rep-grid" class="vel-rep-grid" style="margin-top:6px">
+          ${Array.from({ length: RTF_MIN_REPS_PER_SET }, (_, i) => `
+            <div class="vel-rep-cell">
+              <label>r${i + 1}</label>
+              <div class="vel-rep-input-wrap">
+                <input class="vel-rep-input rtf-rep-input" type="number" inputmode="decimal" step="1" min="1" max="299" data-rep-idx="${i}" placeholder="">
+              </div>
+            </div>
+          `).join("")}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-sm btn-outline" id="rtf-add-rep" style="flex:1">+ Lisää rep</button>
+          <button class="btn btn-sm btn-outline" id="rtf-remove-rep" style="flex:1">− Poista rep</button>
+        </div>
+        <div id="rtf-summary" class="vel-rep-summary" style="margin-top:8px"></div>
+      </div>
+
+      <div class="btn-group" style="margin-top:14px">
+        <button class="btn btn-ok" style="flex:2" id="rtf-save-btn">💾 Tallenna RTF-testi</button>
+        <button class="btn btn-outline" style="flex:1" data-modal-cancel>Peruuta</button>
+      </div>
+    </div>`;
+
+  overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => closeModal());
+
+  // Live-summary updates kuten Phase 1C
+  const updateRtfSummary = () => {
+    const inputs = overlay.querySelectorAll(".rtf-rep-input");
+    const vals = [];
+    inputs.forEach(inp => {
+      const raw = parseInt(inp.value);
+      if (!isNaN(raw) && raw >= 1 && raw <= 299) vals.push(raw / 100);
+    });
+    const summaryEl = overlay.querySelector("#rtf-summary");
+    if (!summaryEl) return;
+    if (vals.length < 1) { summaryEl.textContent = ""; return; }
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const peak = Math.max(...vals);
+    if (vals.length === 1) {
+      summaryEl.textContent = `n=1 · mean ${mean.toFixed(2)} m/s — lisää rep:ejä regressiota varten (väh. ${RTF_MIN_REPS_PER_SET})`;
+      return;
+    }
+    const vl = ((vals[0] - vals[vals.length - 1]) / vals[0]) * 100;
+    summaryEl.textContent = `n=${vals.length} · mean ${mean.toFixed(2)} · peak ${peak.toFixed(2)} · VL ${vl.toFixed(1)}% (rep1→viimeinen)`;
+  };
+  const wireRtfInputs = () => {
+    overlay.querySelectorAll(".rtf-rep-input").forEach(inp => {
+      inp.removeEventListener("input", updateRtfSummary);
+      inp.addEventListener("input", updateRtfSummary);
+    });
+  };
+  wireRtfInputs();
+
+  // Add/remove rep
+  overlay.querySelector("#rtf-add-rep").addEventListener("click", () => {
+    const grid = overlay.querySelector("#rtf-rep-grid");
+    const currentCount = grid.querySelectorAll(".vel-rep-cell").length;
+    if (currentCount >= 30) { showToast("Max 30 rep AMRAPissa", "warn"); return; }
+    const cell = document.createElement("div");
+    cell.className = "vel-rep-cell";
+    cell.innerHTML = `
+      <label>r${currentCount + 1}</label>
+      <div class="vel-rep-input-wrap">
+        <input class="vel-rep-input rtf-rep-input" type="number" inputmode="decimal" step="1" min="1" max="299" data-rep-idx="${currentCount}" placeholder="">
+      </div>`;
+    grid.appendChild(cell);
+    wireRtfInputs();
+    cell.querySelector("input")?.focus();
+  });
+  overlay.querySelector("#rtf-remove-rep").addEventListener("click", () => {
+    const grid = overlay.querySelector("#rtf-rep-grid");
+    const cells = grid.querySelectorAll(".vel-rep-cell");
+    if (cells.length <= RTF_MIN_REPS_PER_SET) {
+      showToast(`Vähimmäismäärä ${RTF_MIN_REPS_PER_SET} rep`, "warn");
+      return;
+    }
+    cells[cells.length - 1].remove();
+    updateRtfSummary();
+  });
+
+  // Save
+  overlay.querySelector("#rtf-save-btn").addEventListener("click", async () => {
+    const dateISO = overlay.querySelector("#rtf-date").value;
+    const loadKg = parseNumericInput(overlay.querySelector("#rtf-load").value);
+    const totalRepsInput = parseInt(overlay.querySelector("#rtf-totalreps").value);
+
+    if (!dateISO) { showToast("Päivämäärä puuttuu", "bad"); return; }
+    if (loadKg === null || loadKg < 0) { showToast("Anna kuorma (kg)", "bad"); return; }
+
+    // Kerää mvReps[]
+    const mvReps = [];
+    overlay.querySelectorAll(".rtf-rep-input").forEach(inp => {
+      const raw = parseInt(inp.value);
+      if (!isNaN(raw) && raw >= 1 && raw <= 299) mvReps.push(raw / 100);
+    });
+    if (mvReps.length < RTF_MIN_REPS_PER_SET) {
+      showToast(`Vähintään ${RTF_MIN_REPS_PER_SET} validia rep-MV vaaditaan`, "bad");
+      return;
+    }
+
+    // totalReps: jos käyttäjä antoi, käytä sitä; muuten mvReps.length
+    const totalReps = (!isNaN(totalRepsInput) && totalRepsInput >= mvReps.length)
+      ? totalRepsInput
+      : mvReps.length;
+
+    const sessionId = uid();
+    const newSession = {
+      sessionId,
+      dateISO,
+      sessionType: "rtf_calibration",
+      plannedDayType: null,
+      mesocycleWeek: null,
+      mesocycleId: state.mesocycle?.mesocycleId || null,
+      bodyweightKg: state.settings?.bodyweightKg || 91,
+      sessionNotes: `RTF-testi: ${movementName} @ ${loadKg} kg, ${totalReps} rep failureen`,
+      readinessCapLevel: null,
+      readinessDetails: null,
+      isBackfill: false,
+      isPlanOverride: false,
+      planSourceDateISO: dateISO,
+      sRPE: null,
+      startedAt: new Date().toISOString(),
+      endedAt: new Date().toISOString(),
+      durationMin: null,
+    };
+
+    const mvMean = mvReps.reduce((a, b) => a + b, 0) / mvReps.length;
+    const mvPeak = Math.max(...mvReps);
+    const mvLossPct = mvReps[0] > 0
+      ? ((mvReps[0] - mvReps[mvReps.length - 1]) / mvReps[0]) * 100
+      : null;
+
+    const newSet = {
+      setId: uid(),
+      sessionId,
+      movementId,
+      variantId: null,
+      setRole: "rtf_test",
+      externalLoadKg: loadKg,
+      reps: totalReps,
+      targetReps: totalReps,
+      targetVx: 0,        // failure → Vx 0 = 0 RIR
+      actualVx: 0,        // failure
+      velocityMean: mvMean,
+      velocityPeak: mvPeak,
+      velocityRep1: mvReps[0],
+      velocityLossPercent: mvLossPct,
+      mvReps,
+      tempo: null,
+      restSec: null,
+      attemptedReps: null,
+      deviceMeta: { source: "rtf-test-modal" },
+      manualOverride: null,
+      timestamp: new Date().toISOString(),
+      exerciseNote: null,
+      // dateISO mukaan jotta sliding-window-suodatin (computeVBTPromotionStatus) löytää
+      dateISO,
+    };
+
+    try {
+      await saveSession(newSession);
+      await saveSet(newSet);
+      // Päivitä state ja re-render
+      state.allSets = await getAllSets();
+      state.sessions = await getAllSessions();
+      closeModal();
+      showToast(`RTF-testi tallennettu (${mvReps.length}/${totalReps} rep, V@rep1 ${mvReps[0].toFixed(2)}, V@rep${mvReps.length} ${mvReps[mvReps.length-1].toFixed(2)})`, "ok", 4500);
+      render();
+    } catch (e) {
+      console.error("RTF save failed:", e);
+      showToast("Tallennus epäonnistui — katso konsoli", "bad");
+    }
+  });
+
+  document.body.appendChild(overlay);
+  // Focus first rep input
+  overlay.querySelector(".rtf-rep-input")?.focus();
 }
 
 /**
@@ -2723,6 +3189,32 @@ function renderDashboard() {
   const weekLabel = rec?.weekLabel || "";
   const dayType = rec?.dayType || "heavy";
 
+  // v4.38.4 (Phase 3.6A): RTF-kalibrointimuistutus puuttuville kisaliikkeille.
+  // Näkyy päivän etusivulla yläbannerina jos jokin kisaliike on ilman luotettavaa
+  // henkilökohtaista mallia. Klikkaus → Asetukset-välilehti → kalibrointikortti.
+  const rtfBannerHTML = (() => {
+    if (!state.settings?.velocityEnabled) return "";  // Ei näytä jos velocity-mittaus ei käytössä
+    const compMovs = (state.movements || []).filter(m => m.isCompetitionLift);
+    if (compMovs.length === 0) return "";
+    const missing = [];
+    for (const m of compMovs) {
+      const model = computeRtfVelocityModel(state.allSets || [], m.movementId);
+      if (model.status === "no-data" || model.status === "insufficient-points" || model.status === "degenerate") {
+        missing.push(m.name);
+      }
+    }
+    if (missing.length === 0) return "";
+    const movList = missing.length === 1 ? missing[0] : `${missing.slice(0, -1).join(", ")} ja ${missing[missing.length-1]}`;
+    return `<div class="card" style="margin:12px 16px;padding:12px 14px;background:color-mix(in srgb, var(--info, #4aa3ff) 8%, var(--card));border-left:3px solid var(--info, #4aa3ff);cursor:pointer" data-rtf-banner-click>
+      <div style="font-size:13px;font-weight:600;margin-bottom:4px">🎯 Henkilökohtainen kalibrointi puuttuu</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.4">
+        Aja yksi sarja failureen seuraavissa liikkeissä: <strong>${movList}</strong>.
+        Tämän jälkeen sovellus käyttää sinun omia tarkkoja arvojasi yleisten oletusten sijaan.
+        <span style="color:var(--info, #4aa3ff);font-weight:600">Klikkaa → Asetukset</span>
+      </div>
+    </div>`;
+  })();
+
   const isDeloadOverride = meso ? isDeloadOverrideWeek(meso, today) : false;
   const isDeloadLabel = weekLabel.toLowerCase().includes("deload");
   const deloadMode = isDeloadOverride || isDeloadLabel;
@@ -3061,6 +3553,7 @@ function renderDashboard() {
     : (futureDeloadMarked ? "↩ Peru tuleva kevennys" : "🌿 Kevennys");
 
   return `<div class="fade-in">
+    ${rtfBannerHTML}
     <div class="dash-topline">
       <div class="dash-topline-left">
         <div class="date">${formatDate(today)}</div>
@@ -4828,14 +5321,41 @@ function renderActiveWorkout() {
   //   - Openerit + kisapäivä (competitionLift:true + sets/reps yksittäisiä)
   //   - EI KOSKAAN Muscle-up (bimodaalinen)
   const isMU = exercise.name === "Muscle-up" || exercise.name === "Muscle up";
+  // v4.38.0 (Phase 1C): velocity-syöttö laajennettu primary/backoff-työsarjoille,
+  // ei enää rajattu pelkkiin ankkuripisteisiin (allowVelocityInput-flag).
+  // Atleetin ensimmäisen Enode-session (2026-05-09) datan myötä per-rep MPV
+  // ankkuripisteinä on tutkimuspohjaisesti perustellumpaa kuin pelkkä top-single.
+  const isAnchorRoleForVelocity = exercise.allowVelocityInput === true
+    || exercise.role === "primary"
+    || exercise.role === "backoff"
+    || exercise.role === "top"
+    || exercise.role === "calibration";
   const velocityAllowedForThisSet = state.settings?.velocityEnabled
-    && exercise.allowVelocityInput === true
-    && !isMU;
+    && isAnchorRoleForVelocity
+    && !isMU
+    && !isWarmupSet;
+  // Render-rep-määrä gridille: targetReps kuvaa suunniteltua, currentSet.reps
+  // null:n vielä kun näkymä ladataan. Käytä targetRepsia + min 1, max 8 kategoriaa
+  // (yli 8 inputin grid sotkee mobiilinäytön — käyttäjä syöttää sub-setin).
+  const repTargetForGrid = Math.min(Math.max(parseInt(currentSet?.targetReps) || 1, 1), 8);
+  const repCellsHTML = Array.from({ length: repTargetForGrid }, (_, i) => `
+    <div class="vel-rep-cell">
+      <label>r${i + 1}</label>
+      <div class="vel-rep-input-wrap">
+        <input class="vel-rep-input" type="number" inputmode="decimal" step="1" min="1" max="299" data-rep-idx="${i}" placeholder="">
+      </div>
+    </div>
+  `).join("");
+  // MVT-haku liikkeelle (näytetään caveat jos < 0.5 m/s alueella, Behrmann 2025)
+  const movementMvt = (typeof MOVEMENT_MVT !== "undefined" && MOVEMENT_MVT[exercise.name]) || null;
+  const isLowVelocityZone = movementMvt !== null && movementMvt < 0.5;
   const velocityPanelHTML = velocityAllowedForThisSet
     ? `<div class="vel-panel" id="vel-panel" style="display:none">
-        <label>📊 Velocity (m/s) <span class="hint">ankkuripiste — ei työsarjoissa</span></label>
-        <input type="number" inputmode="decimal" step="0.01" id="input-set-velocity" placeholder="Mean velocity (Enode)">
+        <label>📊 Velocity per rep (m/s) <span class="hint">syötä 2 numeroa = "0,XX" — Enode</span></label>
+        <div class="vel-rep-grid" id="vel-rep-grid">${repCellsHTML}</div>
+        <div class="vel-rep-summary" id="vel-rep-summary"></div>
         ${exercise.velocityStop ? `<div class="muted" style="font-size:11px;margin-top:4px">🎯 Zone-kynnys: ${exercise.velocityStop.toFixed(2)} m/s</div>` : ""}
+        ${isLowVelocityZone ? `<div class="vel-caveat">⚠ Enode-mittaus tällä hidasalueella (alle 0,5 m/s) yliarvioi nopeutta hieman. Käytä mittauksia trendin seuraamiseen — älä luota yksittäiseen lukuun kisapäivän opener-valinnassa.</div>` : ""}
       </div>`
     : `<input type="hidden" id="input-set-velocity" value="">`;
 
@@ -8532,7 +9052,40 @@ function renderSettingsView() {
           <input type="checkbox" id="set-velocity-enabled" ${s.velocityEnabled ? "checked" : ""} style="width:18px;height:18px">
           <span>Velocity-mittaus käytössä</span>
         </label>
-        <div class="muted" style="font-size:11px;margin-top:4px">Näyttää velocity-syötön <b>vain ankkuripisteissä</b> (primer, top single, kisa-openerit, peaking-singlet). Työsarjoissa piilossa — grindaus vääristäisi MCV:n. Vaatii mittausvälineen (Enode, Vitruve).</div>
+        <div class="muted" style="font-size:11px;margin-top:4px">Näyttää nopeussyötön pää- ja apusarjoissa. Syötä jokaisen toiston nopeus 2-numeroisena (esim. "53" → 0,53 m/s); sovellus näyttää keskiarvon, huipun ja hidastumisen reaaliaikaisesti. Hidasalueen mittauksissa (alle 0,5 m/s) Enode yliarvioi nopeutta hieman — käytä trendiseurantaan. Vaatii mittausvälineen (Enode, Vitruve, GymAware).</div>
+      </div>
+
+      <!-- v4.38.1 (Phase 2): VL-cap-arvot per blokki — within-set stop -trigger -->
+      <div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:6px">
+        <label style="margin-top:0;font-size:13px;font-weight:600">Sarjan lopetusraja (%) per blokki</label>
+        <div class="muted" style="font-size:11px;margin-bottom:8px">Kun toiston nopeus laskee X % alle ensimmäisen toiston nopeuden, sovellus ehdottaa sarjan päättämistä. Oletusarvot ovat tutkimuspohjaisia keskiarvoja — eivät vaadi säätöä, ellet halua kokeilla eri arvoja.</div>
+        <div class="row">
+          <div>
+            <label style="font-size:11px">Foundation (25–35)</label>
+            <input type="number" inputmode="decimal" step="0.5" id="set-vlcap-foundation" value="${s.vlCapFoundation ?? 30}">
+          </div>
+          <div>
+            <label style="font-size:11px">Strength (15–20)</label>
+            <input type="number" inputmode="decimal" step="0.5" id="set-vlcap-strength" value="${s.vlCapStrength ?? 17.5}">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label style="font-size:11px">Intensity (10–15)</label>
+            <input type="number" inputmode="decimal" step="0.5" id="set-vlcap-intensity" value="${s.vlCapIntensity ?? 12.5}">
+          </div>
+          <div>
+            <label style="font-size:11px">Peaking (5–10)</label>
+            <input type="number" inputmode="decimal" step="0.5" id="set-vlcap-peaking" value="${s.vlCapPeaking ?? 7.5}">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label style="font-size:11px">Speed-strength (10–15)</label>
+            <input type="number" inputmode="decimal" step="0.5" id="set-vlcap-speedstr" value="${s.vlCapSpeedStrength ?? 12.5}">
+          </div>
+          <div></div>
+        </div>
       </div>
       <div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:6px">
         <label style="margin-top:0;font-size:13px;font-weight:600">Treenin tiheys (density)</label>
@@ -8596,6 +9149,71 @@ function renderSettingsView() {
       })()}
       <div class="muted" style="font-size:11px;margin-top:8px">
         💡 Ensimmäinen sessio ilman e1RM-historiaa käyttää näitä lähtöarvoja. Tämän jälkeen järjestelmä käyttää automaattisesti treenidatasta laskettua nykyistä e1RM:ää.
+      </div>
+    </div>
+
+    <!-- Kalibrointitestit per kisaliike — rakentaa sinun oman nopeus-vararajat-mallin -->
+    <div class="card">
+      <div class="card-title">🎯 Henkilökohtainen kalibrointi</div>
+      <div class="muted" style="font-size:12px;margin-bottom:10px">
+        Yksi failureen viety sarja per kisaliike rakentaa sinun oman nopeus-vararajat-mallin.
+        Tämän jälkeen sovellus käyttää sinun omia tarkkoja arvojasi yleisten oletusten sijaan
+        — sarjan lopetusrajat ja tavoitenopeudet kalibroituvat sinulle.
+        Tee yksi testi per kisaliike blokin alussa, kuormalla noin 70–85 % maksimistasi.
+      </div>
+      ${(() => {
+        const compMovs = (state.movements || []).filter(m => m.isCompetitionLift);
+        if (compMovs.length === 0) {
+          return `<div class="muted" style="font-size:11px">Ei kisaliikkeitä rekisteröity.</div>`;
+        }
+        return compMovs.map(m => {
+          const model = computeRtfVelocityModel(state.allSets || [], m.movementId);
+          const movMvt = (typeof MOVEMENT_MVT !== "undefined" && MOVEMENT_MVT[m.name]) || null;
+          let statusBadge, body, cardBorder = "";
+          if (model.status === "no-data") {
+            // Phase 3.6C: "Ei dataa" -tila merkityksellisempi (punainen reuna + 🔴 indikaattori)
+            statusBadge = `<span style="color:var(--bad,#d94545);font-size:11px;font-weight:600">🔴 Testi puuttuu</span>`;
+            body = `<div class="muted" style="font-size:11px">Aja yksi sarja failureen tälle liikkeelle ja tallenna se. Sen jälkeen sovellus laskee sinun oman nopeus-vararajat-mallin.</div>`;
+            cardBorder = "border-left:3px solid var(--bad,#d94545);";
+          } else if (model.status === "insufficient-points" || model.status === "degenerate") {
+            statusBadge = `<span style="color:var(--warn,#c9a227);font-size:11px">Lisää toistoja tarvitaan</span>`;
+            body = `<div class="muted" style="font-size:11px">${model.n} toistoa kerätty — vähintään ${RTF_MIN_REPS_PER_SET} tarvitaan luotettavaan malliin.</div>`;
+          } else {
+            const r2Pct = (model.r2 * 100).toFixed(0);
+            const statusColor = model.status === "reliable" ? "var(--ok,#37c668)"
+              : model.status === "preview" ? "var(--warn,#c9a227)"
+              : "var(--bad,#d94545)";
+            const statusText = model.status === "reliable" ? "Luotettava malli"
+              : model.status === "preview" ? "Esikatselu (tarkkuus alle 85 %)"
+              : "Epäluotettava — aja uusi testi";
+            statusBadge = `<span style="color:${statusColor};font-size:11px;font-weight:600">${statusText} · tarkkuus ${r2Pct}%</span>`;
+            // V@failure = nopeus jolla viimeinen toisto menee = sinun oma "raja"
+            // V@RIR 1 = nopeus jolla on yksi toisto varaa, jne.
+            body = `
+              <div class="muted" style="font-size:11px;margin-bottom:6px">
+                ${model.sessionsCount} sarjaa · ${model.n} toistoa · kuormat: ${model.loadsUsed.join(", ")} kg
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:11px;margin-top:6px">
+                <div><div class="muted" style="font-size:10px">Failurella</div><div>${model.velocityAtRir[0].toFixed(2)} m/s</div></div>
+                <div><div class="muted" style="font-size:10px">1 varaa</div><div>${model.velocityAtRir[1].toFixed(2)} m/s</div></div>
+                <div><div class="muted" style="font-size:10px">3 varaa</div><div>${model.velocityAtRir[3].toFixed(2)} m/s</div></div>
+                <div><div class="muted" style="font-size:10px">5 varaa</div><div>${model.velocityAtRir[5].toFixed(2)} m/s</div></div>
+              </div>
+            `;
+          }
+          return `<div style="margin-bottom:14px;padding:10px;background:var(--card2);border-radius:6px;${cardBorder}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <strong style="font-size:13px">${m.name}</strong>
+              ${statusBadge}
+            </div>
+            ${body}
+            <button class="btn btn-sm btn-outline" data-rtf-add="${m.movementId}" data-rtf-name="${m.name}" style="margin-top:8px">+ Tallenna kalibrointitesti</button>
+          </div>`;
+        }).join("");
+      })()}
+      <div class="muted" style="font-size:11px;margin-top:8px">
+        💡 Kun yksi luotettava malli on saatavilla, treenissä näkyy ”oma malli” -merkki nopeus-yhteenvedossa
+        ja sarjan lopetusrajat kalibroituvat sinun omaan dataasi.
       </div>
     </div>
 
@@ -8816,6 +9434,14 @@ function bind() {
   $$("[data-nav]").forEach(btn => {
     btn.addEventListener("click", () => {
       state.view = btn.dataset.nav;
+      render();
+    });
+  });
+
+  // v4.38.4 (Phase 3.6A): Dashboard RTF-bannerin klikkaus → Asetukset-välilehti
+  $$("[data-rtf-banner-click]").forEach(banner => {
+    banner.addEventListener("click", () => {
+      state.view = "settings";
       render();
     });
   });
@@ -9806,6 +10432,13 @@ function bind() {
     state.settings.bodyweightKg = bw || 91;
     state.settings.maxDelta = parseNumericInput($("#set-maxdelta")?.value) || 0.25;
     state.settings.vlStopPercent = parseNumericInput($("#set-vlstop")?.value) || 20;
+    // v4.38.1 (Phase 2): blokkikohtaiset VL-cap-arvot. Tallennetaan numeerisina;
+    // tyhjä → null → engine fallback default-arvoon (VL_CAP_PER_BLOCK).
+    state.settings.vlCapFoundation = parseNumericInput($("#set-vlcap-foundation")?.value) ?? 30;
+    state.settings.vlCapStrength = parseNumericInput($("#set-vlcap-strength")?.value) ?? 17.5;
+    state.settings.vlCapIntensity = parseNumericInput($("#set-vlcap-intensity")?.value) ?? 12.5;
+    state.settings.vlCapPeaking = parseNumericInput($("#set-vlcap-peaking")?.value) ?? 7.5;
+    state.settings.vlCapSpeedStrength = parseNumericInput($("#set-vlcap-speedstr")?.value) ?? 12.5;
     state.settings.readinessVelocityWindowN = parseNumericInput($("#set-velwindow")?.value) || 10;
     state.settings.readinessHrvWindowN = parseNumericInput($("#set-hrvwindow")?.value) || 14;
     state.settings.velocityEnabled = !!$("#set-velocity-enabled")?.checked;
@@ -9905,6 +10538,16 @@ function bind() {
       state.settings.workoutDensity = mode === "default" ? null : mode;
       $$("[data-density]").forEach(b => b.classList.toggle("active", b.dataset.density === mode));
       applyDensityClass();
+    });
+  });
+
+  // v4.38.2 (Phase 3): RTF-testin tallennusmodaali kisaliikkeille
+  $$("[data-rtf-add]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const movementId = btn.dataset.rtfAdd;
+      const movementName = btn.dataset.rtfName;
+      if (!movementId || !movementName) return;
+      openRtfTestModal(movementId, movementName);
     });
   });
 
@@ -10601,6 +11244,25 @@ function bindWorkoutEvents() {
     });
   });
 
+  // v4.38.3 refactor: live-summary nyt nimettävässä helpperissä
+  // (attachVelocityRepLiveSummary). Vähensi inline-koodin ~110 → ~10 riviin.
+  const velRepGrid = $("#vel-rep-grid");
+  if (velRepGrid) {
+    const exerciseForCap = w.exercises[w.currentExerciseIdx];
+    const weekNumForCap = state.recommendation?.weekNum;
+    attachVelocityRepLiveSummary(velRepGrid, {
+      summaryEl: $("#vel-rep-summary"),
+      panelEl: $("#vel-panel"),
+      exerciseName: exerciseForCap?.name || null,
+      movementId: exerciseForCap?.movementId || null,
+      targetVx: currentSet?.targetVx ?? null,
+      blockPhase: weekNumForCap ? phaseForWeek(weekNumForCap) : null,
+      dayType: state.workout?.dayType || state.recommendation?.dayType,
+      settings: state.settings || {},
+      allSets: state.allSets || [],
+    });
+  }
+
   // Next set
   const nextSetBtn = $("#btn-next-set");
   if (nextSetBtn) nextSetBtn.addEventListener("click", () => {
@@ -10608,11 +11270,31 @@ function bindWorkoutEvents() {
     const currentSet = exercise?.sets[w.currentSetIdx];
     if (!currentSet) return;
 
-    const velocity = parseNumericInput($("#input-set-velocity")?.value);
+    // v4.38.0 (Phase 1C): lue per-rep MV-arvot rep-gridistä. "0,"-prefiksi-malli:
+    // käyttäjä syöttää 2-3 numeroa (53 → 0.53 m/s). Tyhjät solut suodatetaan pois.
+    // Yhteensopivuus: jos rep-grid puuttuu (vanhat ankkuripiste-sarjat), käytä
+    // legacy single input-set-velocity -kenttää.
+    let mvReps = null;
+    let velocity = null;
+    const repGridEl = $("#vel-rep-grid");
+    if (repGridEl) {
+      const collected = [];
+      repGridEl.querySelectorAll(".vel-rep-input").forEach(inp => {
+        const raw = parseInt(inp.value);
+        if (!isNaN(raw) && raw >= 1 && raw <= 299) collected.push(raw / 100);
+      });
+      if (collected.length >= 1) {
+        mvReps = collected;
+        velocity = collected.reduce((a, b) => a + b, 0) / collected.length;
+      }
+    } else {
+      velocity = parseNumericInput($("#input-set-velocity")?.value);
+    }
 
     currentSet.reps = selectedReps;
     currentSet.actualVx = selectedVara;
     currentSet.velocity = velocity;
+    currentSet.mvReps = mvReps;
     currentSet.completed = true;
 
     // Tallenna attemptedReps (failure-tilanteessa)
@@ -11317,6 +11999,8 @@ function bindWorkoutEvents() {
   if (restSkip) restSkip.addEventListener("click", () => stopRestTimer());
 
   // Velocity panel toggle
+  // v4.38.0 (Phase 1C): focus rep-grid ekkaan inputtiin jos rep-grid renderöity,
+  // muuten legacy single-input (ankkuripiste-flow).
   const velToggle = $("#btn-velocity-toggle");
   if (velToggle) velToggle.addEventListener("click", () => {
     const panel = $("#vel-panel");
@@ -11325,8 +12009,10 @@ function bindWorkoutEvents() {
     panel.style.display = isHidden ? "block" : "none";
     velToggle.classList.toggle("on", isHidden);
     if (isHidden) {
-      const inp = panel.querySelector("#input-set-velocity");
-      if (inp) inp.focus();
+      const firstRepInput = panel.querySelector(".vel-rep-input");
+      const legacyInput = panel.querySelector("#input-set-velocity");
+      const focusTarget = firstRepInput || legacyInput;
+      if (focusTarget) focusTarget.focus();
     }
   });
 
@@ -11688,6 +12374,18 @@ async function saveWorkoutToDb(sessionNotes = "") {
 
   // Save sets (exclude warmup sets — they are not training data)
   const sets = [];
+  const vlCapTraces = [];
+  const vxConflictTraces = [];
+  const underStimulatedTraces = [];
+  const optimalSetCount = { value: 0 };
+  // v4.38.4 (Phase 3.6B): AMRAP-kandidaatit kalibrointitestiksi.
+  // Tunnistus: primary-sarja jossa actualVx === 0 (failure) JA reps ≥ targetReps + 2
+  // (selvä failure, ei pelkkä yksittäinen V0-arvio) JA mvReps.length ≥ minimi.
+  // Save-layerin jälkeen: kysytään käyttäjältä haluaako tallentaa rinnakkain
+  // rtf_test-roolilla → rakentaa henkilökohtaisen kalibrointimallin ilman erillistä testiä.
+  const rtfCandidates = [];
+  const blockPhaseForTraces = (rec?.weekNum) ? phaseForWeek(rec.weekNum) : null;
+  const dayTypeForTraces = w.dayType || rec?.dayType || null;
 
   // Readiness primer -tulos tallennetaan erillisenä setinä (setRole="readiness_test")
   // jotta baseline rakentuu (käytetään velocityReadiness()-baseline-arvona).
@@ -11741,6 +12439,7 @@ async function saveWorkoutToDb(sessionNotes = "") {
           velocityPeak: null,
           velocityRep1: null,
           velocityLossPercent: null,
+          mvReps: null,
           tempo: null,
           restSec: null,
           attemptedReps: null,
@@ -11758,8 +12457,186 @@ async function saveWorkoutToDb(sessionNotes = "") {
         : exercise.role === "backoff" ? "backoff"
         : exercise.role === "calibration" ? "calibration"
         : "accessory";
+      // v4.38.0 (Phase 1B): mvReps[] per-rep MPV-array. Lasketaan UI-tilan
+      // s.mvReps:istä, ja jos array on validi (≥2 ei-null arvoa), johdetaan
+      // velocityMean = mean, velocityPeak = max, velocityRep1 = arr[0],
+      // velocityLossPercent = (arr[0] - arr[last])/arr[0]*100. Jos UI ei ole
+      // syöttänyt arrayta, fallback s.velocity-arvoon (Phase 1C UI tulee).
+      const mvArrRaw = Array.isArray(s.mvReps)
+        ? s.mvReps.filter(v => typeof v === "number" && v > 0 && v <= 3.0)
+        : null;
+      const hasMvArr = mvArrRaw && mvArrRaw.length >= 2;
+      const mvMean = hasMvArr
+        ? mvArrRaw.reduce((a, b) => a + b, 0) / mvArrRaw.length
+        : (s.velocity ?? null);
+      const mvPeak = hasMvArr ? Math.max(...mvArrRaw) : null;
+      const mvRep1 = hasMvArr ? mvArrRaw[0] : null;
+      const mvLossPct = hasMvArr && mvArrRaw[0] > 0
+        ? ((mvArrRaw[0] - mvArrRaw[mvArrRaw.length - 1]) / mvArrRaw[0]) * 100
+        : null;
+
+      const newSetId = uid();
+
+      // v4.38.1 (Phase 2D): VL_CAP_TRIGGERED -trace jos mvReps[] VL ylitti cap-arvon.
+      // v4.38.3 (Phase 3.5C): RTF-malli välitetään ctx:iin → cap voi olla yksilöllinen.
+      //   Trace sisältää nyt myös rtfR2 + targetRir + capSource ("rtf-individual" vs blokki).
+      // v4.38.3 (Phase 4): VX_VELOCITY_CONFLICT -trace kun atletin actualVx poikkeaa
+      //   RTF-mallin ennusteesta ≥ 1.5 yksikköä (predictVxFromVelocity).
+      // RTF-malli liikkeelle (jaetaan Phase 3.5 + Phase 4 -käytön kesken)
+      const rtfModelForTrace = exercise.movementId
+        ? computeRtfVelocityModel(state.allSets || [], exercise.movementId)
+        : null;
+
+      // Phase 4: Vx-velocity-konfliktin tunnistus (vain jos mvReps + RTF reliable)
+      if (hasMvArr && rtfModelForTrace?.status === "reliable" && typeof s.actualVx === "number") {
+        const vxPredict = predictVxFromVelocity(mvArrRaw, rtfModelForTrace, s.actualVx);
+        if (vxPredict.status === "ok" && vxPredict.conflicted) {
+          vxConflictTraces.push({
+            ruleId: "VX_VELOCITY_CONFLICT",
+            recId: null,
+            sessionId: w.sessionId,
+            setId: newSetId,
+            movementId: exercise.movementId,
+            movementName: exercise.name || null,
+            before: {
+              reportedVx: vxPredict.reportedVx,
+              rtfR2: vxPredict.rtfR2,
+              lastMvUsed: vxPredict.lastMvUsed,
+            },
+            after: {
+              predictedVx: vxPredict.predictedVx,
+              predictedVxRaw: vxPredict.predictedVxRaw,
+              delta: vxPredict.delta,
+              direction: vxPredict.direction,
+              conflictDelta: vxPredict.conflictDelta,
+            },
+            message: `Raportoit varaa ${vxPredict.reportedVx} mutta nopeusmittaus viittaa varaa ${vxPredict.predictedVx.toFixed(1)} (viim. toiston nopeus ${vxPredict.lastMvUsed.toFixed(2)} m/s, mallin tarkkuus ${(vxPredict.rtfR2 * 100).toFixed(0)} %) — ${vxPredict.direction === "athlete-overestimates-rir" ? "yliarvioit varaa" : "aliarvioit varaa"}`,
+            createdAtISO: new Date().toISOString(),
+          });
+        }
+      }
+
+      if (hasMvArr && mvArrRaw[0] > 0) {
+        const vlPctForTrace = ((mvArrRaw[0] - mvArrRaw[mvArrRaw.length - 1]) / mvArrRaw[0]) * 100;
+        const capInfoForTrace = vlCapForContext({
+          blockPhase: blockPhaseForTraces,
+          exerciseName: exercise.name || null,
+          dayType: dayTypeForTraces,
+          targetVx: s.targetVx ?? null,
+          settings: state.settings || {},
+          rtfModel: rtfModelForTrace,
+          rep1Velocity: mvArrRaw[0],
+        });
+
+        // v4.38.4 (Phase 2.7D): rep 1 -tavoiterange + alistimulaatio / optimaali tunnistus.
+        // Vain primary/backoff/top-sarjoille (= sarjat joissa VL-cap on relevantti).
+        const isPrimarySet = exercise.role === "primary" || exercise.role === "backoff";
+        if (isPrimarySet) {
+          const rep1Range = targetRep1VelocityRange(exercise.name || null, blockPhaseForTraces, rtfModelForTrace);
+          const rep1V = mvArrRaw[0];
+          const rep1Above = rep1V > rep1Range.upper;
+          const lowVL = vlPctForTrace < capInfoForTrace.cap * 0.5;
+
+          // UNDER_STIMULATED: rep 1 yli tavoitealueen + VL ei lähestynyt cap-arvoa
+          if (rep1Above && lowVL) {
+            underStimulatedTraces.push({
+              ruleId: "UNDER_STIMULATED",
+              recId: null,
+              sessionId: w.sessionId,
+              setId: newSetId,
+              movementId: exercise.movementId,
+              movementName: exercise.name || null,
+              before: {
+                rep1Velocity: rep1V,
+                rep1RangeLower: rep1Range.lower,
+                rep1RangeUpper: rep1Range.upper,
+                rep1RangeSource: rep1Range.source,
+                blockPhase: capInfoForTrace.phase,
+              },
+              after: {
+                actualVl: vlPctForTrace,
+                vlCap: capInfoForTrace.cap,
+                rep1ExceededUpperBy: rep1V - rep1Range.upper,
+                suggestedLoadIncrease: "+2.5 kg (matala-alueisille liikkeille) / +5 kg (kyykky)",
+              },
+              message: `Rep 1 ${rep1V.toFixed(2)} m/s ylittää tavoitealueen (${rep1Range.lower.toFixed(2)}–${rep1Range.upper.toFixed(2)}) ja VL ${vlPctForTrace.toFixed(1)} % jäi alle ${(capInfoForTrace.cap * 0.5).toFixed(1)} % — kuorma alle kapasiteetin.`,
+              createdAtISO: new Date().toISOString(),
+            });
+          }
+
+          // OPTIMAL_SET: rep 1 rangessa + VL päätyi sweet spot -alueelle (50–95 % cap:sta)
+          // Ei tallenneta traceen (positive feedback per session, ei per set), mutta lasketaan
+          // toaste:n yhteenvetoon
+          const rep1InRange = rep1V >= rep1Range.lower && rep1V <= rep1Range.upper;
+          const vlInSweetSpot = vlPctForTrace >= capInfoForTrace.cap * 0.5 &&
+                                 vlPctForTrace <= capInfoForTrace.cap * 0.95;
+          if (rep1InRange && vlInSweetSpot) {
+            optimalSetCount.value += 1;
+          }
+        }
+
+        // v4.38.4 (Phase 3.6B): AMRAP-kandidaatti kalibrointitestiksi.
+        // Tunnistetaan jos: primary-sarja + failure (Vx 0) + reps ≥ targetReps+2
+        // + ei vielä reliable RTF-mallia (= testi tarpeen tälle liikkeelle).
+        const isAmrapToFailure = exercise.role === "primary" &&
+                                  s.actualVx === 0 &&
+                                  typeof s.reps === "number" &&
+                                  typeof s.targetReps === "number" &&
+                                  s.reps >= s.targetReps + 2 &&
+                                  mvArrRaw.length >= RTF_MIN_REPS_PER_SET;
+        const existingRtfModel = exercise.movementId
+          ? computeRtfVelocityModel(state.allSets || [], exercise.movementId)
+          : null;
+        const needsRtfData = !existingRtfModel || existingRtfModel.status !== "reliable";
+        if (isAmrapToFailure && needsRtfData) {
+          rtfCandidates.push({
+            setId: newSetId,
+            movementId: exercise.movementId,
+            movementName: exercise.name || null,
+            externalLoadKg: s.loadKg,
+            totalReps: s.reps,
+            mvReps: mvArrRaw,
+            dateISO: w.dateISO || todayISO(),
+          });
+        }
+        if (vlPctForTrace >= capInfoForTrace.cap) {
+          // Etsi rep jossa cumulative VL ylitti cap-arvon
+          let droppedAtRep = null;
+          for (let ri = 1; ri < mvArrRaw.length; ri++) {
+            const cumulVl = ((mvArrRaw[0] - mvArrRaw[ri]) / mvArrRaw[0]) * 100;
+            if (cumulVl >= capInfoForTrace.cap) { droppedAtRep = ri + 1; break; }
+          }
+          vlCapTraces.push({
+            ruleId: "VL_CAP_TRIGGERED",
+            recId: null,
+            sessionId: w.sessionId,
+            setId: newSetId,
+            movementId: exercise.movementId,
+            movementName: exercise.name || null,
+            before: {
+              plannedReps: s.targetReps,
+              vlCap: capInfoForTrace.cap,
+              blockPhase: capInfoForTrace.phase,
+              capSource: capInfoForTrace.source,
+              rtfTargetRir: capInfoForTrace.targetRir ?? null,
+              rtfR2: capInfoForTrace.rtfR2 ?? null,
+              velocityAtTargetRir: capInfoForTrace.velocityAtTargetRir ?? null,
+            },
+            after: {
+              actualReps: mvArrRaw.length,
+              actualVl: vlPctForTrace,
+              droppedAtRep,
+              rep1Velocity: mvArrRaw[0],
+              lastRepVelocity: mvArrRaw[mvArrRaw.length - 1],
+            },
+            message: `VL ${vlPctForTrace.toFixed(1)}% > cap ${capInfoForTrace.cap.toFixed(1)}% (${capInfoForTrace.source === "rtf-individual" ? `RTF-yksilöllinen ${capInfoForTrace.phase}` : capInfoForTrace.phase}) — sarja ${mvArrRaw.length}/${s.targetReps} rep, drop @ rep ${droppedAtRep ?? "?"}`,
+            createdAtISO: new Date().toISOString(),
+          });
+        }
+      }
+
       sets.push({
-        setId: uid(),
+        setId: newSetId,
         sessionId: w.sessionId,
         movementId: exercise.movementId,
         variantId: variantCache[exercise.variantName] || null,
@@ -11769,10 +12646,11 @@ async function saveWorkoutToDb(sessionNotes = "") {
         targetReps: s.targetReps,
         targetVx: s.targetVx,
         actualVx: s.actualVx,
-        velocityMean: s.velocity,
-        velocityPeak: null,
-        velocityRep1: null,
-        velocityLossPercent: null,
+        velocityMean: mvMean,
+        velocityPeak: mvPeak,
+        velocityRep1: mvRep1,
+        velocityLossPercent: mvLossPct,
+        mvReps: hasMvArr ? mvArrRaw : null,
         tempo: null,
         restSec: null,
         attemptedReps: s.attemptedReps || null,
@@ -11805,6 +12683,139 @@ async function saveWorkoutToDb(sessionNotes = "") {
   }
 
   await saveSets(sets);
+
+  // v4.38.1 (Phase 2D): VL_CAP_TRIGGERED -tracejen tallennus saveSets:in jälkeen.
+  // Erikseen jotta jos saveSets epäonnistuu, traces jäävät tallentumatta (consistency).
+  if (vlCapTraces.length > 0) {
+    for (const trace of vlCapTraces) {
+      try { await saveDecisionTrace(trace); } catch (e) { console.warn("[VL_CAP_TRIGGERED] trace save failed:", e); }
+    }
+    showToast(`VL-cap ylitti ${vlCapTraces.length} sarjassa — kirjattu päätösketjuun`, "warn", 3500);
+  }
+
+  // v4.38.3 (Phase 4): VX_VELOCITY_CONFLICT -tracejen tallennus + atletti-ilmoitus.
+  // Havainto-only: actualVx EI ylioppikkaa automaattisesti — käyttäjä päättää.
+  if (vxConflictTraces.length > 0) {
+    for (const trace of vxConflictTraces) {
+      try { await saveDecisionTrace(trace); } catch (e) { console.warn("[VX_VELOCITY_CONFLICT] trace save failed:", e); }
+    }
+    const overestimateCount = vxConflictTraces.filter(t => t.after.direction === "athlete-overestimates-rir").length;
+    const msg = overestimateCount > 0
+      ? `🎯 ${vxConflictTraces.length} sarjassa raportoitu vara erosi mittauksesta selvästi: ${overestimateCount}× yliarvioit varaa. Harkitse oman varan tunnistuksen kalibrointia.`
+      : `🎯 ${vxConflictTraces.length} sarjassa raportoitu vara erosi mittauksesta — kirjattu lokille.`;
+    showToast(msg, "warn", 5000);
+  }
+
+  // v4.38.4 (Phase 2.7D): UNDER_STIMULATED -trace + alistimulaatio-toast.
+  // Kerro käyttäjälle selkeästi että kuorma näytti kevyeltä ja ehdota nostoa.
+  if (underStimulatedTraces.length > 0) {
+    for (const trace of underStimulatedTraces) {
+      try { await saveDecisionTrace(trace); } catch (e) { console.warn("[UNDER_STIMULATED] trace save failed:", e); }
+    }
+    const movementsAffected = [...new Set(underStimulatedTraces.map(t => t.movementName).filter(Boolean))];
+    const movList = movementsAffected.length > 0 ? movementsAffected.join(", ") : "useassa liikkeessä";
+    showToast(`🔵 ${underStimulatedTraces.length} sarjaa meni helposti (${movList}) — kuorma näyttää alle kapasiteettisi. Harkitse kuorman nostoa ensi sessioon.`, "warn", 5500);
+  }
+
+  // Phase 2.7D: positiivinen palaute optimaalisista sarjoista (ei traceen, mutta toast)
+  if (optimalSetCount.value > 0 && underStimulatedTraces.length === 0 && vlCapTraces.length === 0) {
+    showToast(`🟢 ${optimalSetCount.value} sarjaa osui täydellisesti tavoitealueelle — sarjat olivat optimaalisesti kuormitettuja.`, "ok", 4000);
+  }
+
+  // v4.38.4 (Phase 3.6B): kysy AMRAP-kandidaateista haluaako tallentaa kalibrointitesteinä.
+  // Per-kandidaatti yes/no-modal. Hyväksytty → uusi rtf_calibration-session + rtf_test-set.
+  for (const cand of rtfCandidates) {
+    const shouldSave = await new Promise(resolve => {
+      const overlay = document.createElement("div");
+      overlay.className = "modal-overlay";
+      overlay.innerHTML = `
+        <div class="modal-sheet">
+          <div class="modal-handle"></div>
+          <div class="modal-title" style="display:flex;align-items:center;gap:8px">🎯 Kalibrointitesti löytyi</div>
+          <div style="font-size:13px;line-height:1.5;margin-top:8px">
+            Sarjasi <strong>${cand.movementName}</strong>:lla meni failureen <strong>${cand.totalReps} toistolla</strong>
+            kuormalla ${cand.externalLoadKg} kg, ja jokaisen toiston nopeus on tallennettu.
+          </div>
+          <div style="font-size:13px;line-height:1.5;margin-top:8px;color:var(--muted)">
+            Tämä riittää rakentamaan tälle liikkeelle henkilökohtaisen nopeus-vararajat-mallin.
+            Tallenna sarja kalibrointitestinä — sovellus käyttää tämän jälkeen sinun omia tarkkoja
+            arvojasi yleisten oletusten sijaan.
+          </div>
+          <div class="btn-group" style="margin-top:14px">
+            <button class="btn btn-ok" style="flex:2" data-modal-ok>✓ Tallenna kalibrointitestinä</button>
+            <button class="btn btn-outline" style="flex:1" data-modal-cancel>Ei nyt</button>
+          </div>
+        </div>`;
+      overlay.querySelector("[data-modal-ok]").addEventListener("click", () => { closeModal(); resolve(true); });
+      overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); resolve(false); });
+      document.body.appendChild(overlay);
+    });
+    if (!shouldSave) continue;
+
+    // Luo rtf_calibration-session + rtf_test-set rinnakkain alkuperäisen työsarjan kanssa
+    const rtfSessionId = uid();
+    const rtfSession = {
+      sessionId: rtfSessionId,
+      dateISO: cand.dateISO,
+      sessionType: "rtf_calibration",
+      plannedDayType: null,
+      mesocycleWeek: null,
+      mesocycleId: state.mesocycle?.mesocycleId || null,
+      bodyweightKg: bw,
+      sessionNotes: `Kalibrointitesti (johdettu treenistä): ${cand.movementName} @ ${cand.externalLoadKg} kg, ${cand.totalReps} toistoa failureen`,
+      readinessCapLevel: null,
+      readinessDetails: null,
+      isBackfill: false,
+      isPlanOverride: false,
+      planSourceDateISO: cand.dateISO,
+      sRPE: null,
+      startedAt: new Date().toISOString(),
+      endedAt: new Date().toISOString(),
+      durationMin: null,
+    };
+    const mvMean = cand.mvReps.reduce((a, b) => a + b, 0) / cand.mvReps.length;
+    const mvPeak = Math.max(...cand.mvReps);
+    const mvLossPct = cand.mvReps[0] > 0
+      ? ((cand.mvReps[0] - cand.mvReps[cand.mvReps.length - 1]) / cand.mvReps[0]) * 100
+      : null;
+    const rtfSet = {
+      setId: uid(),
+      sessionId: rtfSessionId,
+      movementId: cand.movementId,
+      variantId: null,
+      setRole: "rtf_test",
+      externalLoadKg: cand.externalLoadKg,
+      reps: cand.totalReps,
+      targetReps: cand.totalReps,
+      targetVx: 0,
+      actualVx: 0,
+      velocityMean: mvMean,
+      velocityPeak: mvPeak,
+      velocityRep1: cand.mvReps[0],
+      velocityLossPercent: mvLossPct,
+      mvReps: cand.mvReps,
+      tempo: null,
+      restSec: null,
+      attemptedReps: null,
+      deviceMeta: { source: "post-workout-rtf-suggestion", linkedWorkSetId: cand.setId },
+      manualOverride: null,
+      timestamp: new Date().toISOString(),
+      exerciseNote: null,
+      dateISO: cand.dateISO,
+    };
+    try {
+      await saveSession(rtfSession);
+      await saveSet(rtfSet);
+      showToast(`✓ Kalibrointitesti tallennettu: ${cand.movementName} (${cand.totalReps} toistoa, mallin tarkkuus näkyy Asetuksissa)`, "ok", 4500);
+    } catch (e) {
+      console.error("[RTF candidate] save failed:", e);
+      showToast("Kalibrointitestin tallennus epäonnistui", "bad");
+    }
+  }
+  if (rtfCandidates.length > 0) {
+    state.allSets = await getAllSets();
+    state.sessions = await getAllSessions();
+  }
 
   // PR detection: check if any movement hit a new e1RM record
   // v4.34.34 BUG 1 -fix: tunnistus loadType:sta (movement-rekisteristä), EI
