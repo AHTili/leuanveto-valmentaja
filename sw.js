@@ -1,5 +1,29 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.38.4 — Phase 2.7 (kaksisuuntainen autoregulaatio) + Phase 3.6
+// LeVe AI v4.38.5 — Pikalisäpäivitys: kisaliikkeiden tunnistus toimii myös
+// vanhoilla movements-tietokannoilla joissa isCompetitionLift-flag puuttuu.
+//
+// Käyttäjäpalaute v4.38.4:n migration jälkeen (2026-05-10): Asetukset →
+// "Henkilökohtainen kalibrointi" -kortti näytti "Ei kisaliikkeitä rekisteröity."
+// vaikka streetlifting_16w-mesosyklissä on kolme kisaliikettä (Lisäpainoleuanveto,
+// Lisäpainodippi, Takakyykky). Syy: olemassa olevat movements:it on rekisteröity
+// vanhalla version koodilla joka ei asettanut isCompetitionLift-flagia.
+// Korjaus: name-pohjainen fallback isCompetitionLiftMovement-helperissä.
+//
+// MUUTOKSET v4.38.5:
+// (engine.js) Uusi vakio COMPETITION_LIFT_NAMES_FALLBACK (Set) joka kattaa
+//   streetlifting + voimanosto kisaliikkeet: Lisäpainoleuanveto, Lisäpainodippi,
+//   Takakyykky, Muscle-up, Penkkipunnerrus, Maastaveto.
+//   Uusi helper isCompetitionLiftMovement(movement) — palauttaa true jos
+//   isCompetitionLift === true TAI nimi löytyy fallback-listasta.
+// (index.html) Dashboard-banneri (Phase 3.6A) + Asetukset RTF-kalibrointi-kortti
+//   (Phase 3B) käyttävät nyt isCompetitionLiftMovement-helperia (filter:n sijaan
+//   m => m.isCompetitionLift). Ei muuta toiminnallisuutta uusille asennuksille,
+//   mutta vanhat movements-tietokannat näyttävät kisaliikkeet oikein.
+// (test-runner.js) testIsCompetitionLiftMovement: 12 assertiota — eksplisiittinen
+//   flag voittaa, fallback nimillä, accessoryt + variantit eivät tunnisteta
+//   kisaliikkeiksi.
+//
+// v4.38.4 (edellinen) — Phase 2.7 (kaksisuuntainen autoregulaatio) + Phase 3.6
 // (RTF-testin auto-suggestio) + UI-stringien siivous.
 //
 // Käyttäjäpalaute v4.38.3 jälkeen: nopeus-vararajat-mallin yksisuuntaisuus
@@ -372,7 +396,7 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.38.4";
+const APP_VERSION = "4.38.5";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

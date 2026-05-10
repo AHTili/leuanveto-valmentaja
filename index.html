@@ -1053,6 +1053,8 @@ import {
   predictVxFromVelocity,
   // v4.38.4 (Phase 2.7): kaksisuuntainen autoregulaatio (rep 1 -tavoiterange)
   targetRep1VelocityRange,
+  // v4.38.5: kisaliikkeiden tunnistus nimellä (fallback isCompetitionLift-flagille)
+  isCompetitionLiftMovement,
   weeklyStimulus, checkStagnation,
   getMesocycleWeek, getWeekDef, getTodayPlan,
   breakAnalysis, speedDayLoad,
@@ -3194,7 +3196,7 @@ function renderDashboard() {
   // henkilökohtaista mallia. Klikkaus → Asetukset-välilehti → kalibrointikortti.
   const rtfBannerHTML = (() => {
     if (!state.settings?.velocityEnabled) return "";  // Ei näytä jos velocity-mittaus ei käytössä
-    const compMovs = (state.movements || []).filter(m => m.isCompetitionLift);
+    const compMovs = (state.movements || []).filter(isCompetitionLiftMovement);
     if (compMovs.length === 0) return "";
     const missing = [];
     for (const m of compMovs) {
@@ -9162,7 +9164,7 @@ function renderSettingsView() {
         Tee yksi testi per kisaliike blokin alussa, kuormalla noin 70–85 % maksimistasi.
       </div>
       ${(() => {
-        const compMovs = (state.movements || []).filter(m => m.isCompetitionLift);
+        const compMovs = (state.movements || []).filter(isCompetitionLiftMovement);
         if (compMovs.length === 0) {
           return `<div class="muted" style="font-size:11px">Ei kisaliikkeitä rekisteröity.</div>`;
         }

@@ -36,6 +36,8 @@ import {
   // v4.38.4 (Phase 2.7) kaksisuuntainen autoregulaatio
   targetRep1VelocityRange,
   DEFAULT_RTF_SLOPE,
+  // v4.38.5 — kisaliikkeiden tunnistus fallback nimellä
+  isCompetitionLiftMovement,
   recommend,
   computeVBTPromotionStatus,
   computeRateLimitAnchor,
@@ -1734,6 +1736,40 @@ function testTargetRep1VelocityRange() {
   assertClose(r7.intercept, 0.25, 0.001, "Tuntematon liike → DEFAULT_MVT");
 }
 
+// v4.38.5: kisaliikkeiden tunnistus — toimii kun isCompetitionLift-flag puuttuu.
+function testIsCompetitionLiftMovement() {
+  // Eksplisiittinen flag voittaa
+  assert(isCompetitionLiftMovement({ name: "Tuntematon", isCompetitionLift: true }),
+    "isCompetitionLift: true → kisaliike");
+  assert(!isCompetitionLiftMovement({ name: "Tuntematon" }),
+    "Ei flagia + tuntematon nimi → ei kisaliike");
+  assert(!isCompetitionLiftMovement(null), "null → ei kisaliike");
+
+  // Fallback nimellä — streetlifting kisaliikkeet
+  assert(isCompetitionLiftMovement({ name: "Lisäpainoleuanveto" }),
+    "Lisäpainoleuanveto (ilman flagia) → kisaliike fallback");
+  assert(isCompetitionLiftMovement({ name: "Lisäpainodippi" }),
+    "Lisäpainodippi → kisaliike");
+  assert(isCompetitionLiftMovement({ name: "Takakyykky" }),
+    "Takakyykky → kisaliike");
+  assert(isCompetitionLiftMovement({ name: "Muscle-up" }),
+    "Muscle-up → kisaliike");
+
+  // Voimanosto kisaliikkeet
+  assert(isCompetitionLiftMovement({ name: "Penkkipunnerrus" }),
+    "Penkkipunnerrus → kisaliike");
+  assert(isCompetitionLiftMovement({ name: "Maastaveto" }),
+    "Maastaveto → kisaliike");
+
+  // Ei-kisaliikkeitä — accessoreita ja variantteja
+  assert(!isCompetitionLiftMovement({ name: "Sivunosto" }),
+    "Sivunosto → ei kisaliike");
+  assert(!isCompetitionLiftMovement({ name: "Hauiskääntö" }),
+    "Hauiskääntö → ei kisaliike");
+  assert(!isCompetitionLiftMovement({ name: "Räjähtävä leuanveto" }),
+    "Räjähtävä leuanveto → ei kisaliike (variantti, ei kisaliike)");
+}
+
 // v4.34.26: Maintenance-tila (graceful degradation). Engine palauttaa minimum-
 // viable-protokollan kun atleetti tunnistaa ettei pysty seuraamaan ohjelmaa
 // täydellä volyymilla 2-4 vk ajan. Mesocycle ei etene maintenance-aikana.
@@ -2100,6 +2136,7 @@ export async function runTests() {
   testVlCapWithRtfModel();
   testVxVelocityConflict();
   testTargetRep1VelocityRange();
+  testIsCompetitionLiftMovement();
   testRateLimitAnchorCalFiltering();
   // v4.34.34: Phase 0 -löydösten korjaukset
   testIsSystemLoadMovement();
