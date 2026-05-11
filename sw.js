@@ -1,5 +1,33 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.38.6 — KRIITTINEN BUG-FIX: ReferenceError currentSet bindWorkoutEvents:issa.
+// LeVe AI v4.38.7 — Kaksi UI-bug-fixiä käyttäjäpalautteen pohjalta (2026-05-11):
+//
+// BUG #1: Yksinumero-syöte rep-grid:ssä rikkoi VL%-laskennan.
+//   Käyttäjäpalaute: R1-kenttään kirjoitettu "7" (yksi numero) → app tulkitsi
+//   0.07 m/s → live-summary näytti "hidastuminen -671.4 %".
+//   Syy: input-parsing hyväksyi raw >= 1 → "7" → 7 → 7/100 = 0.07.
+//   Yhdistettynä validiin viimeisen rep:n arvoon 54 (= 0.54 m/s) → laskelma
+//   meni miinusprosenttiin.
+//   KORJAUS: raw >= 10 (= 0.10 m/s) — yksinumeroinen syöte (1-9) filtteröityy
+//   automaattisesti pois sekä live-summarystä, work-set-save:sta että RTF-modal-
+//   save:sta. Käyttäjä näkee tyhjän rep-kentän kunnes toinen numero on syötetty.
+//   Korjattu neljässä paikassa (kaikki rep-input-parsingit yhtenäisellä rajalla).
+//
+// BUG #2: "Velocity: [object Object]" -näyttö sessio-detail-näkymässä.
+//   Käyttäjäpalaute: pistari-sessio näytti readiness-detail-rivillä
+//   "Velocity: [object Object] · HRV: [object Object]".
+//   Syy: index.html:7664-7666 renderöi r.channels.velocity / .hrv / .vx -kentät
+//   suoraan template-stringissä, mutta ne ovat objekteja
+//   ({ z, class, channel, baseline }), ei stringejä.
+//   KORJAUS: formatChannel-helper joka poimii .class:n (GREEN/YELLOW/RED) +
+//   liittää z-arvon sulkeissa jos saatavilla. Vx-kentän nimi korjattu:
+//   r.channels.vx → r.channels.vara (Vara-objektin oikea avain).
+//
+// HUOM: olemassa olevat tallennetut mvReps-arrayt joissa on bug-arvoja (esim.
+// 0.07) jäävät tietokantaan. Käyttäjä voi halutessaan poistaa kyseiset sarjat
+// Historia-välilehdeltä. Live-laskennat eivät enää näytä virheellisiä
+// arvoja uusille syötteille.
+//
+// v4.38.6 (edellinen) — KRIITTINEN BUG-FIX: ReferenceError currentSet bindWorkoutEvents:issa.
 //
 // Käyttäjäpalaute 2026-05-11: työsarja-näkymässä "Bindausvirhe — tarkista konsoli"
 // laukesi heti kun käyttäjä yritti kirjata painoja. Sovellus oli käyttökelvoton.
@@ -418,7 +446,7 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.38.6";
+const APP_VERSION = "4.38.7";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
