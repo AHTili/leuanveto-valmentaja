@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
+  <meta name="color-scheme" content="dark" />
+  <title>LeVe AI — Räätälöity ohjelma</title>
+  <link rel="stylesheet" href="./wizard-styles.css" />
+</head>
+<body>
+  <div id="wizard-root" class="wiz-root" aria-live="polite">
+    <!-- WizardController.init() renderöi sisällön tähän.
+         Sisällön rakenne on määritelty wizard-core.js:n renderStep / renderProgressBar
+         / renderNav -funktioissa. Mitään staattista sisältöä ei jätetä tänne, koska
+         koko tila kuvataan WizardState:ssä ja renderöidään uudelleen jokaiseen
+         vaiheenvaihtoon. -->
+    <div class="wiz-loading">Ladataan…</div>
+  </div>
+
+  <script type="module">
+    // Staattiset ES-importit — yksi moduuli-instanssi per tiedosto, mikä on
+    // välttämätöntä jotta wizard-data.js:n module-level `_wizardDb` jaetaan
+    // wizard-core.js:n kanssa. Dynaaminen cache-busterilla varustettu import
+    // loi kaksi rinnakkaista wizard-data.js-instanssia (yksi versioidulla
+    // URL:lla wizard.html:stä, toinen suhteellisella wizard-core.js:stä) —
+    // tällöin save-operaatiot epäonnistuivat hiljaisesti _wizardDb=null:n takia.
+    //
+    // Kehityksessä cache-bypassi tehdään DevTools > Application > Clear Storage
+    // -kautta tai unregistroimalla pää-sovelluksen SW (joka on ainoa cache jolla
+    // wizard-tiedostot voivat säilyä).
+    import * as schemaM from "./wizard-schema.js";
+    import * as dataM from "./wizard-data.js";
+    import * as coreM from "./wizard-core.js";
+    const { WIZARD_SCHEMA_VERSION } = schemaM;
+    const { initWizardDB } = dataM;
+    const { WizardController } = coreM;
+
+    // SW-rekisteröinti on tietoisesti POIS Track B Vaihe 1B:stä.
+    // Syy: pää-sw.js voi cachettaa wizard-alikansion tiedostoja epäjohdonmukaisesti
+    // aktiivisen kehityksen aikana — pidämme SW-rekisteröinnin pois kunnes Vaihe 2
+    // integroi wizardin pää-UI:hin ja oma SW-cache-strategia on määritelty.
+    // 1A:n registerWizardSW() jää dormantiksi koukkuna tulevaa käyttöä varten.
+
+    async function boot() {
+      const root = document.getElementById("wizard-root");
+      try {
+        const db = await initWizardDB();
+        if (!db) {
+          root.innerHTML =
+            '<div class="wiz-fatal">IndexedDB ei käytössä — wizard tarvitsee selaintallennuksen.</div>';
+          return;
+        }
+        const controller = new WizardController({ container: root });
+        await controller.init();
+        // Diagnostiikkaa kehitysvaiheeseen: tämä on tarkoituksellisesti pelkkä log,
+        // ei käyttäjälle näkyvä — wiz-versio + schema-versio konsoliin.
+        console.log(`[wizard] valmis. schema=${WIZARD_SCHEMA_VERSION}, ui=Track-B-1B`);
+        // Avaa selfTest selaimen konsolista: window.__wizardSelfTest()
+        window.__wizardSelfTest = controller.runSelfTest.bind(controller);
+        // Diagnostiikka: koko controller-instanssi + data-API window:iin jotta
+        // selfTest ja kehittäjäkonsoli näkevät reaaliaikaisen tilan.
+        window.__wizard = { controller, dataApi: dataM, schema: schemaM, core: coreM };
+      } catch (e) {
+        console.error("[wizard] boot failed:", e);
+        root.innerHTML =
+          `<div class="wiz-fatal">Käynnistys epäonnistui: ${String(e && e.message || e)}</div>`;
+      }
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot, { once: true });
+    } else {
+      boot();
+    }
+  </script>
+</body>
+</html>
