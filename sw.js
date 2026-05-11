@@ -495,12 +495,16 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-// v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen.
-// UI-vain-muutos: onboarding-banneri uudelle käyttäjälle, Asetukset-kortti
-// olemassa olevalle, migraatio-banneri 3.2 → 3.3 käyttäjälle. Pää-app:in
-// laskenta + PROGRAM_BUILD_VERSION pysyvät koskemattomina (mesocycle auto-
-// rebuild EI laukea). Sw-version-bump triggeröi PWA-päivitysbannerin.
-const APP_VERSION = "4.39.0";
+// v4.40.0: Track B Vaihe 2B-β — wizard-pohjaisen ohjelman generointi.
+// UI-vain-muutos: "Generoi ohjelma" -painike Asetukset-näkymässä +
+// preview-modaali + setActiveMesocycle-kytkentä. Pre-rebuild snapshot
+// luodaan ennen aktiivisen mesocyclen korvausta turvallisuussyistä.
+// Pää-app:in laskenta + PROGRAM_BUILD_VERSION pysyvät koskemattomina
+// (mesocycle auto-rebuild EI laukea — weekPlans-rakenne ei muutu).
+//
+// v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen
+// (onboarding-banneri, Asetukset-kortti, migraatio-banneri).
+const APP_VERSION = "4.40.0";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
@@ -591,6 +595,8 @@ const CORE_ASSETS = [
   "./wizard/wizard-schema.js",
   "./wizard/wizard-styles.css",
   "./wizard/wizard-movement-bank.js",
+  // v4.40.0 (Track B Vaihe 2B-β): wizard-pohjainen ohjelma-mapper
+  "./wizard/wizard-2b-mapper.js",
 ];
 
 // Install: cache core assets
