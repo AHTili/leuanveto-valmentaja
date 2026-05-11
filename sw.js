@@ -1,5 +1,33 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.38.7 — Kaksi UI-bug-fixiä käyttäjäpalautteen pohjalta (2026-05-11):
+// LeVe AI v4.38.8 — Dynaaminen "0,"-prefiksi velocity-syötössä (≥ 1.0 m/s tuki).
+//
+// Käyttäjäpalaute v4.38.7:n jälkeen (2026-05-11): "0,"-prefiksi-malli toimi
+// nopeasti ≤ 0.99 m/s arvoille, mutta räjähtävän leuanvedon yli 1.0 m/s -
+// arvot näyttivät harhaanjohtavasti "0,120" (vaikka tallennettu arvo oli oikein
+// 1.20 m/s). UX-bugi joka olisi tullut vastaan vk:n 5+ speed-day-treeneissä.
+//
+// KORJAUS:
+//   - CSS: .vel-rep-input-wrap.over-one ::before { content: ""; opacity: 0 }
+//     → kun inputissa on 3+ merkkiä, "0,"-prefiksi piilotetaan ja padding-left
+//     pienennetään 22px → 6px. Input näyttää raakaa arvoa "120" (= 1.20 m/s).
+//   - Smooth transition 0.15s opacity + padding → visuaalisesti pehmeä siirtymä.
+//   - JS-toggle updatePrefixToggle (attachVelocityRepLiveSummary):
+//     wrap.classList.toggle("over-one", inp.value.length >= 3).
+//   - Sama toggle updateRtfPrefix (openRtfTestModal).
+//   - Ajetaan myös initial-tilassa (re-renderin jälkeen), ei pelkästään input-
+//     eventeissä.
+//   - Ohjeteksti rep-gridin yläpuolella päivitetty: "2 numeroa = '0,XX' · 3
+//     numeroa = ≥ 1,0 m/s (esim. 120 = 1,20)".
+//
+// Visuaaliset cuet käyttäjälle:
+//   - 1-2 numeroa: "0,"-prefiksi näkyy → arvo 0.10–0.99 m/s
+//   - 3 numeroa: prefiksi katoaa, raaka luku bold-fontilla → arvo 1.00–2.99 m/s
+//
+// Akselin streetlifting-kisaliikkeet ovat kaikki < 1.0 m/s, mutta Räjähtävä
+// leuanveto saavuttaa 0.85–1.05 m/s + tulevat speed-day-liikkeet voivat
+// koskettaa 1.0 m/s rajan. Tämä fix kattaa kaikki rep-MV-tasot 0.10–2.99 m/s.
+//
+// v4.38.7 (edellinen) — Kaksi UI-bug-fixiä käyttäjäpalautteen pohjalta (2026-05-11):
 //
 // BUG #1: Yksinumero-syöte rep-grid:ssä rikkoi VL%-laskennan.
 //   Käyttäjäpalaute: R1-kenttään kirjoitettu "7" (yksi numero) → app tulkitsi
@@ -446,7 +474,7 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.38.7";
+const APP_VERSION = "4.38.8";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
