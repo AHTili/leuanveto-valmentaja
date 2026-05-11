@@ -31,7 +31,7 @@
 
 import { SCHEMA_INVARIANTS } from "./wizard-schema.js";
 
-export const MAPPER_VERSION = "2C-alpha-v1.0";
+export const MAPPER_VERSION = "2C-beta-v1.0";
 
 // ─── Issurin Table V residuaalit (RISTIINTARKISTETTU) ──────────────────
 // Lähde: Issurin & Lustig 2004 / Issurin 2008 Table V, modifoitu.
@@ -582,6 +582,73 @@ function _collectMultiBlockRules(a, sequence, recoveryCapacity, sexModifierAppli
   return rules;
 }
 
+// ─── 2C-β: Session-fokus per päivä ─────────────────────────────────────
+//
+// Pää-app:in skeleton-factoryt antavat päiväkorteille yleisiä labeleita
+// ("Perusvoima A", "Maksimivoima", "Nopeusvoima") jotka EIVÄT viittaa
+// kilpailuliikkeeseen. 2C-β post-prosessoi weekPlans-arrayn niin että
+// labelit ovat fokus-pohjaisia ("Pullup-fokus (volyymi)" jne).
+//
+// Tämä on PURE UI -muutos — dayType ja muut treenin sisällön logiikka-
+// kentät säilyvät ennallaan. Vain käyttäjälle näkyvä label vaihtuu.
+//
+// Tutkimuspohja: ei vaadita (käyttäjäystävällisyys-laajennus). ACSM 2009
+// priority-first -periaate toteutuu jo pää-app:in distributePrimariesToDays:n
+// kautta (primary-slot ensimmäisenä).
+
+export function applySessionFocusLabels(weekPlans) {
+  if (!Array.isArray(weekPlans)) return weekPlans;
+  return weekPlans.map(wp => ({
+    ...wp,
+    days: Array.isArray(wp.days) ? wp.days.map(d => {
+      if (!d || !Array.isArray(d.slots)) return d;
+      // Hae primary-slot (cloneDayWithPrimary asetti substitutePrimarySlot:lla)
+      const primarySlot = d.slots.find(s => s.role === "primary" || s.role === "backoff");
+      if (!primarySlot || !primarySlot.defaultMovementName) return d;
+      const primaryName = primarySlot.defaultMovementName;
+      const focusLabel = _focusLabelForPrimary(primaryName);
+      const typeSuffix = _dayTypeSuffix(d.dayType);
+      const newLabel = typeSuffix ? `${focusLabel} (${typeSuffix})` : focusLabel;
+      return {
+        ...d,
+        label: newLabel,
+        originalLabel: d.label, // säilytä alkuperäinen audit-jälkeä varten
+        sessionFocus: primaryName,
+      };
+    }) : wp.days,
+  }));
+}
+
+function _focusLabelForPrimary(name) {
+  if (typeof name !== "string") return "Treeni";
+  const n = name.toLowerCase();
+  // Streetlifting + powerlifting kilpailuliikkeet ja yleiset variantit
+  if (n.includes("lisäpainoleuanveto") || n.includes("lisäpaino-leuanveto")) return "Pullup-fokus";
+  if (n.includes("lisäpainodippi") || n.includes("lisäpaino-dippi"))         return "Dippi-fokus";
+  if (n.includes("muscle-up") || n.includes("muscle up"))                    return "Muscle-up-fokus";
+  if (n.includes("takakyykky"))      return "Kyykky-fokus";
+  if (n.includes("etukyykky"))       return "Etukyykky-fokus";
+  if (n.includes("penkkipunnerrus")) return "Penkki-fokus";
+  if (n.includes("maastaveto"))      return "Maave-fokus";
+  if (n.includes("pystypunnerrus"))  return "Pysty-fokus";
+  if (n.includes("leuanveto"))       return "Pullup-fokus"; // bodyweight pullup
+  if (n.includes("dippi"))           return "Dippi-fokus";
+  // Fallback: käytä primary-nimeä lyhyemmin
+  return `${name}-fokus`;
+}
+
+function _dayTypeSuffix(dayType) {
+  const map = {
+    volume: "volyymi",
+    heavy: "raskas",
+    speed: "nopeus",
+    intensity: "intensiteetti",
+    skill: "tekniikka",
+    deload: "kevennys",
+  };
+  return map[dayType] || "";
+}
+
 // ─── Vaihe 7: mapWizardToMesocycle (main) ──────────────────────────────
 //
 // Yhdistää kaikki mapping-funktiot. Palauttaa generateCustomMesocycle:lle
@@ -723,7 +790,7 @@ export function selfTestMapper() {
      RESIDUAL_DAYS.maximal_strength.mean === 30 && RESIDUAL_DAYS.maximal_strength.sd === 5);
   ck("RESIDUAL_DAYS maximal_speed = 5 ± 3 (Issurin)",
      RESIDUAL_DAYS.maximal_speed.mean === 5 && RESIDUAL_DAYS.maximal_speed.sd === 3);
-  ck("MAPPER_VERSION on 2C-alpha-v1.0", MAPPER_VERSION === "2C-alpha-v1.0");
+  ck("MAPPER_VERSION on 2C-beta-v1.0", MAPPER_VERSION === "2C-beta-v1.0");
 
   // ─── 2. pickStartingBlock ──────────────────────────────────────────
   ck("pickStartingBlock: peaking → hypertrofia",
@@ -1000,7 +1067,7 @@ export function selfTestMapper() {
   ck("Deterministisyys: recoveryCapacity sama", det1.recoveryCapacity === det2.recoveryCapacity);
 
   // ─── 14. _wizardMeta-rakenteen täydellisyys ─────────────────────────
-  ck("_wizardMeta sisältää mapperVersion (2C-alpha-v1.0)", akseliResult._wizardMeta.mapperVersion === "2C-alpha-v1.0");
+  ck("_wizardMeta sisältää mapperVersion (2C-beta-v1.0)", akseliResult._wizardMeta.mapperVersion === "2C-beta-v1.0");
   ck("_wizardMeta sisältää wizardSchemaVersion",  akseliResult._wizardMeta.wizardSchemaVersion === "3.3");
   ck("_wizardMeta sisältää rules-array",          Array.isArray(akseliResult._wizardMeta.rules) && akseliResult._wizardMeta.rules.length > 0);
   ck("_wizardMeta.rules sisältää ACSM-säännön (Nunes + ACSM 2009)",
@@ -1096,6 +1163,70 @@ export function selfTestMapper() {
      withTargetResult._wizardMeta.rules.some(r => r.rule.includes("multi-blokki")));
   ck("mapWizardToMultiBlockMesocycle: 4 primaries säilyy (streetlifting)",
      withTargetResult.primaries.length === 4);
+
+  // ════════════════════════════════════════════════════════════════
+  // ─── 2C-β: Session-fokus-labelit ─────────────────────────────────
+  // ════════════════════════════════════════════════════════════════
+
+  // applySessionFocusLabels — simuloi weekPlans-rakenne pää-app:n tyyliin
+  const mockWeekPlans = [
+    {
+      week: 1,
+      days: [
+        { dayOfWeek: 1, dayType: "volume", label: "Perusvoima A",
+          slots: [
+            { role: "primary",   defaultMovementName: "Lisäpainoleuanveto" },
+            { role: "accessory", defaultMovementName: "Ylätalja" },
+          ] },
+        { dayOfWeek: 3, dayType: "heavy", label: "Maksimivoima",
+          slots: [
+            { role: "primary",   defaultMovementName: "Takakyykky" },
+            { role: "accessory", defaultMovementName: "RDL" },
+          ] },
+        { dayOfWeek: 5, dayType: "speed", label: "Nopeusvoima",
+          slots: [
+            { role: "primary",   defaultMovementName: "Lisäpainodippi" },
+            { role: "accessory", defaultMovementName: "Vinopenkki" },
+          ] },
+      ],
+    },
+  ];
+  const focused = applySessionFocusLabels(mockWeekPlans);
+  ck("applySessionFocusLabels: lisäpaino-leuka + volyymi → 'Pullup-fokus (volyymi)'",
+     focused[0].days[0].label === "Pullup-fokus (volyymi)");
+  ck("applySessionFocusLabels: takakyykky + heavy → 'Kyykky-fokus (raskas)'",
+     focused[0].days[1].label === "Kyykky-fokus (raskas)");
+  ck("applySessionFocusLabels: lisäpaino-dippi + speed → 'Dippi-fokus (nopeus)'",
+     focused[0].days[2].label === "Dippi-fokus (nopeus)");
+  ck("applySessionFocusLabels: originalLabel säilyy audit-jälkenä",
+     focused[0].days[0].originalLabel === "Perusvoima A");
+  ck("applySessionFocusLabels: sessionFocus = primary-nimi",
+     focused[0].days[0].sessionFocus === "Lisäpainoleuanveto");
+  ck("applySessionFocusLabels: dayType säilyy (treenin logiikka koskematon)",
+     focused[0].days[0].dayType === "volume" &&
+     focused[0].days[1].dayType === "heavy" &&
+     focused[0].days[2].dayType === "speed");
+
+  // Edge cases
+  const noSlotsPlans = [{ week: 1, days: [{ dayOfWeek: 1, dayType: "volume", label: "X" }] }];
+  const focusedNoSlots = applySessionFocusLabels(noSlotsPlans);
+  ck("applySessionFocusLabels: ei slots → label säilyy ennallaan",
+     focusedNoSlots[0].days[0].label === "X");
+
+  const muscleUpPlans = [{ week: 1, days: [{ dayOfWeek: 1, dayType: "intensity", label: "X",
+    slots: [{ role: "primary", defaultMovementName: "Muscle-up" }] }] }];
+  ck("applySessionFocusLabels: Muscle-up → 'Muscle-up-fokus (intensiteetti)'",
+     applySessionFocusLabels(muscleUpPlans)[0].days[0].label === "Muscle-up-fokus (intensiteetti)");
+
+  const benchPlans = [{ week: 1, days: [{ dayOfWeek: 1, dayType: "heavy", label: "X",
+    slots: [{ role: "primary", defaultMovementName: "Penkkipunnerrus" }] }] }];
+  ck("applySessionFocusLabels: Penkkipunnerrus → 'Penkki-fokus (raskas)'",
+     applySessionFocusLabels(benchPlans)[0].days[0].label === "Penkki-fokus (raskas)");
+
+  const deadliftPlans = [{ week: 1, days: [{ dayOfWeek: 1, dayType: "volume", label: "X",
+    slots: [{ role: "primary", defaultMovementName: "Maastaveto" }] }] }];
+  ck("applySessionFocusLabels: Maastaveto → 'Maave-fokus (volyymi)'",
+     applySessionFocusLabels(deadliftPlans)[0].days[0].label === "Maave-fokus (volyymi)");
 
   return report;
 }
