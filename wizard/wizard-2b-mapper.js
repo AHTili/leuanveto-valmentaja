@@ -31,7 +31,7 @@
 
 import { SCHEMA_INVARIANTS } from "./wizard-schema.js";
 
-export const MAPPER_VERSION = "2B-alpha-v1.0";
+export const MAPPER_VERSION = "2B-gamma-v1.0";
 
 // ─── Issurin Table V residuaalit (RISTIINTARKISTETTU) ──────────────────
 // Lähde: Issurin & Lustig 2004 / Issurin 2008 Table V, modifoitu.
@@ -198,37 +198,45 @@ export function pickWeekCount(q08_selfLevel, pickedBlock) {
 
 // ─── Vaihe 3: pickRecoveryCapacity ─────────────────────────────────────
 //
-// Tutkimuspohja: Huiberts 2024 (PDF-VERIFIOITU): sex-difference vain
-// concurrent training -skenaariossa miehillä alaraajoilla (SMD = -0.43).
-// Petré 2021: advanced/elite suurempi interferenssi same-session-cardiosta.
+// Tutkimuspohja:
+//   - 2B-γ: Helms 2018 Front Physiol 9:247 (PDF-VERIFIOITU): cut-vaje >20%
+//     (~500 kcal/päivä 91 kg atletille) vaatii volyymileikkauksen.
+//   - 2B-α: Huiberts 2024 (PDF-VERIFIOITU): sex-difference vain concurrent
+//     training -skenaariossa miehillä alaraajoilla (SMD = -0.43).
+//   - 2B-α: Petré 2021: advanced/elite suurempi interferenssi same-session-cardiosta.
 //
-// Sääntö:
-//   1. CT + male + advanced+ + lower-body-fokus → "heikko"
-//      (Huiberts-pohja, ei eksplisiittinen lower-body-tarkistus tässä koska
-//      pää-app:in custom-meso jakaa primary-volyymin automaattisesti)
-//   2. q23_volumePref primary signaali:
-//      MEV → heikko, MRV → hyva, MAV → keski
-//   3. q23="auto" + q08="advanced"/"elite" → hyva
-//   4. Default → keski
+// Sääntöjen prioriteetti:
+//   1. UUSI 2B-γ: cut + deficitKcal >= 500 → "heikko" (Helms 2018)
+//   2. CT + male + advanced+ → "heikko" (Huiberts)
+//   3. q23 primary signaali: MEV → heikko, MRV → hyva, MAV → keski
+//   4. q23="auto" + advanced/elite → "hyva"
+//   5. Default → "keski"
 export function pickRecoveryCapacity(answers) {
+  // 1. UUSI 2B-γ: Cut + aggressive vaje → heikko (volyymileikkaus pakollinen).
+  // Helms 2018: vaje >20% maintenance:sta (n. >500 kcal/päivä 91 kg atletille)
+  // vaatii volyymileikkauksen jotta palautuminen säilyy.
+  if (answers.q14_cutting === "yes" && answers.q30_energyBudget && typeof answers.q30_energyBudget === "object") {
+    const deficitKcal = Number(answers.q30_energyBudget.deficitKcal);
+    if (!Number.isNaN(deficitKcal) && deficitKcal >= 500) {
+      return "heikko";
+    }
+  }
+
   const hasCT = answers.q15_aerobicModality !== "none";
   const isMale = answers.q02_sex === "male";
   const isAdvancedPlus = answers.q08_selfLevel === "advanced" || answers.q08_selfLevel === "elite";
   const volumePref = answers.q23_volumePref;
 
-  // Huiberts-modifier kapea ehto:
+  // 2. Huiberts-modifier kapea ehto:
   if (hasCT && isMale && isAdvancedPlus) {
     return "heikko";
   }
 
-  // q23 primary signaali (sex-modifier ei laukea, joten käytetään suoraan)
+  // 3-5. q23 primary signaali → tier-default → keski-fallback
   if (volumePref === "MEV") return "heikko";
   if (volumePref === "MRV") return "hyva";
   if (volumePref === "MAV") return "keski";
-
-  // "auto" + advanced/elite → korkea palautuminen
   if (isAdvancedPlus) return "hyva";
-
   return "keski";
 }
 
@@ -445,6 +453,16 @@ function collectAppliedRules(a, goal, weekCount, recoveryCapacity, sexModifierAp
     status: "HEURISTIC",
     source: "Petré 2021 kvalitatiivinen (advanced suurempi interferenssi → lyhyemmät blokit)",
   });
+  // 2B-γ: cut-aggressive-sääntö kun se aktivoituu
+  const deficitKcal = a.q14_cutting === "yes" && a.q30_energyBudget
+    ? Number(a.q30_energyBudget.deficitKcal) : NaN;
+  if (a.q14_cutting === "yes" && !Number.isNaN(deficitKcal) && deficitKcal >= 500) {
+    rules.push({
+      rule: `Cut-vaihe + aggressive vaje (${deficitKcal} kcal/päivä) → recoveryCapacity="heikko" (volyymileikkaus)`,
+      status: "PDF-VERIFIOITU",
+      source: "Helms 2018 (vaje >20% → volyymileikkaus pakollinen)",
+    });
+  }
   if (sexModifierApplied) {
     rules.push({
       rule: `Concurrent training + miehillä + advanced → recoveryCapacity="heikko"`,
@@ -503,7 +521,7 @@ export function selfTestMapper() {
      RESIDUAL_DAYS.maximal_strength.mean === 30 && RESIDUAL_DAYS.maximal_strength.sd === 5);
   ck("RESIDUAL_DAYS maximal_speed = 5 ± 3 (Issurin)",
      RESIDUAL_DAYS.maximal_speed.mean === 5 && RESIDUAL_DAYS.maximal_speed.sd === 3);
-  ck("MAPPER_VERSION on 2B-alpha-v1.0", MAPPER_VERSION === "2B-alpha-v1.0");
+  ck("MAPPER_VERSION on 2B-gamma-v1.0", MAPPER_VERSION === "2B-gamma-v1.0");
 
   // ─── 2. pickStartingBlock ──────────────────────────────────────────
   ck("pickStartingBlock: peaking → hypertrofia",
@@ -558,6 +576,33 @@ export function selfTestMapper() {
      pickRecoveryCapacity({ q02_sex: "male", q15_aerobicModality: "none", q08_selfLevel: "intermediate", q23_volumePref: "auto" }) === "keski");
   ck("pickRecoveryCapacity: male + CT + intermediate (ei advanced) → ei Huiberts → q23-pohjainen",
      pickRecoveryCapacity({ q02_sex: "male", q15_aerobicModality: "running", q08_selfLevel: "intermediate", q23_volumePref: "MAV" }) === "keski");
+
+  // ─── 2B-γ: Cut-aggressive (Helms 2018) — uudet testit ──────────────
+  ck("pickRecoveryCapacity 2B-γ: q14=yes + deficitKcal=600 → heikko (cut aggressive)",
+     pickRecoveryCapacity({
+       q02_sex: "male", q15_aerobicModality: "none", q08_selfLevel: "elite", q23_volumePref: "MAV",
+       q14_cutting: "yes", q30_energyBudget: { deficitKcal: 600, proteinGPerKg: 2.0 },
+     }) === "heikko");
+  ck("pickRecoveryCapacity 2B-γ: q14=yes + deficitKcal=500 (raja-arvo) → heikko",
+     pickRecoveryCapacity({
+       q02_sex: "male", q15_aerobicModality: "none", q08_selfLevel: "elite", q23_volumePref: "MAV",
+       q14_cutting: "yes", q30_energyBudget: { deficitKcal: 500, proteinGPerKg: 2.0 },
+     }) === "heikko");
+  ck("pickRecoveryCapacity 2B-γ: q14=yes + deficitKcal=300 (mieto) → q23-pohjainen (keski)",
+     pickRecoveryCapacity({
+       q02_sex: "male", q15_aerobicModality: "none", q08_selfLevel: "elite", q23_volumePref: "MAV",
+       q14_cutting: "yes", q30_energyBudget: { deficitKcal: 300, proteinGPerKg: 2.0 },
+     }) === "keski");
+  ck("pickRecoveryCapacity 2B-γ: q14=no + q30 puuttuu → ei muutosta",
+     pickRecoveryCapacity({
+       q02_sex: "male", q15_aerobicModality: "none", q08_selfLevel: "elite", q23_volumePref: "MAV",
+       q14_cutting: "no",
+     }) === "keski");
+  ck("pickRecoveryCapacity 2B-γ: cut-aggressive prioriteetti yli Huiberts (CT+male+elite)",
+     pickRecoveryCapacity({
+       q02_sex: "male", q15_aerobicModality: "running", q08_selfLevel: "elite", q23_volumePref: "MAV",
+       q14_cutting: "yes", q30_energyBudget: { deficitKcal: 600 },
+     }) === "heikko");
 
   // ─── 5. pickPrimaries ──────────────────────────────────────────────
   const streetFull = pickPrimaries({ q09_sport: "streetlifting",
@@ -753,7 +798,7 @@ export function selfTestMapper() {
   ck("Deterministisyys: recoveryCapacity sama", det1.recoveryCapacity === det2.recoveryCapacity);
 
   // ─── 14. _wizardMeta-rakenteen täydellisyys ─────────────────────────
-  ck("_wizardMeta sisältää mapperVersion",        akseliResult._wizardMeta.mapperVersion === MAPPER_VERSION);
+  ck("_wizardMeta sisältää mapperVersion (2B-gamma-v1.0)", akseliResult._wizardMeta.mapperVersion === "2B-gamma-v1.0");
   ck("_wizardMeta sisältää wizardSchemaVersion",  akseliResult._wizardMeta.wizardSchemaVersion === "3.3");
   ck("_wizardMeta sisältää rules-array",          Array.isArray(akseliResult._wizardMeta.rules) && akseliResult._wizardMeta.rules.length > 0);
   ck("_wizardMeta.rules sisältää ACSM-säännön (Nunes + ACSM 2009)",

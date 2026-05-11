@@ -3360,8 +3360,11 @@ function renderRuleSourceLabel(source) {
 
 // Modaalin näyttö — palauttaa Promise<boolean> joka resolvoituu kun käyttäjä
 // painaa "Aktivoi" (true) tai "Peru" / ESC / overlay-klikki (false).
-function showGeneratorPreviewModal(mapped) {
+// 2B-γ: opts voi sisältää { prPreview, cutInfo } — lisävahvistukset käyttäjälle.
+function showGeneratorPreviewModal(mapped, opts = {}) {
   return new Promise((resolve) => {
+    const prPreview = opts.prPreview || null;
+    const cutInfo = opts.cutInfo || null;
     // Aktiivisen meson tunnistus → kaksoisvahvistus
     const activeMeso = state.mesocycle;
     const hasActiveMeso = !!(activeMeso && activeMeso.mesocycleId);
@@ -3425,6 +3428,43 @@ function showGeneratorPreviewModal(mapped) {
         </div>`
       : "";
 
+    // 2B-γ: Cut-banneri jos cut + suuri vaje aktivoi recoveryCapacity-säädön
+    const cutBlock = cutInfo
+      ? `<div style="margin-top:14px;padding:12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.3);border-radius:8px">
+          <div style="font-weight:600;margin-bottom:4px">💧 Cut-tila aktiivinen</div>
+          <div style="font-size:13px;line-height:1.5;color:var(--muted)">
+            Energiavaje: <b style="color:var(--txt)">${cutInfo.deficitKcal} kcal/päivä</b> (${escapeHtml(cutInfo.label)})
+            ${cutInfo.recoveryAdjusted ? '<br>→ Palautumiskapasiteetti säädetty <b style="color:var(--txt)">"heikko"</b> (volyymileikkaus)' : ''}
+          </div>
+        </div>`
+      : "";
+
+    // 2B-γ: PR-migraation yhteenveto (näkyy jos q26 sisältää migroitavia tai
+    // isometric-pidot)
+    let prBlock = "";
+    if (prPreview && (prPreview.willMigrate.length > 0 || prPreview.willSkip.length > 0 ||
+                      prPreview.isometricNotes.length > 0 || prPreview.unmatched.length > 0)) {
+      const migrateList = prPreview.willMigrate.map(p =>
+        `<li><b>${escapeHtml(p.name)}</b>: ${p.weightKg} kg × ${p.reps} → e1RM <b>${p.computedE1RM} kg</b></li>`
+      ).join("");
+      const skipList = prPreview.willSkip.map(p =>
+        `<li>${escapeHtml(p.name)} <span class="muted">(olemassa oleva e1RM ${p.existingE1RM} kg säilyy)</span></li>`
+      ).join("");
+      const isoList = prPreview.isometricNotes.map(p =>
+        `<li>${escapeHtml(p.name)}: ${p.holdSeconds} s${p.addedWeightKg ? ` + ${p.addedWeightKg} kg lisäpaino` : ""} <span class="muted">(ei migroidu)</span></li>`
+      ).join("");
+      const unmatchedList = prPreview.unmatched.map(p =>
+        `<li>${escapeHtml(p.name)} <span class="muted">${p.reason ? `(${escapeHtml(p.reason)})` : "(liike ei löydy)"}</span></li>`
+      ).join("");
+      prBlock = `<div style="margin-top:14px;padding:12px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.3);border-radius:8px">
+        <div style="font-weight:600;margin-bottom:6px">📊 PR-data → e1RM-baselinet</div>
+        ${migrateList ? `<div style="font-size:13px;margin-bottom:6px"><b>${prPreview.willMigrate.length} migroidaan:</b><ul style="margin:4px 0 0;padding-left:18px">${migrateList}</ul></div>` : ""}
+        ${skipList ? `<div style="font-size:13px;margin-bottom:6px"><b>${prPreview.willSkip.length} ohitetaan</b> (olemassa oleva data säilyy):<ul style="margin:4px 0 0;padding-left:18px">${skipList}</ul></div>` : ""}
+        ${isoList ? `<div style="font-size:13px;margin-bottom:6px"><b>${prPreview.isometricNotes.length} pitoa tallennetaan tiedoksi:</b><ul style="margin:4px 0 0;padding-left:18px">${isoList}</ul></div>` : ""}
+        ${unmatchedList ? `<div style="font-size:13px;color:var(--muted)"><b>${prPreview.unmatched.length} ei löytynyt:</b><ul style="margin:4px 0 0;padding-left:18px">${unmatchedList}</ul></div>` : ""}
+      </div>`;
+    }
+
     overlay.innerHTML = `
       <div class="wiz-generator-modal-content">
         <div class="wiz-generator-modal-header">
@@ -3439,10 +3479,12 @@ function showGeneratorPreviewModal(mapped) {
             <div class="wiz-generator-summary-row"><span>Palautumiskapasiteetti:</span><b>${escapeHtml(recoveryLabels[mapped.recoveryCapacity] || mapped.recoveryCapacity)}</b></div>
           </div>
           ${targetDateWarning}
+          ${cutBlock}
           <div style="margin-top:14px">
             <div style="font-weight:600;font-size:13px;margin-bottom:6px">Päämääräliikkeet (${mapped.primaries.length})</div>
             <ul style="margin:0;padding-left:18px">${primariesHtml}</ul>
           </div>
+          ${prBlock}
           <details style="margin-top:14px">
             <summary style="cursor:pointer;font-size:13px;font-weight:600;padding:6px 0">▶ Näytä päätökset (${rules.length})</summary>
             <ul style="margin:8px 0 0 0;padding-left:18px;list-style:none">${rulesHtml}</ul>
@@ -3488,6 +3530,123 @@ function escapeHtml(s) {
   return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// v4.41.0 (Track B Vaihe 2B-γ): q26-PR-list → movementProgress -migraatio.
+//
+// GUARD: EI ylikirjoita olemassa olevia movementProgress.e1RM-arvoja
+// (vain tyhjät rivit täytetään). Isometric_hold-tyyppiset PR:t jäävät
+// wizard-config:iin tiedoksi mutta EIVÄT migroidu pää-app DB:hen — pää-app:n
+// isometric-tuki kuuluu mahdolliseen 2B-δ:hen.
+//
+// Movement-id-mappaus:
+//   - "fb_xxx"-prefiksoidut (fallback-pankki) → etsi pää-app movements-storesta
+//     vastaava liike NIMI-osumalla (case-insensitive)
+//   - UUID-tyylinen (pää-app:n oma id) → suora käyttö
+//   - "fb_custom_other" → ohitetaan (uutta liikettä ei luoda automaattisesti)
+//
+// e1RM-laskenta: Epley-formula `weight × (1 + reps / 30)`. System-tyyppisille
+// (lisäpaino-leuka, dippi, muscle-up) tämä antaa LISÄPAINOLLE e1RM:n —
+// pää-app:n engine.js käsittelee system/external-eron omalla
+// recommend()-logiikallaan.
+
+function _findMatchingMovement(prItem, allMovements) {
+  if (typeof prItem.movementId === "string" && !prItem.movementId.startsWith("fb_")) {
+    return allMovements.find(m => m.movementId === prItem.movementId) || null;
+  }
+  if (prItem.movementId === "fb_custom_other") return null;
+  const nameL = (prItem.movementName || "").toLowerCase().trim();
+  if (!nameL) return null;
+  return allMovements.find(m => (m.name || "").toLowerCase().trim() === nameL) || null;
+}
+
+function _computeE1RMFromPR(item) {
+  if (item.loadType !== "external" && item.loadType !== "system") return null;
+  const w = Number(item.weightKg);
+  const r = Number(item.reps);
+  if (Number.isNaN(w) || Number.isNaN(r) || w < 0 || r < 1) return null;
+  return w * (1 + r / 30);
+}
+
+// Read-only laskenta preview-modaalille: palauttaa yhteenvedon ilman
+// DB-kirjoituksia. handleGenerateProgram:ssa tehdään varsinainen kirjoitus
+// joka tarkistaa olemassa olevat baselinet uudelleen (samalla GUARDilla).
+async function _previewPrMigration(wizardConfig, allMovements) {
+  const prs = wizardConfig.answers?.q26_personalRecords;
+  if (!Array.isArray(prs) || prs.length === 0) {
+    return { willMigrate: [], willSkip: [], isometricNotes: [], unmatched: [] };
+  }
+  const result = { willMigrate: [], willSkip: [], isometricNotes: [], unmatched: [] };
+  for (const pr of prs) {
+    if (pr.loadType === "isometric_hold") {
+      result.isometricNotes.push({
+        name: pr.movementName,
+        holdSeconds: pr.holdSeconds,
+        addedWeightKg: pr.addedWeightKg,
+      });
+      continue;
+    }
+    const movement = _findMatchingMovement(pr, allMovements);
+    if (!movement) {
+      result.unmatched.push({ name: pr.movementName || pr.movementId });
+      continue;
+    }
+    const existing = await getMovementProgress(movement.movementId);
+    if (existing && typeof existing.e1RM === "number" && existing.e1RM > 0) {
+      result.willSkip.push({ name: movement.name, existingE1RM: Math.round(existing.e1RM) });
+      continue;
+    }
+    const e1RM = _computeE1RMFromPR(pr);
+    if (e1RM === null) {
+      result.unmatched.push({ name: movement.name, reason: "paino/reps virheellinen" });
+      continue;
+    }
+    result.willMigrate.push({
+      name: movement.name,
+      weightKg: pr.weightKg,
+      reps: pr.reps,
+      computedE1RM: Math.round(e1RM),
+    });
+  }
+  return result;
+}
+
+async function _migrateWizardPRsToMovementProgress(wizardConfig, allMovements) {
+  const prs = wizardConfig.answers?.q26_personalRecords;
+  const result = { migrated: 0, skipped: 0, isometricCount: 0, unmatched: 0, errors: [] };
+  if (!Array.isArray(prs) || prs.length === 0) return result;
+
+  for (const pr of prs) {
+    if (pr.loadType === "isometric_hold") { result.isometricCount++; continue; }
+    const movement = _findMatchingMovement(pr, allMovements);
+    if (!movement) { result.unmatched++; continue; }
+    // GUARD: tarkista olemassa oleva e1RM uudelleen aktivoinnin hetkellä
+    // (preview voi olla vanhentunut jos käyttäjä on muokannut välissä).
+    const existing = await getMovementProgress(movement.movementId);
+    if (existing && typeof existing.e1RM === "number" && existing.e1RM > 0) {
+      result.skipped++;
+      continue;
+    }
+    const e1RM = _computeE1RMFromPR(pr);
+    if (e1RM === null) {
+      result.errors.push({ movementName: movement.name, reason: "e1RM-laskenta epäonnistui" });
+      continue;
+    }
+    try {
+      await saveMovementProgress({
+        movementId: movement.movementId,
+        e1RM,
+        lastUpdatedISO: new Date().toISOString(),
+        source: "wizard-2b-gamma",
+        sourceWizardId: wizardConfig.wizardId,
+        _originalPR: { ...pr },
+      });
+      result.migrated++;
+    } catch (e) {
+      result.errors.push({ movementName: movement.name, reason: String(e?.message || e) });
+    }
+  }
+  return result;
+}
+
 // Päätoiminto: koko polku validointi → mapping → preview → vahvistus → snapshot
 // → saveMesocycle + setActiveMesocycle + saveDecisionTrace → redirect Dashboard:lle.
 async function handleGenerateProgram() {
@@ -3531,8 +3690,28 @@ async function handleGenerateProgram() {
     return;
   }
 
-  // 4. Näytä preview-modaali — käyttäjä päättää aktivointi/peruu
-  const userConfirm = await showGeneratorPreviewModal(mapped);
+  // 4. 2B-γ: Laske PR-migraation preview + cut-info ENNEN modaalia
+  let prPreview = null;
+  try {
+    prPreview = await _previewPrMigration(wizardConfig, state.movements || []);
+  } catch (e) {
+    console.warn("[LeVe] PR-migraation preview epäonnistui:", e);
+  }
+  let cutInfo = null;
+  if (wizardConfig.answers?.q14_cutting === "yes" && wizardConfig.answers?.q30_energyBudget) {
+    const deficitKcal = Number(wizardConfig.answers.q30_energyBudget.deficitKcal);
+    if (!Number.isNaN(deficitKcal)) {
+      const isAggressive = deficitKcal >= 500;
+      cutInfo = {
+        deficitKcal,
+        label: isAggressive ? "aggressive" : "mieto",
+        recoveryAdjusted: isAggressive,
+      };
+    }
+  }
+
+  // 5. Näytä preview-modaali — käyttäjä päättää aktivointi/peruu
+  const userConfirm = await showGeneratorPreviewModal(mapped, { prPreview, cutInfo });
   if (!userConfirm) return; // peruttu, mitään ei muutettu
 
   // 5. Pre-rebuild snapshot turvanetiksi (jos aktiivinen meso korvataan)
@@ -3582,14 +3761,36 @@ async function handleGenerateProgram() {
     return;
   }
 
-  // 8. Päivitä state + redirect Dashboard:lle + toast
+  // 8. 2B-γ: q26-PR-list → movementProgress -migraatio
+  let prResult = { migrated: 0, skipped: 0, isometricCount: 0, unmatched: 0, errors: [] };
+  try {
+    prResult = await _migrateWizardPRsToMovementProgress(wizardConfig, state.movements || []);
+    if (prResult.migrated > 0) {
+      // Päivitä state.movementProgress jotta dashboard näkee uudet e1RM:t
+      state.movementProgress = await getAllMovementProgress();
+    }
+    await saveDecisionTrace({
+      traceId: uid(),
+      kind: "wizard-pr-migration",
+      createdAtISO: new Date().toISOString(),
+      summary: `PR-migraatio: ${prResult.migrated} migroitu, ${prResult.skipped} ohitettu (cal-data säilyy), ${prResult.isometricCount} isometric tiedoksi`,
+      data: { wizardId: wizardConfig.wizardId, ...prResult },
+    });
+  } catch (e) {
+    console.warn("[LeVe] PR-migraatio epäonnistui (mesocycle aktivoitu silti):", e);
+  }
+
+  // 9. Päivitä state + redirect Dashboard:lle + toast
   state.mesocycle = newMeso;
   state.allMesocycles = await getAllMesocycles();
   state.view = "dashboard";
   try { await computeRecommendation(); } catch { /* recommendation voi epäonnistua jos uusi meso vaatii baselineja */ }
   render();
-  const snapMsg = snapshotName ? "" : " (HUOM: snapshot epäonnistui)";
-  showToast(`Räätälöity ohjelma aktivoitu ✓${snapMsg}`, "ok", 5000);
+  const parts = [];
+  if (prResult.migrated > 0) parts.push(`${prResult.migrated} PR → e1RM`);
+  if (!snapshotName) parts.push("snapshot epäonnistui");
+  const extraMsg = parts.length > 0 ? ` (${parts.join(", ")})` : "";
+  showToast(`Räätälöity ohjelma aktivoitu ✓${extraMsg}`, "ok", 6000);
 }
 
 function renderDashboard() {
