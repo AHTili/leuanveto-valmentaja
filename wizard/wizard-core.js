@@ -1,10 +1,16 @@
-// wizard-core.js — Wizard 3.2 UI core (Track B Vaihe 1B + 1C)
-// UI_VERSION_TAG: Track-B-1C-0  (käytetty wizard.html-konsoliloggissa)
-// LeVe AI v4.37+ — step-navigaatio + progress + state-management + validation
+// wizard-core.js — Wizard 3.3 UI core (Track B Vaihe 1B + 1C + 1D)
+// UI_VERSION_TAG: Track-B-1D-0  (käytetty wizard.html-konsoliloggissa)
+// LeVe AI v4.38.9+ — step-navigaatio + progress + state-management + validation
 //                  + composite/injury-list/string-list -komponentit
 //                  + smart defaults + conditional UI (Vaihe 1C)
+//                  + pr-list/date-komponentit + skipIfMainAppHas
+//                  + 5 uutta smart-default-sääntöä (Vaihe 1D)
 //
-// Käyttää 1A:n moduuleita (wizard-schema.js, wizard-data.js) rajapintoina.
+// Käyttää 1A:n + 1D:n moduuleita rajapintoina:
+//   wizard-schema.js       — kysymys-skeema (3.3, 30 kys, 8 vaihetta)
+//   wizard-data.js         — IDB-tallennus + validointi
+//   wizard-movement-bank.js — pää-app-tilan tunnistus + fallback-pankki (1D)
+//
 // EI muokkaa 1A:n koodia eikä koske pää-sovellukseen (engine.js, data.js,
 // index.html, sw.js). Wizard on erillinen sivu (wizard/wizard.html) jonka
 // pää-UI-integraatio tehdään Vaiheessa 2.
@@ -54,6 +60,13 @@ import {
   setActiveWizardConfig,
   validateWizardConfig,
 } from "./wizard-data.js";
+// 1D: liikepankki + pää-app-tilan tunnistus q26 + q29 ohjaukseen
+import {
+  readMovementBank,
+  shouldSkipForMainApp,
+  sortMovementsForSport,
+  FALLBACK_MOVEMENT_BANK,
+} from "./wizard-movement-bank.js";
 
 // ── State store (Proxy-pohjainen reactive) ────────────────────────
 
@@ -178,6 +191,79 @@ export const SMART_DEFAULT_RULES = {
     if (typeof ar !== "number") return undefined;
     return ar >= 3 ? "vara_calibrated" : "vara_loose";
   },
+
+  // ─── 1D:n 5 uutta sääntöä (spec §5) ──────────────────────────────
+  // REASONING per sääntö:
+  //
+  // q17_equipment — laji-spesifinen minimi-kalusto. Streetlifting vaatii
+  // tankoräkkin + leukatangon + dippitelineen (3 perusasiaa). Voimanostaja
+  // pärjää usein pelkällä räkillä jos teknisesti vahva. Smart-default
+  // tarjoaa lähtökohdan, käyttäjä lisää muut itse.
+  q17_equipment(answers) {
+    const sport = answers.q09_sport;
+    if (sport === "streetlifting") return ["barbell_rack", "pullup_bar", "dip_station"];
+    if (sport === "powerlifting")  return ["barbell_rack"];
+    return undefined;
+  },
+
+  // q21_splitPreference — laji + frekvenssi ennustaa yleisimmän splittin.
+  // Streetlifting 4+ päivää → upper/lower (klassinen lift-split).
+  // Powerlifting → fullbody 3× (klassinen Starting Strength / SBD).
+  // Muut → odota q24 ennen päätöstä.
+  q21_splitPreference(answers) {
+    const sport = answers.q09_sport;
+    const freq = answers.q24_frequency;
+    const daysPerWeek = (freq && typeof freq === "object") ? Number(freq.daysPerWeek) : undefined;
+    if (sport === "streetlifting" && typeof daysPerWeek === "number" && daysPerWeek >= 4) {
+      return "upper_lower";
+    }
+    if (sport === "powerlifting") return "fullbody";
+    return undefined;
+  },
+
+  // q28_targetType — peaking-tyypin ennuste päätavoitteesta. q12-arvo
+  // "powerlifting" → kilpailu. "streetlifting_with_explosive_components"
+  // → peaking_block (atletti ei välttämättä kisaa mutta peakkaa
+  // räjähtävälle treenikaudelle). max_1RM-tavoite → max_test.
+  q28_targetType(answers) {
+    const goal = answers.q12_primaryGoal;
+    if (goal === "powerlifting") return "competition";
+    if (goal === "streetlifting_with_explosive_components") return "peaking_block";
+    if (goal === "max_1RM") return "max_test";
+    return undefined;
+  },
+
+  // q29_recentBlock — kokemus + laji ennustaa aiemman blokin.
+  // Streetlifting/powerlifting + ≥5 v kokemus → intensifikaatio
+  // (tyypillinen pre-peaking-vaihe). Beginner → off_program (aloittelija
+  // ei ole strukturoidussa ohjelmassa). Muut → ei oletusta.
+  q29_recentBlock(answers) {
+    const sport = answers.q09_sport;
+    const lvl = answers.q08_selfLevel;
+    const yrs = answers.q06_yearsTraining;
+    if (lvl === "beginner") return "off_program";
+    if ((sport === "streetlifting" || sport === "powerlifting") &&
+        typeof yrs === "number" && yrs >= 5) {
+      return "intensification";
+    }
+    return undefined;
+  },
+
+  // q30_energyBudget — composite-fieldit. Smart-default vain jos q14=yes
+  // (cut-vaihe), muutoin koko kysymys on piilossa eikä defaulttia tarvita.
+  // Proteinin osalta: Helms 2014 (JISSN 11:20) suositus cut-vaiheessa
+  // 2.0–3.1 g/kg → alarajalla 2.0. Muut kentät jätetään käyttäjälle
+  // (deficitKcal ja weeklyWeightLossKg vaihtelevat liikaa profiilista).
+  q30_energyBudget(answers) {
+    const cut = answers.q14_cutting;
+    if (cut !== "yes") return undefined;
+    // Olemassa oleva arvo objekti → täydennetään vain puuttuvat kentät
+    const cur = (answers.q30_energyBudget && typeof answers.q30_energyBudget === "object")
+      ? answers.q30_energyBudget : {};
+    // Jos proteinGPerKg jo asetettu, ei smart-defaultata
+    if (cur.proteinGPerKg !== undefined) return undefined;
+    return { ...cur, proteinGPerKg: 2.0 };
+  },
 };
 
 // applySmartDefaults: käy WIZARD_QUESTIONS läpi, asettaa tyhjiin kohtiin
@@ -194,7 +280,10 @@ export const SMART_DEFAULT_RULES = {
 // WizardController syöttää tämän Setin eteenpäin niin että UI-puolella
 // renderöityjen kysymysten käyttäjä-muokkaukset (renderStep:n onChange)
 // poistavat qid:n setistä → suojaa käyttäjän valintaa korvautumiselta.
-export function applySmartDefaults(stateStore, prevApplied) {
+// 1D laajentaa applySmartDefaults:n mainAppState-parametrilla. Kysymyksiä
+// jotka skipataan (q26+q29 olemassa olevalle käyttäjälle) ei smart-defaultata
+// — sääntö arvioi vain näkyvät kysymykset.
+export function applySmartDefaults(stateStore, prevApplied, mainAppState) {
   const state = stateStore.state;
   const answersBefore = (state.config && state.config.answers) || {};
   const updated = { ...answersBefore };
@@ -202,6 +291,12 @@ export function applySmartDefaults(stateStore, prevApplied) {
   const prev = prevApplied instanceof Set ? prevApplied : new Set();
 
   for (const q of WIZARD_QUESTIONS) {
+    // 1D: skipIfMainAppHas-kysymyksiä ei smart-defaultata. Jos pää-app:in
+    // data täyttää ehdon (esim. movementProgress >=3) → kysymys piilossa →
+    // smart-defaultia ei aseteta jotta validointi ei laukea.
+    if (mainAppState && q.skipIfMainAppHas && shouldSkipForMainApp(q, mainAppState)) {
+      continue;
+    }
     const hasValue = updated[q.id] !== undefined;
     const isPrevSmartDefault = prev.has(q.id);
     // Käyttäjän asettama arvo = on arvo JA EI ollut aiemmin smart-default
@@ -257,6 +352,10 @@ export function applySmartDefaults(stateStore, prevApplied) {
 // tarkistus alle (evaluateConditional + validateCurrentStep) jotta UI
 // pakottaa täyttämään aerobisen volyymin kun moodi != "none".
 
+// 1D laajentaa 1C:n requiredIf:n isSet-ehdolla. isSet:true tarkoittaa
+// "refVal on määritelty" (ei undefined/null/tyhjä string). Tämä on selkeämpi
+// kuin spec:n alkuperäinen `notEquals: undefined` joka on JSON-undefined-
+// epävakaa.
 export function evaluateConditional(q, answers) {
   if (!q.requiredIf) {
     return { visible: true, required: q.required === true };
@@ -267,6 +366,12 @@ export function evaluateConditional(q, answers) {
     conditionMet = refVal !== q.requiredIf.notEquals;
   } else if (q.requiredIf.equals !== undefined) {
     conditionMet = refVal === q.requiredIf.equals;
+  } else if (q.requiredIf.isSet === true) {
+    // 1D: vaadittu kun refVal on määritelty
+    conditionMet = !isEmptyValue(refVal);
+  } else if (q.requiredIf.isSet === false) {
+    // 1D: vaadittu kun refVal on tyhjä (harvinainen, mutta tuetaan)
+    conditionMet = isEmptyValue(refVal);
   } else {
     conditionMet = false;
   }
@@ -276,8 +381,31 @@ export function evaluateConditional(q, answers) {
   };
 }
 
-export function evaluateVisible(q, answers) {
-  return evaluateConditional(q, answers).visible;
+// Tyhjyyden tarkistus: undefined, null, "", [], {} — sama logiikka kuin
+// wizard-data.js:n isEmpty(). Duplikointi tarkoituksellinen jotta core ei
+// vaadi data-importtia tähän tarkoitukseen.
+function isEmptyValue(v) {
+  if (v === undefined || v === null || v === "") return true;
+  if (Array.isArray(v) && v.length === 0) return true;
+  if (typeof v === "object" && Object.keys(v).length === 0) return true;
+  return false;
+}
+
+// 1D laajentaa 1C:n evaluateVisible:n kolmannella parametrilla mainAppState.
+// Jos kysymyksellä on skipIfMainAppHas-ehto JA pää-app-data täyttää sen,
+// kysymys piilotetaan (q26 jos cal-data tehty, q29 jos meso aktiivinen).
+//
+// Backward-compat: 1C:n kutsut (kaksi parametria) toimivat edelleen — kolmas
+// parametri on optionaali ja defaultaa null:ksi.
+export function evaluateVisible(q, answers, mainAppState) {
+  // 1) requiredIf-pohjainen näkyvyys (1C:n logiikka)
+  const cond = evaluateConditional(q, answers);
+  if (!cond.visible) return false;
+  // 2) skipIfMainAppHas (1D:n logiikka)
+  if (q.skipIfMainAppHas && mainAppState && shouldSkipForMainApp(q, mainAppState)) {
+    return false;
+  }
+  return true;
 }
 
 // ── Composite-sub-field-validointi (Vaihe 1C) ─────────────────────
@@ -297,28 +425,101 @@ function validateCompositeField(field, value) {
   return null;
 }
 
+// 1D: itse PR-list-itemin validointi UI-tasolla (rivin sub-virhe). Kutsutaan
+// renderQuestionPrList:n alla. Validointi-logiikka on identinen wizard-data.js:n
+// validatePrListItem-funktion kanssa — tämä on UI-tason peilaus rivi-tason
+// virhe-bannerille. Pidetään yksinkertaisena: palautetaan virhe-stringi tai null.
+function validatePrListItemUI(item) {
+  if (!item || typeof item !== "object") return "Rivi virheellinen";
+  const lt = item.loadType;
+  if (!["external", "system", "isometric_hold"].includes(lt)) return "Valitse kuorma-tyyppi";
+  if (typeof item.movementId !== "string" || item.movementId.length === 0) return "Valitse liike";
+  if (lt === "external" || lt === "system") {
+    if (item.weightKg === undefined || item.weightKg === null || item.weightKg === "") return "Anna paino (kg)";
+    if (item.reps === undefined || item.reps === null || item.reps === "") return "Anna toistot";
+    const w = Number(item.weightKg), r = Number(item.reps);
+    if (Number.isNaN(w) || w < 0 || w > 500) return "Paino 0–500 kg";
+    if (Number.isNaN(r) || r < 1 || r > 30)  return "Toistot 1–30";
+  } else if (lt === "isometric_hold") {
+    if (item.holdSeconds === undefined || item.holdSeconds === null || item.holdSeconds === "") return "Anna pidon kesto (s)";
+    const s = Number(item.holdSeconds);
+    if (Number.isNaN(s) || s < 1 || s > 180) return "Pidon kesto 1–180 s";
+    if (item.addedWeightKg !== undefined && item.addedWeightKg !== "") {
+      const a = Number(item.addedWeightKg);
+      if (Number.isNaN(a) || a < 0 || a > 100) return "Lisäpaino 0–100 kg";
+    }
+  }
+  return null;
+}
+
+// 1D: date-validointi UI-tasolla. min/max-rajat lasketaan minDaysFromNow /
+// maxDaysFromNow -kentistä, jotka tulevat schema-tason range-objektista.
+function validateDateUI(v, range) {
+  if (v === undefined || v === null || v === "") return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return "Päivämäärän muoto: YYYY-MM-DD";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "Virheellinen päivämäärä";
+  if (range) {
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const diffDays = Math.floor((d.getTime() - now.getTime()) / 86400000);
+    if (range.minDaysFromNow !== undefined && diffDays < range.minDaysFromNow) {
+      return `Vähintään ${range.minDaysFromNow} päivän päässä`;
+    }
+    if (range.maxDaysFromNow !== undefined && diffDays > range.maxDaysFromNow) {
+      return `Enintään ${range.maxDaysFromNow} päivän päässä`;
+    }
+  }
+  return null;
+}
+
+// Laskee ISO-päivän diffDaysFromNow-rajat HTML5 date-inputin min/max-attribuuteille.
+// Palauttaa { minISO, maxISO } tai { minISO: null, maxISO: null }.
+function computeDateInputBounds(range) {
+  if (!range) return { minISO: null, maxISO: null };
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const fmt = (d) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  let minISO = null, maxISO = null;
+  if (range.minDaysFromNow !== undefined) {
+    const d = new Date(now.getTime() + range.minDaysFromNow * 86400000);
+    minISO = fmt(d);
+  }
+  if (range.maxDaysFromNow !== undefined) {
+    const d = new Date(now.getTime() + range.maxDaysFromNow * 86400000);
+    maxISO = fmt(d);
+  }
+  return { minISO, maxISO };
+}
+
 // ── Validation per step ───────────────────────────────────────────
 
-export function validateCurrentStep(state) {
+// 1D: validateCurrentStep saa optionaalin mainAppState-parametrin.
+// Backward-compat: ilman parametria toimii kuten 1C (skipIfMainAppHas-
+// kysymyksiä ei piiloteta). WizardController välittää mainAppState:n.
+export function validateCurrentStep(state, mainAppState) {
   const stage = WIZARD_STAGES[state.currentStepIndex];
   const stageQuestions = getQuestionsForStage(stage.id);
   const stageQids = new Set(stageQuestions.map(q => q.id));
   const answers = (state.config && state.config.answers) || {};
 
-  // 1A:n base-validointi (required, range, radio-options)
+  // 1A:n base-validointi (required, range, radio-options, pr-list, date — 1D laajennukset)
   // Suodatetaan stage-ID:n perusteella + filtteröidään pois piilotettujen
   // kysymysten virheet (ei pitäisi tulla, mutta varmuuden vuoksi).
   const baseErrors = validateWizardConfig(state.config).errors.filter(e => {
     if (!stageQids.has(e.questionId)) return false;
     const q = stageQuestions.find(qq => qq.id === e.questionId);
-    if (q && !evaluateVisible(q, answers)) return false;
+    if (q && !evaluateVisible(q, answers, mainAppState)) return false;
     return true;
   });
 
   const extraErrors = [];
 
   for (const q of stageQuestions) {
-    if (!evaluateVisible(q, answers)) continue;
+    if (!evaluateVisible(q, answers, mainAppState)) continue;
     const v = answers[q.id];
     const cond = evaluateConditional(q, answers);
 
@@ -380,16 +581,17 @@ export function validateCurrentStep(state) {
   return { isValid: errors.length === 0, errors, stageQuestions };
 }
 
-export function validateAllSteps(state) {
+export function validateAllSteps(state, mainAppState) {
   // Käymme jokaisen vaiheen läpi 1C:n laajennettujen sääntöjen kanssa.
   // 1A:n validateWizardConfig pelkkänä ei riitä — emme havaitsisi
   // composite-sub-fieldien rangevirheitä eikä requiredIf-vaateita
-  // ei-required-kysymyksille.
+  // ei-required-kysymyksille. 1D: mainAppState piilottaa skipIfMainAppHas-
+  // kysymykset (q26, q29) jos pää-app-data täyttää ehdon.
   const allErrors = [];
   const original = state.currentStepIndex;
   for (let i = 0; i < WIZARD_STAGES.length; i++) {
     state.currentStepIndex = i;
-    const v = validateCurrentStep(state);
+    const v = validateCurrentStep(state, mainAppState);
     allErrors.push(...v.errors);
   }
   state.currentStepIndex = original;
@@ -814,6 +1016,411 @@ function renderQuestionStringList(q, value, onChange) {
   return wrap;
 }
 
+// ── Komponentti: date (q27) ───────────────────────────────────────
+// HTML5 `<input type="date">`. min/max-rajat lasketaan range:n
+// minDaysFromNow / maxDaysFromNow -kentistä. Tyhjä on validi (q27 ei pakollinen).
+function renderQuestionDate(q, value, onChange) {
+  const input = document.createElement("input");
+  input.type = "date";
+  input.className = "wiz-input--date";
+  input.id = `wiz-input-${q.id}`;
+  input.name = q.id;
+  const { minISO, maxISO } = computeDateInputBounds(q.range);
+  if (minISO) input.min = minISO;
+  if (maxISO) input.max = maxISO;
+  if (typeof value === "string" && value.length > 0) input.value = value;
+
+  // Virhe-bannerille oma slot — näytetään mobiilissa input:n alapuolella
+  const wrap = document.createElement("div");
+  wrap.className = "wiz-date-wrap";
+  wrap.appendChild(input);
+  const errSlot = document.createElement("div");
+  errSlot.className = "wiz-date-error";
+  errSlot.style.display = "none";
+  wrap.appendChild(errSlot);
+
+  const update = () => {
+    const raw = input.value;
+    const err = validateDateUI(raw, q.range);
+    if (err) {
+      errSlot.textContent = err;
+      errSlot.style.display = "block";
+    } else {
+      errSlot.textContent = "";
+      errSlot.style.display = "none";
+    }
+    // Tyhjä string → undefined (jotta isSet-ehto toimii oikein q28:lle)
+    onChange(raw === "" ? undefined : raw);
+  };
+  input.addEventListener("change", update);
+  input.addEventListener("input", update);
+
+  // Initial validation näkyy jos arvo on jo ladattu virheellisenä
+  const initErr = validateDateUI(input.value, q.range);
+  if (initErr) {
+    errSlot.textContent = initErr;
+    errSlot.style.display = "block";
+  }
+
+  return wrap;
+}
+
+// ── Komponentti: pr-list (q26) ────────────────────────────────────
+//
+// Dynaaminen lista 0–5 PR-riviä. Per rivi:
+//   - Liike-pudotusvalikko (sortMovementsForSport q09:n perusteella)
+//   - loadType-radio: external | system | isometric_hold
+//   - Conditional rendering loadType:n sisällä:
+//       external/system → weightKg + reps näkyvät, isometric piilossa
+//       isometric_hold  → holdSeconds + addedWeightKg näkyvät, weight/reps piilossa
+//   - dateISO (valinnainen)
+//   - "Poista"-painike
+// + "Lisää PR" -painike (disabled kun rivit >= maxItems)
+//
+// Suunnitteluvalinnat:
+// 1) loadType:n vaihto EI pyyhi aiempia kenttiä (esim. weightKg säilyy
+//    vaikka loadType vaihtuu external→isometric_hold). Sama pattern kuin
+//    1C:n q15→q16 (vastauksen säilyminen kun se on piilossa). Käyttäjä
+//    voi vaihtaa mieltä molempien suuntaan menettämättä dataa.
+// 2) Movement bank ladataan opts.movementBank:sta (controller välittää).
+//    Jos ladataan myöhemmin (asynkroni), näytetään väliaikainen "Ladataan…".
+// 3) Liike-valikko on `<select>` jossa `<optgroup>` per kategoria. HTML5-
+//    standardi mobiili-yhteensopiva (Android/iOS näyttää natiivin valikon).
+//    Tämä on parempi UX kuin custom-pudotusvalikko isolle listalle
+//    (133+ pää-app-liikettä).
+// 4) Custom "Muu liike" -valinta avaa text-inputin movementName:lle.
+function renderQuestionPrList(q, value, onChange, opts = {}) {
+  const wrap = document.createElement("div");
+  wrap.className = "wiz-pr-list";
+
+  let items = Array.isArray(value)
+    ? value.map(it => (it && typeof it === "object") ? { ...it } : null).filter(Boolean)
+    : [];
+  const maxItems = (q.uiHints && q.uiHints.maxItems) || 5;
+
+  // Hae liikepankki opts.movementBank:sta (controller välittää). Jos puuttuu,
+  // fallback suoraan FALLBACK_MOVEMENT_BANK:iin synkronisesti.
+  const movementBank = (opts.movementBank && Array.isArray(opts.movementBank.movements))
+    ? opts.movementBank
+    : { source: "fallback", movements: FALLBACK_MOVEMENT_BANK };
+  const sportAnswer = (opts.answers && opts.answers.q09_sport) || null;
+  const sortedMovements = sortMovementsForSport(movementBank.movements, sportAnswer);
+
+  const emit = () => {
+    onChange(items.map(it => ({ ...it })));
+  };
+
+  const renderRows = () => {
+    wrap.innerHTML = "";
+
+    // Tietoteksti (ei tutkijanimiä — selkeää suomea)
+    if (movementBank.source === "main-app") {
+      const info = document.createElement("div");
+      info.className = "wiz-pr-source-info";
+      info.textContent = `Liikepankissa ${movementBank.movements.length} liikettä (sovelluksesta).`;
+      wrap.appendChild(info);
+    } else {
+      const info = document.createElement("div");
+      info.className = "wiz-pr-source-info wiz-pr-source-fallback";
+      info.textContent = `Liikepankissa ${movementBank.movements.length} perusliikettä. ` +
+                         `Avaa sovelluksen liikevalikko myöhemmin saadaksesi laajemman listan.`;
+      wrap.appendChild(info);
+    }
+
+    if (items.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "wiz-list-empty";
+      empty.textContent = "Ei PR:ää lisätty. Klikkaa alla 'Lisää PR' jatkaaksesi.";
+      wrap.appendChild(empty);
+    }
+
+    items.forEach((item, idx) => {
+      const row = document.createElement("div");
+      row.className = "wiz-list-row wiz-pr-row";
+      row.dataset.rowIndex = String(idx);
+
+      // Otsikko + poisto
+      const head = document.createElement("div");
+      head.className = "wiz-list-row-head";
+      const title = document.createElement("strong");
+      title.textContent = `PR #${idx + 1}`;
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "wiz-remove-btn";
+      removeBtn.textContent = "Poista";
+      removeBtn.addEventListener("click", () => {
+        items.splice(idx, 1);
+        emit();
+        renderRows();
+      });
+      head.appendChild(title);
+      head.appendChild(removeBtn);
+      row.appendChild(head);
+
+      // Liike-pudotusvalikko (kategoria-ryhmittely)
+      const movLabel = document.createElement("label");
+      movLabel.className = "wiz-list-field-label";
+      movLabel.textContent = "Liike";
+      row.appendChild(movLabel);
+
+      const movSelect = document.createElement("select");
+      movSelect.className = "wiz-movement-picker";
+      const placeholderOpt = document.createElement("option");
+      placeholderOpt.value = "";
+      placeholderOpt.textContent = "— Valitse liike —";
+      placeholderOpt.disabled = true;
+      placeholderOpt.selected = !item.movementId;
+      movSelect.appendChild(placeholderOpt);
+
+      // Ryhmittele kategoria-järjestyksessä
+      const byCategory = new Map();
+      for (const m of sortedMovements) {
+        if (!byCategory.has(m.category)) byCategory.set(m.category, []);
+        byCategory.get(m.category).push(m);
+      }
+      // Kilpailuliikkeet erikseen kärjessä (priority 0/1 sortMovementsForSport:sta)
+      // — jos custom_other on omassa kategoriassa "muu", se on viimeisenä
+      for (const [cat, movs] of byCategory) {
+        const og = document.createElement("optgroup");
+        og.label = formatCategoryLabel(cat);
+        for (const m of movs) {
+          const opt = document.createElement("option");
+          opt.value = m.id;
+          opt.textContent = m.name + (m.isCompetitionLift ? " ★" : "");
+          opt.dataset.loadType = m.loadType;
+          opt.dataset.movementName = m.name;
+          if (item.movementId === m.id) opt.selected = true;
+          og.appendChild(opt);
+        }
+        movSelect.appendChild(og);
+      }
+      movSelect.addEventListener("change", () => {
+        const movId = movSelect.value;
+        const selectedOpt = movSelect.options[movSelect.selectedIndex];
+        const defLoadType = selectedOpt ? selectedOpt.dataset.loadType : "external";
+        item.movementId = movId;
+        // Aseta movementName automaattisesti (paitsi custom-fallback jossa
+        // käyttäjä syöttää nimen text-inputilla)
+        if (movId === "fb_custom_other") {
+          item.movementName = item.movementName || "";
+        } else if (selectedOpt && selectedOpt.dataset.movementName) {
+          item.movementName = selectedOpt.dataset.movementName;
+        }
+        // Esivalitse loadType liikkeen mukaan VAIN jos käyttäjä ei ole
+        // vielä muuttanut sitä manuaalisesti. Jos loadType on jo asetettu,
+        // pidetään se (käyttäjä on saattanut vaihtaa esim. lisäpaino-leuasta
+        // isometric-pidoksi).
+        if (!item.loadType) item.loadType = defLoadType;
+        emit();
+        renderRows(); // koko rivin rerender koska loadType voi muuttua
+      });
+      row.appendChild(movSelect);
+
+      // Custom-liikkeen nimen syöttö (jos fb_custom_other valittu)
+      if (item.movementId === "fb_custom_other") {
+        const nameLabel = document.createElement("label");
+        nameLabel.className = "wiz-list-field-label";
+        nameLabel.textContent = "Liikkeen nimi (kirjoita itse)";
+        const nameInput = document.createElement("input");
+        nameInput.type = "text";
+        nameInput.className = "wiz-input--text";
+        nameInput.value = item.movementName || "";
+        nameInput.placeholder = "esim. Yksikätinen punnerrus";
+        nameInput.addEventListener("input", () => {
+          item.movementName = nameInput.value;
+          emit();
+        });
+        row.appendChild(nameLabel);
+        row.appendChild(nameInput);
+      }
+
+      // Kuorma-tyyppi-radio
+      const ltLabel = document.createElement("div");
+      ltLabel.className = "wiz-list-field-label";
+      ltLabel.textContent = "Kuorma-tyyppi";
+      row.appendChild(ltLabel);
+
+      const ltGroup = document.createElement("div");
+      ltGroup.className = "wiz-radio-group wiz-load-type-radio";
+      const ltOpts = [
+        { value: "external",       labelFi: "Ulkoinen kuorma (paino)" },
+        { value: "system",         labelFi: "Systeemikuorma (kehonpaino + lisäpaino)" },
+        { value: "isometric_hold", labelFi: "Staattinen pito (sekunteina)" },
+      ];
+      ltOpts.forEach(opt => {
+        const lbl = document.createElement("label");
+        lbl.className = "wiz-radio-option" + (item.loadType === opt.value ? " is-selected" : "");
+        lbl.dataset.optionValue = opt.value;
+        const radio = document.createElement("input");
+        radio.type = "radio";
+        radio.name = `wiz-pr-loadtype-${idx}`;
+        radio.value = opt.value;
+        radio.checked = item.loadType === opt.value;
+        radio.addEventListener("change", () => {
+          if (!radio.checked) return;
+          item.loadType = opt.value;
+          emit();
+          renderRows(); // rerender koska conditional fields muuttuu
+        });
+        const text = document.createElement("span");
+        text.className = "wiz-radio-label";
+        text.textContent = opt.labelFi;
+        lbl.appendChild(radio);
+        lbl.appendChild(text);
+        ltGroup.appendChild(lbl);
+      });
+      row.appendChild(ltGroup);
+
+      // Conditional fields loadType:n mukaan
+      const lt = item.loadType;
+      if (lt === "external" || lt === "system") {
+        // Paino + toistot
+        const weightLabel = document.createElement("label");
+        weightLabel.className = "wiz-list-field-label";
+        weightLabel.textContent = "Paino (kg)";
+        const weightInput = document.createElement("input");
+        weightInput.type = "number";
+        weightInput.className = "wiz-input--number";
+        weightInput.min = "0"; weightInput.max = "500";
+        weightInput.step = "0.5";
+        weightInput.inputMode = "decimal";
+        if (item.weightKg !== undefined && item.weightKg !== null && item.weightKg !== "") {
+          weightInput.value = String(item.weightKg);
+        }
+        weightInput.addEventListener("input", () => {
+          item.weightKg = weightInput.value === "" ? undefined : Number(weightInput.value);
+          emit();
+        });
+        row.appendChild(weightLabel);
+        row.appendChild(weightInput);
+
+        const repsLabel = document.createElement("label");
+        repsLabel.className = "wiz-list-field-label";
+        repsLabel.textContent = "Toistot";
+        const repsInput = document.createElement("input");
+        repsInput.type = "number";
+        repsInput.className = "wiz-input--number";
+        repsInput.min = "1"; repsInput.max = "30";
+        repsInput.inputMode = "numeric";
+        if (item.reps !== undefined && item.reps !== null && item.reps !== "") {
+          repsInput.value = String(item.reps);
+        }
+        repsInput.addEventListener("input", () => {
+          item.reps = repsInput.value === "" ? undefined : Number(repsInput.value);
+          emit();
+        });
+        row.appendChild(repsLabel);
+        row.appendChild(repsInput);
+      } else if (lt === "isometric_hold") {
+        // Pidon kesto + valinnainen lisäpaino
+        const holdLabel = document.createElement("label");
+        holdLabel.className = "wiz-list-field-label";
+        holdLabel.textContent = "Pidon kesto (s)";
+        const holdInput = document.createElement("input");
+        holdInput.type = "number";
+        holdInput.className = "wiz-input--number";
+        holdInput.min = "1"; holdInput.max = "180";
+        holdInput.inputMode = "numeric";
+        if (item.holdSeconds !== undefined && item.holdSeconds !== null && item.holdSeconds !== "") {
+          holdInput.value = String(item.holdSeconds);
+        }
+        holdInput.addEventListener("input", () => {
+          item.holdSeconds = holdInput.value === "" ? undefined : Number(holdInput.value);
+          emit();
+        });
+        row.appendChild(holdLabel);
+        row.appendChild(holdInput);
+
+        const addLabel = document.createElement("label");
+        addLabel.className = "wiz-list-field-label";
+        addLabel.textContent = "Lisäpaino (kg, valinnainen)";
+        const addInput = document.createElement("input");
+        addInput.type = "number";
+        addInput.className = "wiz-input--number";
+        addInput.min = "0"; addInput.max = "100";
+        addInput.step = "0.5";
+        addInput.inputMode = "decimal";
+        if (item.addedWeightKg !== undefined && item.addedWeightKg !== null && item.addedWeightKg !== "") {
+          addInput.value = String(item.addedWeightKg);
+        }
+        addInput.addEventListener("input", () => {
+          item.addedWeightKg = addInput.value === "" ? undefined : Number(addInput.value);
+          emit();
+        });
+        row.appendChild(addLabel);
+        row.appendChild(addInput);
+      }
+
+      // Päivämäärä (valinnainen kaikille tyypeille)
+      const dateLabel = document.createElement("label");
+      dateLabel.className = "wiz-list-field-label";
+      dateLabel.textContent = "Päivä (valinnainen)";
+      const dateInput = document.createElement("input");
+      dateInput.type = "date";
+      dateInput.className = "wiz-input--date";
+      if (typeof item.dateISO === "string") dateInput.value = item.dateISO;
+      dateInput.addEventListener("change", () => {
+        item.dateISO = dateInput.value === "" ? undefined : dateInput.value;
+        emit();
+      });
+      row.appendChild(dateLabel);
+      row.appendChild(dateInput);
+
+      // Rivi-tason virhe
+      const errSlot = document.createElement("div");
+      errSlot.className = "wiz-pr-row-error";
+      const rowErr = validatePrListItemUI(item);
+      if (rowErr) {
+        errSlot.textContent = rowErr;
+        errSlot.style.display = "block";
+      } else {
+        errSlot.style.display = "none";
+      }
+      row.appendChild(errSlot);
+
+      wrap.appendChild(row);
+    });
+
+    // Lisää-painike
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "wiz-add-btn";
+    addBtn.textContent = "+ Lisää PR";
+    addBtn.disabled = items.length >= maxItems;
+    if (addBtn.disabled) addBtn.title = `Max ${maxItems} PR:ää`;
+    addBtn.addEventListener("click", () => {
+      // Uusi rivi tyhjillä kentillä — käyttäjä valitsee liikkeen, joka
+      // esivalitsee loadType:n (movSelect.change-eventti)
+      items.push({});
+      emit();
+      renderRows();
+    });
+    wrap.appendChild(addBtn);
+  };
+
+  renderRows();
+  return wrap;
+}
+
+// Käännetään kategoria-id käyttäjälle ystävälliseksi otsikoksi.
+// Pää-app:in data.js:n CATEGORIES (rivi ~43) -listan mukaiset suomenkieliset
+// merkkijonot säilyvät — vain ensimmäinen kirjain isolla otsikkoa varten.
+function formatCategoryLabel(cat) {
+  if (!cat) return "Muu";
+  const map = {
+    "vertikaaliveto":     "Vertikaaliveto",
+    "horisontaaliveto":   "Horisontaaliveto",
+    "hauisfleksio":       "Hauiskääntö",
+    "vertikaalityöntö":   "Vertikaalityöntö",
+    "horisontaalityöntö": "Horisontaalityöntö",
+    "ojentajaekstensio":  "Ojentajaliikkeet",
+    "alaraaja":           "Alaraaja",
+    "lonkkahingaus":      "Lonkkahingaus / takaketju",
+    "muu":                "Muut",
+  };
+  return map[cat] || (cat.charAt(0).toUpperCase() + cat.slice(1));
+}
+
 export function renderQuestion(q, value, onChange, opts = {}) {
   const wrap = document.createElement("div");
   wrap.className = "wiz-question";
@@ -866,6 +1473,9 @@ export function renderQuestion(q, value, onChange, opts = {}) {
     case "composite":   inputEl = renderQuestionComposite(q, value, onChange); break;
     case "injury-list": inputEl = renderQuestionInjuryList(q, value, onChange); break;
     case "string-list": inputEl = renderQuestionStringList(q, value, onChange); break;
+    // 1D: uudet tyypit
+    case "date":        inputEl = renderQuestionDate(q, value, onChange); break;
+    case "pr-list":     inputEl = renderQuestionPrList(q, value, onChange, opts); break;
     default: {
       inputEl = document.createElement("div");
       inputEl.className = "wiz-unknown-type";
@@ -891,9 +1501,16 @@ export function renderStep(stateStore, container, opts = {}) {
   if (!stage) return;
   const answers = (state.config && state.config.answers) || {};
   const smartDefaulted = opts.smartDefaulted instanceof Set ? opts.smartDefaulted : new Set();
+  const mainAppState = opts.mainAppState || null;
+  const movementBank = opts.movementBank || null;
 
   const step = document.createElement("section");
   step.className = "wiz-step";
+
+  // 1D: laske efektiiviset näkyvät vaiheet (poislukien skipattu performance).
+  // Jos q26 on skipattu (movementProgress >=3), performance-stage on tyhjä ja
+  // näkyy progress-barissa "ohitettuna" — mutta otsikossa näytämme silti
+  // alkuperäisen order:n (1..8) jotta vaiheiden sijainti pysyy ennustettavana.
   step.setAttribute("aria-label", `Vaihe ${stage.order} / ${WIZARD_STAGES.length}: ${stage.titleFi}`);
 
   const h2 = document.createElement("h2");
@@ -904,7 +1521,26 @@ export function renderStep(stateStore, container, opts = {}) {
   // Conditional UI: suodata pois piilotetut kysymykset. Vastauksia EI poisteta —
   // ne säilyvät IDB:ssä, jotta atletti voi vaihtaa esim. q15 takaisin "running"
   // -tilaan ja saa aiemman q16-vastauksensa takaisin näkyviin.
-  const questions = allQuestions.filter(q => evaluateVisible(q, answers));
+  // 1D: mainAppState piilottaa skipIfMainAppHas-kysymykset (q26 + q29).
+  const questions = allQuestions.filter(q => evaluateVisible(q, answers, mainAppState));
+
+  // 1D: jos vaihe on kokonaan tyhjä skip-ehtojen takia (esim. performance-
+  // stage Akselille), näytä selventävä viesti. Käyttäjä ymmärtää miksi
+  // vaihe on "tyhjä".
+  if (questions.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "wiz-step-skipped";
+    if (stage.id === "performance") {
+      empty.textContent =
+        "Voimataso-vaihe ohitettu — LeVe käyttää sovelluksen aiempaa PR-dataa. " +
+        "Jatka seuraavaan vaiheeseen klikkaamalla 'Seuraava'.";
+    } else if (stage.id === "experience") {
+      empty.textContent = "Kysymykset täytetty pää-sovelluksen tiedoista.";
+    } else {
+      empty.textContent = "Ei näytettäviä kysymyksiä tälle vaiheelle.";
+    }
+    step.appendChild(empty);
+  }
 
   for (const q of questions) {
     const currentValue = stateStore.getAnswer(q.id);
@@ -917,7 +1553,7 @@ export function renderStep(stateStore, container, opts = {}) {
         if (hint) hint.style.display = "none";
         smartDefaulted.delete(q.id);
       }
-    }, { answers, smartDefaultActive: smartActive });
+    }, { answers, smartDefaultActive: smartActive, movementBank });
     step.appendChild(node);
   }
 
@@ -925,8 +1561,22 @@ export function renderStep(stateStore, container, opts = {}) {
   container.appendChild(step);
 }
 
-export function renderProgressBar(stateStore, container) {
+export function renderProgressBar(stateStore, container, opts = {}) {
   const state = stateStore.state;
+  const answers = (state.config && state.config.answers) || {};
+  const mainAppState = opts.mainAppState || null;
+
+  // 1D: tunnista vaiheet joissa kaikki kysymykset ohitetaan (esim. performance
+  // jos q26 skipataan). Näytä nämä "skipped"-tilassa progress-barissa jotta
+  // käyttäjä näkee että vaihetta ei tarvitse käydä — tämä on selvempi UX
+  // kuin että vaihe katoaisi kokonaan.
+  const isStageEmpty = (stageIdx) => {
+    const stage = WIZARD_STAGES[stageIdx];
+    if (!stage) return false;
+    const qs = getQuestionsForStage(stage.id);
+    return qs.length > 0 && qs.every(q => !evaluateVisible(q, answers, mainAppState));
+  };
+
   const ul = document.createElement("ul");
   ul.className = "wiz-progress";
   ul.setAttribute("role", "list");
@@ -936,6 +1586,7 @@ export function renderProgressBar(stateStore, container) {
     li.className = "wiz-progress-seg";
     if (i < state.currentStepIndex) li.classList.add("is-done");
     if (i === state.currentStepIndex) li.classList.add("is-current");
+    if (isStageEmpty(i)) li.classList.add("is-skipped");
     li.setAttribute("aria-label", `Vaihe ${i + 1}: ${WIZARD_STAGES[i].titleFi}`);
     ul.appendChild(li);
   }
@@ -952,7 +1603,10 @@ export function renderNav(stateStore, container, controller) {
   const state = stateStore.state;
   const isLast = state.currentStepIndex === WIZARD_STAGES.length - 1;
   const isFirst = state.currentStepIndex === 0;
-  const validation = validateCurrentStep(state);
+  // 1D: validointi käyttää controllerin cachettamaa mainAppState:a jotta
+  // skipattujen kysymysten pakottomuus pidetään.
+  const mainAppState = controller && controller._mainAppState ? controller._mainAppState : null;
+  const validation = validateCurrentStep(state, mainAppState);
 
   const wrap = document.createElement("nav");
   wrap.className = "wiz-nav";
@@ -983,9 +1637,9 @@ export function renderNav(stateStore, container, controller) {
   container.appendChild(wrap);
 }
 
-function renderErrorSummary(state, container) {
+function renderErrorSummary(state, container, mainAppState) {
   container.innerHTML = "";
-  const v = validateCurrentStep(state);
+  const v = validateCurrentStep(state, mainAppState);
   if (v.isValid) return;
   const div = document.createElement("div");
   div.className = "wiz-step-error-summary";
@@ -1072,6 +1726,9 @@ export class WizardController {
     // profiilipohjaisen arvon. Vihje näytetään näille — käyttäjän muokkaus
     // poistaa setistä, jolloin vihje katoaa. Transient (ei tallenneta IDB:hen).
     this._smartDefaulted = new Set();
+    // 1D: pää-app-tilan + liikepankin cache. Ladataan kerran init():ssä.
+    this._mainAppState = null;
+    this._movementBank = null;
   }
 
   async init() {
@@ -1099,9 +1756,23 @@ export class WizardController {
       if (key === "config") this._debouncedSave();
     });
 
+    // 1D: Lataa pää-app-tila + liikepankki KERRAN init():ssä. readMovementBank
+    // sisältää detectMainAppState:n joten yhdessä Promise:ssa molemmat — ei
+    // tarvitse erillistä detectMainAppState-kutsua.
+    try {
+      this._movementBank = await readMovementBank();
+      this._mainAppState = this._movementBank.mainAppState || null;
+    } catch (e) {
+      console.warn("[wizard-core] readMovementBank failed:", e);
+      this._movementBank = { source: "fallback", movements: FALLBACK_MOVEMENT_BANK, mainAppState: { canRead: false } };
+      this._mainAppState = this._movementBank.mainAppState;
+    }
+
     // Smart defaults — aja heti init():n jälkeen jotta atletti näkee
-    // esivalitut arvot ensimmäisestä vaiheesta alkaen.
-    this._smartDefaulted = applySmartDefaults(this.stateStore, this._smartDefaulted);
+    // esivalitut arvot ensimmäisestä vaiheesta alkaen. 1D: mainAppState
+    // välitetään jotta skipattuihin kysymyksiin (q26+q29) ei aseteta
+    // defaulttia.
+    this._smartDefaulted = applySmartDefaults(this.stateStore, this._smartDefaulted, this._mainAppState);
 
     this._mountSkeleton();
 
@@ -1160,13 +1831,17 @@ export class WizardController {
     // Kun käyttäjä syöttää/muuttaa, nav-tila ja virheyhteenveto päivittyvät.
     // Itse kysymyssolmu hoitaa oman visuaalisen tilansa (radion is-selected jne.).
     this._refreshNav();
-    renderErrorSummary(this.stateStore.state, this.errorSummaryEl);
+    renderErrorSummary(this.stateStore.state, this.errorSummaryEl, this._mainAppState);
   }
 
   _renderAll() {
-    renderProgressBar(this.stateStore, this.progressEl);
-    renderStep(this.stateStore, this.stepEl, { smartDefaulted: this._smartDefaulted });
-    renderErrorSummary(this.stateStore.state, this.errorSummaryEl);
+    renderProgressBar(this.stateStore, this.progressEl, { mainAppState: this._mainAppState });
+    renderStep(this.stateStore, this.stepEl, {
+      smartDefaulted: this._smartDefaulted,
+      mainAppState: this._mainAppState,
+      movementBank: this._movementBank,
+    });
+    renderErrorSummary(this.stateStore.state, this.errorSummaryEl, this._mainAppState);
     this._refreshNav();
   }
 
@@ -1181,7 +1856,7 @@ export class WizardController {
 
   async next() {
     if (this.isDone) return;
-    const v = validateCurrentStep(this.stateStore.state);
+    const v = validateCurrentStep(this.stateStore.state, this._mainAppState);
     if (!v.isValid) return;
 
     const isLast = this.stateStore.state.currentStepIndex === WIZARD_STAGES.length - 1;
@@ -1195,7 +1870,7 @@ export class WizardController {
     // q08+q14 jotka kerätään aiempien vaiheiden aikana). Ajetaan uudelleen
     // jokaisen vaihtonsa jälkeen — sääntö ei korvaa olemassaolevaa arvoa,
     // joten aiemmat smart-defaultit eivät palaudu.
-    this._smartDefaulted = applySmartDefaults(this.stateStore, this._smartDefaulted);
+    this._smartDefaulted = applySmartDefaults(this.stateStore, this._smartDefaulted, this._mainAppState);
     await this._save();
     this._renderAll();
   }
@@ -1204,14 +1879,14 @@ export class WizardController {
     if (this.isDone) return;
     if (prevStep(this.stateStore.state)) {
       this._persistStepIndex();
-      this._smartDefaulted = applySmartDefaults(this.stateStore, this._smartDefaulted);
+      this._smartDefaulted = applySmartDefaults(this.stateStore, this._smartDefaulted, this._mainAppState);
       await this._save();
       this._renderAll();
     }
   }
 
   async complete() {
-    const fullValidation = validateAllSteps(this.stateStore.state);
+    const fullValidation = validateAllSteps(this.stateStore.state, this._mainAppState);
     if (!fullValidation.valid) {
       console.warn("[wizard] complete: validation failed", fullValidation.errors);
       return false;
@@ -1237,7 +1912,7 @@ export class WizardController {
     this._unsubscribeState = this.stateStore.subscribe((key) => {
       if (key === "config") this._debouncedSave();
     });
-    this._smartDefaulted = applySmartDefaults(this.stateStore, this._smartDefaulted);
+    this._smartDefaulted = applySmartDefaults(this.stateStore, this._smartDefaulted, this._mainAppState);
     this.progressEl.style.display = "";
     this.navEl.style.display = "";
     this._renderAll();
@@ -1310,9 +1985,11 @@ export async function uiSelfTest() {
   );
   store.setAnswer("q01_age", 30);
 
-  // ─── 1B: schema-invariantit ─────────────────────────────────────
-  ck("WIZARD_QUESTIONS.length = 25", WIZARD_QUESTIONS.length === SCHEMA_INVARIANTS.totalQuestions);
-  ck("WIZARD_STAGES.length = 7", WIZARD_STAGES.length === SCHEMA_INVARIANTS.totalStages);
+  // ─── 1D: schema-invariantit (30 kysymystä, 8 vaihetta) ──────────
+  ck("WIZARD_QUESTIONS.length = 30", WIZARD_QUESTIONS.length === 30);
+  ck("WIZARD_STAGES.length = 8", WIZARD_STAGES.length === 8);
+  ck("SCHEMA_INVARIANTS.totalQuestions = 30", SCHEMA_INVARIANTS.totalQuestions === 30);
+  ck("SCHEMA_INVARIANTS.schemaVersion = 3.3", SCHEMA_INVARIANTS.schemaVersion === "3.3");
 
   goToStep(store.state, 3);
   ck("goToStep liikuttaa annettuun indeksiin", store.state.currentStepIndex === 3);
@@ -1320,13 +1997,13 @@ export async function uiSelfTest() {
   ck("goToStep hylkää virheellisen indeksin", bad === false && store.state.currentStepIndex === 3);
 
   // ─── 1C: Composite-validointi ───────────────────────────────────
-  // q24_frequency on viimeisellä vaiheella (loading). Asetetaan vaiheen 7
-  // tarvitsema pakollinen data ja tarkistetaan että sub-field-validointi toimii.
-  goToStep(store.state, 6); // 0-indexed: vaihe 7 = idx 6
+  // q24_frequency on viimeisellä vaiheella (loading, idx 7 uudessa 8-vaiheen
+  // rakenteessa). Asetetaan loading-vaiheen tarvitsema data + sub-field-validointi.
+  const loadingIdx = WIZARD_STAGES.findIndex(s => s.id === "loading");
+  goToStep(store.state, loadingIdx);
   store.setAnswer("q23_volumePref", "auto");
   store.setAnswer("q25_rpePrecision", "vara_loose");
 
-  // Tyhjä composite: kysymys on required → odotamme virhettä
   store.setAnswer("q24_frequency", undefined);
   const vComp1 = validateCurrentStep(store.state);
   ck(
@@ -1334,7 +2011,6 @@ export async function uiSelfTest() {
     !vComp1.isValid && vComp1.errors.some(e => e.questionId === "q24_frequency")
   );
 
-  // Yksi sub-field puuttuu: q24 = { daysPerWeek: 4 }
   store.setAnswer("q24_frequency", { daysPerWeek: 4 });
   const vComp2 = validateCurrentStep(store.state);
   ck(
@@ -1342,7 +2018,6 @@ export async function uiSelfTest() {
     !vComp2.isValid && vComp2.errors.some(e => e.questionId === "q24_frequency" && e.subFieldId === "sessionLengthMinutes")
   );
 
-  // Sub-field range yli: daysPerWeek = 10 (max 7)
   store.setAnswer("q24_frequency", { daysPerWeek: 10, sessionLengthMinutes: 90 });
   const vComp3 = validateCurrentStep(store.state);
   ck(
@@ -1350,20 +2025,19 @@ export async function uiSelfTest() {
     !vComp3.isValid && vComp3.errors.some(e => e.subFieldId === "daysPerWeek")
   );
 
-  // Validi composite: kaikki kentät kunnossa
   store.setAnswer("q24_frequency", { daysPerWeek: 4, sessionLengthMinutes: 90 });
   const vComp4 = validateCurrentStep(store.state);
   ck("composite läpäisee kun molemmat sub-fieldit kunnossa", vComp4.isValid);
 
   // ─── 1C: Conditional UI (q15 → q16 näkyvyys) ────────────────────
-  goToStep(store.state, 4); // metrics-vaihe
-  // Pakolliset metrics-kysymykset paitsi q16 (joka ehdollisesti pakollinen)
+  // metrics on idx 5 uudessa 8-vaiheen rakenteessa.
+  const metricsIdx = WIZARD_STAGES.findIndex(s => s.id === "metrics");
+  goToStep(store.state, metricsIdx);
   store.setAnswer("q15_aerobicModality", "none");
   store.setAnswer("q17_equipment", ["barbell_rack"]);
   store.setAnswer("q18_hrvDevice", "none");
   store.setAnswer("q19_vbtDevice", "none");
   store.setAnswer("q20_sleepTracker", "none");
-  // q16 jätetään tyhjäksi
   const answersWhenNone = store.state.config.answers;
   const q16schema = WIZARD_QUESTIONS.find(q => q.id === "q16_aerobicVolume");
   ck("evaluateVisible: q16 piilossa kun q15=none", evaluateVisible(q16schema, answersWhenNone) === false);
@@ -1378,7 +2052,6 @@ export async function uiSelfTest() {
     !vCond2.isValid && vCond2.errors.some(e => e.questionId === "q16_aerobicVolume")
   );
 
-  // Conditional ei pyyhi q16:n vastausta — tallennetaan ja palautetaan q15
   store.setAnswer("q16_aerobicVolume", { frequencyPerWeek: 3, durationMinutes: 45, sameSession: false });
   store.setAnswer("q15_aerobicModality", "none");
   const q16After = store.getAnswer("q16_aerobicVolume");
@@ -1388,84 +2061,211 @@ export async function uiSelfTest() {
   );
 
   // ─── 1C: Smart defaults — säännöt (puhtaat funktiot) ────────────
-  ck(
-    "rule q07: beginner+1v → 0",
-    SMART_DEFAULT_RULES.q07_autoregYears({ q06_yearsTraining: 1, q08_selfLevel: "beginner" }) === 0
-  );
-  ck(
-    "rule q07: edistynyt+10v → 8",
-    SMART_DEFAULT_RULES.q07_autoregYears({ q06_yearsTraining: 10, q08_selfLevel: "advanced" }) === 8
-  );
-  ck(
-    "rule q07: elite+5v → 3",
-    SMART_DEFAULT_RULES.q07_autoregYears({ q06_yearsTraining: 5, q08_selfLevel: "elite" }) === 3
-  );
-  ck(
-    "rule q14: aina 'no'",
-    SMART_DEFAULT_RULES.q14_cutting({}) === "no"
-  );
-  ck(
-    "rule q15: powerlifting → none",
-    SMART_DEFAULT_RULES.q15_aerobicModality({ q09_sport: "powerlifting" }) === "none"
-  );
-  ck(
-    "rule q15: sport → undefined (ei defaulttia)",
-    SMART_DEFAULT_RULES.q15_aerobicModality({ q09_sport: "sport" }) === undefined
-  );
-  ck(
-    "rule q23: elite+no-cut → MAV",
-    SMART_DEFAULT_RULES.q23_volumePref({ q08_selfLevel: "elite", q14_cutting: "no" }) === "MAV"
-  );
-  ck(
-    "rule q23: elite+cut → MEV",
-    SMART_DEFAULT_RULES.q23_volumePref({ q08_selfLevel: "elite", q14_cutting: "yes" }) === "MEV"
-  );
-  ck(
-    "rule q25: autoreg ≥ 3v → calibrated",
-    SMART_DEFAULT_RULES.q25_rpePrecision({ q07_autoregYears: 5 }) === "vara_calibrated"
-  );
-  ck(
-    "rule q25: autoreg < 3v → loose",
-    SMART_DEFAULT_RULES.q25_rpePrecision({ q07_autoregYears: 1 }) === "vara_loose"
-  );
+  ck("rule q07: beginner+1v → 0",        SMART_DEFAULT_RULES.q07_autoregYears({ q06_yearsTraining: 1, q08_selfLevel: "beginner" }) === 0);
+  ck("rule q07: edistynyt+10v → 8",       SMART_DEFAULT_RULES.q07_autoregYears({ q06_yearsTraining: 10, q08_selfLevel: "advanced" }) === 8);
+  ck("rule q07: elite+5v → 3",            SMART_DEFAULT_RULES.q07_autoregYears({ q06_yearsTraining: 5, q08_selfLevel: "elite" }) === 3);
+  ck("rule q14: aina 'no'",               SMART_DEFAULT_RULES.q14_cutting({}) === "no");
+  ck("rule q15: powerlifting → none",     SMART_DEFAULT_RULES.q15_aerobicModality({ q09_sport: "powerlifting" }) === "none");
+  ck("rule q15: sport → undefined",        SMART_DEFAULT_RULES.q15_aerobicModality({ q09_sport: "sport" }) === undefined);
+  ck("rule q23: elite+no-cut → MAV",      SMART_DEFAULT_RULES.q23_volumePref({ q08_selfLevel: "elite", q14_cutting: "no" }) === "MAV");
+  ck("rule q23: elite+cut → MEV",         SMART_DEFAULT_RULES.q23_volumePref({ q08_selfLevel: "elite", q14_cutting: "yes" }) === "MEV");
+  ck("rule q25: autoreg ≥ 3v → calibrated", SMART_DEFAULT_RULES.q25_rpePrecision({ q07_autoregYears: 5 }) === "vara_calibrated");
+  ck("rule q25: autoreg < 3v → loose",     SMART_DEFAULT_RULES.q25_rpePrecision({ q07_autoregYears: 1 }) === "vara_loose");
 
   // ─── 1C: applySmartDefaults — runtime-käyttäytyminen ────────────
-  // Fresh store, ei vastauksia → applySmartDefaults asettaa staattiset
-  // defaultit joille EI ole profiilipohjaista sääntöä (q10, q13, q22).
   const cfgFresh = createEmptyWizardConfig();
   const storeFresh = createWizardState(cfgFresh);
   const applied1 = applySmartDefaults(storeFresh);
-  ck(
-    "applySmartDefaults asettaa 1A:n staattisen q22=[] tyhjälle storelle",
-    applied1.has("q22_avoidedExercises") && Array.isArray(storeFresh.getAnswer("q22_avoidedExercises"))
-  );
-  ck("applySmartDefaults: q14 saa 'no' säännön kautta", storeFresh.getAnswer("q14_cutting") === "no");
-  // q23 saa 1A:n "auto" fallback:n kun q08 puuttuu
-  ck(
-    "applySmartDefaults: q23 saa 'auto'-fallback ennen q08-vastausta",
-    applied1.has("q23_volumePref") && storeFresh.getAnswer("q23_volumePref") === "auto"
-  );
+  ck("applySmartDefaults asettaa 1A:n staattisen q22=[] tyhjälle storelle",
+     applied1.has("q22_avoidedExercises") && Array.isArray(storeFresh.getAnswer("q22_avoidedExercises")));
+  ck("applySmartDefaults: q14 saa 'no' säännön kautta",
+     storeFresh.getAnswer("q14_cutting") === "no");
+  ck("applySmartDefaults: q23 saa 'auto'-fallback ennen q08-vastausta",
+     applied1.has("q23_volumePref") && storeFresh.getAnswer("q23_volumePref") === "auto");
 
-  // Profiili-data lisätään → q23 saa MAV (fallback "auto" korvataan)
   storeFresh.setAnswer("q08_selfLevel", "elite");
-  // Toinen kutsu: q23 oli aiemmin smart-defaultattu (applied1:ssa), ja
-  // profiilipohjainen sääntö nyt aktivoituu (elite + no-cut). Korvataan.
   const applied2 = applySmartDefaults(storeFresh, applied1);
-  ck(
-    "applySmartDefaults: profiilipohjainen sääntö korvaa staattisen fallback:n",
-    applied2.has("q23_volumePref") && storeFresh.getAnswer("q23_volumePref") === "MAV"
-  );
+  ck("applySmartDefaults: profiilipohjainen sääntö korvaa staattisen fallback:n",
+     applied2.has("q23_volumePref") && storeFresh.getAnswer("q23_volumePref") === "MAV");
 
-  // Käyttäjän ylikirjoitus säilyy: simuloidaan UI:n setAnswer + setistä-poisto.
-  // (WizardController:n renderStep-onChange tekee tämän automaattisesti.)
   storeFresh.setAnswer("q23_volumePref", "MRV");
   const appliedAfterUserEdit = new Set(applied2);
-  appliedAfterUserEdit.delete("q23_volumePref"); // käyttäjä-muokkaus poistaa
+  appliedAfterUserEdit.delete("q23_volumePref");
   const applied3 = applySmartDefaults(storeFresh, appliedAfterUserEdit);
-  ck(
-    "applySmartDefaults EI korvaa käyttäjän ylikirjoitusta (q23 lukittu setistä-poistolla)",
-    storeFresh.getAnswer("q23_volumePref") === "MRV" && !applied3.has("q23_volumePref")
-  );
+  ck("applySmartDefaults EI korvaa käyttäjän ylikirjoitusta",
+     storeFresh.getAnswer("q23_volumePref") === "MRV" && !applied3.has("q23_volumePref"));
+
+  // ════════════════════════════════════════════════════════════════
+  // ─── 1D: Uudet kysymykset + skipIfMainAppHas + smart defaults ───
+  // ════════════════════════════════════════════════════════════════
+
+  // ─── 1D: q26-q30 ovat skeemassa ────────────────────────────────
+  ck("schema sisältää q26_personalRecords (pr-list)",
+     WIZARD_QUESTIONS.some(q => q.id === "q26_personalRecords" && q.type === "pr-list"));
+  ck("schema sisältää q27_targetDate (date)",
+     WIZARD_QUESTIONS.some(q => q.id === "q27_targetDate" && q.type === "date"));
+  ck("schema sisältää q28_targetType (radio, requiredIf isSet)",
+     WIZARD_QUESTIONS.some(q => q.id === "q28_targetType" && q.requiredIf && q.requiredIf.isSet === true));
+  ck("schema sisältää q29_recentBlock (radio, skipIfMainAppHas mesocycles)",
+     WIZARD_QUESTIONS.some(q => q.id === "q29_recentBlock" && q.skipIfMainAppHas && q.skipIfMainAppHas.store === "mesocycles"));
+  ck("schema sisältää q30_energyBudget (composite, requiredIf q14=yes)",
+     WIZARD_QUESTIONS.some(q => q.id === "q30_energyBudget" && q.type === "composite" &&
+       q.requiredIf && q.requiredIf.equals === "yes"));
+
+  // ─── 1D: performance-vaihe ─────────────────────────────────────
+  ck("performance-vaihe (D16) on WIZARD_STAGES:ssa",
+     WIZARD_STAGES.some(s => s.id === "performance" && s.dimensions.includes("D16")));
+  ck("experience-vaihe sisältää D18 (aiempi blokki)",
+     WIZARD_STAGES.find(s => s.id === "experience").dimensions.includes("D18"));
+  ck("goals-vaihe sisältää D17 (kisapäivä)",
+     WIZARD_STAGES.find(s => s.id === "goals").dimensions.includes("D17"));
+
+  // ─── 1D: skipIfMainAppHas (q26 + q29) ──────────────────────────
+  const q26 = WIZARD_QUESTIONS.find(q => q.id === "q26_personalRecords");
+  const q29 = WIZARD_QUESTIONS.find(q => q.id === "q29_recentBlock");
+  const mainAppEmpty = { canRead: true, hasMovementProgress: false, hasMesocycles: false };
+  const mainAppExisting = { canRead: true, hasMovementProgress: true, hasMesocycles: true };
+
+  ck("evaluateVisible: q26 näkyvä kun mainApp ei ole alustettu",
+     evaluateVisible(q26, {}, null) === true);
+  ck("evaluateVisible: q26 näkyvä kun hasMovementProgress=false",
+     evaluateVisible(q26, {}, mainAppEmpty) === true);
+  ck("evaluateVisible: q26 PIILOSSA kun hasMovementProgress=true",
+     evaluateVisible(q26, {}, mainAppExisting) === false);
+  ck("evaluateVisible: q29 näkyvä kun hasMesocycles=false",
+     evaluateVisible(q29, {}, mainAppEmpty) === true);
+  ck("evaluateVisible: q29 PIILOSSA kun hasMesocycles=true",
+     evaluateVisible(q29, {}, mainAppExisting) === false);
+
+  // ─── 1D: requiredIf isSet — q28 ────────────────────────────────
+  const q28 = WIZARD_QUESTIONS.find(q => q.id === "q28_targetType");
+  ck("evaluateConditional q28: q27 tyhjä → ei näy, ei pakollinen",
+     evaluateConditional(q28, {}).visible === false);
+  ck("evaluateConditional q28: q27 annettu → näkyvä + pakollinen",
+     evaluateConditional(q28, { q27_targetDate: "2026-08-15" }).visible === true &&
+     evaluateConditional(q28, { q27_targetDate: "2026-08-15" }).required === true);
+
+  // ─── 1D: q30 requiredIf q14=yes ───────────────────────────────
+  const q30 = WIZARD_QUESTIONS.find(q => q.id === "q30_energyBudget");
+  ck("evaluateConditional q30: q14=no → ei näy", evaluateConditional(q30, { q14_cutting: "no" }).visible === false);
+  ck("evaluateConditional q30: q14=yes → näkyvä", evaluateConditional(q30, { q14_cutting: "yes" }).visible === true);
+
+  // ─── 1D: pr-list validointi (data.js:n validateWizardConfig kautta) ───
+  const cfgPr = createEmptyWizardConfig();
+  cfgPr.answers.q01_age = 30; cfgPr.answers.q02_sex = "male"; cfgPr.answers.q03_weight = 91;
+  cfgPr.answers.q06_yearsTraining = 15; cfgPr.answers.q08_selfLevel = "elite"; cfgPr.answers.q09_sport = "streetlifting";
+  cfgPr.answers.q29_recentBlock = "intensification";
+  cfgPr.answers.q12_primaryGoal = "max_1RM"; cfgPr.answers.q14_cutting = "no";
+  cfgPr.answers.q15_aerobicModality = "none"; cfgPr.answers.q17_equipment = ["barbell_rack"];
+  cfgPr.answers.q18_hrvDevice = "none"; cfgPr.answers.q19_vbtDevice = "none"; cfgPr.answers.q20_sleepTracker = "none";
+  cfgPr.answers.q21_splitPreference = "upper_lower"; cfgPr.answers.q23_volumePref = "MAV";
+  cfgPr.answers.q24_frequency = { daysPerWeek: 4, sessionLengthMinutes: 90 };
+  cfgPr.answers.q25_rpePrecision = "vara_calibrated";
+  cfgPr.answers.q26_personalRecords = [
+    { movementId: "fb_backsquat", movementName: "Takakyykky", loadType: "external", weightKg: 185, reps: 3 },
+    { movementId: "fb_addedweight_pullup", movementName: "Lisäpainoleuanveto", loadType: "system", weightKg: 85, reps: 1 },
+    { movementId: "fb_front_lever", movementName: "Front Lever", loadType: "isometric_hold", holdSeconds: 12 },
+  ];
+  const vPrAll = validateWizardConfig(cfgPr);
+  ck("pr-list: 3 validia (external+system+isometric) ei tuota virhettä",
+     vPrAll.errors.every(e => e.questionId !== "q26_personalRecords"));
+
+  cfgPr.answers.q26_personalRecords = [
+    { movementId: "fb_backsquat", loadType: "external", reps: 3 }, // weightKg puuttuu
+  ];
+  const vPrBad = validateWizardConfig(cfgPr);
+  ck("pr-list: external ilman weightKg havaitaan",
+     vPrBad.errors.some(e => e.questionId === "q26_personalRecords"));
+
+  cfgPr.answers.q26_personalRecords = [
+    { movementId: "fb_front_lever", loadType: "isometric_hold", holdSeconds: 300 }, // yli max 180
+  ];
+  const vPrRange = validateWizardConfig(cfgPr);
+  ck("pr-list: holdSeconds yli max 180 havaitaan",
+     vPrRange.errors.some(e => e.questionId === "q26_personalRecords"));
+
+  // ─── 1D: date validointi ────────────────────────────────────
+  const dateUI1 = validateDateUI("2026-08-15", { minDaysFromNow: 14, maxDaysFromNow: 365 });
+  ck("date: 2026-08-15 (kauempana kuin 14 päivää) on validi", dateUI1 === null);
+
+  const dateUI2 = validateDateUI("2026-05-12", { minDaysFromNow: 14 });
+  // 2026-05-12 on yksi päivä nykypäivästä (2026-05-11 muistio currentDate) → alle 14
+  ck("date: alle minDaysFromNow havaitaan",
+     typeof dateUI2 === "string" && dateUI2.includes("Vähintään"));
+
+  const dateUI3 = validateDateUI("not-a-date");
+  ck("date: virheellinen muoto havaitaan", typeof dateUI3 === "string");
+
+  // ─── 1D: 5 uutta smart-default-sääntöä ──────────────────────
+  const q17Street = SMART_DEFAULT_RULES.q17_equipment({ q09_sport: "streetlifting" });
+  ck("rule q17: streetlifting → [barbell_rack, pullup_bar, dip_station]",
+     Array.isArray(q17Street) && q17Street.includes("barbell_rack") &&
+     q17Street.includes("pullup_bar") && q17Street.includes("dip_station"));
+  const q17PL = SMART_DEFAULT_RULES.q17_equipment({ q09_sport: "powerlifting" });
+  ck("rule q17: powerlifting → [barbell_rack]",
+     Array.isArray(q17PL) && q17PL.length === 1 && q17PL[0] === "barbell_rack");
+  ck("rule q21: streetlifting + 4 päivää → upper_lower",
+     SMART_DEFAULT_RULES.q21_splitPreference({ q09_sport: "streetlifting", q24_frequency: { daysPerWeek: 4 } }) === "upper_lower");
+  ck("rule q21: powerlifting → fullbody",
+     SMART_DEFAULT_RULES.q21_splitPreference({ q09_sport: "powerlifting" }) === "fullbody");
+  ck("rule q28: q12=powerlifting → competition",
+     SMART_DEFAULT_RULES.q28_targetType({ q12_primaryGoal: "powerlifting" }) === "competition");
+  ck("rule q28: q12=streetlifting_with_explosive → peaking_block",
+     SMART_DEFAULT_RULES.q28_targetType({ q12_primaryGoal: "streetlifting_with_explosive_components" }) === "peaking_block");
+  ck("rule q28: q12=max_1RM → max_test",
+     SMART_DEFAULT_RULES.q28_targetType({ q12_primaryGoal: "max_1RM" }) === "max_test");
+  ck("rule q29: beginner → off_program",
+     SMART_DEFAULT_RULES.q29_recentBlock({ q08_selfLevel: "beginner" }) === "off_program");
+  ck("rule q29: streetlifting + 8v → intensification",
+     SMART_DEFAULT_RULES.q29_recentBlock({ q08_selfLevel: "advanced", q09_sport: "streetlifting", q06_yearsTraining: 8 }) === "intensification");
+  const q30CutResult = SMART_DEFAULT_RULES.q30_energyBudget({ q14_cutting: "yes" });
+  ck("rule q30: cut → proteinGPerKg = 2.0",
+     q30CutResult && q30CutResult.proteinGPerKg === 2.0);
+  ck("rule q30: no-cut → undefined",
+     SMART_DEFAULT_RULES.q30_energyBudget({ q14_cutting: "no" }) === undefined);
+
+  // ─── 1D: applySmartDefaults mainAppState:n kanssa ──────────────
+  // Kun mainAppState.hasMovementProgress=true → q26 EI saa smart-defaultia
+  // (kysymys on piilossa).
+  const cfgSkip = createEmptyWizardConfig();
+  const storeSkip = createWizardState(cfgSkip);
+  const appliedSkip = applySmartDefaults(storeSkip, new Set(), mainAppExisting);
+  ck("applySmartDefaults skip-tilassa: q26 EI saa arvoa",
+     !appliedSkip.has("q26_personalRecords") && storeSkip.getAnswer("q26_personalRecords") === undefined);
+  ck("applySmartDefaults skip-tilassa: q29 EI saa arvoa",
+     !appliedSkip.has("q29_recentBlock") && storeSkip.getAnswer("q29_recentBlock") === undefined);
+
+  // ─── 1D: Akselin profiili — q26 + q29 ohitetaan ─────────────────
+  // Simulaatio: pää-app on alustettu, atletille luodaan koko valid config
+  // ja varmistetaan että wizard "läpäisee" loppuun saakka.
+  const cfgAkseli = createEmptyWizardConfig();
+  const storeAkseli = createWizardState(cfgAkseli);
+  storeAkseli.setAnswer("q01_age", 34); storeAkseli.setAnswer("q02_sex", "male"); storeAkseli.setAnswer("q03_weight", 91);
+  storeAkseli.setAnswer("q06_yearsTraining", 15); storeAkseli.setAnswer("q08_selfLevel", "elite");
+  storeAkseli.setAnswer("q09_sport", "streetlifting");
+  // q29 + q26 EI aseteta (pää-app data niiden tilalla)
+  storeAkseli.setAnswer("q12_primaryGoal", "streetlifting_with_explosive_components");
+  storeAkseli.setAnswer("q14_cutting", "no");
+  // q27/q28/q30 valinnaiset
+  storeAkseli.setAnswer("q15_aerobicModality", "none"); storeAkseli.setAnswer("q17_equipment", ["barbell_rack"]);
+  storeAkseli.setAnswer("q18_hrvDevice", "oura"); storeAkseli.setAnswer("q19_vbtDevice", "perceptual");
+  storeAkseli.setAnswer("q20_sleepTracker", "oura");
+  storeAkseli.setAnswer("q21_splitPreference", "upper_lower");
+  storeAkseli.setAnswer("q23_volumePref", "MAV");
+  storeAkseli.setAnswer("q24_frequency", { daysPerWeek: 4, sessionLengthMinutes: 90 });
+  storeAkseli.setAnswer("q25_rpePrecision", "vara_calibrated");
+  const vAkseli = validateAllSteps(storeAkseli.state, mainAppExisting);
+  ck("Akselin profiili (q26+q29 skip): kaikki vaiheet läpäisee", vAkseli.valid);
+
+  // ─── 1D: requiredIf isSet — q28 vaadittu kun q27 annettu ───────
+  storeAkseli.setAnswer("q27_targetDate", "2026-08-15");
+  // q28 nyt pakollinen (isSet:true)
+  const vAks2 = validateAllSteps(storeAkseli.state, mainAppExisting);
+  ck("requiredIf isSet: q27 annettu → q28 pakollinen",
+     !vAks2.valid && vAks2.errors.some(e => e.questionId === "q28_targetType"));
+  storeAkseli.setAnswer("q28_targetType", "competition");
+  const vAks3 = validateAllSteps(storeAkseli.state, mainAppExisting);
+  ck("requiredIf isSet: q28 täytetty → kaikki vaiheet läpäisee", vAks3.valid);
 
   unsub();
   return report;

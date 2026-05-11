@@ -1,38 +1,67 @@
-// wizard-schema.js — Wizard 3.2 kysymys-skeema (Track B Vaihe 1A)
-// LeVe AI v4.37+ — 25 kysymystä, 7 vaihetta, 15 dimensiota
+// wizard-schema.js — Wizard 3.3 kysymys-skeema (Track B Vaihe 1A + 1D)
+// LeVe AI v4.38.9+ — 30 kysymystä, 8 vaihetta, 18 dimensiota
 //
-// Lähde: docs/WIZARD_SPECIFICATION_v3.2.md (Track A 100% valmis, Plews 2013
-// -verifikaatio integroitu). Kysymyspuu seuraa D1–D15-dimensioita; D10
+// Lähde: docs/WIZARD_SPECIFICATION_v3.3.md (Track A 100% valmis, Plews 2013
+// -verifikaatio integroitu). Kysymyspuu seuraa D1–D18-dimensioita; D10
 // käyttää SWC-pohjaista (0.5 × within-subject SD) viitekehystä, EI
 // kiinteää −7% kynnystä (ks. docs/PLEWS_2013_VERIFICATION.md).
 //
-// TÄRKEÄ SUUNNITTELUPÄÄTÖS Phase 1A:lle:
+// 1D laajentaa 1A:n schemaa:
+//   - 5 uutta kysymystä (q26 PR-list, q27 kisapäivä, q28 peaking-tyyppi,
+//     q29 aiempi blokki, q30 energiabudjetti)
+//   - Uusi 8. vaihe "Voimataso (PR:t)" performance-stage
+//   - 3 uutta dimensiota: D16 (PR:t), D17 (kisapäivä), D18 (aiempi blokki)
+//   - Uudet kysymystyypit: pr-list, date
+//   - Uusi requiredIf-ehto: isSet (true|false) — selkeämpi kuin
+//     `notEquals: undefined` joka on JSON-serialisaatiossa epävakaa.
+//   - skipIfMainAppHas-ehto: kysymyksen ohittaminen kun pää-sovelluksen
+//     LeVeCoachDB:ssä on jo riittävä data (movementProgress / mesocycles)
+//
+// TÄRKEÄ SUUNNITTELUPÄÄTÖS Phase 1A:lle (säilyy 1D:ssä):
 // Tämä skeema KERÄÄ raw-datan käyttäjältä. Engine-mappaus (signaalien
 // tulkinta, kynnysarvot, deload-triggerit) on Vaihe 1B/1C/Vaihe 2 -työ.
 // Phase 1A:ssa EI hardkoodata yhtään verifioimatonta numerokynnystä.
 // Verifioidut menetelmäreferenssit (SWC-formula, 7-day rolling mean)
 // dokumentoidaan THRESHOLD_METHODS-objektissa pelkkinä viittauksina,
 // ei käyttöönotettuina lukuina.
+//
+// Wizard 3.3:n smart-defaultit (proteiini 2.0 g/kg cut-vaiheessa,
+// deficit 350 kcal) ovat verifioituja (Helms 2014, Helms 2018) —
+// ks. spec §6.3 ja docs/WIZARD_SPECIFICATION_v3.3.md.
 
-export const WIZARD_SCHEMA_VERSION = "3.2";
+export const WIZARD_SCHEMA_VERSION = "3.3";
 
-// ── Vaiheet (7 kpl) ──
-// Säilyy v3:sta, ei muutu v3.2:ssa.
+// ── Vaiheet (8 kpl, 1D lisää performance-vaiheen) ──
+// performance (idx 3 / order 4) on UUSI 1D:ssä. Stage voi olla kokonaan
+// skipattu olemassa olevalle käyttäjälle jos q26.skipIfMainAppHas täyttyy
+// (movementProgress sisältää ≥3 baselinea). Progress-bar laajenee 7→8
+// segmenttiin uudelle käyttäjälle; olemassa olevalle palautuu 7 koska
+// performance-stage on tyhjä.
+//
+// experience saa +D18 (aiempi blokki, q29), goals saa +D17 (kisapäivä, q27).
 export const WIZARD_STAGES = [
   { id: "profile",      titleFi: "Profiili",                  order: 1, dimensions: ["D1"] },
-  { id: "experience",   titleFi: "Kokemus ja laji",           order: 2, dimensions: ["D2", "D3"] },
+  { id: "experience",   titleFi: "Kokemus ja laji",           order: 2, dimensions: ["D2", "D3", "D18"] },
   { id: "constraints",  titleFi: "Vammat ja rajoitukset",     order: 3, dimensions: ["D4"] },
-  { id: "goals",        titleFi: "Tavoitteet",                order: 4, dimensions: ["D5", "D6", "D7"] },
-  { id: "metrics",      titleFi: "Kalusto ja mittarit",       order: 5, dimensions: ["D8", "D9", "D10"] },
-  { id: "movements",    titleFi: "Liikevalinnat",             order: 6, dimensions: ["D11", "D12"] },
-  { id: "loading",      titleFi: "Volyymi, frekvenssi, RPE",  order: 7, dimensions: ["D13", "D14", "D15"] },
+  { id: "performance",  titleFi: "Voimataso (PR:t)",          order: 4, dimensions: ["D16"] },
+  { id: "goals",        titleFi: "Tavoitteet",                order: 5, dimensions: ["D5", "D6", "D7", "D17"] },
+  { id: "metrics",      titleFi: "Kalusto ja mittarit",       order: 6, dimensions: ["D8", "D9", "D10"] },
+  { id: "movements",    titleFi: "Liikevalinnat",             order: 7, dimensions: ["D11", "D12"] },
+  { id: "loading",      titleFi: "Volyymi, frekvenssi, RPE",  order: 8, dimensions: ["D13", "D14", "D15"] },
 ];
 
-// ── 25 kysymystä jaettuna vaiheisiin ──
+// ── 30 kysymystä jaettuna vaiheisiin ──
 // Jokaisella kysymyksellä: id, stage, dimension, type, required, options/range,
-// smartDefault (staattinen — varsinaiset profiili-pohjaiset defaultit Phase 1C),
+// smartDefault (staattinen — varsinaiset profiili-pohjaiset defaultit Phase 1C+1D),
 // labelFi (käyttäjälle näkyvä teksti — selkeää suomea, EI tutkijaviittauksia,
 // vrt. feedback_ui_no_research_names.md).
+//
+// 1D:n uudet kysymykset:
+//   - q26_personalRecords: stage "performance", type "pr-list", skipIfMainAppHas
+//   - q27_targetDate:      stage "goals",       type "date",    minDaysFromNow 14
+//   - q28_targetType:      stage "goals",       type "radio",   requiredIf q27 isSet
+//   - q29_recentBlock:     stage "experience",  type "radio",   skipIfMainAppHas
+//   - q30_energyBudget:    stage "goals",       type "composite", requiredIf q14 = "yes"
 export const WIZARD_QUESTIONS = [
   // ─── Vaihe 1: Profiili (D1, 5 kysymystä) ─────────────────────────────
   {
@@ -67,7 +96,7 @@ export const WIZARD_QUESTIONS = [
     helperFi: "Vaikuttaa proteiinitarpeen arvioon. Jätä tyhjäksi jos et tiedä.",
   },
 
-  // ─── Vaihe 2: Kokemus ja laji (D2 + D3, 4 kysymystä) ─────────────────
+  // ─── Vaihe 2: Kokemus ja laji (D2 + D3 + D18, 5 kysymystä) ───────────
   {
     id: "q06_yearsTraining", stage: "experience", dimension: "D2",
     type: "number", labelFi: "Kuinka monta vuotta olet treenannut säännöllisesti?",
@@ -102,6 +131,28 @@ export const WIZARD_QUESTIONS = [
     ],
     required: true,
   },
+  // 1D uusi: aiempi blokki / treenitausta (D18). Skip jos pää-app:in mesocycles
+  // sisältää aktiivisen meson (käyttäjä on jo strukturoidussa ohjelmassa).
+  {
+    id: "q29_recentBlock", stage: "experience", dimension: "D18",
+    type: "radio", labelFi: "Mistä treenivaiheesta olet juuri tulossa?",
+    required: true,
+    skipIfMainAppHas: {
+      store: "mesocycles",
+      minCount: 1,
+      minFieldCount: { active: true },
+    },
+    options: [
+      { value: "hypertrophy",     labelFi: "Hypertrofia / lihasmassa" },
+      { value: "strength",        labelFi: "Voima / 5×5-tyyli" },
+      { value: "intensification", labelFi: "Intensifikaatio / 80–90% työ" },
+      { value: "peaking",         labelFi: "Peaking (juuri kisa/testaus)" },
+      { value: "deload",          labelFi: "Deload tai pidempi tauko" },
+      { value: "off_program",     labelFi: "Ei rakenteellista ohjelmaa" },
+    ],
+    helperFi: "Tämä vaikuttaa siihen mistä blokista uusi ohjelma alkaa. " +
+              "Esim. peakingin jälkeen LeVe aloittaa hypertrofialla, ei toisella peakingilla.",
+  },
 
   // ─── Vaihe 3: Vammat ja rajoitukset (D4, 2 kysymystä) ────────────────
   {
@@ -122,7 +173,43 @@ export const WIZARD_QUESTIONS = [
     },
   },
 
-  // ─── Vaihe 4: Tavoitteet (D5 + D6 + D7, 3 kysymystä) ─────────────────
+  // ─── Vaihe 4: Voimataso (D16, 1 kysymys) — UUSI 1D:ssä ───────────────
+  // Skip jos pää-app:in movementProgress sisältää ≥3 movementia joilla e1RM > 0
+  // (käyttäjä on jo tehnyt cal-session ja PR:t ovat ohjelmassa). Tällöin koko
+  // performance-stage on tyhjä eikä näy progress-barissa.
+  {
+    id: "q26_personalRecords", stage: "performance", dimension: "D16",
+    type: "pr-list",
+    labelFi: "Henkilökohtaiset ennätykset (PR:t) — anna 1–5 päämittaa",
+    required: false,
+    skipIfMainAppHas: {
+      store: "movementProgress",
+      minCount: 3,
+      minFieldCount: { e1RM: 1 },
+    },
+    // Item-rivien rakenne. Validointi tehdään wizard-data.js:n
+    // validateWizardConfig:ssa loadType:n mukaan (conditional fields).
+    itemSchema: {
+      movementId:    { type: "string",                                                             labelFi: "Liike" },
+      movementName:  { type: "string",                                                             labelFi: "Liikkeen nimi" },
+      loadType:      { type: "enum", values: ["external", "system", "isometric_hold"],            labelFi: "Kuorma-tyyppi" },
+      weightKg:      { type: "number", range: { min: 0,   max: 500 }, requiredIf: { field: "loadType", in: ["external", "system"] },   labelFi: "Paino (kg)" },
+      reps:          { type: "number", range: { min: 1,   max: 30  }, requiredIf: { field: "loadType", in: ["external", "system"] },   labelFi: "Toistot" },
+      holdSeconds:   { type: "number", range: { min: 1,   max: 180 }, requiredIf: { field: "loadType", equals: "isometric_hold" },     labelFi: "Pidon kesto (s)" },
+      addedWeightKg: { type: "number", range: { min: 0,   max: 100 },                                                                  labelFi: "Lisäpaino isometric:ssa (kg, valinnainen)" },
+      dateISO:       { type: "date",                                                                                                   labelFi: "Päivä (jos tiedossa)" },
+    },
+    helperFi: "Anna 1–5 päämittaa joiden PR:t tiedät. LeVe käyttää nämä %1RM-suosituksiin.\n" +
+              "Jos olet jo tehnyt LeVe:llä kalibrointi-session, voit jättää tämän tyhjäksi — LeVe lukee PR:t ohjelmasta.\n" +
+              "Vinkki: 1-toiston max EI tarvita — voit antaa esim. 'penkki 140 kg × 5'.\n" +
+              "Calisthenics-pidot (Front Lever, Planche): valitse kuorma-tyypiksi 'staattinen pito' ja anna pidon kesto sekunteina.",
+    uiHints: {
+      presetSuggestions: ["competitionLifts"],
+      maxItems: 5,
+    },
+  },
+
+  // ─── Vaihe 5: Tavoitteet (D5 + D6 + D7 + D17, 5 kysymystä) ───────────
   {
     id: "q12_primaryGoal", stage: "goals", dimension: "D5",
     type: "radio", labelFi: "Päätavoite seuraavalle 8–16 viikolle",
@@ -158,8 +245,56 @@ export const WIZARD_QUESTIONS = [
     ],
     required: true,
   },
+  // 1D uusi: kisapäivä (D17). Valinnainen — jos annettu, q28 aktivoituu.
+  // Range minDaysFromNow / maxDaysFromNow rajaa peaking-blokin mielekkääksi
+  // (alle 2 vk → ei periodisointia, yli 1 vuosi → liian kauas suunniteltavaksi).
+  {
+    id: "q27_targetDate", stage: "goals", dimension: "D17",
+    type: "date", labelFi: "Onko sinulla kisa- tai testauspäivä jonka haluat tähdätä?",
+    required: false,
+    helperFi: "Kun annat päivän, LeVe ankkuroi peaking-blokin loppuun. " +
+              "Jätä tyhjäksi jos ei deadlinea — ohjelma käyttää vakio-blokkeja.",
+    range: {
+      minDaysFromNow: 14,
+      maxDaysFromNow: 365,
+    },
+  },
+  // 1D uusi: peaking-tyyppi (D17). Pakollinen vain jos q27 on annettu.
+  // HUOM: requiredIf käyttää uutta isSet-ehtoa (3.3:ssa lisätty 1A:n
+  // equals/notEquals-syntaksin täydennykseksi). isSet:true = "vaadittu kun
+  // refVal on määritelty (ei undefined/null/tyhjä string)". Tämä on selkeämpi
+  // kuin spec:n alkuperäinen `notEquals: undefined` joka on JSON-undefined
+  // -epävakauden takia ongelmallinen.
+  {
+    id: "q28_targetType", stage: "goals", dimension: "D17",
+    type: "radio", labelFi: "Mikä on tavoitepäivän luonne?",
+    required: true,
+    requiredIf: { questionId: "q27_targetDate", isSet: true },
+    options: [
+      { value: "competition",       labelFi: "Kilpailu" },
+      { value: "max_test",          labelFi: "1RM-testaus" },
+      { value: "peaking_block",     labelFi: "Henkilökohtainen peaking-blokki" },
+      { value: "intermediate_test", labelFi: "Välitesti (ei lopullinen peaking)" },
+    ],
+  },
+  // 1D uusi: energiabudjetti (D7, q14:n laajennus). Pakollinen vain jos
+  // q14 = "yes" (cut-vaihe). q14:n säilyy yes/no — q30 EI korvaa sitä,
+  // vaan kerää tarkemmat numerot kun cut on aktiivinen.
+  {
+    id: "q30_energyBudget", stage: "goals", dimension: "D7",
+    type: "composite", labelFi: "Energiabudjetti tarkemmin",
+    required: true,
+    requiredIf: { questionId: "q14_cutting", equals: "yes" },
+    fields: [
+      { id: "deficitKcal",         type: "number", labelFi: "Päivittäinen energiavaje (kcal)",   range: { min: 100, max: 1000 }, step: 50 },
+      { id: "proteinGPerKg",       type: "number", labelFi: "Proteiinin tavoite (g/kg)",          range: { min: 1.0, max: 3.5  }, step: 0.1 },
+      { id: "weeklyWeightLossKg",  type: "number", labelFi: "Tavoiteltu painonpudotus (kg/vk)",   range: { min: 0.2, max: 1.5  }, step: 0.1 },
+    ],
+    helperFi: "Aggressiivinen vaje (>500 kcal) vaatii enemmän volyymileikkausta " +
+              "kuin lievä. Anna paras arvio — LeVe säätää volyymin näiden pohjalta.",
+  },
 
-  // ─── Vaihe 5: Kalusto ja mittarit (D8 + D9 + D10, 6 kysymystä) ──────
+  // ─── Vaihe 6: Kalusto ja mittarit (D8 + D9 + D10, 6 kysymystä) ──────
   {
     id: "q15_aerobicModality", stage: "metrics", dimension: "D8",
     type: "radio", labelFi: "Teetkö aerobista harjoittelua voimaharjoittelun rinnalla?",
@@ -237,7 +372,7 @@ export const WIZARD_QUESTIONS = [
     required: true,
   },
 
-  // ─── Vaihe 6: Liikevalinnat (D11 + D12, 2 kysymystä) ─────────────────
+  // ─── Vaihe 7: Liikevalinnat (D11 + D12, 2 kysymystä) ─────────────────
   {
     id: "q21_splitPreference", stage: "movements", dimension: "D11",
     type: "radio", labelFi: "Mieluisin viikon jako",
@@ -257,7 +392,7 @@ export const WIZARD_QUESTIONS = [
     helperFi: "Yksi liike per rivi. Jätä tyhjäksi jos ei ole.",
   },
 
-  // ─── Vaihe 7: Volyymi, frekvenssi, RPE-tarkkuus (D13 + D14 + D15, 3 kysymystä) ──
+  // ─── Vaihe 8: Volyymi, frekvenssi, RPE-tarkkuus (D13 + D14 + D15, 3 kysymystä) ──
   {
     id: "q23_volumePref", stage: "loading", dimension: "D13",
     type: "radio", labelFi: "Volyymipreferenssi",
@@ -345,10 +480,10 @@ export function getStageByOrder(order) {
   return WIZARD_STAGES.find(s => s.order === order) || null;
 }
 
-// Yht. 25 kysymystä, 7 vaihetta, 15 dimensiota (D1–D15) — vrt. WIZARD_SPECIFICATION_v3.2.md
+// Yht. 30 kysymystä, 8 vaihetta, 18 dimensiota (D1–D18) — vrt. WIZARD_SPECIFICATION_v3.3.md
 export const SCHEMA_INVARIANTS = {
-  totalQuestions: 25,
-  totalStages: 7,
-  totalDimensions: 15,
+  totalQuestions: 30,
+  totalStages: 8,
+  totalDimensions: 18,
   schemaVersion: WIZARD_SCHEMA_VERSION,
 };

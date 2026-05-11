@@ -32,6 +32,8 @@
     import * as schemaM from "./wizard-schema.js";
     import * as dataM from "./wizard-data.js";
     import * as coreM from "./wizard-core.js";
+    // 1D: liikepankki + pää-app-tilan tunnistus
+    import * as bankM from "./wizard-movement-bank.js";
     const { WIZARD_SCHEMA_VERSION } = schemaM;
     const { initWizardDB } = dataM;
     const { WizardController } = coreM;
@@ -55,12 +57,12 @@
         await controller.init();
         // Diagnostiikkaa kehitysvaiheeseen: tämä on tarkoituksellisesti pelkkä log,
         // ei käyttäjälle näkyvä — wiz-versio + schema-versio konsoliin.
-        console.log(`[wizard] valmis. schema=${WIZARD_SCHEMA_VERSION}, ui=Track-B-1C`);
+        console.log(`[wizard] valmis. schema=${WIZARD_SCHEMA_VERSION}, ui=Track-B-1D`);
         // Avaa selfTest selaimen konsolista: window.__wizardSelfTest()
         window.__wizardSelfTest = controller.runSelfTest.bind(controller);
-        // Diagnostiikka: koko controller-instanssi + data-API window:iin jotta
-        // selfTest ja kehittäjäkonsoli näkevät reaaliaikaisen tilan.
-        window.__wizard = { controller, dataApi: dataM, schema: schemaM, core: coreM };
+        // Diagnostiikka: koko controller-instanssi + data-API + bank-API window:iin
+        // jotta selfTest ja kehittäjäkonsoli näkevät reaaliaikaisen tilan.
+        window.__wizard = { controller, dataApi: dataM, schema: schemaM, core: coreM, bank: bankM };
       } catch (e) {
         console.error("[wizard] boot failed:", e);
         root.innerHTML =

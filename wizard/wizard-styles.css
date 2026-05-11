@@ -582,6 +582,149 @@ body {
   color: var(--muted);
 }
 
+/* ── 1D: date-komponentti (q27) ──────────────────────────────────── */
+
+.wiz-date-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wiz-input--date {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  background: var(--card2);
+  color: var(--txt);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-stack);
+  font-size: 15px;
+  /* Selaimen native date picker — iOS/Android näyttää natiivin valitsimen */
+  color-scheme: dark;
+}
+.wiz-input--date:focus {
+  outline: none;
+  border-color: var(--acc);
+  box-shadow: 0 0 0 2px var(--acc-soft);
+}
+.wiz-date-error {
+  color: var(--bad);
+  font-size: 13px;
+  padding: 6px 10px;
+  background: var(--bad-soft);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--bad);
+}
+
+/* ── 1D: pr-list -komponentti (q26) ──────────────────────────────── */
+
+.wiz-pr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.wiz-pr-source-info {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 8px 12px;
+  background: var(--card2);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--acc);
+}
+.wiz-pr-source-fallback {
+  border-left-color: var(--warn);
+  color: var(--txt);
+}
+.wiz-pr-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.wiz-pr-row .wiz-list-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.wiz-pr-row .wiz-list-row-head strong {
+  color: var(--acc);
+  font-size: 14px;
+  font-weight: 600;
+}
+.wiz-pr-row-error {
+  color: var(--warn);
+  font-size: 12px;
+  padding: 6px 10px;
+  background: var(--warn-soft);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--warn);
+  margin-top: 6px;
+}
+.wiz-pr-row-error[style*="none"] {
+  display: none !important;
+}
+
+/* Liike-pudotusvalikko (optgroup-ryhmittely) */
+.wiz-movement-picker {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--txt);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-stack);
+  font-size: 15px;
+  color-scheme: dark;
+  /* Mobiilissa native picker kun käyttäjä tap:aa */
+  appearance: auto;
+}
+.wiz-movement-picker:focus {
+  outline: none;
+  border-color: var(--acc);
+  box-shadow: 0 0 0 2px var(--acc-soft);
+}
+.wiz-movement-picker optgroup {
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--bg);
+}
+
+/* loadType-radio (kompaktit napit) */
+.wiz-load-type-radio {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wiz-load-type-radio .wiz-radio-option {
+  font-size: 14px;
+  padding: 10px 12px;
+}
+
+/* ── 1D: Skipped-vaihe ─────────────────────────────────────────────── */
+
+.wiz-step-skipped {
+  padding: 16px 18px;
+  background: var(--ok-soft);
+  border: 1px solid var(--ok);
+  border-radius: var(--radius);
+  color: var(--txt);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── 1D: Progress-bar skipped-segmentti ─────────────────────────── */
+
+.wiz-progress-seg.is-skipped {
+  /* Värimerkkaus kertoo että vaihe on ohitettu mutta ei piilota
+     sitä kokonaan — käyttäjä näkee silti vaiherakenteen. */
+  background: linear-gradient(90deg, var(--card) 0%, var(--card2) 100%);
+  border: 1px dashed var(--dim);
+  opacity: 0.5;
+}
+
 /* ── Mobiili-säädöt ───────────────────────────────────────────────── */
 
 @media (max-width: 480px) {
@@ -589,10 +732,17 @@ body {
   .wiz-step { padding: 14px; }
   .wiz-header h1 { font-size: 17px; }
   .wiz-btn { padding: 11px 14px; font-size: 14px; }
+  .wiz-pr-row { padding: 12px; }
+  .wiz-movement-picker { padding: 11px 12px; font-size: 14px; }
+  .wiz-input--date { padding: 11px 12px; font-size: 14px; }
 }
 
 /* ── Suuremmat näytöt: kasvattaa kortin paddingia ─────────────────── */
 
 @media (min-width: 720px) {
   .wiz-step { padding: 24px; }
+  /* PR-listalla painokenttä ja toistot rinnakkain isolla näytöllä */
+  .wiz-pr-row .wiz-input--number {
+    max-width: 200px;
+  }
 }

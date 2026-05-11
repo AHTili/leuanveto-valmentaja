@@ -1,0 +1,8 @@
+# Claude Code -hakemisto: preview-server-konfiguraatiot, sessio-tiedostot,
+# auto-memory yms. Nämä ovat dev-tooli- ja käyttäjäkohtaisia, eivät kuulu
+# repositorioon.
+.claude/
+
+# OS-tason roskat
+.DS_Store
+Thumbs.db
