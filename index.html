@@ -1091,6 +1091,8 @@ import {
   applySplitFilter, applyVolumeCap,
   // v4.45.0 (Track B Vaihe 2C-γ): tier-pohjainen kg/vk-progressiokerroin
   applyTierProgression,
+  // v4.46.0 (Track B Vaihe 2C-δ): isometric-pitojen e1RM-mallinnus
+  estimateIsometricE1RM,
   MAPPER_VERSION,
 } from "./wizard/wizard-2b-mapper.js";
 // initWizardDB tarvitaan lazy-alustamiseksi: wizard-data.js pitää module-tason
@@ -3487,6 +3489,7 @@ function showGeneratorPreviewModal(mapped, opts = {}) {
     // isometric-pidot)
     let prBlock = "";
     if (prPreview && (prPreview.willMigrate.length > 0 || prPreview.willSkip.length > 0 ||
+                      (prPreview.isometricMigrate || []).length > 0 ||
                       prPreview.isometricNotes.length > 0 || prPreview.unmatched.length > 0)) {
       const migrateList = prPreview.willMigrate.map(p =>
         `<li><b>${escapeHtml(p.name)}</b>: ${p.weightKg} kg × ${p.reps} → e1RM <b>${p.computedE1RM} kg</b></li>`
@@ -3494,15 +3497,20 @@ function showGeneratorPreviewModal(mapped, opts = {}) {
       const skipList = prPreview.willSkip.map(p =>
         `<li>${escapeHtml(p.name)} <span class="muted">(olemassa oleva e1RM ${p.existingE1RM} kg säilyy)</span></li>`
       ).join("");
+      // 2C-δ: isometric-PR:t saavat nyt e1RM-vastineen
+      const isoMigrateList = (prPreview.isometricMigrate || []).map(p =>
+        `<li><b>${escapeHtml(p.name)}</b>: ${p.holdSeconds} s${p.addedWeightKg ? ` + ${p.addedWeightKg} kg` : ""} → e1RM <b>${p.computedE1RM} kg</b> <span class="muted">(empirinen heuristiikka, ±15-25 % yksilövaihtelu)</span></li>`
+      ).join("");
       const isoList = prPreview.isometricNotes.map(p =>
-        `<li>${escapeHtml(p.name)}: ${p.holdSeconds} s${p.addedWeightKg ? ` + ${p.addedWeightKg} kg lisäpaino` : ""} <span class="muted">(ei migroidu)</span></li>`
+        `<li>${escapeHtml(p.name)}: ${p.holdSeconds} s${p.addedWeightKg ? ` + ${p.addedWeightKg} kg lisäpaino` : ""} <span class="muted">(ei migroidu — tuntematon liike)</span></li>`
       ).join("");
       const unmatchedList = prPreview.unmatched.map(p =>
         `<li>${escapeHtml(p.name)} <span class="muted">${p.reason ? `(${escapeHtml(p.reason)})` : "(liike ei löydy)"}</span></li>`
       ).join("");
       prBlock = `<div style="margin-top:14px;padding:12px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.3);border-radius:8px">
         <div style="font-weight:600;margin-bottom:6px">📊 PR-data → e1RM-baselinet</div>
-        ${migrateList ? `<div style="font-size:13px;margin-bottom:6px"><b>${prPreview.willMigrate.length} migroidaan:</b><ul style="margin:4px 0 0;padding-left:18px">${migrateList}</ul></div>` : ""}
+        ${migrateList ? `<div style="font-size:13px;margin-bottom:6px"><b>${prPreview.willMigrate.length} dynaamista migroidaan:</b><ul style="margin:4px 0 0;padding-left:18px">${migrateList}</ul></div>` : ""}
+        ${isoMigrateList ? `<div style="font-size:13px;margin-bottom:6px"><b>${prPreview.isometricMigrate.length} isometric-pitoa migroidaan e1RM-vastineena:</b><ul style="margin:4px 0 0;padding-left:18px">${isoMigrateList}</ul></div>` : ""}
         ${skipList ? `<div style="font-size:13px;margin-bottom:6px"><b>${prPreview.willSkip.length} ohitetaan</b> (olemassa oleva data säilyy):<ul style="margin:4px 0 0;padding-left:18px">${skipList}</ul></div>` : ""}
         ${isoList ? `<div style="font-size:13px;margin-bottom:6px"><b>${prPreview.isometricNotes.length} pitoa tallennetaan tiedoksi:</b><ul style="margin:4px 0 0;padding-left:18px">${isoList}</ul></div>` : ""}
         ${unmatchedList ? `<div style="font-size:13px;color:var(--muted)"><b>${prPreview.unmatched.length} ei löytynyt:</b><ul style="margin:4px 0 0;padding-left:18px">${unmatchedList}</ul></div>` : ""}
@@ -3614,19 +3622,33 @@ function _computeE1RMFromPR(item) {
 // Read-only laskenta preview-modaalille: palauttaa yhteenvedon ilman
 // DB-kirjoituksia. handleGenerateProgram:ssa tehdään varsinainen kirjoitus
 // joka tarkistaa olemassa olevat baselinet uudelleen (samalla GUARDilla).
+//
+// v4.46.0 (2C-δ): isometric-PR:t (Front Lever / Planche / HSPU / OAP) saavat
+// nyt e1RM-vastineen estimateIsometricE1RM-funktion kautta. Aiemmin (2B-γ)
+// nämä jätettiin tiedoksi mutta EI migroitu — nyt migroidaan EMPIRINEN
+// HEURISTIIKKA -merkinnällä.
 async function _previewPrMigration(wizardConfig, allMovements) {
   const prs = wizardConfig.answers?.q26_personalRecords;
   if (!Array.isArray(prs) || prs.length === 0) {
-    return { willMigrate: [], willSkip: [], isometricNotes: [], unmatched: [] };
+    return { willMigrate: [], willSkip: [], isometricMigrate: [], isometricNotes: [], unmatched: [] };
   }
-  const result = { willMigrate: [], willSkip: [], isometricNotes: [], unmatched: [] };
+  const bw = Number(wizardConfig.answers?.q03_weight);
+  const result = { willMigrate: [], willSkip: [], isometricMigrate: [], isometricNotes: [], unmatched: [] };
   for (const pr of prs) {
     if (pr.loadType === "isometric_hold") {
-      result.isometricNotes.push({
-        name: pr.movementName,
-        holdSeconds: pr.holdSeconds,
-        addedWeightKg: pr.addedWeightKg,
-      });
+      // 2C-δ: yritä e1RM-mallinnus
+      const iso = estimateIsometricE1RM(pr, bw);
+      if (iso) {
+        result.isometricMigrate.push({
+          name: pr.movementName, holdSeconds: pr.holdSeconds, addedWeightKg: pr.addedWeightKg,
+          computedE1RM: iso.e1RM, kind: iso.kind, level: iso.level, source: iso.source,
+        });
+      } else {
+        // Tuntematon isometric-liike → vain tiedoksi
+        result.isometricNotes.push({
+          name: pr.movementName, holdSeconds: pr.holdSeconds, addedWeightKg: pr.addedWeightKg,
+        });
+      }
       continue;
     }
     const movement = _findMatchingMovement(pr, allMovements);
@@ -3656,11 +3678,42 @@ async function _previewPrMigration(wizardConfig, allMovements) {
 
 async function _migrateWizardPRsToMovementProgress(wizardConfig, allMovements) {
   const prs = wizardConfig.answers?.q26_personalRecords;
-  const result = { migrated: 0, skipped: 0, isometricCount: 0, unmatched: 0, errors: [] };
+  const result = { migrated: 0, skipped: 0, isometricCount: 0, isometricMigrated: 0, unmatched: 0, errors: [] };
   if (!Array.isArray(prs) || prs.length === 0) return result;
+  const bw = Number(wizardConfig.answers?.q03_weight);
 
   for (const pr of prs) {
-    if (pr.loadType === "isometric_hold") { result.isometricCount++; continue; }
+    if (pr.loadType === "isometric_hold") {
+      // 2C-δ: yritä e1RM-mallinnus ja migroi jos onnistuu
+      const iso = estimateIsometricE1RM(pr, bw);
+      if (!iso) { result.isometricCount++; continue; }
+      // Tarvitaan vielä movement-mätsi pää-app:in storeen — käytetään movementName
+      // vasten allMovements
+      const movement = allMovements.find(m =>
+        (m.name || "").toLowerCase().includes((pr.movementName || "").toLowerCase().split("(")[0].trim())
+      );
+      if (!movement) { result.isometricCount++; continue; }
+      // GUARD: ei ylikirjoita olemassa olevia e1RM:ä
+      const existing = await getMovementProgress(movement.movementId);
+      if (existing && typeof existing.e1RM === "number" && existing.e1RM > 0) {
+        result.skipped++;
+        continue;
+      }
+      try {
+        await saveMovementProgress({
+          movementId: movement.movementId,
+          e1RM: iso.e1RM,
+          lastUpdatedISO: new Date().toISOString(),
+          source: "wizard-2c-delta-isometric",
+          sourceWizardId: wizardConfig.wizardId,
+          _isometricPR: { ...pr, kind: iso.kind, level: iso.level, formula: iso.formula, sourceStatus: iso.sourceStatus },
+        });
+        result.isometricMigrated++;
+      } catch (e) {
+        result.errors.push({ movementName: movement.name, reason: String(e?.message || e) });
+      }
+      continue;
+    }
     const movement = _findMatchingMovement(pr, allMovements);
     if (!movement) { result.unmatched++; continue; }
     // GUARD: tarkista olemassa oleva e1RM uudelleen aktivoinnin hetkellä
@@ -3875,6 +3928,7 @@ async function handleGenerateProgram() {
   render();
   const parts = [];
   if (prResult.migrated > 0) parts.push(`${prResult.migrated} PR → e1RM`);
+  if (prResult.isometricMigrated > 0) parts.push(`${prResult.isometricMigrated} isometric → e1RM`);
   if (!snapshotName) parts.push("snapshot epäonnistui");
   const extraMsg = parts.length > 0 ? ` (${parts.join(", ")})` : "";
   showToast(`Räätälöity ohjelma aktivoitu ✓${extraMsg}`, "ok", 6000);
