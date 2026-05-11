@@ -495,16 +495,19 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-// v4.40.0: Track B Vaihe 2B-β — wizard-pohjaisen ohjelman generointi.
-// UI-vain-muutos: "Generoi ohjelma" -painike Asetukset-näkymässä +
-// preview-modaali + setActiveMesocycle-kytkentä. Pre-rebuild snapshot
-// luodaan ennen aktiivisen mesocyclen korvausta turvallisuussyistä.
-// Pää-app:in laskenta + PROGRAM_BUILD_VERSION pysyvät koskemattomina
-// (mesocycle auto-rebuild EI laukea — weekPlans-rakenne ei muutu).
+// v4.41.0: Track B Vaihe 2B-γ — q26-PR-migraatio + q30-energiabudjetti.
+// q26-PR-list (external+system) migroidaan movementProgress.e1RM-baselineiksi
+// uudelle käyttäjälle (cal-session ohittaminen). GUARD: olemassa olevat
+// e1RM-arvot säilyvät. q30-energiabudjetti säätää generaattorin
+// recoveryCapacity:n cut-aggressive-tilassa (deficitKcal>=500 → heikko,
+// Helms 2018). Mapper-versio päivitetty 2B-alpha-v1.0 → 2B-gamma-v1.0.
 //
-// v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen
-// (onboarding-banneri, Asetukset-kortti, migraatio-banneri).
-const APP_VERSION = "4.40.0";
+// v4.40.0: Track B Vaihe 2B-β — wizard-pohjaisen ohjelman generointi.
+// "Generoi ohjelma" -painike + preview-modaali + setActiveMesocycle +
+// pre-rebuild snapshot.
+//
+// v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen.
+const APP_VERSION = "4.41.0";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
