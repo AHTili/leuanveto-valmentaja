@@ -1587,7 +1587,7 @@ function attachVelocityRepLiveSummary(velRepGrid, options = {}) {
     const vals = [];
     inputs.forEach(inp => {
       const raw = parseInt(inp.value);
-      if (!isNaN(raw) && raw >= 1 && raw <= 299) vals.push({ inp, val: raw / 100 });
+      if (!isNaN(raw) && raw >= 10 && raw <= 299) vals.push({ inp, val: raw / 100 });
     });
     inputs.forEach(inp => inp.classList.remove("vl-over-cap"));
     if (!summaryEl) return;
@@ -1798,7 +1798,7 @@ async function openRtfTestModal(movementId, movementName) {
     const vals = [];
     inputs.forEach(inp => {
       const raw = parseInt(inp.value);
-      if (!isNaN(raw) && raw >= 1 && raw <= 299) vals.push(raw / 100);
+      if (!isNaN(raw) && raw >= 10 && raw <= 299) vals.push(raw / 100);
     });
     const summaryEl = overlay.querySelector("#rtf-summary");
     if (!summaryEl) return;
@@ -1860,7 +1860,7 @@ async function openRtfTestModal(movementId, movementName) {
     const mvReps = [];
     overlay.querySelectorAll(".rtf-rep-input").forEach(inp => {
       const raw = parseInt(inp.value);
-      if (!isNaN(raw) && raw >= 1 && raw <= 299) mvReps.push(raw / 100);
+      if (!isNaN(raw) && raw >= 10 && raw <= 299) mvReps.push(raw / 100);
     });
     if (mvReps.length < RTF_MIN_REPS_PER_SET) {
       showToast(`Vähintään ${RTF_MIN_REPS_PER_SET} validia rep-MV vaaditaan`, "bad");
@@ -7660,10 +7660,21 @@ async function openSessionDetail(sessionId) {
   const readinessDetailsHTML = (() => {
     const r = sess.readinessDetails;
     if (!r) return "";
+    // v4.38.7 BUG-FIX: r.channels.velocity/hrv/vx ovat objekteja { z, class, channel, baseline }.
+    // Aiemmin renderöitiin suoraan template-stringissä → "[object Object]".
+    // Korjattu: poimi .class (GREEN/YELLOW/RED) + näytä z-arvo sulkeissa jos saatavilla.
     const parts = [];
-    if (r.channels?.velocity) parts.push(`Velocity: ${r.channels.velocity}`);
-    if (r.channels?.hrv) parts.push(`HRV: ${r.channels.hrv}`);
-    if (r.channels?.vx) parts.push(`Vx: ${r.channels.vx}`);
+    const formatChannel = (ch) => {
+      if (!ch || !ch.class) return null;
+      const z = typeof ch.z === "number" ? ` (z ${ch.z.toFixed(1)})` : "";
+      return `${ch.class}${z}`;
+    };
+    const v = formatChannel(r.channels?.velocity);
+    const h = formatChannel(r.channels?.hrv);
+    const vx = formatChannel(r.channels?.vara);
+    if (v) parts.push(`Velocity: ${v}`);
+    if (h) parts.push(`HRV: ${h}`);
+    if (vx) parts.push(`Vara: ${vx}`);
     if (parts.length === 0) return "";
     return `<div class="muted" style="font-size:11px;margin-top:4px">${parts.join(" · ")}</div>`;
   })();
@@ -11287,7 +11298,7 @@ function bindWorkoutEvents() {
       const collected = [];
       repGridEl.querySelectorAll(".vel-rep-input").forEach(inp => {
         const raw = parseInt(inp.value);
-        if (!isNaN(raw) && raw >= 1 && raw <= 299) collected.push(raw / 100);
+        if (!isNaN(raw) && raw >= 10 && raw <= 299) collected.push(raw / 100);
       });
       if (collected.length >= 1) {
         mvReps = collected;
