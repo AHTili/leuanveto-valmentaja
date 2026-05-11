@@ -1057,6 +1057,8 @@ import {
   createHypertrofiaMesocycle, createMaksimivoimaMesocycle, createEksenterinenMesocycle,
   createDUPMesocycle, createSiirtymaMesocycle, createPalautuminenMesocycle, createStreetlifting16WMesocycle,
   generateCustomMesocycle,
+  // v4.42.0 (Track B Vaihe 2C-α): multi-blokki-mesocycle
+  generateMultiBlockMesocycle,
   getSettings, saveSettings,
   exportFullBackup, importFullBackup,
   getBackupStatus, getAllBackupSnapshots, createBackupSnapshot, restoreFromSnapshot,
@@ -1080,7 +1082,8 @@ import {
 } from "./data.js";
 
 // v4.40.0 (Track B Vaihe 2B-β): wizard-pohjainen ohjelma-generointi
-import { mapWizardToMesocycle, MAPPER_VERSION } from "./wizard/wizard-2b-mapper.js";
+// v4.42.0 (Track B Vaihe 2C-α): mapWizardToMultiBlockMesocycle multi-blokille
+import { mapWizardToMesocycle, mapWizardToMultiBlockMesocycle, MAPPER_VERSION } from "./wizard/wizard-2b-mapper.js";
 // initWizardDB tarvitaan lazy-alustamiseksi: wizard-data.js pitää module-tason
 // _wizardDb-singletonia jota tx-funktiot lukevat. Jos pää-app ei ole avannut
 // LeVeWizardDB:tä, getActiveWizardConfig palauttaa null.
@@ -3389,7 +3392,39 @@ function showGeneratorPreviewModal(mapped, opts = {}) {
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-modal", "true");
 
+    // 2C-α: jos isMultiBlock, "tavoite" on multi-blokki + block-aikajana
+    const isMultiBlock = !!mapped.isMultiBlock;
     const goalLabels = { hypertrofia: "Hypertrofia", maksimivoima: "Maksimivoima", yhdistelma: "Yhdistelmä", undulating: "DUP" };
+    const blockLabels = {
+      hypertrofia: "Hypertrofia",
+      maksimivoima: "Strength/Peaking",
+      yhdistelma: "Intensifikaatio",
+      undulating: "DUP",
+    };
+    // Block-aikajana värikoodattuna (vain multi-blokki-tilassa)
+    const blockColors = {
+      hypertrofia: { bg: "rgba(79,140,255,0.18)", border: "rgba(79,140,255,0.5)" },     // sininen
+      maksimivoima: { bg: "rgba(34,197,94,0.18)", border: "rgba(34,197,94,0.5)" },       // vihreä
+      yhdistelma: { bg: "rgba(245,158,11,0.18)", border: "rgba(245,158,11,0.5)" },       // oranssi
+      undulating: { bg: "rgba(139,92,246,0.18)", border: "rgba(139,92,246,0.5)" },       // violetti
+    };
+    const peakingColor = { bg: "rgba(239,68,68,0.18)", border: "rgba(239,68,68,0.5)" };  // punainen
+    const blockTimeline = isMultiBlock
+      ? `<div style="margin-top:14px">
+          <div style="font-weight:600;font-size:13px;margin-bottom:8px">Block-aikajana (${mapped.blocks.length} vaihetta, ${mapped.blocks.reduce((s, b) => s + b.weekCount, 0)} vk yhteensä)</div>
+          <div style="display:grid;grid-template-columns:${mapped.blocks.map(b => b.weekCount + "fr").join(" ")};gap:4px">
+            ${mapped.blocks.map(b => {
+              const isPeaking = (b.label || "").toLowerCase().includes("peaking");
+              const c = isPeaking ? peakingColor : (blockColors[b.goal] || blockColors.yhdistelma);
+              const displayLabel = isPeaking ? "Peaking" : (blockLabels[b.goal] || b.label);
+              return `<div style="background:${c.bg};border:1px solid ${c.border};border-radius:6px;padding:8px;text-align:center;font-size:12px;line-height:1.3">
+                <div style="font-weight:600">${escapeHtml(displayLabel)}</div>
+                <div class="muted" style="font-size:11px;margin-top:2px">${b.weekCount} vk</div>
+              </div>`;
+            }).join("")}
+          </div>
+        </div>`
+      : "";
     const recoveryLabels = { hyva: "Hyvä (matala palautusvelka)", keski: "Keski", heikko: "Heikko (varovainen, vähemmän volyymia)" };
     const dayLabels = ["Ma", "Ti", "Ke", "To", "Pe", "La", "Su"];
     const dayList = Array.isArray(mapped.preferredDaysOfWeek)
@@ -3473,12 +3508,13 @@ function showGeneratorPreviewModal(mapped, opts = {}) {
         </div>
         <div class="wiz-generator-modal-body">
           <div class="wiz-generator-summary">
-            <div class="wiz-generator-summary-row"><span>Tavoite:</span><b>${escapeHtml(goalLabels[mapped.goal] || mapped.goal)}</b></div>
-            <div class="wiz-generator-summary-row"><span>Kesto:</span><b>${mapped.weekCount} viikkoa${mapped._wizardMeta?.targetDateAnchored ? " (kisapäivään ankkuroitu)" : ""}</b></div>
+            <div class="wiz-generator-summary-row"><span>Tavoite:</span><b>${isMultiBlock ? `Multi-blokki (${mapped.blocks.length} vaihetta)` : escapeHtml(goalLabels[mapped.goal] || mapped.goal)}</b></div>
+            <div class="wiz-generator-summary-row"><span>Kesto:</span><b>${isMultiBlock ? mapped.blocks.reduce((s, b) => s + b.weekCount, 0) : mapped.weekCount} viikkoa${mapped._wizardMeta?.targetDateAnchored ? " (kisapäivään ankkuroitu)" : ""}</b></div>
             <div class="wiz-generator-summary-row"><span>Päivät:</span><b>${mapped.daysPerWeek} / viikko (${escapeHtml(dayList)})</b></div>
             <div class="wiz-generator-summary-row"><span>Palautumiskapasiteetti:</span><b>${escapeHtml(recoveryLabels[mapped.recoveryCapacity] || mapped.recoveryCapacity)}</b></div>
           </div>
           ${targetDateWarning}
+          ${blockTimeline}
           ${cutBlock}
           <div style="margin-top:14px">
             <div style="font-weight:600;font-size:13px;margin-bottom:6px">Päämääräliikkeet (${mapped.primaries.length})</div>
@@ -3681,10 +3717,13 @@ async function handleGenerateProgram() {
     allMovements: state.movements,
   };
 
-  // 3. Mapping (2B-α)
+  // 3. Mapping (2B-α + 2C-α multi-blokki).
+  // mapWizardToMultiBlockMesocycle tunnistaa q27_targetDate:n + max-tavoitteen
+  // ja palauttaa multi-blokki-mapping:n jos aikaa ≥ 5 vk; muutoin palaa
+  // mapWizardToMesocycle:n (single-blokki) automaattisesti fallbackina.
   let mapped;
   try {
-    mapped = mapWizardToMesocycle(wizardConfig, mainAppState);
+    mapped = mapWizardToMultiBlockMesocycle(wizardConfig, mainAppState);
   } catch (e) {
     showToast(`Mapping epäonnistui: ${e.message}`, "bad");
     return;
@@ -3727,11 +3766,15 @@ async function handleGenerateProgram() {
     }
   }
 
-  // 6. Generoi mesocycle pää-app:n generateCustomMesocycle:lla
+  // 6. Generoi mesocycle (single- tai multi-blokki riippuen mapped.isMultiBlock:sta)
   let newMeso;
   try {
-    newMeso = generateCustomMesocycle(mapped, mapped.startDateISO);
-    // Liitä 2B-α:n metadata customConfig:iin auditointia varten
+    if (mapped.isMultiBlock) {
+      newMeso = generateMultiBlockMesocycle(mapped, mapped.startDateISO);
+    } else {
+      newMeso = generateCustomMesocycle(mapped, mapped.startDateISO);
+    }
+    // Liitä mapper-metadata customConfig:iin auditointia varten
     if (!newMeso.customConfig) newMeso.customConfig = {};
     newMeso.customConfig._wizardMeta = mapped._wizardMeta;
   } catch (e) {
