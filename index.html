@@ -11248,16 +11248,20 @@ function bindWorkoutEvents() {
 
   // v4.38.3 refactor: live-summary nyt nimettävässä helpperissä
   // (attachVelocityRepLiveSummary). Vähensi inline-koodin ~110 → ~10 riviin.
+  // v4.38.6 BUG-FIX: currentSet ei ollut scope:ssa — extractoinnin yhteydessä
+  // unohtui määrittely (käyttäjäpalaute 2026-05-11: "Bindausvirhe — tarkista konsoli"
+  // heti työsarja-näkymässä → koko bind() crashasi).
   const velRepGrid = $("#vel-rep-grid");
   if (velRepGrid) {
     const exerciseForCap = w.exercises[w.currentExerciseIdx];
+    const currentSetForCap = exerciseForCap?.sets?.[w.currentSetIdx];
     const weekNumForCap = state.recommendation?.weekNum;
     attachVelocityRepLiveSummary(velRepGrid, {
       summaryEl: $("#vel-rep-summary"),
       panelEl: $("#vel-panel"),
       exerciseName: exerciseForCap?.name || null,
       movementId: exerciseForCap?.movementId || null,
-      targetVx: currentSet?.targetVx ?? null,
+      targetVx: currentSetForCap?.targetVx ?? null,
       blockPhase: weekNumForCap ? phaseForWeek(weekNumForCap) : null,
       dayType: state.workout?.dayType || state.recommendation?.dayType,
       settings: state.settings || {},
