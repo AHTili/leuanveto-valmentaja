@@ -1089,6 +1089,8 @@ import {
   applySessionFocusLabels,
   // v4.44.0 (Track B Vaihe 2C-β2): split-filter + volyymi-cap post-process
   applySplitFilter, applyVolumeCap,
+  // v4.45.0 (Track B Vaihe 2C-γ): tier-pohjainen kg/vk-progressiokerroin
+  applyTierProgression,
   MAPPER_VERSION,
 } from "./wizard/wizard-2b-mapper.js";
 // initWizardDB tarvitaan lazy-alustamiseksi: wizard-data.js pitää module-tason
@@ -3810,6 +3812,15 @@ async function handleGenerateProgram() {
       newMeso.weekPlans = applyVolumeCap(newMeso.weekPlans, mapped.goal);
     }
     newMeso.weekPlans = applySessionFocusLabels(newMeso.weekPlans);
+    // 2C-γ: Tier-pohjainen progressiokerroin weekDef.deltaPctBase:lle.
+    // Säätää vk 2-3 progressionopeutta (vk 1 akklimatisaatio + vk 4 deload
+    // säilyvät). Lähde: Latella 2020 + Nuckols SBS, EMPIRINEN — yksilövaihtelu
+    // ±50-100 % (merkitty _wizardMeta.rules.source-kenttään).
+    const tier = wizardConfig.answers?.q08_selfLevel;
+    const sex = wizardConfig.answers?.q02_sex;
+    if (Array.isArray(newMeso.weekDefs)) {
+      newMeso.weekDefs = applyTierProgression(newMeso.weekDefs, tier, sex);
+    }
   } catch (e) {
     showToast(`Ohjelman generointi epäonnistui: ${e.message}`, "bad");
     return;
