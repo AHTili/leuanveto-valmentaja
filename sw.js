@@ -495,6 +495,24 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
+// v4.44.0: Track B Vaihe 2C-β2 — Korjauspaketti pilottiohjelman puutteille.
+// 5 isoa korjausta:
+//   1. createIntensifikaatioMesocycle (data.js) - aito Issurin-intensifikaatio
+//      matala volyymi, korkea intensiteetti (V1-V2, primary 1-3 reps),
+//      kapea accessory-työ. Korvaa "yhdistelma":n joka tuotti ylimäärä-accessoryja.
+//   2. createMultiBlockPeakingSkeleton (data.js) - 2 vk taper+kisaviikko,
+//      EI strength-toistoja peaking-viikoille. Korvaa "maksimivoima":n
+//      jonka pilottiohjelmassa peaking vk 13-14 oli identinen strength vk 5:n kanssa.
+//   3. applySplitFilter (mapper) - q21="upper_lower"/"ppl"/"broscience" säätää
+//      accessory:t per päivä primary:n kategorian mukaan (ei chest press
+//      kyykky-päivänä).
+//   4. applyVolumeCap (mapper) - rajaa accessory-sarjat per kategoria per
+//      viikko blokin tyypin mukaan (Helms/Schoenfeld MV-perusta).
+//   5. UI-toisto-bugi (index.html) - "PÄÄLIIKKEET + BACKOFF" -osio poistettu
+//      details-näkymästä, summary näyttää primary+backoff suoraan
+//      lisätiedoineen (loadInfo). Sama tieto ei enää toistu kortissa.
+// Mapper 2C-beta-v1.0 → 2C-beta2-v1.0.
+//
 // v4.43.0: Track B Vaihe 2C-β — Session-fokus-labelit per päivä.
 // Wizard-generoidun ohjelman päiväkortit Dashboardilla saavat fokus-pohjaisen
 // labelin ("Pullup-fokus (volyymi)") yleisten "Perusvoima A" -etikettien
@@ -505,7 +523,7 @@
 // v4.41.0: Track B Vaihe 2B-γ — q26-PR-migraatio + q30-energiabudjetti.
 // v4.40.0: Track B Vaihe 2B-β — wizard-pohjaisen ohjelman generointi.
 // v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen.
-const APP_VERSION = "4.43.0";
+const APP_VERSION = "4.44.0";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

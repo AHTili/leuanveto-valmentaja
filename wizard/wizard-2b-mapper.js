@@ -31,7 +31,7 @@
 
 import { SCHEMA_INVARIANTS } from "./wizard-schema.js";
 
-export const MAPPER_VERSION = "2C-beta-v1.0";
+export const MAPPER_VERSION = "2C-beta2-v1.0";
 
 // ─── Issurin Table V residuaalit (RISTIINTARKISTETTU) ──────────────────
 // Lähde: Issurin & Lustig 2004 / Issurin 2008 Table V, modifoitu.
@@ -430,10 +430,16 @@ export function pickBlockSequence(answers, daysUntilTarget) {
   // Rakenna sekvenssi siitä blokista, jossa atletti _ei_ ole jo (= ei
   // päällekäisyyttä residuaalin kanssa). Peaking on aina viimeisenä, 2 vk.
   const candidates = [];
-  if (!skipHyp) candidates.push({ goal: "hypertrofia",  weekCount: 4, label: "hypertrofia" });
-  if (!skipStr) candidates.push({ goal: "maksimivoima", weekCount: 4, label: "strength" });
-  candidates.push({ goal: "yhdistelma", weekCount: 4, label: "intensification" });
-  candidates.push({ goal: "maksimivoima", weekCount: 2, label: "peaking" });
+  // 2C-β2: käyttää uusia aitoja goal-arvoja:
+  //   "intensifikaatio" → createIntensifikaatioMesocycle (matala volyymi, V1-V2)
+  //   "peaking"        → createMultiBlockPeakingSkeleton (taper + kisaviikko)
+  // Aiemmin (2C-α) intensifikaatio mappautui "yhdistelma":aan ja peaking
+  // "maksimivoima":aan, mikä tuotti pilottiohjelmissa "strength toisinaan"
+  // -rakenteita Issurin-mallin sijaan.
+  if (!skipHyp) candidates.push({ goal: "hypertrofia",     weekCount: 4, label: "hypertrofia" });
+  if (!skipStr) candidates.push({ goal: "maksimivoima",    weekCount: 4, label: "strength" });
+  candidates.push({ goal: "intensifikaatio", weekCount: 4, label: "intensification" });
+  candidates.push({ goal: "peaking",         weekCount: 2, label: "peaking" });
 
   // Valitse niin monta blokkia kuin aikaa riittää (peaking aina mukaan)
   const peakingBlock = candidates[candidates.length - 1];
@@ -580,6 +586,130 @@ function _collectMultiBlockRules(a, sequence, recoveryCapacity, sexModifierAppli
     source: "Nunes 2021 (MJ-before-SJ) + ACSM 2009 Position Stand",
   });
   return rules;
+}
+
+// ─── 2C-β2: Split-filtteri ja volyymi-cap ──────────────────────────────
+//
+// Pää-app:in distributePrimariesToDays rotatoi primary-liikkeen päivien
+// välillä, mutta accessory:t tulevat skeleton:ista joka on tyypillisesti
+// full-body. Tämä rikkoo q21="upper_lower"/"ppl"/"broscience" -split-
+// preferenssin: esim. kyykky-päivänä saattaa olla "Seated row" ja "Chest
+// press" accessoryina vaikka käyttäjä halusi upper/lower-jaon.
+//
+// applySplitFilter suodattaa accessory-slotit niin että kunkin päivän
+// accessory:t vastaavat primary-liikkeen kategoriaa q21-säännön mukaisesti.
+
+const UPPER_PULL_CATS = ["vertikaaliveto", "horisontaaliveto", "hauisfleksio"];
+const UPPER_PUSH_CATS = ["vertikaalityöntö", "horisontaalityöntö", "ojentajaekstensio"];
+const UPPER_CATS = [...UPPER_PULL_CATS, ...UPPER_PUSH_CATS];
+const LOWER_CATS = ["alaraaja", "lonkkahingaus"];
+const NEUTRAL_CATS = ["core", "muu"]; // sallittu kaikissa päivissä
+
+export function applySplitFilter(weekPlans, splitPref) {
+  if (!Array.isArray(weekPlans)) return weekPlans;
+  // "fullbody"/"custom"/null → ei suodatusta
+  if (splitPref !== "upper_lower" && splitPref !== "ppl" && splitPref !== "broscience") {
+    return weekPlans;
+  }
+  return weekPlans.map(wp => ({
+    ...wp,
+    days: Array.isArray(wp.days) ? wp.days.map(d => {
+      if (!d || !Array.isArray(d.slots)) return d;
+      const primarySlot = d.slots.find(s => s.role === "primary" || s.role === "backoff");
+      if (!primarySlot) return d;
+      const primaryCat = primarySlot.category;
+      if (!primaryCat) return d;
+
+      // Päätä mikä kategoria-joukko on sallittu tälle päivälle
+      let allowedCats = null;
+      if (splitPref === "upper_lower") {
+        if (UPPER_CATS.includes(primaryCat))      allowedCats = [...UPPER_CATS, ...NEUTRAL_CATS];
+        else if (LOWER_CATS.includes(primaryCat)) allowedCats = [...LOWER_CATS, ...NEUTRAL_CATS];
+      } else if (splitPref === "ppl") {
+        if (UPPER_PULL_CATS.includes(primaryCat))      allowedCats = [...UPPER_PULL_CATS, ...NEUTRAL_CATS];
+        else if (UPPER_PUSH_CATS.includes(primaryCat)) allowedCats = [...UPPER_PUSH_CATS, ...NEUTRAL_CATS];
+        else if (LOWER_CATS.includes(primaryCat))       allowedCats = [...LOWER_CATS, ...NEUTRAL_CATS];
+      } else if (splitPref === "broscience") {
+        // Lihasryhmäkohtainen — kapeampi kuin PPL: vain primary-kategoria + neutrals
+        allowedCats = [primaryCat, ...NEUTRAL_CATS];
+      }
+      if (!allowedCats) return d;
+
+      // Suodata accessory-slotit, säilytä primary/backoff/warmup/opener/attempt
+      const filteredSlots = d.slots.filter(s => {
+        if (s.role !== "accessory") return true;
+        return allowedCats.includes(s.category);
+      });
+      return { ...d, slots: filteredSlots };
+    }) : wp.days,
+  }));
+}
+
+// ─── 2C-β2: Volyymi-cap per kategoria per blokki ──────────────────────
+//
+// Helms 2018 + Schoenfeld 2019: MV (Maximum Volume) per lihasryhmä per
+// viikko vaihtelee 10-20 sarjaa. Aito Issurin-malli VÄHENTÄÄ volyymiä
+// blokeittain (hyp → strength → intensification → peaking). 2C-α-pilotti
+// tuotti tilanteita jossa strength-blokki nostatti yhden kategorian
+// volyymin 14.8 set/vk:hon ja intensifikaatio nosti accessory-volyymiä
+// yhtäkkiä, mikä on Issurin-malli päinvastoin.
+//
+// applyVolumeCap rajaa accessory-sarjat per kategoria per viikko:
+//   hypertrofia → max 16 set/vk per kategoria
+//   maksimivoima → max 10 set/vk
+//   intensifikaatio → max 8 set/vk
+//   peaking (mb) → max 6 set/vk
+//   yhdistelma → max 14 set/vk
+//   undulating → max 14 set/vk
+
+const VOLUME_CAPS_PER_WEEK = Object.freeze({
+  hypertrofia:     16,
+  yhdistelma:      14,
+  undulating:      14,
+  maksimivoima:    10,
+  intensifikaatio:  8,
+  peaking:          6,
+  "peaking-mb":     6,
+});
+
+export function applyVolumeCap(weekPlans, blockGoal) {
+  if (!Array.isArray(weekPlans)) return weekPlans;
+  const cap = VOLUME_CAPS_PER_WEEK[blockGoal] || 16;
+
+  return weekPlans.map(wp => {
+    if (!Array.isArray(wp.days)) return wp;
+    // Laske kunkin kategorian total sets viikossa (vain accessoryt, primary aina koskematon)
+    const catAccessorySets = {};
+    wp.days.forEach(d => {
+      if (!Array.isArray(d.slots)) return;
+      d.slots.forEach(s => {
+        if (s.role !== "accessory") return;
+        const c = s.category;
+        catAccessorySets[c] = (catAccessorySets[c] || 0) + (Number(s.sets) || 0);
+      });
+    });
+    // Tunnista yli-cap-kategoriat
+    const overCats = {};
+    for (const [cat, total] of Object.entries(catAccessorySets)) {
+      if (total > cap) overCats[cat] = total;
+    }
+    if (Object.keys(overCats).length === 0) return wp;
+
+    // Pienennä accessory-sarjoja over-cap-kategorioissa proportionalisesti
+    return {
+      ...wp,
+      days: wp.days.map(d => ({
+        ...d,
+        slots: Array.isArray(d.slots) ? d.slots.map(s => {
+          if (s.role !== "accessory") return s;
+          if (!(s.category in overCats)) return s;
+          const total = overCats[s.category];
+          const scale = cap / total;
+          return { ...s, sets: Math.max(1, Math.round((Number(s.sets) || 0) * scale)) };
+        }) : d.slots,
+      })),
+    };
+  });
 }
 
 // ─── 2C-β: Session-fokus per päivä ─────────────────────────────────────
@@ -790,7 +920,7 @@ export function selfTestMapper() {
      RESIDUAL_DAYS.maximal_strength.mean === 30 && RESIDUAL_DAYS.maximal_strength.sd === 5);
   ck("RESIDUAL_DAYS maximal_speed = 5 ± 3 (Issurin)",
      RESIDUAL_DAYS.maximal_speed.mean === 5 && RESIDUAL_DAYS.maximal_speed.sd === 3);
-  ck("MAPPER_VERSION on 2C-beta-v1.0", MAPPER_VERSION === "2C-beta-v1.0");
+  ck("MAPPER_VERSION on 2C-beta2-v1.0", MAPPER_VERSION === "2C-beta2-v1.0");
 
   // ─── 2. pickStartingBlock ──────────────────────────────────────────
   ck("pickStartingBlock: peaking → hypertrofia",
@@ -1067,7 +1197,7 @@ export function selfTestMapper() {
   ck("Deterministisyys: recoveryCapacity sama", det1.recoveryCapacity === det2.recoveryCapacity);
 
   // ─── 14. _wizardMeta-rakenteen täydellisyys ─────────────────────────
-  ck("_wizardMeta sisältää mapperVersion (2C-beta-v1.0)", akseliResult._wizardMeta.mapperVersion === "2C-beta-v1.0");
+  ck("_wizardMeta sisältää mapperVersion (2C-beta2-v1.0)", akseliResult._wizardMeta.mapperVersion === "2C-beta2-v1.0");
   ck("_wizardMeta sisältää wizardSchemaVersion",  akseliResult._wizardMeta.wizardSchemaVersion === "3.3");
   ck("_wizardMeta sisältää rules-array",          Array.isArray(akseliResult._wizardMeta.rules) && akseliResult._wizardMeta.rules.length > 0);
   ck("_wizardMeta.rules sisältää ACSM-säännön (Nunes + ACSM 2009)",
@@ -1227,6 +1357,86 @@ export function selfTestMapper() {
     slots: [{ role: "primary", defaultMovementName: "Maastaveto" }] }] }];
   ck("applySessionFocusLabels: Maastaveto → 'Maave-fokus (volyymi)'",
      applySessionFocusLabels(deadliftPlans)[0].days[0].label === "Maave-fokus (volyymi)");
+
+  // ════════════════════════════════════════════════════════════════
+  // ─── 2C-β2: Block-sekvenssi käyttää uusia goal-arvoja ────────────
+  // ════════════════════════════════════════════════════════════════
+  const seqB2 = pickBlockSequence({ q12_primaryGoal: "max_1RM", q29_recentBlock: "peaking" }, 98);
+  ck("2C-β2: 4-blokin sekvenssi käyttää goal=intensifikaatio (ei yhdistelma)",
+     seqB2 && seqB2.blocks.some(b => b.goal === "intensifikaatio" && b.label === "intensification"));
+  ck("2C-β2: peaking-blokki käyttää goal=peaking (ei maksimivoima)",
+     seqB2 && seqB2.blocks.some(b => b.goal === "peaking" && b.label === "peaking" && b.weekCount === 2));
+
+  // ─── applySplitFilter testit ──────────────────────────────────────
+  const mixedDayPlans = [{ week: 1, days: [
+    { dayOfWeek: 1, dayType: "volume", label: "X",
+      slots: [
+        { role: "primary",   category: "alaraaja",         defaultMovementName: "Takakyykky", sets: 4, reps: 8 },
+        { role: "accessory", category: "alaraaja",         defaultMovementName: "Pin squat",  sets: 3, reps: 10 },
+        { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Seated row", sets: 3, reps: 8 },
+        { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Chest press", sets: 3, reps: 10 },
+        { role: "accessory", category: "core",             defaultMovementName: "Hanging leg raise", sets: 3, reps: 10 },
+      ] },
+  ]}];
+  const splitUL = applySplitFilter(mixedDayPlans, "upper_lower");
+  const lowerDay = splitUL[0].days[0];
+  ck("applySplitFilter upper_lower: kyykky-päivä → poistaa Seated row (vetävä yläosa)",
+     !lowerDay.slots.some(s => s.defaultMovementName === "Seated row"));
+  ck("applySplitFilter upper_lower: kyykky-päivä → poistaa Chest press (työntävä yläosa)",
+     !lowerDay.slots.some(s => s.defaultMovementName === "Chest press"));
+  ck("applySplitFilter upper_lower: kyykky-päivä → SÄILYTTÄÄ Pin squat (alaraaja)",
+     lowerDay.slots.some(s => s.defaultMovementName === "Pin squat"));
+  ck("applySplitFilter upper_lower: kyykky-päivä → SÄILYTTÄÄ Hanging leg raise (core neutraali)",
+     lowerDay.slots.some(s => s.defaultMovementName === "Hanging leg raise"));
+  ck("applySplitFilter upper_lower: primary aina säilyy (Takakyykky)",
+     lowerDay.slots.some(s => s.defaultMovementName === "Takakyykky" && s.role === "primary"));
+
+  const upperDayPlans = [{ week: 1, days: [
+    { dayOfWeek: 1, dayType: "volume", label: "X",
+      slots: [
+        { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 4, reps: 6 },
+        { role: "accessory", category: "horisontaaliveto",   defaultMovementName: "Penkkiveto",        sets: 3, reps: 8 },
+        { role: "accessory", category: "alaraaja",           defaultMovementName: "Walking lunge",     sets: 3, reps: 10 },
+        { role: "accessory", category: "lonkkahingaus",      defaultMovementName: "RDL",               sets: 3, reps: 8 },
+      ] },
+  ]}];
+  const splitUL2 = applySplitFilter(upperDayPlans, "upper_lower");
+  const upperDay = splitUL2[0].days[0];
+  ck("applySplitFilter upper_lower: pullup-päivä → poistaa Walking lunge (alaraaja)",
+     !upperDay.slots.some(s => s.defaultMovementName === "Walking lunge"));
+  ck("applySplitFilter upper_lower: pullup-päivä → poistaa RDL (lonkkahingaus)",
+     !upperDay.slots.some(s => s.defaultMovementName === "RDL"));
+  ck("applySplitFilter upper_lower: pullup-päivä → SÄILYTTÄÄ Penkkiveto (vetävä yläosa)",
+     upperDay.slots.some(s => s.defaultMovementName === "Penkkiveto"));
+
+  ck("applySplitFilter fullbody → ei suodatusta (kaikki säilyy)",
+     applySplitFilter(mixedDayPlans, "fullbody")[0].days[0].slots.length === 5);
+
+  // ─── applyVolumeCap testit ────────────────────────────────────────
+  const highVolumePlans = [{ week: 1, days: [
+    { dayOfWeek: 1, slots: [
+      { role: "primary",   category: "vertikaaliveto", sets: 5, reps: 3 }, // ei lasketa cap:iin
+      { role: "accessory", category: "vertikaaliveto", sets: 6, reps: 8 },
+      { role: "accessory", category: "vertikaaliveto", sets: 6, reps: 8 },
+    ]},
+    { dayOfWeek: 3, slots: [
+      { role: "accessory", category: "vertikaaliveto", sets: 6, reps: 8 },
+    ]},
+  ]}]; // accessory-yhteensä vertikaalivedolle: 6+6+6 = 18 sets/vk
+  const capped = applyVolumeCap(highVolumePlans, "intensifikaatio"); // cap 8
+  const totalAfter = capped[0].days.reduce((s, d) =>
+    s + d.slots.filter(x => x.role === "accessory" && x.category === "vertikaaliveto")
+              .reduce((ss, x) => ss + x.sets, 0), 0);
+  ck("applyVolumeCap intensifikaatio cap 8: 18 set/vk → leikataan ≤ 8-9",
+     totalAfter <= 9);
+  ck("applyVolumeCap: primary-sarjat säilyy koskemattomina",
+     capped[0].days[0].slots[0].sets === 5);
+
+  const cappedNone = applyVolumeCap(highVolumePlans, "hypertrofia"); // cap 16
+  const totalHyp = cappedNone[0].days.reduce((s, d) =>
+    s + d.slots.filter(x => x.role === "accessory").reduce((ss, x) => ss + x.sets, 0), 0);
+  ck("applyVolumeCap hypertrofia cap 16: 18 → ~16",
+     totalHyp >= 14 && totalHyp <= 16);
 
   return report;
 }
