@@ -1037,6 +1037,8 @@ import {
   isVelocityTypo,
   isIsolationMovement,
   shouldShowBackupReminder, maintenanceStatus,
+  // v4.39.0 (Track B Vaihe 2A): wizard-integraatio
+  detectIsNewUser, detectWizardStatus, isOnboardingDismissed, setOnboardingDismissed,
 } from "./data.js";
 
 import {
@@ -1241,6 +1243,19 @@ async function init() {
         await saveMesocycle(state.mesocycle);
       }
     }
+  }
+  // v4.39.0 (Track B Vaihe 2A): wizard-integraation tila.
+  // Lue kerran init():ssä, tallenna state:en jotta render() voi näyttää
+  // bannerin / Asetukset-rivin ilman async-kutsuja.
+  try {
+    state.isNewUser = await detectIsNewUser();
+    state.wizardStatus = await detectWizardStatus(); // null jos LeVeWizardDB ei avaudu
+    state.onboardingDismissed = await isOnboardingDismissed();
+  } catch (e) {
+    console.warn("[LeVe] wizard-integraation tila-haku epäonnistui:", e);
+    state.isNewUser = false;
+    state.wizardStatus = null;
+    state.onboardingDismissed = false;
   }
   await computeReadiness();
   await computeRecommendation();
@@ -3059,7 +3074,7 @@ function render() {
   const viewName = state.view || "dashboard";
   try {
     switch (viewName) {
-      case "dashboard": app.innerHTML = renderDashboard(); break;
+      case "dashboard": app.innerHTML = renderWizardBanner() + renderDashboard(); break;
       case "workout": app.innerHTML = renderWorkout(); break;
       case "readiness": app.innerHTML = renderReadiness(); break;
       case "mesocycle":
@@ -3167,6 +3182,92 @@ function buildPhaseTimelineHTML(meso, currentWeek, isDeloadActive) {
     }).join("")}</div>`;
   }
   return `<div class="phase-timeline">${dots.join("")}</div>${legendHTML}`;
+}
+
+// v4.39.0 (Track B Vaihe 2A): Wizard-banneri Dashboardin yläosaan.
+// Kolme tilaa, näytä KORKEINTAAN yksi (prioriteetti ylhäältä alas):
+//   1. Migraatio-banneri — wizard 3.2 → 3.3 -migratoitu käyttäjä ei ole
+//      vielä täydentänyt uusia kysymyksiä. (Tämä on prioriteetissa korkeammalla
+//      kuin onboarding koska migraatio tarkoittaa että käyttäjä on jo tehnyt
+//      wizardin kerran ja häntä pyydetään täydentämään.)
+//   2. Onboarding-banneri — uusi käyttäjä (ei sessioita, ei wizardia) jolle
+//      ei ole vielä näytetty. Sulkemis-tila persistoidaan appMeta:ssa.
+//   3. Tyhjä — wizard valmis tai käyttäjä on sulkenut onboardingin.
+//
+// Bannerin "Aloita wizard" -klikki avaa /wizard/wizard.html samalla välilehdellä
+// (ei target=_blank koska wizard on pää-app:n alikansio ja palaa tähän kun valmis).
+function renderWizardBanner() {
+  const ws = state.wizardStatus;
+  const isMigrated = ws && ws.exists && !ws.completed && ws.migratedFrom === "v3.2";
+  if (isMigrated) {
+    return `<div class="card" style="margin:12px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,0.12),rgba(245,158,11,0.04));border:1px solid rgba(245,158,11,0.4)">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div style="font-size:22px;line-height:1">🔔</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;margin-bottom:4px">Wizard päivitetty — täydennä uudet kysymykset</div>
+          <div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+            Olet aiemmin tehnyt wizardin version 3.2. LeVe AI on saanut päivityksen joka lisää 5 uutta kysymystä (henkilökohtaiset ennätykset, kisapäivä, energiabudjetti, aiempi blokki, peaking-tyyppi). Täydennä uudet kysymykset niin LeVe saa täyden profiilin.
+          </div>
+          <a href="./wizard/wizard.html" class="btn btn-sm btn-primary" style="text-decoration:none;display:inline-block">Täydennä wizard →</a>
+        </div>
+      </div>
+    </div>`;
+  }
+  const showOnboarding = !!(state.isNewUser && !state.onboardingDismissed && (!ws || !ws.exists));
+  if (showOnboarding) {
+    return `<div class="card" style="margin:12px;padding:16px;background:linear-gradient(135deg,rgba(79,140,255,0.12),rgba(79,140,255,0.04));border:1px solid rgba(79,140,255,0.4);position:relative">
+      <button data-action="dismiss-onboarding" aria-label="Sulje onboarding" style="position:absolute;top:8px;right:8px;background:transparent;border:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:4px 8px">×</button>
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div style="font-size:22px;line-height:1">🎯</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;margin-bottom:4px">Räätälöi ohjelmasi 10 minuutissa</div>
+          <div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+            Vastaa 30 kysymykseen profiilistasi, tavoitteistasi ja kalustostasi — LeVe AI rakentaa sinulle henkilökohtaisen ohjelman. Voit täydentää myöhemmin Asetuksista.
+          </div>
+          <a href="./wizard/wizard.html" class="btn btn-sm btn-primary" style="text-decoration:none;display:inline-block">Aloita wizard →</a>
+        </div>
+      </div>
+    </div>`;
+  }
+  return "";
+}
+
+// v4.39.0 (Track B Vaihe 2A): Wizard-kortti Asetukset-näkymässä.
+// Tilanteet:
+//   - Ei aloitettu: "Avaa wizard" -painike + selitys
+//   - Kesken: jatka-painike + vaihe-näyttö
+//   - Valmis: "Avaa wizard uudelleen" + valmistumis-pvm
+//   - 3.2 → 3.3 migratoitu: "Täydennä uudet kysymykset" -korostus
+function renderWizardSettingsCard() {
+  const ws = state.wizardStatus;
+  let statusText = "";
+  let actionLabel = "Avaa wizard →";
+  let isHighlighted = false;
+  if (!ws || !ws.exists) {
+    statusText = "Ei aloitettu — vastaa 30 kysymykseen niin LeVe AI rakentaa sinulle räätälöidyn ohjelman.";
+    actionLabel = "Aloita wizard →";
+  } else if (ws.completed) {
+    const ymd = (ws.completedAtISO || "").slice(0, 10);
+    statusText = ymd ? `Valmis ✓ (${ymd}). Voit täydentää vastauksia milloin tahansa.` : "Valmis ✓";
+    actionLabel = "Avaa wizard uudelleen →";
+  } else if (ws.migratedFrom === "v3.2") {
+    statusText = "Päivitetty versiosta 3.2 — täydennä 5 uutta kysymystä (PR:t, kisapäivä, energiabudjetti).";
+    actionLabel = "Täydennä wizard →";
+    isHighlighted = true;
+  } else {
+    // Kesken — palauta vaihe-näyttö
+    const stepIdx = typeof ws.lastStepIndex === "number" ? ws.lastStepIndex : 0;
+    statusText = `Kesken — vaihe ${stepIdx + 1}/8. Jatka mihin jäit.`;
+    actionLabel = "Jatka wizardia →";
+  }
+  const cardStyle = isHighlighted
+    ? "background:linear-gradient(135deg,rgba(245,158,11,0.10),rgba(245,158,11,0.02));border:1px solid rgba(245,158,11,0.4)"
+    : "";
+  return `<div class="card" style="${cardStyle}">
+    <div class="card-title">Henkilökohtainen ohjelma</div>
+    <div class="muted" style="font-size:13px;line-height:1.5;margin-bottom:12px">${statusText}</div>
+    <a href="./wizard/wizard.html" class="btn btn-primary" style="text-decoration:none;display:inline-block">${actionLabel}</a>
+  </div>`;
 }
 
 function renderDashboard() {
@@ -9081,6 +9182,8 @@ function renderSettingsView() {
   return `<div class="fade-in">
     <div class="section-header">Asetukset</div>
 
+    ${renderWizardSettingsCard()}
+
     <div class="card">
       <div class="card-title">Urheilija</div>
       <label>Kehonpaino (kg)</label>
@@ -9496,6 +9599,15 @@ function bind() {
   $$("[data-nav]").forEach(btn => {
     btn.addEventListener("click", () => {
       state.view = btn.dataset.nav;
+      render();
+    });
+  });
+
+  // v4.39.0 (Track B Vaihe 2A): wizard-bannerin sulkemis-toiminto
+  $$("[data-action='dismiss-onboarding']").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      state.onboardingDismissed = true;
+      await setOnboardingDismissed(true);
       render();
     });
   });

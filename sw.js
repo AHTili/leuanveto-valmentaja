@@ -495,7 +495,12 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.38.9";
+// v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen.
+// UI-vain-muutos: onboarding-banneri uudelle käyttäjälle, Asetukset-kortti
+// olemassa olevalle, migraatio-banneri 3.2 → 3.3 käyttäjälle. Pää-app:in
+// laskenta + PROGRAM_BUILD_VERSION pysyvät koskemattomina (mesocycle auto-
+// rebuild EI laukea). Sw-version-bump triggeröi PWA-päivitysbannerin.
+const APP_VERSION = "4.39.0";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
@@ -577,6 +582,15 @@ const CORE_ASSETS = [
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  // v4.39.0 (Track B Vaihe 2A): wizard-tiedostot precachattuina jotta wizard
+  // toimii offline ensimmäisestä avauksesta. wizard-sw.js EI tähän — se on
+  // 1A:n dormantti tiedosto eikä ajeta SW:nä.
+  "./wizard/wizard.html",
+  "./wizard/wizard-core.js",
+  "./wizard/wizard-data.js",
+  "./wizard/wizard-schema.js",
+  "./wizard/wizard-styles.css",
+  "./wizard/wizard-movement-bank.js",
 ];
 
 // Install: cache core assets
