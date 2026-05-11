@@ -31,7 +31,425 @@
 
 import { SCHEMA_INVARIANTS } from "./wizard-schema.js";
 
-export const MAPPER_VERSION = "2C-delta-v1.0";
+export const MAPPER_VERSION = "2D-alpha-v1.0";
+
+// ═══════════════════════════════════════════════════════════════════════
+// PROGRAM_STYLES — Adaptive multi-suggestion (Track B Vaihe 2D-α)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Tapa 3 (käyttäjän valitsema arkkitehtuuri 2026-05-11):
+//   Wizard 3.3 säilyy ennallaan (ei q31_programStyle lisätä). Sen sijaan
+//   mapper tunnistaa profiilin → ehdottaa top-3 metodologiaa confidence-
+//   järjestyksessä → käyttäjä valitsee preview-modaalissa.
+//
+// 2D-α: 7 single-block + 1 multi-block style = 8 vaihtoehtoa.
+// 2D-β (tuleva): + wendler531 + topSetBackoff + madcow5x5
+// 2D-γ (tuleva): + westsideConjugate + gzcl + sheiko + minimalist + smolov
+// 2D-δ (tuleva): hybrid-yhdistelmät (esim. "5/3/1 + Issurin-peaking")
+//
+// CONFIDENCE-LASKENTA:
+//   - 0-100 pistettä, lasketaan featureMatch-funktiolla per tyyli
+//   - Goal-match: 40 pistettä (perusvaatimus)
+//   - Experience-match: 20 pistettä
+//   - Recent block transition: 15 pistettä
+//   - Recovery/special context: ±10-15 pistettä
+//   - Default penalty: tyyli jolla ei selvää matchia saa max 30
+//
+// FABRIKOINTI-KIELTO: tämä on PÄÄTÖSALGORITMI, ei tutkimustaulukon
+// suora soveltaminen. Lähteet säilyvät tausta-perustelussa
+// (esim. Issurin block-residuaalit ohjaavat multi-block-suosittelua),
+// mutta confidence-painotukset ovat algoritmin omia heuristiikkoja.
+// Status _wizardMeta.rules.source:ssa: "ALGORITMI 2D-α".
+
+export const PROGRAM_STYLES = Object.freeze({
+  // ── Multi-block (käytä jos q27_targetDate + aikaa ≥ 8 vk) ──
+  "multi-issurin": {
+    id: "multi-issurin",
+    label: "Block-periodisaatio (Issurin)",
+    shortDesc: "Vaiheittainen ohjelma: hypertrofia → voima → intensifikaatio → peaking",
+    weekCount: "8–16",
+    bestFor: "Kisaan/testaukseen 8+ vk päästä",
+    iconHint: "🏆",
+    isMultiBlock: true,
+    factoryHint: "generateMultiBlockMesocycle",
+    sourceLabel: "Issurin 2010 block-residuaalit (RISTIINTARKISTETTU)",
+  },
+  // ── Single-block-tyylit ──
+  "single-hypertrofia": {
+    id: "single-hypertrofia",
+    label: "Hypertrofiajakso",
+    shortDesc: "Lihasmassan kasvatus, korkea volyymi, 6–8 toistoa",
+    weekCount: 4,
+    bestFor: "Pohjarakentaminen, ei kisaa lähellä",
+    iconHint: "💪",
+    isMultiBlock: false,
+    goal: "hypertrofia",
+    factoryHint: "createHypertrofiaMesocycle",
+    sourceLabel: "Israetel — hypertrophy MEV→MAV progression",
+  },
+  "single-maksimivoima": {
+    id: "single-maksimivoima",
+    label: "Maksimivoima-blokki",
+    shortDesc: "Hermostollinen blokki, 1–3 toistoa, raskaat kuormat (Vx 1–4)",
+    weekCount: 4,
+    bestFor: "Voima-PR tai kisaan valmistautuminen (ei vielä peaking)",
+    iconHint: "🏋️",
+    isMultiBlock: false,
+    goal: "maksimivoima",
+    factoryHint: "createMaksimivoimaMesocycle",
+    sourceLabel: "Issurin block-malli — maksimivoimavaihe",
+  },
+  "single-yhdistelma": {
+    id: "single-yhdistelma",
+    label: "Perusjakso (Ma/Pe/No)",
+    shortDesc: "Yhdistelmä: maksimivoima + perusvoima + nopeusvoima samalla viikolla",
+    weekCount: 4,
+    bestFor: "Ei kisaa, kaikki ominaisuudet yhtaikaa",
+    iconHint: "⚡",
+    isMultiBlock: false,
+    goal: "yhdistelma",
+    factoryHint: "createDefaultMesocycle",
+    sourceLabel: "Pää-app perusjakso (käytännöllinen konventio)",
+  },
+  "single-dup": {
+    id: "single-dup",
+    label: "DUP — undulating",
+    shortDesc: "Päivittäin vaihtuva intensiteetti: voima/volyymi/nopeus kierto",
+    weekCount: 4,
+    bestFor: "Stagnaatio perinteisessä lineaarisessa progressiossa, kokenut",
+    iconHint: "🔄",
+    isMultiBlock: false,
+    goal: "undulating",
+    factoryHint: "createDUPMesocycle",
+    sourceLabel: "Rhea 2002 — DUP 25 % suurempia voimanlisäyksiä vs. lineaarinen",
+  },
+  "single-eksentrinen": {
+    id: "single-eksentrinen",
+    label: "Eksentrinen erikoisblokki",
+    shortDesc: "Supramaksimaalinen kuorma + hidas eksentrinen + isometriapidot",
+    weekCount: 4,
+    bestFor: "Kokenut atleti jolla 1RM on stagnoinut perusblokeissa",
+    iconHint: "⬇️",
+    isMultiBlock: false,
+    goal: "eksentrinen",
+    factoryHint: "createEksenterinenMesocycle",
+    sourceLabel: "Eksentrinen overload — kokeneille (advanced+)",
+  },
+  "single-siirtyma": {
+    id: "single-siirtyma",
+    label: "Siirtymäjakso (GPP)",
+    shortDesc: "Yleiskunto, ote, prehab — kevyt valmistautumisjakso",
+    weekCount: 3,
+    bestFor: "Deloadin tai tauon jälkeen, ennen uutta blokkia",
+    iconHint: "🌿",
+    isMultiBlock: false,
+    goal: "siirtyma",
+    factoryHint: "createSiirtymaMesocycle",
+    sourceLabel: "GPP-konventio — pohjarakennus ennen SPP-vaihetta",
+  },
+  "single-palautuminen": {
+    id: "single-palautuminen",
+    label: "Palautumissilta",
+    shortDesc: "Aktiivinen palautuminen, matala intensiteetti (vain 2 vk)",
+    weekCount: 2,
+    bestFor: "Kisan jälkeen tai loppuunajetussa tilassa",
+    iconHint: "😴",
+    isMultiBlock: false,
+    goal: "palautuminen",
+    factoryHint: "createPalautuminenMesocycle",
+    sourceLabel: "Aktiivisen palautumisen konventio (Pää-app-skeleton)",
+  },
+});
+
+// Max-tavoitteet joissa maksimivoima/peaking-tyyli on etusijalla
+const _MAX_GOALS = new Set([
+  "max_1RM",
+  "powerlifting",
+  "streetlifting_with_explosive_components",
+]);
+
+// pickProgramStyle — palauttaa kandidaattilistan confidence-järjestyksessä.
+//
+// Input: answers (wizardConfig.answers), opts = { daysUntilTarget }
+// Output: array of {styleId, style, confidence, rationale[], weekCount}
+//         sorted desc by confidence. Top-3 = ensimmäiset 3 elementtiä.
+//
+// Algoritmi (per tyyli, summa 0-100):
+//   1. Base score per tyyli (esim. multi-block 0 jos ei kisapäivää, 60 jos on)
+//   2. Goal match bonus (max +40)
+//   3. Experience match (max +20)
+//   4. Recent block transition (max +15)
+//   5. Special context (cut/break/fatigue): bonus/malus ±15
+//
+// Cap-säännöt:
+//   - Palautuminen MAX 70 paitsi jos eksplisiittinen fatigue-indikaattori
+//   - Siirtymä MAX 75 paitsi jos deload/break-paluu
+//   - Eksentrinen MAX 70 jos beginner/intermediate (rajataan kokeneille)
+export function pickProgramStyle(answers, opts = {}) {
+  const daysUntilTarget = (opts && typeof opts.daysUntilTarget === "number") ? opts.daysUntilTarget : null;
+  const candidates = [];
+
+  const a = answers || {};
+  const isMaxGoal = _MAX_GOALS.has(a.q12_primaryGoal);
+  const isHypGoal = a.q12_primaryGoal === "hypertrophy";
+  const isGenStrength = a.q12_primaryGoal === "general_strength";
+  const isPowerOutput = a.q12_primaryGoal === "power_output" || a.q12_primaryGoal === "sport_RFD";
+  const tier = a.q08_selfLevel;
+  const isAdvancedPlus = tier === "advanced" || tier === "elite";
+  const isIntermPlus = tier === "intermediate" || tier === "advanced" || tier === "elite";
+  const recent = a.q29_recentBlock;
+  const cutAggressive = a.q14_cutting === "yes" && a.q30_energyBudget &&
+    Number(a.q30_energyBudget.deficitKcal) >= 500;
+  const breakMonths = Number(a.q10_trainingBreakMonths) || 0;
+  const volPref = a.q23_volumePref;
+  const hasTargetDate = !!a.q27_targetDate;
+  const isCompetition = a.q28_targetType === "competition";
+
+  // ── 1. MULTI-ISSURIN (kisapäivä + aikaa ≥ 8 vk) ──
+  {
+    const c = { styleId: "multi-issurin", style: PROGRAM_STYLES["multi-issurin"], confidence: 0, rationale: [], weekCount: null };
+    if (hasTargetDate && typeof daysUntilTarget === "number" && daysUntilTarget >= 56) {
+      c.confidence = 85;
+      c.rationale.push(`Kisapäivä asetettu (${daysUntilTarget} pv) → riittävästi aikaa block-periodisaatiolle`);
+      if (isCompetition) {
+        c.confidence += 10;
+        c.rationale.push("Kisa-tavoite → multi-blokki on tieteellinen standardi (Issurin)");
+      }
+      if (isMaxGoal) {
+        c.confidence += 5;
+        c.rationale.push("Max-tavoite tukee perinteistä hyp→str→int→peak-sekvenssiä");
+      }
+      // Block-pituuksien sopivuus
+      if (daysUntilTarget >= 112) { // 16+ vk
+        c.weekCount = Math.min(16, Math.floor(daysUntilTarget / 7));
+      } else if (daysUntilTarget >= 84) { // 12+ vk
+        c.weekCount = 12;
+      } else { // 8-11 vk
+        c.weekCount = 8;
+      }
+    } else if (hasTargetDate && daysUntilTarget !== null && daysUntilTarget < 56) {
+      c.confidence = 25;
+      c.rationale.push(`Kisapäivä ${daysUntilTarget} pv — alle 8 vk → block-periodisaatiolle liian vähän aikaa`);
+    } else {
+      c.confidence = 10;
+      c.rationale.push("Ei kisapäivää → block-periodisaatio toimii myös, mutta single-blokki on yksinkertaisempi");
+    }
+    candidates.push(c);
+  }
+
+  // ── 2. SINGLE-MAKSIMIVOIMA ──
+  {
+    const c = { styleId: "single-maksimivoima", style: PROGRAM_STYLES["single-maksimivoima"], confidence: 0, rationale: [], weekCount: 4 };
+    if (isMaxGoal) {
+      c.confidence += 40;
+      c.rationale.push("Päätavoite max-voima → maksimivoima-blokki on suoraan kohdistettu");
+    } else if (isGenStrength) {
+      c.confidence += 15;
+      c.rationale.push("Yleinen voima → maksimivoima toimii osana");
+    }
+    if (recent === "hypertrophy") {
+      c.confidence += 15;
+      c.rationale.push("Edellinen blokki hypertrofia → seuraava luonteva askel on max-voima (Issurin-sekvenssi)");
+    } else if (recent === "strength") {
+      c.confidence += 8;
+      c.rationale.push("Edellinen voimablokki → max-voima on jatkumo");
+    } else if (recent === "peaking" || recent === "deload") {
+      c.confidence -= 10;
+      c.rationale.push(`Edellinen ${recent} → vaatii ensin hypertrofia/GPP-pohjan ennen uutta max-blokkia`);
+    }
+    if (isAdvancedPlus) {
+      c.confidence += 10;
+      c.rationale.push("Edistynyt taso sietää max-blokin neurokuormaa");
+    } else if (tier === "beginner") {
+      c.confidence -= 15;
+      c.rationale.push("Aloittelijalle max-blokki on liian aikainen (hermosto + tekniikka ei valmis)");
+    }
+    if (cutAggressive) {
+      c.confidence -= 15;
+      c.rationale.push("Aggressivinen cut + max-blokki = ristiriita (palautumiskapasiteetti rajallinen)");
+    }
+    candidates.push(c);
+  }
+
+  // ── 3. SINGLE-HYPERTROFIA ──
+  {
+    const c = { styleId: "single-hypertrofia", style: PROGRAM_STYLES["single-hypertrofia"], confidence: 0, rationale: [], weekCount: 4 };
+    if (isHypGoal) {
+      c.confidence += 40;
+      c.rationale.push("Päätavoite hypertrofia → hypertrofia-blokki suoraan kohdistettu");
+    } else if (a.q13_secondaryGoal === "hypertrophy") {
+      c.confidence += 20;
+      c.rationale.push("Sivutavoite hypertrofia → hypertrofia-blokki toimii pohjana");
+    }
+    if (recent === "peaking" || recent === "deload" || recent === "off_program") {
+      c.confidence += 15;
+      c.rationale.push(`Edellinen ${recent} → uusi sykli aloittaa luonnollisesti volyymivaiheella`);
+    } else if (recent === "hypertrophy") {
+      c.confidence -= 5;
+      c.rationale.push("Edellinen blokki oli jo hypertrofia → seuraava luonteva askel on voima");
+    }
+    if (isMaxGoal && recent !== "peaking" && recent !== "deload") {
+      c.confidence -= 10;
+      c.rationale.push("Max-tavoite + ei juuri peakingin jälkeen → hypertrofiavaihe ei ole etusijalla");
+    }
+    if (cutAggressive) {
+      c.confidence -= 10;
+      c.rationale.push("Aggressivinen cut + hypertrofia = lihasmassan kasvu rajoittuu (kohtuullisesti hyödyllinen)");
+    }
+    candidates.push(c);
+  }
+
+  // ── 4. SINGLE-YHDISTELMA (Perusjakso) ──
+  {
+    const c = { styleId: "single-yhdistelma", style: PROGRAM_STYLES["single-yhdistelma"], confidence: 0, rationale: [], weekCount: 4 };
+    if (isGenStrength) {
+      c.confidence += 40;
+      c.rationale.push("Yleinen voima ja terveys → perusjakso kattaa kaikki ominaisuudet");
+    } else if (a.q12_primaryGoal === "sport_RFD") {
+      c.confidence += 20;
+      c.rationale.push("Lajin RFD → perusjakson nopeuspäivä tukee räjähtävää voimaa");
+    } else {
+      // Aina jossain määrin sopiva fallback
+      c.confidence += 15;
+      c.rationale.push("Yleisesti soveltuva — jos selvää kapeaa kohdetta ei ole, perusjakso on turvallinen valinta");
+    }
+    if (tier === "beginner") {
+      c.confidence += 15;
+      c.rationale.push("Aloittelijalle perusjakso on koulutuksellisesti paras (kaikki ominaisuudet kosketuksissa)");
+    } else if (isIntermPlus) {
+      c.confidence += 5;
+      c.rationale.push("Keskitaso+ saa silti pohjarakennukseen perusjaksosta arvoa");
+    }
+    if (recent === "off_program") {
+      c.confidence += 10;
+      c.rationale.push("Tulet pois ohjelmattomasta vaiheesta → laajapohjainen yhdistelmäjakso rakentaa kaiken pohjan");
+    }
+    candidates.push(c);
+  }
+
+  // ── 5. SINGLE-DUP ──
+  {
+    const c = { styleId: "single-dup", style: PROGRAM_STYLES["single-dup"], confidence: 0, rationale: [], weekCount: 4 };
+    if (isIntermPlus) {
+      c.confidence += 15;
+      c.rationale.push("Keskitaso+ pystyy hyödyntämään päivittäin vaihtuvaa intensiteettiä");
+    } else {
+      c.confidence -= 10;
+      c.rationale.push("Aloittelijalle DUP on liian monimutkainen — kaikkien tyylien optimointi sopii kokeneille");
+    }
+    if (volPref === "MAV" || volPref === "MRV") {
+      c.confidence += 15;
+      c.rationale.push(`Volyymipreferenssi "${volPref}" sopii DUP:in vaihtuvalle kuormalle`);
+    }
+    if (isGenStrength || isHypGoal) {
+      c.confidence += 15;
+      c.rationale.push("Yleinen voima / hypertrofia → DUP sopii kun haluat varioida ärsykettä");
+    } else if (isMaxGoal && recent === "strength") {
+      c.confidence -= 5;
+      c.rationale.push("Max-tavoite + edellinen voima → DUP ei ole etusijalla peakingin valmistuksessa");
+    }
+    // Jos käyttäjä on tehnyt useita peräkkäisiä perinteisiä blokkeja: DUP variointia
+    if (recent === "strength" || recent === "hypertrophy") {
+      c.confidence += 5;
+      c.rationale.push("Aiempi perinteinen blokki → DUP voi tarjota variointia");
+    }
+    candidates.push(c);
+  }
+
+  // ── 6. SINGLE-EKSENTRINEN (specialty) ──
+  {
+    const c = { styleId: "single-eksentrinen", style: PROGRAM_STYLES["single-eksentrinen"], confidence: 0, rationale: [], weekCount: 4 };
+    if (!isAdvancedPlus) {
+      c.confidence = 5;
+      c.rationale.push("Eksentrinen erikoisblokki vaatii edistyneen tason (palautumiskuorma korkea)");
+    } else {
+      c.confidence += 25;
+      c.rationale.push("Edistynyt taso → eksentrinen on käytettävissä työkalupakissa");
+      if (isMaxGoal) {
+        c.confidence += 15;
+        c.rationale.push("Max-tavoite → eksentrinen blokki rakentaa lockout-vahvuutta ja sietokykyä yli 1RM:n");
+      }
+      if (recent === "strength" || recent === "hypertrophy") {
+        c.confidence += 10;
+        c.rationale.push("Edellinen perinteinen voima/hypertrofia → eksentrinen tuo variaatiota stagnaatioon");
+      } else if (recent === "peaking" || recent === "deload") {
+        c.confidence -= 10;
+        c.rationale.push(`Edellinen ${recent} → eksentrinen ennen perusvolyymin palauttamista on liian aikainen`);
+      }
+      // Cap kun beginner/intermediate
+      if (cutAggressive) {
+        c.confidence -= 15;
+        c.rationale.push("Aggressivinen cut + eksentrinen = palautumiskapasiteetti liian rajallinen");
+      }
+    }
+    candidates.push(c);
+  }
+
+  // ── 7. SINGLE-SIIRTYMA (GPP, 3 vk natiivi) ──
+  {
+    const c = { styleId: "single-siirtyma", style: PROGRAM_STYLES["single-siirtyma"], confidence: 0, rationale: [], weekCount: 3 };
+    if (recent === "deload") {
+      c.confidence += 40;
+      c.rationale.push("Edellinen deload → siirtymäjakso on luonteva askel ennen uutta SPP-vaihetta");
+    } else if (recent === "off_program") {
+      c.confidence += 30;
+      c.rationale.push("Tulet pois ohjelmattomasta vaiheesta → GPP rakentaa pohjan ennen voima/hypertrofiablokkia");
+    } else if (breakMonths >= 1) {
+      c.confidence += 35;
+      c.rationale.push(`Pidempi tauko (${breakMonths} kk) → GPP palauttaa pohjan turvallisesti`);
+    } else {
+      c.confidence += 10;
+      c.rationale.push("Siirtymäjakso toimii myös 'reset'-jaksona blokkien välissä");
+    }
+    if (tier === "beginner") {
+      c.confidence += 10;
+      c.rationale.push("Aloittelijalle GPP on koulutuksellisesti hyvä pohja");
+    }
+    if (hasTargetDate && typeof daysUntilTarget === "number" && daysUntilTarget < 28) {
+      c.confidence -= 20;
+      c.rationale.push("Kisapäivä alle 4 vk → GPP-vaihe söisi peakingin valmisteluaikaa");
+    }
+    candidates.push(c);
+  }
+
+  // ── 8. SINGLE-PALAUTUMINEN (2 vk natiivi) ──
+  {
+    const c = { styleId: "single-palautuminen", style: PROGRAM_STYLES["single-palautuminen"], confidence: 0, rationale: [], weekCount: 2 };
+    if (recent === "peaking") {
+      c.confidence += 50;
+      c.rationale.push("Tulet juuri peakingista → 2 vk aktiivinen palautuminen on ensisijaisen tärkeä");
+    } else if (breakMonths >= 2 && isAdvancedPlus) {
+      c.confidence += 30;
+      c.rationale.push(`Pidempi tauko (${breakMonths} kk) + edistynyt taso → kevyt palautuminen ennen kovaa vaihetta`);
+    } else {
+      c.confidence = 8;
+      c.rationale.push("Palautumissilta on varattu tilanteisiin joissa fatigue-indikaattori on selvä (peakingin jälkeen tai kisan jäljiltä)");
+    }
+    if (cutAggressive && recent === "peaking") {
+      c.confidence += 5;
+      c.rationale.push("Cut-vaihe + peakingin jälkeen → kevyt palautuminen on välttämätön");
+    }
+    if (hasTargetDate && typeof daysUntilTarget === "number" && daysUntilTarget < 21) {
+      c.confidence -= 20;
+      c.rationale.push("Kisapäivä alle 3 vk → palautumissilta söisi peakingin valmistuksen");
+    }
+    candidates.push(c);
+  }
+
+  // ── Cap-säännöt (rajoittavat tyylejä sopimattomissa konteksteissa) ──
+  for (const c of candidates) {
+    // Eksentrinen MAX 70 jos beginner/intermediate
+    if (c.styleId === "single-eksentrinen" && !isAdvancedPlus && c.confidence > 5) {
+      c.confidence = Math.min(c.confidence, 25);
+    }
+    // Min/max-rajoitus 0-100
+    c.confidence = Math.max(0, Math.min(100, Math.round(c.confidence)));
+  }
+
+  // Lajittele desc
+  candidates.sort((a, b) => b.confidence - a.confidence);
+  return candidates;
+}
 
 // ─── Issurin Table V residuaalit (RISTIINTARKISTETTU) ──────────────────
 // Lähde: Issurin & Lustig 2004 / Issurin 2008 Table V, modifoitu.
@@ -1020,7 +1438,7 @@ function _dayTypeSuffix(dayType) {
 //
 // Heittää Error:n jos input on virheellinen — 2B-β:n UI-puoli nappaa ja
 // näyttää käyttäjälle.
-export function mapWizardToMesocycle(wizardConfig, mainAppState) {
+export function mapWizardToMesocycle(wizardConfig, mainAppState, opts = {}) {
   const validation = validateMappingInput(wizardConfig, mainAppState);
   if (!validation.valid) {
     const firstErr = validation.errors[0];
@@ -1029,11 +1447,39 @@ export function mapWizardToMesocycle(wizardConfig, mainAppState) {
   const a = wizardConfig.answers;
 
   const startDateISO = _todayISO();
-  const goal = pickStartingBlock(a.q29_recentBlock, a.q12_primaryGoal);
 
-  const weekCountTier = pickWeekCount(a.q08_selfLevel, goal);
-  const anchorResult = applyTargetDateAnchor(weekCountTier, a.q27_targetDate, startDateISO);
-  const weekCount = anchorResult.weekCount;
+  // 2D-α: opts.selectedStyleId voi pakottaa goal:n single-block-tyyleihin.
+  // Style-ID:t: "single-hypertrofia", "single-maksimivoima", "single-yhdistelma",
+  //             "single-dup", "single-eksentrinen", "single-siirtyma",
+  //             "single-palautuminen"
+  let goal;
+  let styleSource = "automaattinen";
+  if (typeof opts.selectedStyleId === "string" && opts.selectedStyleId !== "") {
+    const style = PROGRAM_STYLES[opts.selectedStyleId];
+    if (!style || !style.goal) {
+      throw new Error(`mapWizardToMesocycle: tuntematon selectedStyleId "${opts.selectedStyleId}"`);
+    }
+    goal = style.goal;
+    styleSource = `käyttäjän valinta: ${style.label}`;
+  } else {
+    goal = pickStartingBlock(a.q29_recentBlock, a.q12_primaryGoal);
+  }
+
+  // 2D-α: viikkomäärä — jos goal-tyylin natiivipituus on lukko (siirtyma=3,
+  // palautuminen=2), käytä sitä. Muutoin tier-pohjainen pickWeekCount + anchor.
+  const PROGRAM_STYLE_NATIVE_WEEKS = {
+    siirtyma: 3,
+    palautuminen: 2,
+  };
+  let weekCount;
+  let anchorResult = { anchored: false, warning: null };
+  if (PROGRAM_STYLE_NATIVE_WEEKS[goal]) {
+    weekCount = PROGRAM_STYLE_NATIVE_WEEKS[goal];
+  } else {
+    const weekCountTier = pickWeekCount(a.q08_selfLevel, goal === "eksentrinen" ? "maksimivoima" : goal);
+    anchorResult = applyTargetDateAnchor(weekCountTier, a.q27_targetDate, startDateISO);
+    weekCount = anchorResult.weekCount;
+  }
 
   const recoveryCapacity = pickRecoveryCapacity(a);
   const primaries = pickPrimaries(a);
@@ -1064,22 +1510,112 @@ export function mapWizardToMesocycle(wizardConfig, mainAppState) {
       mapperVersion: MAPPER_VERSION,
       pickedStartingBlock: goal,
       blockLengthRationale: `${a.q08_selfLevel}-tier`,
+      styleSource,
+      selectedStyleId: opts.selectedStyleId || null,
       sexModifierApplied,
       targetDateAnchored: anchorResult.anchored,
       targetDateWarning: anchorResult.warning,
-      rules: collectAppliedRules(a, goal, weekCount, recoveryCapacity, sexModifierApplied, anchorResult.anchored),
+      rules: collectAppliedRules(a, goal, weekCount, recoveryCapacity, sexModifierApplied, anchorResult.anchored, opts.selectedStyleId),
     },
   };
 }
 
+// ─── 2D-α: Korkea-tason dispatcher (UI:n ainoa kosketuspinta) ─────────
+//
+// mapWizardToProgram(wizardConfig, mainAppState, opts)
+//
+// opts = { selectedStyleId?: string, daysUntilTarget?: number }
+//
+// Käyttölogiikka:
+//   1. Jos opts.selectedStyleId on annettu → käytä sitä suoraan
+//   2. Muutoin laske pickProgramStyle() ja käytä top-1:tä
+//
+// Dispatcher valitsee oikean polun:
+//   - "multi-issurin"  → mapWizardToMultiBlockMesocycle
+//   - "single-*"       → mapWizardToMesocycle(opts.selectedStyleId)
+//
+// Palauttaa lisäksi candidates-listan (top-3) UI:lle näytettäväksi.
+export function mapWizardToProgram(wizardConfig, mainAppState, opts = {}) {
+  const validation = validateMappingInput(wizardConfig, mainAppState);
+  if (!validation.valid) {
+    throw new Error(`mapWizardToProgram: ${validation.errors[0].reason}`);
+  }
+  const a = wizardConfig.answers;
+  const startDateISO = _todayISO();
+
+  // Laske daysUntilTarget aina (tarvitaan pickProgramStyle:lle)
+  let daysUntilTarget = (opts && typeof opts.daysUntilTarget === "number") ? opts.daysUntilTarget : null;
+  if (daysUntilTarget === null && a.q27_targetDate) {
+    const target = new Date(a.q27_targetDate);
+    const start = new Date(startDateISO);
+    if (!Number.isNaN(target.getTime()) && !Number.isNaN(start.getTime())) {
+      daysUntilTarget = Math.floor((target.getTime() - start.getTime()) / 86400000);
+    }
+  }
+
+  // Hae top-3 kandidaatti (myös silloin kun selectedStyleId on annettu — UI
+  // näyttää vaihtoehdot vaikka käyttäjä on jo valinnut yhden)
+  const candidates = pickProgramStyle(a, { daysUntilTarget });
+  const top3 = candidates.slice(0, 3);
+
+  // Valitse styleId — käyttäjän valinta voittaa, muutoin top-1
+  const chosenStyleId = (typeof opts.selectedStyleId === "string") ? opts.selectedStyleId : top3[0]?.styleId;
+  if (!chosenStyleId) {
+    throw new Error("mapWizardToProgram: ei valittavissa olevaa tyyliä");
+  }
+  const chosenStyle = PROGRAM_STYLES[chosenStyleId];
+  if (!chosenStyle) {
+    throw new Error(`mapWizardToProgram: tuntematon styleId "${chosenStyleId}"`);
+  }
+
+  // Dispatch
+  let mapped;
+  if (chosenStyle.isMultiBlock) {
+    mapped = mapWizardToMultiBlockMesocycle(wizardConfig, mainAppState);
+    if (!mapped.isMultiBlock) {
+      // Fallback käynnistyi (esim. ei targetDatea) — käytä sitä mutta merkitse
+      mapped._wizardMeta = mapped._wizardMeta || {};
+      mapped._wizardMeta.styleFallbackFromMulti = true;
+    }
+  } else {
+    mapped = mapWizardToMesocycle(wizardConfig, mainAppState, { selectedStyleId: chosenStyleId });
+  }
+
+  // Liitä kandidaatti-lista metadataan
+  mapped._wizardMeta = mapped._wizardMeta || {};
+  mapped._wizardMeta.styleCandidates = top3.map(c => ({
+    styleId: c.styleId,
+    label: c.style.label,
+    shortDesc: c.style.shortDesc,
+    weekCount: c.weekCount,
+    confidence: c.confidence,
+    rationale: c.rationale,
+    iconHint: c.style.iconHint,
+    isMultiBlock: !!c.style.isMultiBlock,
+  }));
+  mapped._wizardMeta.chosenStyleId = chosenStyleId;
+  mapped._wizardMeta.chosenStyleLabel = chosenStyle.label;
+  mapped._wizardMeta.daysUntilTarget = daysUntilTarget;
+
+  return mapped;
+}
+
 // ─── Helper: rules-array (auditointi-jälki) ────────────────────────────
-function collectAppliedRules(a, goal, weekCount, recoveryCapacity, sexModifierApplied, targetDateAnchored) {
+function collectAppliedRules(a, goal, weekCount, recoveryCapacity, sexModifierApplied, targetDateAnchored, selectedStyleId) {
   const rules = [];
-  rules.push({
-    rule: `q29_recentBlock="${a.q29_recentBlock}" → aloitusblokki "${goal}"`,
-    status: "KVALITATIIVINEN",
-    source: "Issurin 2010 block-malli + Issurin Table V residuaalit",
-  });
+  if (typeof selectedStyleId === "string" && PROGRAM_STYLES[selectedStyleId]) {
+    rules.push({
+      rule: `Käyttäjän valitsema ohjelmointityyli: ${PROGRAM_STYLES[selectedStyleId].label} → goal "${goal}"`,
+      status: "KÄYTTÄJÄVALINTA",
+      source: "ALGORITMI 2D-α (adaptive multi-suggestion)",
+    });
+  } else {
+    rules.push({
+      rule: `q29_recentBlock="${a.q29_recentBlock}" → aloitusblokki "${goal}"`,
+      status: "KVALITATIIVINEN",
+      source: "Issurin 2010 block-malli + Issurin Table V residuaalit",
+    });
+  }
   rules.push({
     rule: `q08_selfLevel="${a.q08_selfLevel}" → ${weekCount} vk ${goal}-blokille`,
     status: "HEURISTIC",
@@ -1163,7 +1699,156 @@ export function selfTestMapper() {
      RESIDUAL_DAYS.maximal_strength.mean === 30 && RESIDUAL_DAYS.maximal_strength.sd === 5);
   ck("RESIDUAL_DAYS maximal_speed = 5 ± 3 (Issurin)",
      RESIDUAL_DAYS.maximal_speed.mean === 5 && RESIDUAL_DAYS.maximal_speed.sd === 3);
-  ck("MAPPER_VERSION on 2C-delta-v1.0", MAPPER_VERSION === "2C-delta-v1.0");
+  ck("MAPPER_VERSION on 2D-alpha-v1.0", MAPPER_VERSION === "2D-alpha-v1.0");
+
+  // ─── 1b. PROGRAM_STYLES + pickProgramStyle (Track B Vaihe 2D-α) ────
+  ck("PROGRAM_STYLES sisältää multi-issurin",
+     !!PROGRAM_STYLES["multi-issurin"]);
+  ck("PROGRAM_STYLES sisältää 7 single-tyyliä",
+     ["single-hypertrofia","single-maksimivoima","single-yhdistelma","single-dup","single-eksentrinen","single-siirtyma","single-palautuminen"]
+       .every(k => !!PROGRAM_STYLES[k]));
+  ck("PROGRAM_STYLES single-siirtyma natiivipituus 3 vk",
+     PROGRAM_STYLES["single-siirtyma"].weekCount === 3);
+  ck("PROGRAM_STYLES single-palautuminen natiivipituus 2 vk",
+     PROGRAM_STYLES["single-palautuminen"].weekCount === 2);
+  ck("PROGRAM_STYLES single-hypertrofia goal=hypertrofia",
+     PROGRAM_STYLES["single-hypertrofia"].goal === "hypertrofia");
+
+  // pickProgramStyle: max-tavoite + edellinen hypertrofia + advanced
+  // → maksimivoima top-1
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "MAV",
+      q14_cutting: "no", q21_splitPreference: "fullbody",
+    });
+    ck("pickProgramStyle: max + hypertrophy-recent + advanced → top-1 single-maksimivoima",
+       cands[0].styleId === "single-maksimivoima");
+    ck("pickProgramStyle: kandidaatit järjestyksessä desc (top-1 conf >= top-2)",
+       cands.length >= 2 && cands[0].confidence >= cands[1].confidence);
+    ck("pickProgramStyle: top-1 confidence > 40 (selvä match)",
+       cands[0].confidence > 40);
+  }
+
+  // pickProgramStyle: hypertrofia-tavoite + off_program → hypertrofia top-1
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "intermediate", q12_primaryGoal: "hypertrophy",
+      q29_recentBlock: "off_program", q23_volumePref: "auto",
+      q14_cutting: "no",
+    });
+    ck("pickProgramStyle: hypertrophy + off_program → top-1 single-hypertrofia",
+       cands[0].styleId === "single-hypertrofia");
+  }
+
+  // pickProgramStyle: peakingin jälkeen + ei max-tavoitetta → palautuminen suosittu
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "general_strength",
+      q29_recentBlock: "peaking", q23_volumePref: "auto",
+      q14_cutting: "no",
+    });
+    const top3 = cands.slice(0, 3);
+    ck("pickProgramStyle: peaking-recent → palautuminen top-3:ssa",
+       top3.some(c => c.styleId === "single-palautuminen"));
+  }
+
+  // pickProgramStyle: kisapäivä + aikaa ≥ 8 vk → multi-issurin top-1
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "MAV",
+      q14_cutting: "no", q27_targetDate: "2026-09-01",
+      q28_targetType: "competition",
+    }, { daysUntilTarget: 84 });
+    ck("pickProgramStyle: kisapäivä + 84 pv + competition → top-1 multi-issurin",
+       cands[0].styleId === "multi-issurin");
+    ck("pickProgramStyle: multi-issurin confidence > 80",
+       cands[0].confidence > 80);
+  }
+
+  // pickProgramStyle: kisapäivä alle 8 vk → multi-issurin EI top-1
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "strength", q23_volumePref: "MAV",
+      q14_cutting: "no", q27_targetDate: "2026-06-10",
+    }, { daysUntilTarget: 30 });
+    ck("pickProgramStyle: kisapäivä 30 pv → multi-issurin EI top-1",
+       cands[0].styleId !== "multi-issurin");
+  }
+
+  // pickProgramStyle: deload-recent → siirtymä top-3:ssa
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "intermediate", q12_primaryGoal: "general_strength",
+      q29_recentBlock: "deload", q23_volumePref: "auto",
+      q14_cutting: "no",
+    });
+    const top3 = cands.slice(0, 3);
+    ck("pickProgramStyle: deload-recent → siirtymä top-3:ssa",
+       top3.some(c => c.styleId === "single-siirtyma"));
+  }
+
+  // pickProgramStyle: aloittelija + eksentrinen → confidence rajattu MAX 25
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "beginner", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "auto",
+      q14_cutting: "no",
+    });
+    const eks = cands.find(c => c.styleId === "single-eksentrinen");
+    ck("pickProgramStyle: beginner + eksentrinen → confidence ≤ 25 (cap)",
+       eks && eks.confidence <= 25);
+  }
+
+  // pickProgramStyle: kandidaatit eivät sisällä duplikaatteja
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "hypertrophy",
+      q29_recentBlock: "strength", q23_volumePref: "MAV",
+      q14_cutting: "no",
+    });
+    const styleIds = cands.map(c => c.styleId);
+    const unique = new Set(styleIds);
+    ck("pickProgramStyle: ei duplikaatteja kandidaattilistalla",
+       unique.size === styleIds.length);
+    ck("pickProgramStyle: kaikki 8 tyyliä esiintyy kandidaattilistalla",
+       styleIds.length === 8);
+  }
+
+  // pickProgramStyle: kaikilla rationale[] täytetty
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "intermediate", q12_primaryGoal: "general_strength",
+      q29_recentBlock: "off_program", q23_volumePref: "auto",
+      q14_cutting: "no",
+    });
+    ck("pickProgramStyle: jokaisella kandidaatilla rationale[] vähintään 1 perustelu",
+       cands.every(c => Array.isArray(c.rationale) && c.rationale.length >= 1));
+  }
+
+  // pickProgramStyle: confidence välillä [0, 100]
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "elite", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "intensification", q23_volumePref: "MEV",
+      q14_cutting: "yes", q30_energyBudget: { deficitKcal: 700, proteinGPerKg: 2.0 },
+    });
+    ck("pickProgramStyle: kaikki confidence-arvot välillä [0, 100]",
+       cands.every(c => c.confidence >= 0 && c.confidence <= 100));
+  }
+
+  // pickProgramStyle: female-kerroin ei sotke confidence-laskua (q02 ei käytetä siellä)
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "MAV",
+      q14_cutting: "no", q02_sex: "female",
+    });
+    ck("pickProgramStyle: female-atleti + max_1RM + hypertrophy-recent → maksimivoima silti top-1",
+       cands[0].styleId === "single-maksimivoima");
+  }
 
   // ─── 2. pickStartingBlock ──────────────────────────────────────────
   ck("pickStartingBlock: peaking → hypertrofia",
@@ -1440,7 +2125,7 @@ export function selfTestMapper() {
   ck("Deterministisyys: recoveryCapacity sama", det1.recoveryCapacity === det2.recoveryCapacity);
 
   // ─── 14. _wizardMeta-rakenteen täydellisyys ─────────────────────────
-  ck("_wizardMeta sisältää mapperVersion (2C-delta-v1.0)", akseliResult._wizardMeta.mapperVersion === "2C-delta-v1.0");
+  ck("_wizardMeta sisältää mapperVersion (2D-alpha-v1.0)", akseliResult._wizardMeta.mapperVersion === "2D-alpha-v1.0");
   ck("_wizardMeta sisältää wizardSchemaVersion",  akseliResult._wizardMeta.wizardSchemaVersion === "3.3");
   ck("_wizardMeta sisältää rules-array",          Array.isArray(akseliResult._wizardMeta.rules) && akseliResult._wizardMeta.rules.length > 0);
   ck("_wizardMeta.rules sisältää ACSM-säännön (Nunes + ACSM 2009)",
@@ -1806,6 +2491,102 @@ export function selfTestMapper() {
      estimateIsometricE1RM({ loadType: "isometric_hold", movementName: "L-sit", holdSeconds: 30 }, bw) === null);
   ck("estimateIsometricE1RM: ei bodyweight → null",
      estimateIsometricE1RM({ loadType: "isometric_hold", movementName: "Front Lever", holdSeconds: 12 }, 0) === null);
+
+  // ════════════════════════════════════════════════════════════════
+  // ─── 2D-α: mapWizardToMesocycle(opts.selectedStyleId) ────────────
+  // ════════════════════════════════════════════════════════════════
+  const akseliBase = {
+    wizardId: "wiz_akseli_2d",
+    schemaVersion: "3.3",
+    completedAtISO: "2026-05-11T10:00:00Z",
+    answers: {
+      q01_age: 34, q02_sex: "male", q03_weight: 91,
+      q06_yearsTraining: 15, q08_selfLevel: "elite", q09_sport: "streetlifting",
+      q11_injuries: [], q12_primaryGoal: "max_1RM",
+      q14_cutting: "no", q15_aerobicModality: "none",
+      q17_equipment: ["barbell_rack", "pullup_bar", "dip_station"],
+      q21_splitPreference: "upper_lower", q22_avoidedExercises: [],
+      q23_volumePref: "MAV",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 90 },
+      q25_rpePrecision: "vara_calibrated",
+      q29_recentBlock: "hypertrophy",
+    },
+  };
+
+  // selectedStyleId="single-hypertrofia" → goal pakotettu hypertrofiaksi
+  const forcedHyp = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-hypertrofia" });
+  ck("mapWizardToMesocycle(selectedStyleId='single-hypertrofia'): goal=hypertrofia",
+     forcedHyp.goal === "hypertrofia");
+  ck("mapWizardToMesocycle(selectedStyleId): _wizardMeta.styleSource = käyttäjän valinta",
+     typeof forcedHyp._wizardMeta.styleSource === "string" && forcedHyp._wizardMeta.styleSource.includes("käyttäjän valinta"));
+  ck("mapWizardToMesocycle(selectedStyleId): _wizardMeta.selectedStyleId tallennettu",
+     forcedHyp._wizardMeta.selectedStyleId === "single-hypertrofia");
+
+  // selectedStyleId="single-siirtyma" → goal=siirtyma, weekCount=3 (natiivipituus)
+  const forcedSiirt = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-siirtyma" });
+  ck("mapWizardToMesocycle(selectedStyleId='single-siirtyma'): goal=siirtyma",
+     forcedSiirt.goal === "siirtyma");
+  ck("mapWizardToMesocycle(selectedStyleId='single-siirtyma'): weekCount=3 (natiivipituus)",
+     forcedSiirt.weekCount === 3);
+
+  // selectedStyleId="single-palautuminen" → weekCount=2
+  const forcedPal = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-palautuminen" });
+  ck("mapWizardToMesocycle(selectedStyleId='single-palautuminen'): goal=palautuminen + weekCount=2",
+     forcedPal.goal === "palautuminen" && forcedPal.weekCount === 2);
+
+  // selectedStyleId="single-eksentrinen" → goal=eksentrinen, weekCount=4
+  const forcedEks = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-eksentrinen" });
+  ck("mapWizardToMesocycle(selectedStyleId='single-eksentrinen'): goal=eksentrinen + weekCount=4",
+     forcedEks.goal === "eksentrinen" && forcedEks.weekCount === 4);
+
+  // Virheellinen styleId heittää virheen
+  let threwError = false;
+  try {
+    mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "nonexistent-style" });
+  } catch (e) {
+    threwError = true;
+  }
+  ck("mapWizardToMesocycle(selectedStyleId='nonexistent'): heittää Error:n",
+     threwError === true);
+
+  // ── mapWizardToProgram dispatcher ──
+  const dispResult1 = mapWizardToProgram(akseliBase, null);
+  ck("mapWizardToProgram: ilman selectedStyleId:tä → käytetään top-1",
+     typeof dispResult1.goal === "string" || dispResult1.isMultiBlock);
+  ck("mapWizardToProgram: _wizardMeta.styleCandidates = top-3 listä",
+     Array.isArray(dispResult1._wizardMeta.styleCandidates) && dispResult1._wizardMeta.styleCandidates.length === 3);
+  ck("mapWizardToProgram: jokaisella kandidaatilla styleId, label, confidence, rationale",
+     dispResult1._wizardMeta.styleCandidates.every(c =>
+       typeof c.styleId === "string" && typeof c.label === "string" &&
+       typeof c.confidence === "number" && Array.isArray(c.rationale)));
+  ck("mapWizardToProgram: chosenStyleId tallennettu metadataan",
+     typeof dispResult1._wizardMeta.chosenStyleId === "string");
+
+  // mapWizardToProgram: pakota single-dup → goal=undulating
+  const dispResult2 = mapWizardToProgram(akseliBase, null, { selectedStyleId: "single-dup" });
+  ck("mapWizardToProgram(selectedStyleId='single-dup'): goal=undulating",
+     dispResult2.goal === "undulating");
+  ck("mapWizardToProgram(selectedStyleId): chosenStyleId vastaa pyydettyä",
+     dispResult2._wizardMeta.chosenStyleId === "single-dup");
+
+  // mapWizardToProgram: pakota multi-issurin ilman targetDateä → fallback
+  const dispResult3 = mapWizardToProgram(akseliBase, null, { selectedStyleId: "multi-issurin" });
+  ck("mapWizardToProgram(selectedStyleId='multi-issurin' ilman targetia): fallback single-blokkiin",
+     !dispResult3.isMultiBlock);
+  ck("mapWizardToProgram(multi-fallback): _wizardMeta.styleFallbackFromMulti=true",
+     dispResult3._wizardMeta.styleFallbackFromMulti === true);
+
+  // mapWizardToProgram: kisapäivä + multi-issurin → todellinen multi-blokki
+  const targetDate2D = new Date(Date.now() + 98 * 86400000).toISOString().slice(0, 10);
+  const akseliWithTarget2D = {
+    ...akseliBase,
+    answers: { ...akseliBase.answers, q27_targetDate: targetDate2D, q28_targetType: "competition" },
+  };
+  const dispResult4 = mapWizardToProgram(akseliWithTarget2D, null, { selectedStyleId: "multi-issurin" });
+  ck("mapWizardToProgram(multi-issurin + kisapäivä 14 vk): isMultiBlock=true",
+     dispResult4.isMultiBlock === true);
+  ck("mapWizardToProgram(multi-issurin + kisapäivä): styleCandidates sisältää multi-issurin top-1",
+     dispResult4._wizardMeta.styleCandidates[0].styleId === "multi-issurin");
 
   return report;
 }
