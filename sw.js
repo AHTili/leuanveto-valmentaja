@@ -1,5 +1,26 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.38.8 — Dynaaminen "0,"-prefiksi velocity-syötössä (≥ 1.0 m/s tuki).
+// LeVe AI v4.38.9 — Accessory-liikkeiden kuormat näkyviin Dashboardin
+// päivänäkymässä. Aiemmin vain pääliikkeen (⭐) kuorma näkyi; backoff +
+// secondary + calibration näkyivät jo, mutta accessory-liikkeet (Chest-
+// supported row, Incline curl jne.) jäivät ilman kuormaa.
+//
+// Käyttäjäpalaute 2026-05-11: "miksi muut kuin pääliikkeen painot eivät näy
+// tässä näkymässä, onko tarkoituksellista?". Vastaus: oli osin tarkoitukselli-
+// nen design-päätös (focus pääliikkeeseen), mutta käyttäjä halusi nähdä koko
+// session yhdellä silmäyksellä → korjattu.
+//
+// KORJAUS:
+// (refresh) state.movementProgressMap = Map(movementId → progress).
+//   Ladataan getAllMovementProgress:n kautta refresh()-funktiossa kaikkien
+//   muiden state-tietojen ohessa. Sync-lookup Dashboardin renderöinnissä
+//   ilman async-kutsuja.
+// (renderDashboard slotRowsHTML) Lisätty accessory-haara:
+//   slot.role === "accessory" → state.movementProgressMap.get(movementId) →
+//   suggestedLoadKg | lastLoadKg | 0 (BW) | null (tyhjä = uusi liike).
+//   Sama logiikka kuin workout-flow:ssa (rivi ~10739) — varmistaa konsistenssin
+//   Dashboardin ja itse treenissä näkyvien kuormien välillä.
+//
+// v4.38.8 (edellinen) — Dynaaminen "0,"-prefiksi velocity-syötössä (≥ 1.0 m/s tuki).
 //
 // Käyttäjäpalaute v4.38.7:n jälkeen (2026-05-11): "0,"-prefiksi-malli toimi
 // nopeasti ≤ 0.99 m/s arvoille, mutta räjähtävän leuanvedon yli 1.0 m/s -
@@ -474,7 +495,7 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.38.8";
+const APP_VERSION = "4.38.9";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

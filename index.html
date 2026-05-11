@@ -1348,6 +1348,10 @@ async function refresh() {
   state.prs = await getAllPRs();
   state.allMesocycles = await getAllMesocycles();
   state.mesocycle = await getActiveMesocycle();
+  // v4.38.9: kaikkien liikkeiden progress-data Dashboardin accessory-kuormia varten.
+  // Map movementId → { suggestedLoadKg, lastLoadKg, e1RM, ... } sync-lookupille.
+  const allProgress = await getAllMovementProgress();
+  state.movementProgressMap = new Map(allProgress.map(p => [p.movementId, p]));
   // Plan-override on transient — refresh palauttaa aina normaalille tänään-päivälle
   state.planOverrideDateISO = null;
   await computeReadiness();
@@ -3443,6 +3447,20 @@ function renderDashboard() {
         // Cal-slot näkyväksi dashboardilla
         loadStr = `+${slot.resolvedLoadKg} kg`;
         loadCls = "cal";
+      } else if (slot.role === "accessory" && slot.movementId) {
+        // v4.38.9: Accessory-kuorma haetaan state.movementProgressMap:istä
+        // (= getAllMovementProgress refresh:in yhteydessä). Sama logiikka kuin
+        // workout-flow:ssa: suggestedLoadKg → lastLoadKg → null/BW.
+        const progress = state.movementProgressMap?.get(slot.movementId);
+        const lkg = progress?.suggestedLoadKg ?? progress?.lastLoadKg ?? null;
+        if (typeof lkg === "number" && lkg > 0) {
+          loadStr = `${lkg} kg`;
+          loadCls = "backoff";
+        } else if (lkg === 0) {
+          loadStr = "BW";
+          loadCls = "backoff";
+        }
+        // else: ei progress-dataa → tyhjä (esim. uusi liike, käyttäjä syöttää treenin alussa)
       }
 
       const setsReps = `${slot.sets}×${slot.reps}`;
