@@ -3021,6 +3021,189 @@ function createMaksimivoimaMesocycle(startDateISO) {
   };
 }
 
+// ── v4.44.0 (Track B Vaihe 2C-β2): Intensifikaatio-blokki ─────────────
+// Issurin 2010 block-mallin INTENSIFICATION-blokki: matala volyymi, korkea
+// intensiteetti, kapeasti rajattu accessory-työ. KÄYTÄNNÖSSÄ ERILAINEN kuin
+// createMaksimivoimaMesocycle (joka on "perinteinen voima") — intensifikaatio
+// VÄHENTÄÄ kokonaisvolyymiä Issurinin block-mallin mukaisesti.
+//
+// Tutkimuspohja: Issurin 2010 Sports Med 40(3):189-206 (PDF-VERIFIOITU 2B-α).
+// Säännöt:
+//   - Primary: 4-5 sarjaa × 1-3 toistoa, V1-V2 (~85-92% 1RM)
+//   - EI backoff-sarjoja (yhden primary-tyypin sessio)
+//   - Maks. 1-2 accessory per päivä, 2-3 sarjaa kpl
+//   - Volyymi laskee vk 1→3 (4×3 → 5×2 → 5×1), deload vk 4
+//   - Accessory: vain spesifikaatio-tukea, EI hypertrofia-volyymia
+function createIntensifikaatioMesocycle(startDateISO) {
+  return {
+    mesocycleId: uid(),
+    type: "intensifikaatio",
+    startDateISO: startDateISO || todayISO(),
+    weekCount: 4,
+    weekDefs: [
+      { week: 1, deltaPctBase: 0.02, label: "Intensification I",  heavyReps: 3, heavyTargetVx: 2 },
+      { week: 2, deltaPctBase: 0.04, label: "Intensification II", heavyReps: 2, heavyTargetVx: 1 },
+      { week: 3, deltaPctBase: 0.06, label: "Intensification III",heavyReps: 1, heavyTargetVx: 1 },
+      { week: 4, deltaPctBase: -0.25, label: "Deload",            heavyReps: 3, heavyTargetVx: 4 },
+    ],
+    weekPlans: [
+      {
+        week: 1,
+        days: [
+          {
+            dayOfWeek: 1, dayType: "heavy", label: "Intensifikaatio A",
+            slots: [
+              { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 4, reps: 3, targetVx: 2 },
+              { role: "accessory", category: "horisontaaliveto",   defaultMovementName: "Penkkiveto",         sets: 2, reps: 5, targetVx: 2 },
+            ],
+          },
+          {
+            dayOfWeek: 3, dayType: "heavy", label: "Intensifikaatio B",
+            slots: [
+              { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 4, reps: 3, targetVx: 2 },
+              { role: "accessory", category: "hauisfleksio",        defaultMovementName: "Hauiskääntö tanko",  sets: 2, reps: 6, targetVx: 3 },
+            ],
+          },
+          {
+            dayOfWeek: 5, dayType: "speed", label: "Nopeusvoima",
+            slots: [
+              { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 2, targetVx: 4 },
+              { role: "accessory", category: "core",                defaultMovementName: "Hanging leg raise",  sets: 2, reps: 8, targetVx: null },
+            ],
+          },
+        ],
+      },
+      {
+        week: 2,
+        days: [
+          {
+            dayOfWeek: 1, dayType: "heavy", label: "Intensifikaatio A",
+            slots: [
+              { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 2, targetVx: 1 },
+              { role: "accessory", category: "horisontaaliveto",   defaultMovementName: "Penkkiveto",         sets: 2, reps: 5, targetVx: 2 },
+            ],
+          },
+          {
+            dayOfWeek: 3, dayType: "heavy", label: "Intensifikaatio B",
+            slots: [
+              { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 2, targetVx: 1 },
+              { role: "accessory", category: "hauisfleksio",        defaultMovementName: "Hauiskääntö tanko",  sets: 2, reps: 6, targetVx: 3 },
+            ],
+          },
+          {
+            dayOfWeek: 5, dayType: "speed", label: "Nopeusvoima",
+            slots: [
+              { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 2, targetVx: 4 },
+            ],
+          },
+        ],
+      },
+      {
+        week: 3,
+        days: [
+          {
+            dayOfWeek: 1, dayType: "heavy", label: "Intensifikaatio A (peak)",
+            slots: [
+              { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 1, targetVx: 1 },
+              { role: "accessory", category: "horisontaaliveto",   defaultMovementName: "Penkkiveto",         sets: 2, reps: 5, targetVx: 3 },
+            ],
+          },
+          {
+            dayOfWeek: 3, dayType: "heavy", label: "Intensifikaatio B (peak)",
+            slots: [
+              { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 4, reps: 1, targetVx: 1 },
+            ],
+          },
+          {
+            dayOfWeek: 5, dayType: "speed", label: "Nopeusvoima",
+            slots: [
+              { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 4, reps: 2, targetVx: 4 },
+            ],
+          },
+        ],
+      },
+      {
+        week: 4,
+        days: [
+          {
+            dayOfWeek: 1, dayType: "heavy", label: "Deload",
+            slots: [
+              { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 3, targetVx: 4 },
+            ],
+          },
+          {
+            dayOfWeek: 4, dayType: "speed", label: "Deload (kevyt)",
+            slots: [
+              { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 2, reps: 3, targetVx: 4 },
+            ],
+          },
+        ],
+      },
+    ],
+    postCycleAnalysis: null,
+  };
+}
+
+// ── v4.44.0 (Track B Vaihe 2C-β2): Multi-block-peaking-skeleton (2 vk) ──
+// 2-viikon peaking-osio jota multi-block-mesocycle käyttää viimeisinä viikkoina.
+// EI competition-day-attempts-rakennetta (joka vaatisi e1RM-erityissyötteen) —
+// tämä on TAPER + REALIZATION joka päättyy kisaviikkoon ilman attempt-laskentaa.
+//
+// Tutkimuspohja: Issurin 2010 realization-block + Helms 2014 peaking-protokollat.
+// Sääntö:
+//   - Vk 1 (TAPER): volyymi -50% strength-blokista, intensiteetti V2, 1 accessory
+//   - Vk 2 (KILPAVIIKKO): volyymi -70%, kevyet aktivointi-päivät, EI accessory:tä
+function createMultiBlockPeakingSkeleton(startDateISO) {
+  return {
+    mesocycleId: uid(),
+    type: "peaking-mb",
+    startDateISO: startDateISO || todayISO(),
+    weekCount: 2,
+    weekDefs: [
+      { week: 1, deltaPctBase: 0.03, label: "Taper",     heavyReps: 2, heavyTargetVx: 2 },
+      { week: 2, deltaPctBase: 0.00, label: "Kisaviikko", heavyReps: 1, heavyTargetVx: 1 },
+    ],
+    weekPlans: [
+      {
+        week: 1,
+        days: [
+          {
+            dayOfWeek: 1, dayType: "heavy", label: "Taper (kova)",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 2, targetVx: 2 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 2, reps: 5, targetVx: 3 },
+            ],
+          },
+          {
+            dayOfWeek: 3, dayType: "speed", label: "Taper (nopeus)",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 2, targetVx: 4 },
+            ],
+          },
+        ],
+      },
+      {
+        week: 2,
+        days: [
+          {
+            dayOfWeek: 1, dayType: "heavy", label: "Kisaviikko (aktivointi)",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 2, reps: 2, targetVx: 1 },
+            ],
+          },
+          {
+            dayOfWeek: 4, dayType: "speed", label: "Kisaviikko (kevyt)",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 1, reps: 2, targetVx: 4 },
+            ],
+          },
+        ],
+      },
+    ],
+    postCycleAnalysis: null,
+  };
+}
+
 // ── Eksentrinen blokki (4 viikkoa, 2×/vk) ──
 // Tavoite: Supramaksimaalinen eksentrinen kuorma + isometria
 // Korokeveto (eksentrisesti) + ylipito, harvempi frekvenssi
@@ -3924,12 +4107,16 @@ function generateMultiBlockMesocycle(config, startDateISOArg) {
   const recoveryScalars = { hyva: 1.0, keski: 0.85, heikko: 0.70 };
   const scalar = recoveryScalars[recoveryCapacity] ?? 0.85;
 
-  // Skeleton-factory-mappaus
+  // Skeleton-factory-mappaus (v4.44.0: lisätty intensifikaatio + peaking-mb)
   const factories = {
-    hypertrofia:  createHypertrofiaMesocycle,
-    maksimivoima: createMaksimivoimaMesocycle,
-    yhdistelma:   createDefaultMesocycle,
-    undulating:   createDUPMesocycle,
+    hypertrofia:    createHypertrofiaMesocycle,
+    maksimivoima:   createMaksimivoimaMesocycle,
+    yhdistelma:     createDefaultMesocycle,
+    undulating:     createDUPMesocycle,
+    // 2C-β2: aito Issurin-intensifikaatio (matala volyymi, korkea intensiteetti)
+    intensifikaatio: createIntensifikaatioMesocycle,
+    // 2C-β2: 2-vk peaking-skeleton multi-block:lle (taper + kisaviikko)
+    peaking:        createMultiBlockPeakingSkeleton,
   };
 
   let combinedWeekPlans = [];
@@ -6106,6 +6293,9 @@ export {
   createSiirtymaMesocycle,
   createPalautuminenMesocycle,
   createStreetlifting16WMesocycle,
+  // v4.44.0 (Track B Vaihe 2C-β2): aito intensifikaatio + peaking-skeleton multi-blockille
+  createIntensifikaatioMesocycle,
+  createMultiBlockPeakingSkeleton,
   // Custom program generator (v4.27)
   generateCustomMesocycle,
   // v4.42.0 (Track B Vaihe 2C-α): multi-blokki-mesocycle

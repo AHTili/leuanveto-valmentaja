@@ -1084,7 +1084,13 @@ import {
 // v4.40.0 (Track B Vaihe 2B-β): wizard-pohjainen ohjelma-generointi
 // v4.42.0 (Track B Vaihe 2C-α): mapWizardToMultiBlockMesocycle multi-blokille
 // v4.43.0 (Track B Vaihe 2C-β): applySessionFocusLabels post-process
-import { mapWizardToMesocycle, mapWizardToMultiBlockMesocycle, applySessionFocusLabels, MAPPER_VERSION } from "./wizard/wizard-2b-mapper.js";
+import {
+  mapWizardToMesocycle, mapWizardToMultiBlockMesocycle,
+  applySessionFocusLabels,
+  // v4.44.0 (Track B Vaihe 2C-β2): split-filter + volyymi-cap post-process
+  applySplitFilter, applyVolumeCap,
+  MAPPER_VERSION,
+} from "./wizard/wizard-2b-mapper.js";
 // initWizardDB tarvitaan lazy-alustamiseksi: wizard-data.js pitää module-tason
 // _wizardDb-singletonia jota tx-funktiot lukevat. Jos pää-app ei ole avannut
 // LeVeWizardDB:tä, getActiveWizardConfig palauttaa null.
@@ -3778,7 +3784,31 @@ async function handleGenerateProgram() {
     // Liitä mapper-metadata customConfig:iin auditointia varten
     if (!newMeso.customConfig) newMeso.customConfig = {};
     newMeso.customConfig._wizardMeta = mapped._wizardMeta;
-    // 2C-β: Post-process session-fokus-labelit (Pullup-fokus, Dippi-fokus jne.)
+
+    // 2C-β2: Post-process pipeline (vaiheet ajetaan järjestyksessä):
+    //   1. applySplitFilter — q21="upper_lower"/"ppl"/"broscience" suodattaa
+    //      accessory:t niin että kunkin päivän liikkeet vastaavat primary:n
+    //      kategoriaa (esim. ei chest press kyykky-päivänä)
+    //   2. applyVolumeCap — rajaa accessory-sarjat per kategoria per viikko
+    //      blokin tyypin mukaan (Issurin-mallin volyymi-progression mukaisesti)
+    //   3. applySessionFocusLabels — käyttäjäystävälliset labelit (Pullup-fokus jne.)
+    const splitPref = wizardConfig.answers?.q21_splitPreference;
+    if (mapped.isMultiBlock && Array.isArray(newMeso.customConfig?.blocks)) {
+      // Multi-block: applyVolumeCap per blokki (eri cap per goal)
+      newMeso.weekPlans = applySplitFilter(newMeso.weekPlans, splitPref);
+      // Pala viikot per blokki ja sovella volyymi-cap kullekin
+      const cappedWeekPlans = [];
+      for (const block of newMeso.customConfig.blocks) {
+        const blockWeeks = newMeso.weekPlans.filter(wp =>
+          wp.week >= block.startWeek && wp.week <= block.endWeek);
+        cappedWeekPlans.push(...applyVolumeCap(blockWeeks, block.goal));
+      }
+      newMeso.weekPlans = cappedWeekPlans;
+    } else {
+      // Single-block: yksi cap koko mesolle
+      newMeso.weekPlans = applySplitFilter(newMeso.weekPlans, splitPref);
+      newMeso.weekPlans = applyVolumeCap(newMeso.weekPlans, mapped.goal);
+    }
     newMeso.weekPlans = applySessionFocusLabels(newMeso.weekPlans);
   } catch (e) {
     showToast(`Ohjelman generointi epäonnistui: ${e.message}`, "bad");
@@ -7078,8 +7108,20 @@ function renderMesocycle() {
   const _cvBlockInfo = (w) => {
     if (!isStreet16) {
       const wdef = meso.weekDefs?.find(d => d.week === w);
-      const isDeload = (wdef?.deltaPctBase ?? 0) < 0;
-      return { cls: isDeload ? "b-deload" : "b-found", name: isDeload ? "Deload" : "Volyymi", num: w, total: meso.weekCount, sub: wdef?.label || "" };
+      // v4.44.0 (2C-β2): deload-tunnistus käyttää label-stringiä eikä pelkkää
+      // deltaPctBase-arvoa. Aiemmin hypertrofia-blokin vk 1 (-10% sopeutus)
+      // tai vk 2 (-5%) sai virheellisesti "Deload"-leiman vaikka EI ole deload.
+      // Aitoja deload-viikkoja ovat ne joiden label sisältää "deload" (esim.
+      // hypertrofia vk 4, strength vk 8 jne. — kaikilla deltaPctBase ≤ -0.20).
+      const labelL = (wdef?.label || "").toLowerCase();
+      const isDeload = labelL.includes("deload") || (wdef?.deltaPctBase ?? 0) <= -0.20;
+      // v4.44.0 (2C-β2): multi-block-meso voi näyttää block-labelin (esim.
+      // "Hypertrofia" / "Strength" / "Intensifikaatio" / "Peaking"). Jos
+      // weekDef sisältää blockLabel, käytetään sitä volyymi-nimen sijaan.
+      const blockName = wdef?.blockLabel
+        ? wdef.blockLabel.charAt(0).toUpperCase() + wdef.blockLabel.slice(1)
+        : "Volyymi";
+      return { cls: isDeload ? "b-deload" : "b-found", name: isDeload ? "Deload" : blockName, num: w, total: meso.weekCount, sub: wdef?.label || "" };
     }
     // Streetlifting_16w: 4 blokkia + deload-vk:t (4, 8, 12)
     if (w === 4 || w === 8 || w === 12) return { cls: "b-deload", name: "Deload + kalibrointi", num: w, total: 16, sub: "Cal-sessio + AI-tuning" };
@@ -7289,11 +7331,15 @@ function renderMesocycle() {
       ${futureWorkouts.map(fw => {
         const primaryAndBackoff = fw.slots.filter(s => s.role === "primary" || s.role === "backoff" || ["warmup","opener","attempt2","attempt3"].includes(s.role));
         const accessories = fw.slots.filter(s => s.role === "accessory");
+        // v4.44.0 (2C-β2): summary näyttää primary+backoff lisätiedoilla suoraan
+        // (= ei enää erillistä "PÄÄLIIKKEET + BACKOFF" -osiota details:ssä, jotta
+        // sama tieto ei toistu yhden kortin sisällä).
         const summary = primaryAndBackoff.map(s => {
           const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "🏆";
+          const loadInfo = s.suggestedLoadKg ? ` · seed ${s.suggestedLoadKg} kg` : (s.loadPct ? ` · ${Math.round(s.loadPct*100)} %` : "");
           return `<div class="flex-between" style="padding:2px 0;font-size:12px">
             <span class="muted">${icon} ${s.defaultMovementName}</span>
-            <span class="muted">${s.sets}×${s.reps}${s.targetVx != null ? ` V${s.targetVx}` : ""}</span>
+            <span class="muted">${s.sets}×${s.reps}${s.targetVx != null ? ` V${s.targetVx}` : ""}${loadInfo}</span>
           </div>`;
         }).join("");
         const dayLabel = stripRedundantDayPrefix(fw.label) || dayTypeLabel(fw.dayType);
@@ -7317,18 +7363,9 @@ function renderMesocycle() {
               </div>`;
             }).join("")}
           </div>` : "";
-        const primaryDetail = primaryAndBackoff.length > 0 ? `
-          <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">
-            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">⭐ PÄÄLIIKKEET + BACKOFF</div>
-            ${primaryAndBackoff.map(s => {
-              const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "🏆";
-              const loadInfo = s.suggestedLoadKg ? ` · seed ${s.suggestedLoadKg} kg` : (s.loadPct ? ` · ${Math.round(s.loadPct*100)} %` : "");
-              return `<div class="flex-between" style="padding:3px 0;font-size:11px">
-                <span class="muted">${icon} ${s.defaultMovementName}${s.note ? ` <span style="font-size:10px;opacity:0.7">(${s.note.slice(0, 60)}${s.note.length > 60 ? "..." : ""})</span>` : ""}</span>
-                <span class="muted">${s.sets}×${s.reps}${s.targetVx != null ? ` V${s.targetVx}` : ""}${loadInfo}</span>
-              </div>`;
-            }).join("")}
-          </div>` : "";
+        // v4.44.0 (2C-β2): primaryDetail-osio poistettu — summary näyttää jo
+        // primary+backoff lisätiedoilla. Details laajentaa nyt vain warmup +
+        // accessoryt (= UNIIKKI tieto kortissa).
         return `<details style="padding:8px 0;border-bottom:1px solid var(--border)">
           <summary style="cursor:pointer;list-style:none;outline:none">
             <div class="flex-between">
@@ -7338,7 +7375,6 @@ function renderMesocycle() {
             <div style="margin-top:4px">${summary}</div>
           </summary>
           ${warmupHTML}
-          ${primaryDetail}
           ${accessoriesHTML}
         </details>`;
       }).join("")}
