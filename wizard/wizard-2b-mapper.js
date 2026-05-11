@@ -31,7 +31,7 @@
 
 import { SCHEMA_INVARIANTS } from "./wizard-schema.js";
 
-export const MAPPER_VERSION = "2B-gamma-v1.0";
+export const MAPPER_VERSION = "2C-alpha-v1.0";
 
 // ─── Issurin Table V residuaalit (RISTIINTARKISTETTU) ──────────────────
 // Lähde: Issurin & Lustig 2004 / Issurin 2008 Table V, modifoitu.
@@ -380,6 +380,208 @@ export function applyTargetDateAnchor(weekCountFromTier, q27_targetDate, startDa
   return { weekCount: anchoredWeeks, anchored: true, warning: null };
 }
 
+// ─── 2C-α: Multi-blokki-mahdollisuus ──────────────────────────────────
+//
+// Issurin 2010 block-malli: hypertrofia → strength → intensification → peaking.
+// Kun atletilla on kisapäivä (q27_targetDate) JA aikaa ≥ 5 vk → tuotetaan
+// useamman blokin sekvenssi yhdessä mesocyclessä, ei yhden blokin
+// (= 2B-α:n single-blokki-logiikka).
+//
+// Pää-app:in scaleWeekCount rajoittaa blokki-pituudet 4/8/12 vk:hon JA
+// vain 4-vk-pohjaisille skeleton:eille. Tästä syystä 2C-α käyttää
+// **4 vk per blokki** -rakennetta (paitsi peaking 2 vk). Sekvenssit:
+//
+//   ≥ 14 vk käytettävissä → 4 blokkia (4+4+4+2 = 14)
+//   10-13 vk             → 3 blokkia (4+4+2 = 10)
+//   6-9 vk               → 2 blokkia (4+2 = 6)
+//   < 6 vk               → null (= fallback single-blokkiin)
+//
+// q08_selfLevel ei muuta vk-pituuksia tässä versiossa — se hoidetaan
+// myöhemmin 2C-γ:ssa tier-pohjaisten progressio-kerrointen kautta.
+// 2C-α tuo VAIN sekvenssin rakenteen, ei kg-progressio-säätöä.
+
+export function pickBlockSequence(answers, daysUntilTarget) {
+  // Ei target-päivää TAI alle 5 vk → single-blokki (=2B-α-logiikka)
+  if (typeof daysUntilTarget !== "number" || daysUntilTarget < 35) {
+    return null;
+  }
+
+  const totalWeeks = Math.min(Math.floor(daysUntilTarget / 7), 20); // cap 20 vk
+  const isMaxGoal = ["max_1RM", "powerlifting", "streetlifting_with_explosive_components"]
+    .includes(answers.q12_primaryGoal);
+
+  // Multi-blokki vain max-tavoitteille (powerlifting/streetlifting/1RM-fokus).
+  // Hypertrofia-tavoitteelle EI auto-multi-blokkia — käyttäjä saa single-blokin
+  // jonka voi toistaa (hypertrofia-progressio on pidempi prosessi, ei
+  // tarvitse peaking-vaihetta).
+  if (!isMaxGoal) {
+    return null;
+  }
+
+  // q29_recentBlock vaikuttaa aloitusblokkiin (Issurin block-sekvenssi):
+  //   peaking/deload/off_program → aloita hypertrofiasta
+  //   hypertrophy → SKIP hypertrofia, aloita strengthistä
+  //   strength    → SKIP hyp + str, aloita intensifikaatiosta (= yhdistelma)
+  //   intensification → aloita peaking (jos aikaa) tai strength
+  const q29 = answers.q29_recentBlock;
+  const skipHyp = ["hypertrophy", "strength", "intensification"].includes(q29);
+  const skipStr = ["strength", "intensification"].includes(q29);
+
+  // Rakenna sekvenssi siitä blokista, jossa atletti _ei_ ole jo (= ei
+  // päällekäisyyttä residuaalin kanssa). Peaking on aina viimeisenä, 2 vk.
+  const candidates = [];
+  if (!skipHyp) candidates.push({ goal: "hypertrofia",  weekCount: 4, label: "hypertrofia" });
+  if (!skipStr) candidates.push({ goal: "maksimivoima", weekCount: 4, label: "strength" });
+  candidates.push({ goal: "yhdistelma", weekCount: 4, label: "intensification" });
+  candidates.push({ goal: "maksimivoima", weekCount: 2, label: "peaking" });
+
+  // Valitse niin monta blokkia kuin aikaa riittää (peaking aina mukaan)
+  const peakingBlock = candidates[candidates.length - 1];
+  const middleBlocks = candidates.slice(0, -1);
+
+  const blocks = [];
+  let usedWeeks = peakingBlock.weekCount; // peaking 2 vk varattu
+  // Lisää viimeiseksi → ensimmäiseksi (eli reverse-järjestyksessä jotta
+  // peakingin lähinnä oleva blokki saadaan, jos aika ei riitä kaikille)
+  for (let i = middleBlocks.length - 1; i >= 0; i--) {
+    if (usedWeeks + middleBlocks[i].weekCount <= totalWeeks) {
+      blocks.unshift(middleBlocks[i]);
+      usedWeeks += middleBlocks[i].weekCount;
+    }
+  }
+  blocks.push(peakingBlock);
+
+  if (blocks.length < 2) {
+    // Vain peaking mahtuu → ei kannata multi-blokki, käytä single-blokki
+    return null;
+  }
+
+  return {
+    blocks,
+    totalWeeks: usedWeeks,
+    anchored: true,
+    skippedBlocks: { hypertrofia: skipHyp, strength: skipStr },
+  };
+}
+
+export function mapWizardToMultiBlockMesocycle(wizardConfig, mainAppState) {
+  // Validointi (sama kuin mapWizardToMesocycle)
+  const validation = validateMappingInput(wizardConfig, mainAppState);
+  if (!validation.valid) {
+    throw new Error(`mapWizardToMultiBlockMesocycle: ${validation.errors[0].reason}`);
+  }
+  const a = wizardConfig.answers;
+  const startDateISO = _todayISO();
+
+  // Laske daysUntilTarget jos q27 annettu
+  let daysUntilTarget = null;
+  if (a.q27_targetDate) {
+    const target = new Date(a.q27_targetDate);
+    const start = new Date(startDateISO);
+    if (!Number.isNaN(target.getTime()) && !Number.isNaN(start.getTime())) {
+      daysUntilTarget = Math.floor((target.getTime() - start.getTime()) / 86400000);
+    }
+  }
+
+  // Päätä block-sekvenssi
+  const sequence = pickBlockSequence(a, daysUntilTarget);
+  if (!sequence) {
+    // Fallback: single-blokki (2B-γ-logiikka)
+    return mapWizardToMesocycle(wizardConfig, mainAppState);
+  }
+
+  // Yhteiset kentät (sama logiikka kuin 2B-α/γ)
+  const recoveryCapacity = pickRecoveryCapacity(a);
+  const primaries = pickPrimaries(a);
+  const preferredDaysOfWeek = pickPreferredDaysOfWeek(a.q24_frequency);
+  const daysPerWeek = Number(a.q24_frequency?.daysPerWeek) || 3;
+
+  const sexModifierApplied =
+    a.q15_aerobicModality !== "none" &&
+    a.q02_sex === "male" &&
+    (a.q08_selfLevel === "advanced" || a.q08_selfLevel === "elite");
+
+  const customLabel = `Räätälöity multi-blokki (${sequence.totalWeeks} vk, ${sequence.blocks.length} vaihetta)`;
+
+  return {
+    // generateMultiBlockMesocycle-yhteensopivat parametrit:
+    blocks: sequence.blocks,
+    primaries,
+    daysPerWeek,
+    recoveryCapacity,
+    preferredDaysOfWeek,
+    customLabel,
+    startDateISO,
+    isMultiBlock: true,
+    // 2C-α metadata:
+    _wizardMeta: {
+      wizardId: wizardConfig.wizardId,
+      wizardSchemaVersion: wizardConfig.schemaVersion,
+      mapperVersion: MAPPER_VERSION,
+      blockSequenceRationale: `${sequence.blocks.length}-blokin sekvenssi (${sequence.totalWeeks} vk)`,
+      blocks: sequence.blocks.map(b => ({ goal: b.goal, weekCount: b.weekCount, label: b.label })),
+      skippedBlocks: sequence.skippedBlocks,
+      sexModifierApplied,
+      targetDateAnchored: true,
+      targetDateWarning: null,
+      rules: _collectMultiBlockRules(a, sequence, recoveryCapacity, sexModifierApplied),
+    },
+  };
+}
+
+function _collectMultiBlockRules(a, sequence, recoveryCapacity, sexModifierApplied) {
+  const rules = [];
+  rules.push({
+    rule: `q27_targetDate annettu + ${sequence.totalWeeks} vk käytettävissä → multi-blokki-sekvenssi`,
+    status: "KVALITATIIVINEN",
+    source: "Issurin 2010 block-sekvenssi (hyp → str → int → peak)",
+  });
+  const blockLabels = sequence.blocks.map(b => `${b.label} ${b.weekCount}vk`).join(" → ");
+  rules.push({
+    rule: `Block-sekvenssi: ${blockLabels}`,
+    status: "KVALITATIIVINEN",
+    source: "Issurin Table V residuaalit (RISTIINTARKISTETTU)",
+  });
+  if (sequence.skippedBlocks.hypertrofia || sequence.skippedBlocks.strength) {
+    const skipped = [];
+    if (sequence.skippedBlocks.hypertrofia) skipped.push("hypertrofia");
+    if (sequence.skippedBlocks.strength) skipped.push("strength");
+    rules.push({
+      rule: `q29_recentBlock="${a.q29_recentBlock}" → ohitettiin: ${skipped.join(", ")}`,
+      status: "KVALITATIIVINEN",
+      source: "Issurin Table V residuaalit (aiempi blokki tuottaa residuaalin)",
+    });
+  }
+  // Cut-aggressive-sääntö (2B-γ)
+  const deficitKcal = a.q14_cutting === "yes" && a.q30_energyBudget
+    ? Number(a.q30_energyBudget.deficitKcal) : NaN;
+  if (a.q14_cutting === "yes" && !Number.isNaN(deficitKcal) && deficitKcal >= 500) {
+    rules.push({
+      rule: `Cut-vaihe + aggressive vaje (${deficitKcal} kcal/päivä) → recoveryCapacity="heikko"`,
+      status: "PDF-VERIFIOITU",
+      source: "Helms 2018 (vaje >20% → volyymileikkaus pakollinen)",
+    });
+  }
+  if (sexModifierApplied) {
+    rules.push({
+      rule: `Concurrent training + miehillä + advanced → recoveryCapacity="heikko"`,
+      status: "PDF-VERIFIOITU",
+      source: "Huiberts 2024 (SMD -0.43 lower-body strength)",
+    });
+  }
+  rules.push({
+    rule: `q23_volumePref="${a.q23_volumePref}" → recoveryCapacity="${recoveryCapacity}"`,
+    status: "KÄYTÄNNÖLLINEN",
+    source: "Pää-app:in volume-tier-konventio",
+  });
+  rules.push({
+    rule: `Liikejärjestys delegoidaan pää-app:in distributePrimariesToDays:lle (per blokki)`,
+    status: "RISTIINTARKISTETTU",
+    source: "Nunes 2021 (MJ-before-SJ) + ACSM 2009 Position Stand",
+  });
+  return rules;
+}
+
 // ─── Vaihe 7: mapWizardToMesocycle (main) ──────────────────────────────
 //
 // Yhdistää kaikki mapping-funktiot. Palauttaa generateCustomMesocycle:lle
@@ -521,7 +723,7 @@ export function selfTestMapper() {
      RESIDUAL_DAYS.maximal_strength.mean === 30 && RESIDUAL_DAYS.maximal_strength.sd === 5);
   ck("RESIDUAL_DAYS maximal_speed = 5 ± 3 (Issurin)",
      RESIDUAL_DAYS.maximal_speed.mean === 5 && RESIDUAL_DAYS.maximal_speed.sd === 3);
-  ck("MAPPER_VERSION on 2B-gamma-v1.0", MAPPER_VERSION === "2B-gamma-v1.0");
+  ck("MAPPER_VERSION on 2C-alpha-v1.0", MAPPER_VERSION === "2C-alpha-v1.0");
 
   // ─── 2. pickStartingBlock ──────────────────────────────────────────
   ck("pickStartingBlock: peaking → hypertrofia",
@@ -798,7 +1000,7 @@ export function selfTestMapper() {
   ck("Deterministisyys: recoveryCapacity sama", det1.recoveryCapacity === det2.recoveryCapacity);
 
   // ─── 14. _wizardMeta-rakenteen täydellisyys ─────────────────────────
-  ck("_wizardMeta sisältää mapperVersion (2B-gamma-v1.0)", akseliResult._wizardMeta.mapperVersion === "2B-gamma-v1.0");
+  ck("_wizardMeta sisältää mapperVersion (2C-alpha-v1.0)", akseliResult._wizardMeta.mapperVersion === "2C-alpha-v1.0");
   ck("_wizardMeta sisältää wizardSchemaVersion",  akseliResult._wizardMeta.wizardSchemaVersion === "3.3");
   ck("_wizardMeta sisältää rules-array",          Array.isArray(akseliResult._wizardMeta.rules) && akseliResult._wizardMeta.rules.length > 0);
   ck("_wizardMeta.rules sisältää ACSM-säännön (Nunes + ACSM 2009)",
@@ -807,6 +1009,93 @@ export function selfTestMapper() {
   // ─── 15. Schema-invariantit (1A:n säilytys) ─────────────────────────
   ck("SCHEMA_INVARIANTS.totalQuestions === 30", SCHEMA_INVARIANTS.totalQuestions === 30);
   ck("SCHEMA_INVARIANTS.totalStages === 8",     SCHEMA_INVARIANTS.totalStages === 8);
+
+  // ════════════════════════════════════════════════════════════════
+  // ─── 2C-α: Multi-blokki-sekvenssi (Issurin block-malli) ────────────
+  // ════════════════════════════════════════════════════════════════
+
+  // pickBlockSequence — single-blokki-fallback-tilanteet
+  ck("pickBlockSequence: ei targetia → null (fallback single)",
+     pickBlockSequence({ q12_primaryGoal: "max_1RM", q29_recentBlock: "peaking" }, null) === null);
+  ck("pickBlockSequence: alle 5 vk → null",
+     pickBlockSequence({ q12_primaryGoal: "max_1RM", q29_recentBlock: "peaking" }, 28) === null);
+  ck("pickBlockSequence: hypertrofia-tavoite → null (vain max-tavoitteille)",
+     pickBlockSequence({ q12_primaryGoal: "hypertrophy", q29_recentBlock: "peaking" }, 98) === null);
+  ck("pickBlockSequence: general_strength → null",
+     pickBlockSequence({ q12_primaryGoal: "general_strength", q29_recentBlock: "peaking" }, 98) === null);
+
+  // pickBlockSequence — multi-blokki-tilanteet
+  const seq4 = pickBlockSequence({ q12_primaryGoal: "max_1RM", q29_recentBlock: "peaking" }, 98); // 14 vk
+  ck("pickBlockSequence: 14 vk + max-tavoite + peakingista → 4 blokkia (14 vk)",
+     seq4 && seq4.blocks.length === 4 && seq4.totalWeeks === 14);
+  ck("pickBlockSequence: 4-block-sekvenssi alkaa hypertrofialla",
+     seq4 && seq4.blocks[0].label === "hypertrofia");
+  ck("pickBlockSequence: 4-block-sekvenssi päättyy peakingiin",
+     seq4 && seq4.blocks[seq4.blocks.length - 1].label === "peaking");
+  ck("pickBlockSequence: 4-block-sekvenssi sisältää strength + intensification",
+     seq4 && seq4.blocks.map(b => b.label).join(",").includes("strength") &&
+     seq4.blocks.map(b => b.label).join(",").includes("intensification"));
+
+  // Peaking 2 vk, muut 4 vk
+  ck("pickBlockSequence: peaking-blokin pituus on 2 vk, muut 4 vk",
+     seq4 && seq4.blocks.every(b => b.label === "peaking" ? b.weekCount === 2 : b.weekCount === 4));
+
+  // 3-blokki: aika riittää 10-13 vk:lle
+  const seq3 = pickBlockSequence({ q12_primaryGoal: "powerlifting", q29_recentBlock: "off_program" }, 84); // 12 vk
+  ck("pickBlockSequence: 12 vk → 3 blokkia (4+4+2 = 10 vk)",
+     seq3 && seq3.blocks.length === 3 && seq3.totalWeeks === 10);
+
+  // Skip-tilanteet
+  const seqSkipHyp = pickBlockSequence({ q12_primaryGoal: "max_1RM", q29_recentBlock: "hypertrophy" }, 98);
+  ck("pickBlockSequence: q29=hypertrophy → ei hypertrofia-blokkia sekvenssissä",
+     seqSkipHyp && !seqSkipHyp.blocks.some(b => b.label === "hypertrofia"));
+  ck("pickBlockSequence: skippedBlocks.hypertrofia = true kun q29=hypertrophy",
+     seqSkipHyp && seqSkipHyp.skippedBlocks.hypertrofia === true);
+
+  const seqSkipStr = pickBlockSequence({ q12_primaryGoal: "max_1RM", q29_recentBlock: "strength" }, 98);
+  ck("pickBlockSequence: q29=strength → ei hyp+str-blokkeja",
+     seqSkipStr && !seqSkipStr.blocks.some(b => b.label === "hypertrofia" || b.label === "strength"));
+
+  // mapWizardToMultiBlockMesocycle — Akselin tilanne ilman target-päivää
+  const akseliNoTarget = {
+    wizardId: "wiz_akseli_no_target",
+    schemaVersion: "3.3",
+    completedAtISO: "2026-05-11T10:00:00Z",
+    answers: {
+      q01_age: 34, q02_sex: "male", q03_weight: 91,
+      q06_yearsTraining: 15, q08_selfLevel: "elite", q09_sport: "streetlifting",
+      q11_injuries: [], q12_primaryGoal: "streetlifting_with_explosive_components",
+      q14_cutting: "no", q15_aerobicModality: "none",
+      q17_equipment: ["barbell_rack", "pullup_bar", "dip_station"],
+      q21_splitPreference: "upper_lower", q22_avoidedExercises: [],
+      q23_volumePref: "MAV",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 90 },
+      q25_rpePrecision: "vara_calibrated",
+      q29_recentBlock: "peaking",
+    },
+  };
+  const noTargetResult = mapWizardToMultiBlockMesocycle(akseliNoTarget, null);
+  ck("mapWizardToMultiBlockMesocycle: ilman q27 → fallback single-blokki",
+     !noTargetResult.isMultiBlock && typeof noTargetResult.goal === "string");
+
+  // mapWizardToMultiBlockMesocycle — Akselin tilanne kisapäivän kanssa
+  const targetDate = new Date(Date.now() + 98 * 86400000).toISOString().slice(0, 10); // 14 vk päästä
+  const akseliWithTarget = {
+    ...akseliNoTarget,
+    wizardId: "wiz_akseli_with_target",
+    answers: { ...akseliNoTarget.answers, q27_targetDate: targetDate, q28_targetType: "competition" },
+  };
+  const withTargetResult = mapWizardToMultiBlockMesocycle(akseliWithTarget, null);
+  ck("mapWizardToMultiBlockMesocycle: q27=14vk päästä + max-tavoite → multi-blokki",
+     withTargetResult.isMultiBlock === true);
+  ck("mapWizardToMultiBlockMesocycle: multi-blokki sisältää blocks-arrayn",
+     Array.isArray(withTargetResult.blocks) && withTargetResult.blocks.length >= 2);
+  ck("mapWizardToMultiBlockMesocycle: _wizardMeta.targetDateAnchored=true",
+     withTargetResult._wizardMeta.targetDateAnchored === true);
+  ck("mapWizardToMultiBlockMesocycle: _wizardMeta.rules sisältää block-sekvenssin",
+     withTargetResult._wizardMeta.rules.some(r => r.rule.includes("multi-blokki")));
+  ck("mapWizardToMultiBlockMesocycle: 4 primaries säilyy (streetlifting)",
+     withTargetResult.primaries.length === 4);
 
   return report;
 }

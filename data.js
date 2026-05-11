@@ -3886,6 +3886,144 @@ function generateCustomMesocycle(answers, startDateISOArg) {
   };
 }
 
+// ── v4.42.0 (Track B Vaihe 2C-α): Multi-blokki-mesocycle ───────────────
+//
+// Ketjuttaa useita skeleton-factory:itä yhdeksi mesocycleksi joka kestää
+// koko Issurin block-sekvenssin (hypertrofia → strength → intensification
+// → peaking). Käytetään kun wizard-config sisältää q27_targetDate ja aikaa
+// on ≥ 5 vk käytettävissä.
+//
+// Lähestymistapa:
+//   1. Kullekin blokille luodaan oma yksittäinen meso skeleton-factory:llä
+//      (createHypertrofiaMesocycle / createMaksimivoimaMesocycle / jne.)
+//   2. Kunkin meson weekPlans-array käsitellään samalla logiikalla kuin
+//      generateCustomMesocycle (distributePrimaries, applyRecoveryScalar)
+//   3. weekPlans-arrayt ketjutetaan globaaliin numerointiin 1..N
+//   4. Lopullinen meso saa type:"custom-multi-block" + blocks-metadatan
+//
+// HUOM: peaking-blokin pituus = 2 vk; muut blokit 4 vk. scaleWeekCount tukee
+// vain 4/8/12 vk → 2-vk-peaking luodaan **leikkaamalla** 4 vk meso 2 vk:hon.
+function generateMultiBlockMesocycle(config, startDateISOArg) {
+  const {
+    blocks,
+    primaries,
+    daysPerWeek,
+    recoveryCapacity,
+    preferredDaysOfWeek,
+    customLabel,
+  } = config;
+
+  if (!Array.isArray(blocks) || blocks.length === 0) {
+    throw new Error("generateMultiBlockMesocycle: blocks-array puuttuu tai tyhjä");
+  }
+  if (!Array.isArray(primaries) || primaries.length === 0) {
+    throw new Error("generateMultiBlockMesocycle: primaries-array puuttuu");
+  }
+
+  const startDateISO = startDateISOArg || config.startDateISO || todayISO();
+  const recoveryScalars = { hyva: 1.0, keski: 0.85, heikko: 0.70 };
+  const scalar = recoveryScalars[recoveryCapacity] ?? 0.85;
+
+  // Skeleton-factory-mappaus
+  const factories = {
+    hypertrofia:  createHypertrofiaMesocycle,
+    maksimivoima: createMaksimivoimaMesocycle,
+    yhdistelma:   createDefaultMesocycle,
+    undulating:   createDUPMesocycle,
+  };
+
+  let combinedWeekPlans = [];
+  let combinedWeekDefs = [];
+  let globalWeekOffset = 0; // 0-based → 1-based week numerointi (weekIdx + offset + 1)
+  const blockMetadata = [];
+
+  for (const block of blocks) {
+    const factory = factories[block.goal];
+    if (typeof factory !== "function") {
+      throw new Error(`generateMultiBlockMesocycle: tuntematon goal "${block.goal}"`);
+    }
+
+    // Generoi yksittäinen blokki (alkuperäinen meso on aina 4 vk)
+    const blockMeso = factory(startDateISO);
+    let blockWeekPlans = blockMeso.weekPlans;
+    let blockWeekDefs = blockMeso.weekDefs || [];
+
+    // 1. Skaalaa daysPerWeek
+    if (daysPerWeek !== 3) {
+      blockWeekPlans = adjustDaysPerWeek(blockWeekPlans, daysPerWeek);
+    }
+
+    // 2. Substituoi päälikkeet
+    blockWeekPlans = distributePrimariesToDays(blockWeekPlans, primaries);
+
+    // 3. Applikoi palautumiskerroin accessoryihin
+    blockWeekPlans = applyRecoveryScalar(blockWeekPlans, scalar);
+
+    // 4. Leikkaa pituuteen block.weekCount (4 vk → 2 vk peakingille)
+    if (block.weekCount < blockWeekPlans.length) {
+      blockWeekPlans = blockWeekPlans.slice(0, block.weekCount);
+      blockWeekDefs = blockWeekDefs.slice(0, block.weekCount);
+    }
+
+    // 5. Päivitä viikkonumerointi GLOBALIIN (1..totalWeeks)
+    blockWeekPlans = blockWeekPlans.map((wp, i) => ({
+      ...wp,
+      week: globalWeekOffset + i + 1, // 1-based global week
+      blockGoal: block.goal,
+      blockLabel: block.label || block.goal,
+      blockWeekIndex: i, // 0-based viikko TÄSSÄ blokissa (esim. Hyp vk 1/4 → blockWeekIndex=0)
+    }));
+    blockWeekDefs = blockWeekDefs.map((wd, i) => ({
+      ...wd,
+      week: globalWeekOffset + i + 1,
+      blockGoal: block.goal,
+      blockLabel: block.label || block.goal,
+    }));
+
+    combinedWeekPlans = combinedWeekPlans.concat(blockWeekPlans);
+    combinedWeekDefs = combinedWeekDefs.concat(blockWeekDefs);
+
+    blockMetadata.push({
+      goal: block.goal,
+      label: block.label || block.goal,
+      weekCount: block.weekCount,
+      startWeek: globalWeekOffset + 1, // 1-based
+      endWeek: globalWeekOffset + block.weekCount,
+    });
+
+    globalWeekOffset += block.weekCount;
+  }
+
+  const totalWeeks = globalWeekOffset;
+
+  // 6. Käyttäjän viikonpäivä-preferenssi
+  if (preferredDaysOfWeek) {
+    combinedWeekPlans = applyDayOfWeekPreference(combinedWeekPlans, preferredDaysOfWeek);
+  }
+
+  const primaryLabel = primaries.map(p => p.name).join(" + ");
+  const label = customLabel || `Räätälöity multi-blokki: ${primaryLabel} (${totalWeeks} vk, ${blocks.length} vaihetta)`;
+
+  return {
+    mesocycleId: uid(),
+    type: "custom-multi-block",
+    customConfig: {
+      blocks: blockMetadata,
+      primaries,
+      daysPerWeek,
+      recoveryCapacity,
+      preferredDaysOfWeek,
+      label,
+      generatedAt: nowISO(),
+    },
+    startDateISO,
+    weekCount: totalWeeks,
+    weekDefs: combinedWeekDefs,
+    weekPlans: combinedWeekPlans,
+    postCycleAnalysis: null,
+  };
+}
+
 // ── Ensure all variant presets exist (migration) ──
 async function ensureAllVariantsSeeded() {
   const movements = await dbGetAll(STORES.movements);
@@ -5970,6 +6108,8 @@ export {
   createStreetlifting16WMesocycle,
   // Custom program generator (v4.27)
   generateCustomMesocycle,
+  // v4.42.0 (Track B Vaihe 2C-α): multi-blokki-mesocycle
+  generateMultiBlockMesocycle,
   PRIMARY_CATEGORY_PROFILES,
   PRIMARY_SPECIFIC_PROFILES,
   GOAL_SKELETONS,
