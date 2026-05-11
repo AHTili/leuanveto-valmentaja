@@ -1083,7 +1083,8 @@ import {
 
 // v4.40.0 (Track B Vaihe 2B-β): wizard-pohjainen ohjelma-generointi
 // v4.42.0 (Track B Vaihe 2C-α): mapWizardToMultiBlockMesocycle multi-blokille
-import { mapWizardToMesocycle, mapWizardToMultiBlockMesocycle, MAPPER_VERSION } from "./wizard/wizard-2b-mapper.js";
+// v4.43.0 (Track B Vaihe 2C-β): applySessionFocusLabels post-process
+import { mapWizardToMesocycle, mapWizardToMultiBlockMesocycle, applySessionFocusLabels, MAPPER_VERSION } from "./wizard/wizard-2b-mapper.js";
 // initWizardDB tarvitaan lazy-alustamiseksi: wizard-data.js pitää module-tason
 // _wizardDb-singletonia jota tx-funktiot lukevat. Jos pää-app ei ole avannut
 // LeVeWizardDB:tä, getActiveWizardConfig palauttaa null.
@@ -3777,6 +3778,8 @@ async function handleGenerateProgram() {
     // Liitä mapper-metadata customConfig:iin auditointia varten
     if (!newMeso.customConfig) newMeso.customConfig = {};
     newMeso.customConfig._wizardMeta = mapped._wizardMeta;
+    // 2C-β: Post-process session-fokus-labelit (Pullup-fokus, Dippi-fokus jne.)
+    newMeso.weekPlans = applySessionFocusLabels(newMeso.weekPlans);
   } catch (e) {
     showToast(`Ohjelman generointi epäonnistui: ${e.message}`, "bad");
     return;

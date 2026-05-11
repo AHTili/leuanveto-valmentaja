@@ -495,16 +495,17 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-// v4.42.0: Track B Vaihe 2C-α — multi-blokki-mesocycle (Issurin block-malli).
-// Wizard-config + q27_targetDate ≥ 5 vk päässä + max-tavoite → useamman
-// blokin sekvenssi yhdessä mesossa (hyp → str → int → peak). Ei tarvitse
-// ajaa wizardia uudelleen blokkien välissä. Käytetään pää-app:in olemassa
-// olevia skeleton-factory:itä black-box:na. Mapper 2B-gamma-v1.0 → 2C-alpha-v1.0.
+// v4.43.0: Track B Vaihe 2C-β — Session-fokus-labelit per päivä.
+// Wizard-generoidun ohjelman päiväkortit Dashboardilla saavat fokus-pohjaisen
+// labelin ("Pullup-fokus (volyymi)") yleisten "Perusvoima A" -etikettien
+// sijaan. Pure UI -muutos — dayType ja treenin sisältö säilyvät. Mapper
+// 2C-alpha-v1.0 → 2C-beta-v1.0.
 //
+// v4.42.0: Track B Vaihe 2C-α — multi-blokki-mesocycle (Issurin block-malli).
 // v4.41.0: Track B Vaihe 2B-γ — q26-PR-migraatio + q30-energiabudjetti.
 // v4.40.0: Track B Vaihe 2B-β — wizard-pohjaisen ohjelman generointi.
 // v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen.
-const APP_VERSION = "4.42.0";
+const APP_VERSION = "4.43.0";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
