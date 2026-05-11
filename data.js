@@ -3769,11 +3769,31 @@ const SKELETON_CATEGORY_TO_ROLE = {
 };
 
 // Goal → skeleton preset factory name
+// v4.47.0 (Track B Vaihe 2D-α): laajennettu 4 → 7 single-block-tyyliin.
+// Uudet: eksentrinen (4 vk), siirtyma (3 vk natiivi), palautuminen (2 vk natiivi).
+// HUOM: siirtyma + palautuminen ovat ainoita skeletoneja joiden natiivipituus
+// EI ole 4 vk. scaleWeekCount() ei tue 2/3-pituuksia → näille bypass-haara
+// generateCustomMesocycle:ssa joka säilyttää natiivipituuden.
 const GOAL_SKELETONS = {
   hypertrofia:  "createHypertrofiaMesocycle",
   maksimivoima: "createMaksimivoimaMesocycle",
   yhdistelma:   "createDefaultMesocycle",
   undulating:   "createDUPMesocycle",
+  eksentrinen:  "createEksenterinenMesocycle",
+  siirtyma:     "createSiirtymaMesocycle",
+  palautuminen: "createPalautuminenMesocycle",
+};
+
+// Natiivipituudet (vk) skeleton-factory:ille. Jos goalin natiivipituus !== 4
+// → bypass scaleWeekCount() ja säilytä natiivipituus.
+const GOAL_NATIVE_WEEKS = {
+  hypertrofia:  4,
+  maksimivoima: 4,
+  yhdistelma:   4,
+  undulating:   4,
+  eksentrinen:  4,
+  siirtyma:     3,
+  palautuminen: 2,
 };
 
 // ── Generator helpers ──
@@ -4002,19 +4022,29 @@ function generateCustomMesocycle(answers, startDateISOArg) {
   } = answers;
   const startDateISO = startDateISOArg || answers.startDateISO || todayISO();
 
-  // 1. Hae skeleton
+  // 1. Hae skeleton (v4.47.0: laajennettu 4 → 7 tyyliä)
   const skeletonFactoryName = GOAL_SKELETONS[goal] || GOAL_SKELETONS.yhdistelma;
   const skeletonFactories = {
     createHypertrofiaMesocycle,
     createMaksimivoimaMesocycle,
     createDefaultMesocycle,
     createDUPMesocycle,
+    createEksenterinenMesocycle,
+    createSiirtymaMesocycle,
+    createPalautuminenMesocycle,
   };
   const factory = skeletonFactories[skeletonFactoryName];
   if (!factory) {
     throw new Error("generateCustomMesocycle: tuntematon goal " + goal);
   }
   const skeleton = factory(startDateISO);
+
+  // v4.47.0: jos skeletonin natiivipituus !== 4, ohita scaleWeekCount.
+  // Siirtymä (3 vk) ja palautuminen (2 vk) säilyttävät natiivimuotonsa eikä
+  // niitä tueta 4/8/12 vk -skaalauksen kanssa (ne ovat tarkoituksellisesti lyhyitä).
+  const nativeWeeks = GOAL_NATIVE_WEEKS[goal] || 4;
+  const useNativeLength = nativeWeeks !== 4;
+  const effectiveWeekCount = useNativeLength ? nativeWeeks : weekCount;
 
   // 2. Skaalaa daysPerWeek ENSIN (skeleton-primaryllä vielä — tämä takaa että
   //    primary-rotaatio jakautuu OIKEALLE päivämäärälle, ei skeletin oletukselle.
@@ -4028,11 +4058,13 @@ function generateCustomMesocycle(answers, startDateISOArg) {
   // 3. Substituoi päälikkeet + accessoryt (nyt lopulliselle päivälistalle)
   weekPlans = distributePrimariesToDays(weekPlans, primaries);
 
-  // 4. Skaalaa weekCount
+  // 4. Skaalaa weekCount (skip jos natiivipituus !== 4, ks. yllä)
   let weekDefs = skeleton.weekDefs;
-  const scaled = scaleWeekCount(weekPlans, weekDefs, weekCount, goal);
-  weekPlans = scaled.weekPlans;
-  weekDefs = scaled.weekDefs;
+  if (!useNativeLength) {
+    const scaled = scaleWeekCount(weekPlans, weekDefs, effectiveWeekCount, goal);
+    weekPlans = scaled.weekPlans;
+    weekDefs = scaled.weekDefs;
+  }
 
   // 5. Applikoi palautumisskaala accessoryihin
   const recoveryScalars = { hyva: 1.0, keski: 0.85, heikko: 0.70 };
@@ -4043,9 +4075,9 @@ function generateCustomMesocycle(answers, startDateISOArg) {
     weekPlans = applyDayOfWeekPreference(weekPlans, preferredDaysOfWeek);
   }
 
-  // 7. Kokoa mesosykli
+  // 7. Kokoa mesosykli (v4.47.0: weekCount = effectiveWeekCount jos natiivipituus !== 4)
   const primaryLabel = primaries.map(p => p.name).join(" + ");
-  const label = customLabel || `Räätälöity: ${primaryLabel} (${goal}, ${weekCount}vk)`;
+  const label = customLabel || `Räätälöity: ${primaryLabel} (${goal}, ${effectiveWeekCount}vk)`;
 
   return {
     mesocycleId: uid(),
@@ -4054,7 +4086,7 @@ function generateCustomMesocycle(answers, startDateISOArg) {
       goal,
       primaries,
       daysPerWeek,
-      weekCount,
+      weekCount: effectiveWeekCount,
       recoveryCapacity,
       preferredDaysOfWeek,
       label,
@@ -4062,7 +4094,7 @@ function generateCustomMesocycle(answers, startDateISOArg) {
       generatedAt: nowISO(),
     },
     startDateISO,
-    weekCount,
+    weekCount: effectiveWeekCount,
     weekDefs,
     weekPlans,
     postCycleAnalysis: null,

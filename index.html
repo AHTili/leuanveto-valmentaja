@@ -1093,6 +1093,8 @@ import {
   applyTierProgression,
   // v4.46.0 (Track B Vaihe 2C-δ): isometric-pitojen e1RM-mallinnus
   estimateIsometricE1RM,
+  // v4.47.0 (Track B Vaihe 2D-α): adaptive multi-suggestion (top-3 style picker)
+  mapWizardToProgram, pickProgramStyle, PROGRAM_STYLES,
   MAPPER_VERSION,
 } from "./wizard/wizard-2b-mapper.js";
 // initWizardDB tarvitaan lazy-alustamiseksi: wizard-data.js pitää module-tason
@@ -3372,9 +3374,12 @@ function renderRuleSourceLabel(source) {
   return "Käytännöllinen ohjelmointi-konventio";
 }
 
-// Modaalin näyttö — palauttaa Promise<boolean> joka resolvoituu kun käyttäjä
-// painaa "Aktivoi" (true) tai "Peru" / ESC / overlay-klikki (false).
-// 2B-γ: opts voi sisältää { prPreview, cutInfo } — lisävahvistukset käyttäjälle.
+// Modaalin näyttö — 2D-α versio:
+// Palauttaa Promise<{action: 'activate'|'cancel'|'switch', selectedStyleId?: string}>
+// jossa 'switch' tarkoittaa että käyttäjä vaihtoi style-ehdotusta → kutsuja
+// regeneroi ja näyttää modaalin uudelleen.
+// 2B-γ: opts voi sisältää { prPreview, cutInfo }.
+// 2D-α: opts.styleCandidates = top-3 vaihtoehtoa (näytetään modaalissa).
 function showGeneratorPreviewModal(mapped, opts = {}) {
   return new Promise((resolve) => {
     const prPreview = opts.prPreview || null;
@@ -3517,6 +3522,57 @@ function showGeneratorPreviewModal(mapped, opts = {}) {
       </div>`;
     }
 
+    // 2D-α: Style-candidates (top-3) -näkymä — adaptive multi-suggestion
+    const candidates = Array.isArray(mapped._wizardMeta?.styleCandidates)
+      ? mapped._wizardMeta.styleCandidates : [];
+    const chosenStyleId = mapped._wizardMeta?.chosenStyleId || null;
+    let candidatesBlock = "";
+    if (candidates.length >= 2) {
+      const candCards = candidates.map((c, idx) => {
+        const isChosen = c.styleId === chosenStyleId;
+        const isTop = idx === 0;
+        const conf = Math.round(c.confidence);
+        const rationaleList = (c.rationale || []).slice(0, 2).map(r =>
+          `<li style="font-size:11px;line-height:1.4;color:var(--muted)">${escapeHtml(r)}</li>`
+        ).join("");
+        const bg = isChosen ? "rgba(34,197,94,0.10)" : "rgba(255,255,255,0.02)";
+        const border = isChosen ? "rgba(34,197,94,0.5)" : "rgba(255,255,255,0.10)";
+        const badgeBg = isTop ? "rgba(245,158,11,0.20)" : "rgba(255,255,255,0.06)";
+        const badgeText = isTop ? "⭐ Suositus" : `#${idx + 1}`;
+        const actionBtn = isChosen
+          ? `<span style="font-size:12px;font-weight:600;color:rgb(34,197,94)">✓ Valittu</span>`
+          : `<button data-action="generator-switch" data-style-id="${escapeHtml(c.styleId)}" class="btn btn-outline" style="font-size:12px;padding:4px 10px">Vaihda tähän</button>`;
+        return `
+          <div style="background:${bg};border:1px solid ${border};border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px">
+                <span>${escapeHtml(c.iconHint || "")}</span>
+                <span>${escapeHtml(c.label)}</span>
+              </div>
+              <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${badgeBg}">${badgeText}</span>
+            </div>
+            <div style="font-size:11px;color:var(--muted);line-height:1.3">${escapeHtml(c.shortDesc)}</div>
+            <div style="display:flex;align-items:center;gap:10px;font-size:11px">
+              <span>📅 <b>${escapeHtml(String(c.weekCount))} vk</b></span>
+              <span style="flex:1;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">
+                <span style="display:block;height:100%;width:${conf}%;background:rgba(34,197,94,0.5);border-radius:2px"></span>
+              </span>
+              <span style="font-weight:600">${conf}%</span>
+            </div>
+            ${rationaleList ? `<ul style="margin:0;padding-left:16px">${rationaleList}</ul>` : ""}
+            <div style="display:flex;justify-content:flex-end;margin-top:2px">${actionBtn}</div>
+          </div>`;
+      }).join("");
+      candidatesBlock = `
+        <div style="margin-top:14px">
+          <div style="font-weight:600;font-size:13px;margin-bottom:8px">🎯 Ohjelmointityyli — top ${candidates.length} ${candidates.length === 1 ? "suositus" : "suositusta"}</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.4">
+            Algoritmi tunnisti profiilistasi seuraavat tyylit. Voit vaihtaa halutessasi — preview päivittyy.
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:8px">${candCards}</div>
+        </div>`;
+    }
+
     overlay.innerHTML = `
       <div class="wiz-generator-modal-content">
         <div class="wiz-generator-modal-header">
@@ -3530,6 +3586,7 @@ function showGeneratorPreviewModal(mapped, opts = {}) {
             <div class="wiz-generator-summary-row"><span>Päivät:</span><b>${mapped.daysPerWeek} / viikko (${escapeHtml(dayList)})</b></div>
             <div class="wiz-generator-summary-row"><span>Palautumiskapasiteetti:</span><b>${escapeHtml(recoveryLabels[mapped.recoveryCapacity] || mapped.recoveryCapacity)}</b></div>
           </div>
+          ${candidatesBlock}
           ${targetDateWarning}
           ${blockTimeline}
           ${cutBlock}
@@ -3567,12 +3624,18 @@ function showGeneratorPreviewModal(mapped, opts = {}) {
       resolve(result);
     };
     const onOverlayClick = (e) => {
-      if (e.target === overlay) cleanup(false);
-      const action = e.target.closest("[data-action]")?.dataset.action;
-      if (action === "generator-close" || action === "generator-cancel") cleanup(false);
-      if (action === "generator-activate" && !activateBtn.disabled) cleanup(true);
+      if (e.target === overlay) { cleanup({ action: "cancel" }); return; }
+      const target = e.target.closest("[data-action]");
+      if (!target) return;
+      const action = target.dataset.action;
+      if (action === "generator-close" || action === "generator-cancel") cleanup({ action: "cancel" });
+      if (action === "generator-activate" && !activateBtn.disabled) cleanup({ action: "activate" });
+      if (action === "generator-switch") {
+        const styleId = target.dataset.styleId;
+        if (styleId) cleanup({ action: "switch", selectedStyleId: styleId });
+      }
     };
-    const onKeydown = (e) => { if (e.key === "Escape") cleanup(false); };
+    const onKeydown = (e) => { if (e.key === "Escape") cleanup({ action: "cancel" }); };
     overlay.addEventListener("click", onOverlayClick);
     document.addEventListener("keydown", onKeydown);
   });
@@ -3779,13 +3842,14 @@ async function handleGenerateProgram() {
     allMovements: state.movements,
   };
 
-  // 3. Mapping (2B-α + 2C-α multi-blokki).
-  // mapWizardToMultiBlockMesocycle tunnistaa q27_targetDate:n + max-tavoitteen
-  // ja palauttaa multi-blokki-mapping:n jos aikaa ≥ 5 vk; muutoin palaa
-  // mapWizardToMesocycle:n (single-blokki) automaattisesti fallbackina.
+  // 3. Mapping (2D-α: adaptive multi-suggestion).
+  // mapWizardToProgram lukee top-3 style-kandidaatit + dispatcher valitsee
+  // single-block vs multi-block reitin. Käyttäjä voi vaihtaa stylen modaalissa
+  // → mapping toistuu valitun stylen kanssa.
   let mapped;
+  let selectedStyleId = null;
   try {
-    mapped = mapWizardToMultiBlockMesocycle(wizardConfig, mainAppState);
+    mapped = mapWizardToProgram(wizardConfig, mainAppState);
   } catch (e) {
     showToast(`Mapping epäonnistui: ${e.message}`, "bad");
     return;
@@ -3811,9 +3875,24 @@ async function handleGenerateProgram() {
     }
   }
 
-  // 5. Näytä preview-modaali — käyttäjä päättää aktivointi/peruu
-  const userConfirm = await showGeneratorPreviewModal(mapped, { prPreview, cutInfo });
-  if (!userConfirm) return; // peruttu, mitään ei muutettu
+  // 5. Näytä preview-modaali — käyttäjä voi vaihtaa stylen tai aktivoida.
+  // Loop: jos käyttäjä klikkaa "Vaihda" → re-map uudella styleId:llä + näytä uudelleen.
+  while (true) {
+    const result = await showGeneratorPreviewModal(mapped, { prPreview, cutInfo });
+    if (!result || result.action === "cancel") return; // peruttu
+    if (result.action === "switch") {
+      selectedStyleId = result.selectedStyleId;
+      try {
+        mapped = mapWizardToProgram(wizardConfig, mainAppState, { selectedStyleId });
+      } catch (e) {
+        showToast(`Tyylin vaihto epäonnistui: ${e.message}`, "bad");
+        return;
+      }
+      continue;
+    }
+    // action === "activate"
+    break;
+  }
 
   // 5. Pre-rebuild snapshot turvanetiksi (jos aktiivinen meso korvataan)
   let snapshotName = null;
