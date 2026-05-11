@@ -31,7 +31,7 @@
 
 import { SCHEMA_INVARIANTS } from "./wizard-schema.js";
 
-export const MAPPER_VERSION = "2C-gamma-v1.0";
+export const MAPPER_VERSION = "2C-delta-v1.0";
 
 // ─── Issurin Table V residuaalit (RISTIINTARKISTETTU) ──────────────────
 // Lähde: Issurin & Lustig 2004 / Issurin 2008 Table V, modifoitu.
@@ -421,11 +421,19 @@ export function pickBlockSequence(answers, daysUntilTarget) {
   // q29_recentBlock vaikuttaa aloitusblokkiin (Issurin block-sekvenssi):
   //   peaking/deload/off_program → aloita hypertrofiasta
   //   hypertrophy → SKIP hypertrofia, aloita strengthistä
-  //   strength    → SKIP hyp + str, aloita intensifikaatiosta (= yhdistelma)
+  //   strength    → SKIP hyp + str, aloita intensifikaatiosta
   //   intensification → aloita peaking (jos aikaa) tai strength
+  //
+  // 2C-δ KORJAUS: skip-sääntö pätee VAIN jos aikaa on rajoitettu (< 14 vk).
+  // Issurin Table V residuaalit rapautuvat 30 ± 5 vrk:n jälkeen → jos aikaa
+  // on ≥ 14 vk q29-blokin jälkeen, residuaalit ovat hävinneet ja TARVITAAN
+  // uusi sykli alusta. Pilotti paljasti aiemmin että elite + q29=strength
+  // + 16 vk kisaan jätti 10 vk hukkaan koska skipHyp+skipStr leikkasi sekvenssin
+  // 6 vk:hon.
   const q29 = answers.q29_recentBlock;
-  const skipHyp = ["hypertrophy", "strength", "intensification"].includes(q29);
-  const skipStr = ["strength", "intensification"].includes(q29);
+  const hasAmpleTime = totalWeeks >= 14;
+  const skipHyp = !hasAmpleTime && ["hypertrophy", "strength", "intensification"].includes(q29);
+  const skipStr = !hasAmpleTime && ["strength", "intensification"].includes(q29);
 
   // Rakenna sekvenssi siitä blokista, jossa atletti _ei_ ole jo (= ei
   // päällekäisyyttä residuaalin kanssa). Peaking on aina viimeisenä, 2 vk.
@@ -596,6 +604,163 @@ function _collectMultiBlockRules(a, sequence, recoveryCapacity, sexModifierAppli
     });
   }
   return rules;
+}
+
+// ─── 2C-δ: Isometric-pitojen e1RM-mallinnus ───────────────────────────
+//
+// Tutkimuspohja: docs/VAIHE_2C_RESEARCH_VERIFICATION.md (2026-05-11).
+// PubMed-haku 11 termiä → NOLLATULOS calisthenics-isometric-progressiolle.
+// Käytettävät lähteet:
+//   - Steven Low "Overcoming Gravity 2" 2016 (EMPIRINEN PROTOKOLLA):
+//     Front Lever -progressio Tuck → Adv Tuck → Straddle → Half Lay → Full
+//     Sweet-spot: 60-70% max-hold, 2-3x/vk, 1 rep ≈ 2s isometric
+//   - Christopher Sommer "GymnasticBodies" Steady State Cycle (EMPIRINEN):
+//     60s/15s-tavoitteet, 8-12 vk SSC
+//   - Heavyweight Cali + Frinks-survey n=322 (EI-TUTKIMUSPOHJAINEN):
+//     Full Front Lever ≈ weighted pull-up @ 80-90 % BW (1RM)
+//   - Marcus Urbanski (Rise With Marcus) biomekaaninen torque-malli (KLASSINEN
+//     MEKANIIKKA, EI calisthenics-validoitu):
+//     τ = r × BW × g × cos(θ), r ≈ 0.225 × pituus
+//
+// STATUS: **EMPIRINEN HEURISTIIKKA, EI peer-reviewed.** Yksilövaihteluväli
+// ±15-25 % (Heavyweight Cali, antropometriasta riippuvainen). EI saa
+// väittää tieteellistä validaatiota — _wizardMeta.rules.status="EMPIRINEN
+// PROTOKOLLA".
+
+// Front Lever -progressiotasot ja %BW-kertoimet weighted pull-up 1RM:lle.
+// Lähteet: OG2 (Low) tasot + Heavyweight Cali / Frinks n=322 -konsensus
+// (Tuck/Adv Tuck/Straddle-välitasot ovat Reddit-yhteisön ekstrapolaatiota,
+// ei suoraa lähdettä — merkitty status="EMPIRINEN HEURISTIIKKA").
+const FRONT_LEVER_LEVELS = Object.freeze({
+  tuck:        { pctBW: 0.10, ssCsTargetSec: 60, source: "Yhteisöheuristiikka" },
+  adv_tuck:    { pctBW: 0.30, ssCsTargetSec: 60, source: "Reddit ekstrapolaatio" },
+  straddle:    { pctBW: 0.55, ssCsTargetSec: 15, source: "Reddit ekstrapolaatio" },
+  half_lay:    { pctBW: 0.70, ssCsTargetSec: 15, source: "OG2 + yhteisö" },
+  full:        { pctBW: 0.85, ssCsTargetSec: 15, source: "Heavyweight Cali + Frinks n=322" },
+});
+
+// Planche-progressio: Urbanski biomekaaninen torque-malli, KLASSINEN MEKANIIKKA,
+// EI calisthenics-validoitu.
+// τ = r × BW × g × cos(θ); r ≈ 0.225 × pituus (ei käytettävissä BW ainoaa)
+// Käytetään %BW-vastinetta lisäpaino-dippi 1RM:lle (kuorma per käsivarsi
+// → vastaa työntö-volyymia)
+const PLANCHE_LEVELS = Object.freeze({
+  tuck:        { pctBW: 0.20, ssCsTargetSec: 60, source: "OG2 + yhteisö" },
+  adv_tuck:    { pctBW: 0.35, ssCsTargetSec: 60, source: "Yhteisöheuristiikka" },
+  straddle:    { pctBW: 0.55, ssCsTargetSec: 15, source: "OG2 + Sommer" },
+  half_lay:    { pctBW: 0.70, ssCsTargetSec: 10, source: "Sommer" },
+  full:        { pctBW: 0.85, ssCsTargetSec: 10, source: "Sommer (full planche 10s end goal)" },
+});
+
+// HSPU-progressio: koska tämä on ohjeitettu kehonpaino-OHP-tyylisesti,
+// e1RM-vastine perustuu pikalinjaan koko BW:n päälle (= "kykenee
+// nostamaan oma kehopainon ylös päästä").
+// Pää-app:in pystypunnerrus 1RM-vastine.
+const HSPU_LEVELS = Object.freeze({
+  pike:           { pctBW: 0.30, source: "OG2 (Pike HSPU = ~30% BW OHP-vastine)" },
+  box:            { pctBW: 0.50, source: "OG2 yhteisöheuristiikka" },
+  wall_ecc:       { pctBW: 0.70, source: "OG2 yhteisöheuristiikka" },
+  wall:           { pctBW: 1.00, source: "OG2: full wall HSPU = oma BW OHP" },
+  free_ecc:       { pctBW: 1.10, source: "Yhteisöheuristiikka (eccentric ≥ BW)" },
+  free:           { pctBW: 1.25, source: "OG2 + Sommer: free HSPU vaatii balance + BW × 1.25 OHP-vastine" },
+});
+
+// One-arm pull-up -progressio: kehonpaino × 1.0 = unassisted yhden käden veto.
+// Lähde: Low "kun 3-4 sets × 10s eccentric → unassisted".
+const OAP_LEVELS = Object.freeze({
+  ecc_3_5s:        { pctBW: 0.50, source: "Low OG2 (3-5s eccentric ≈ 50% BW pull-up)" },
+  ecc_7_10s:       { pctBW: 0.75, source: "Low OG2 (7-10s eccentric ≈ 75% BW pull-up)" },
+  finger_assisted: { pctBW: 0.90, source: "Low: 1 sormi assistance ≈ 90 % BW" },
+  unassisted:      { pctBW: 1.00, source: "Low OG2 + Sommer (täysi BW yhdellä kädellä)" },
+});
+
+// Movement-name → level-tunnistus. Käyttäjä syöttää q26-PR-rivin
+// movementName-kenttään esim. "Front Lever (Straddle)" — tämä funktio
+// kartoittaa nimen oikealle tason vakioidulle id:lle.
+function _detectIsometricLevel(movementName) {
+  if (typeof movementName !== "string") return null;
+  const n = movementName.toLowerCase();
+
+  // Front Lever
+  if (n.includes("front lever") || n.includes("frontlever") || n.includes("fl ")) {
+    if (n.includes("full"))     return { kind: "front_lever", level: "full",     def: FRONT_LEVER_LEVELS.full };
+    if (n.includes("half"))     return { kind: "front_lever", level: "half_lay", def: FRONT_LEVER_LEVELS.half_lay };
+    if (n.includes("straddle")) return { kind: "front_lever", level: "straddle", def: FRONT_LEVER_LEVELS.straddle };
+    if (n.includes("adv") || n.includes("advanced"))
+                                return { kind: "front_lever", level: "adv_tuck", def: FRONT_LEVER_LEVELS.adv_tuck };
+    if (n.includes("tuck"))     return { kind: "front_lever", level: "tuck",     def: FRONT_LEVER_LEVELS.tuck };
+    // Defaultti jos vain "Front Lever" annettu → oletetaan full
+    return { kind: "front_lever", level: "full", def: FRONT_LEVER_LEVELS.full };
+  }
+  // Planche
+  if (n.includes("planche")) {
+    if (n.includes("full"))     return { kind: "planche", level: "full",     def: PLANCHE_LEVELS.full };
+    if (n.includes("half"))     return { kind: "planche", level: "half_lay", def: PLANCHE_LEVELS.half_lay };
+    if (n.includes("straddle")) return { kind: "planche", level: "straddle", def: PLANCHE_LEVELS.straddle };
+    if (n.includes("adv") || n.includes("advanced"))
+                                return { kind: "planche", level: "adv_tuck", def: PLANCHE_LEVELS.adv_tuck };
+    if (n.includes("tuck"))     return { kind: "planche", level: "tuck",     def: PLANCHE_LEVELS.tuck };
+    return { kind: "planche", level: "full", def: PLANCHE_LEVELS.full };
+  }
+  // HSPU (Handstand Push-up)
+  if (n.includes("hspu") || (n.includes("handstand") && n.includes("push"))) {
+    if (n.includes("free"))     return { kind: "hspu", level: "free",     def: HSPU_LEVELS.free };
+    if (n.includes("wall"))     return { kind: "hspu", level: "wall",     def: HSPU_LEVELS.wall };
+    if (n.includes("box"))      return { kind: "hspu", level: "box",      def: HSPU_LEVELS.box };
+    if (n.includes("pike"))     return { kind: "hspu", level: "pike",     def: HSPU_LEVELS.pike };
+    return { kind: "hspu", level: "wall", def: HSPU_LEVELS.wall };
+  }
+  // One-arm pull-up
+  if ((n.includes("one") && n.includes("arm") && (n.includes("pull") || n.includes("chin"))) ||
+      n.includes("oap") || n.includes("yhdellä") || n.includes("yhdella")) {
+    return { kind: "oap", level: "unassisted", def: OAP_LEVELS.unassisted };
+  }
+  // L-sit ja Human Flag jäävät tuntemattomaksi tällä versiolla — palauta null
+  return null;
+}
+
+// Pidon keston vaikutus e1RM:än. Sommer SSC + Low sweet-spot:
+//   < 5s     → primary-reps-1-alueella, kapasiteetti rajaava
+//   5-15s    → nominaali "sweet spot" (Low)
+//   15-30s   → kapasiteetti yli vaativuuden (lähestyy seuraavaa tasoa)
+//   > 30s    → vahva varmuus tasolla, todennäköisesti siirtymässä eteenpäin
+// HUOM: tämä on EMPIRINEN HEURISTIIKKA, ei tieteellinen kerroin.
+function _holdDurationMultiplier(holdSeconds) {
+  if (typeof holdSeconds !== "number" || holdSeconds < 1) return 0.70;
+  if (holdSeconds < 5)   return 0.70;
+  if (holdSeconds <= 15) return 1.00;
+  if (holdSeconds <= 30) return 1.15;
+  return 1.30;
+}
+
+// Pää-funktio: arvioi isometric-PR:n e1RM-vastine kg:na.
+// PR-item: { movementName, loadType: "isometric_hold", holdSeconds, addedWeightKg? }
+// bodyweightKg: q03_weight wizard-config:sta.
+// Palauttaa: { e1RM, kind, level, formula, status } tai null jos liike tuntematon.
+export function estimateIsometricE1RM(prItem, bodyweightKg) {
+  if (!prItem || prItem.loadType !== "isometric_hold") return null;
+  const bw = Number(bodyweightKg);
+  if (Number.isNaN(bw) || bw <= 0) return null;
+  const detected = _detectIsometricLevel(prItem.movementName);
+  if (!detected) return null;
+
+  const baseE1RM_BW = bw * detected.def.pctBW;
+  const durationMult = _holdDurationMultiplier(prItem.holdSeconds);
+  const adjustedE1RM = baseE1RM_BW * durationMult;
+  const addedWeight = Number(prItem.addedWeightKg);
+  const finalE1RM = adjustedE1RM + (Number.isNaN(addedWeight) ? 0 : addedWeight);
+
+  return {
+    e1RM: Math.round(finalE1RM * 10) / 10,
+    kind: detected.kind,
+    level: detected.level,
+    pctBW: detected.def.pctBW,
+    durationMultiplier: durationMult,
+    addedWeightKg: Number.isNaN(addedWeight) ? 0 : addedWeight,
+    formula: `${detected.kind}@${detected.level} (${(detected.def.pctBW * 100).toFixed(0)}% BW × duration ${durationMult.toFixed(2)}× + lisäpaino)`,
+    sourceStatus: "EMPIRINEN HEURISTIIKKA",
+    source: `${detected.def.source} (Low OG2 + Sommer SSC, ei peer-reviewed; yksilövaihtelu ±15-25 %)`,
+  };
 }
 
 // ─── 2C-γ: Tier-pohjainen kg/vk-progressio ────────────────────────────
@@ -998,7 +1163,7 @@ export function selfTestMapper() {
      RESIDUAL_DAYS.maximal_strength.mean === 30 && RESIDUAL_DAYS.maximal_strength.sd === 5);
   ck("RESIDUAL_DAYS maximal_speed = 5 ± 3 (Issurin)",
      RESIDUAL_DAYS.maximal_speed.mean === 5 && RESIDUAL_DAYS.maximal_speed.sd === 3);
-  ck("MAPPER_VERSION on 2C-gamma-v1.0", MAPPER_VERSION === "2C-gamma-v1.0");
+  ck("MAPPER_VERSION on 2C-delta-v1.0", MAPPER_VERSION === "2C-delta-v1.0");
 
   // ─── 2. pickStartingBlock ──────────────────────────────────────────
   ck("pickStartingBlock: peaking → hypertrofia",
@@ -1275,7 +1440,7 @@ export function selfTestMapper() {
   ck("Deterministisyys: recoveryCapacity sama", det1.recoveryCapacity === det2.recoveryCapacity);
 
   // ─── 14. _wizardMeta-rakenteen täydellisyys ─────────────────────────
-  ck("_wizardMeta sisältää mapperVersion (2C-gamma-v1.0)", akseliResult._wizardMeta.mapperVersion === "2C-gamma-v1.0");
+  ck("_wizardMeta sisältää mapperVersion (2C-delta-v1.0)", akseliResult._wizardMeta.mapperVersion === "2C-delta-v1.0");
   ck("_wizardMeta sisältää wizardSchemaVersion",  akseliResult._wizardMeta.wizardSchemaVersion === "3.3");
   ck("_wizardMeta sisältää rules-array",          Array.isArray(akseliResult._wizardMeta.rules) && akseliResult._wizardMeta.rules.length > 0);
   ck("_wizardMeta.rules sisältää ACSM-säännön (Nunes + ACSM 2009)",
@@ -1320,16 +1485,25 @@ export function selfTestMapper() {
   ck("pickBlockSequence: 12 vk → 3 blokkia (4+4+2 = 10 vk)",
      seq3 && seq3.blocks.length === 3 && seq3.totalWeeks === 10);
 
-  // Skip-tilanteet
-  const seqSkipHyp = pickBlockSequence({ q12_primaryGoal: "max_1RM", q29_recentBlock: "hypertrophy" }, 98);
-  ck("pickBlockSequence: q29=hypertrophy → ei hypertrofia-blokkia sekvenssissä",
+  // Skip-tilanteet (vain rajoitetulla ajalla, < 14 vk)
+  const seqSkipHyp = pickBlockSequence({ q12_primaryGoal: "max_1RM", q29_recentBlock: "hypertrophy" }, 84); // 12 vk
+  ck("pickBlockSequence (12 vk): q29=hypertrophy → ei hypertrofia-blokkia sekvenssissä",
      seqSkipHyp && !seqSkipHyp.blocks.some(b => b.label === "hypertrofia"));
-  ck("pickBlockSequence: skippedBlocks.hypertrofia = true kun q29=hypertrophy",
+  ck("pickBlockSequence (12 vk): skippedBlocks.hypertrofia = true kun q29=hypertrophy",
      seqSkipHyp && seqSkipHyp.skippedBlocks.hypertrofia === true);
 
-  const seqSkipStr = pickBlockSequence({ q12_primaryGoal: "max_1RM", q29_recentBlock: "strength" }, 98);
-  ck("pickBlockSequence: q29=strength → ei hyp+str-blokkeja",
+  const seqSkipStr = pickBlockSequence({ q12_primaryGoal: "max_1RM", q29_recentBlock: "strength" }, 70); // 10 vk
+  ck("pickBlockSequence (10 vk): q29=strength → ei hyp+str-blokkeja",
      seqSkipStr && !seqSkipStr.blocks.some(b => b.label === "hypertrofia" || b.label === "strength"));
+
+  // 2C-δ KORJAUS: ≥14 vk käytettävissä → skip-säännöt EI laukea, täysi sykli
+  const seqAmpleTime = pickBlockSequence({ q12_primaryGoal: "max_1RM", q29_recentBlock: "strength" }, 112); // 16 vk
+  ck("pickBlockSequence (16 vk + q29=strength): KAIKKI 4 blokkia (skip-säännöt EI päde)",
+     seqAmpleTime && seqAmpleTime.blocks.length === 4);
+  ck("pickBlockSequence (16 vk): totalWeeks=14 (hyp4+str4+int4+peak2)",
+     seqAmpleTime && seqAmpleTime.totalWeeks === 14);
+  ck("pickBlockSequence (16 vk + q29=strength): EI skipattu, koska Issurin-residuaalit rapautuneet",
+     seqAmpleTime && !seqAmpleTime.skippedBlocks.strength && !seqAmpleTime.skippedBlocks.hypertrofia);
 
   // mapWizardToMultiBlockMesocycle — Akselin tilanne ilman target-päivää
   const akseliNoTarget = {
@@ -1565,6 +1739,73 @@ export function selfTestMapper() {
   ck("Akselin _wizardMeta.rules sisältää tier-progressio-säännön (elite)",
      akseliResult._wizardMeta.rules.some(r => r.status === "EMPIRINEN" &&
        r.rule.includes("elite") && r.source.includes("Latella 2020")));
+
+  // ════════════════════════════════════════════════════════════════
+  // ─── 2C-δ: Isometric-pitojen e1RM-mallinnus ────────────────────
+  // ════════════════════════════════════════════════════════════════
+
+  const bw = 91; // Akselin BW
+
+  // Front Lever -tasot (Heavyweight Cali + Frinks n=322)
+  const flFull = estimateIsometricE1RM(
+    { loadType: "isometric_hold", movementName: "Front Lever (Full)", holdSeconds: 12 }, bw);
+  ck("estimateIsometricE1RM: Front Lever Full @ 91kg, 12s → ~77 kg (= 85% BW)",
+     flFull && Math.abs(flFull.e1RM - 77.4) < 1.0); // 91 * 0.85 * 1.0 = 77.35
+  ck("estimateIsometricE1RM: Front Lever sourceStatus = EMPIRINEN HEURISTIIKKA",
+     flFull && flFull.sourceStatus === "EMPIRINEN HEURISTIIKKA");
+
+  const flStraddle = estimateIsometricE1RM(
+    { loadType: "isometric_hold", movementName: "Front Lever Straddle", holdSeconds: 10 }, bw);
+  ck("estimateIsometricE1RM: Front Lever Straddle @ 91kg, 10s → ~50 kg (= 55% BW)",
+     flStraddle && Math.abs(flStraddle.e1RM - 50.05) < 1.0);
+
+  // Hold-keston vaikutus
+  const flFullShort = estimateIsometricE1RM(
+    { loadType: "isometric_hold", movementName: "Front Lever (Full)", holdSeconds: 3 }, bw);
+  ck("estimateIsometricE1RM: Front Lever Full 3s → 0.70× kerroin",
+     flFullShort && Math.abs(flFullShort.e1RM - 54.2) < 1.0); // 77.35 * 0.70 = 54.14
+
+  const flFullLong = estimateIsometricE1RM(
+    { loadType: "isometric_hold", movementName: "Front Lever (Full)", holdSeconds: 35 }, bw);
+  ck("estimateIsometricE1RM: Front Lever Full 35s → 1.30× kerroin",
+     flFullLong && Math.abs(flFullLong.e1RM - 100.6) < 1.0); // 77.35 * 1.30 = 100.55
+
+  // Lisäpaino isometric:lle
+  const flFullWeighted = estimateIsometricE1RM(
+    { loadType: "isometric_hold", movementName: "Front Lever Full", holdSeconds: 12, addedWeightKg: 10 }, bw);
+  ck("estimateIsometricE1RM: Front Lever Full + 10kg lisäpaino → 77 + 10 = ~87 kg",
+     flFullWeighted && Math.abs(flFullWeighted.e1RM - 87.4) < 1.0);
+
+  // Planche
+  const planFull = estimateIsometricE1RM(
+    { loadType: "isometric_hold", movementName: "Planche (Full)", holdSeconds: 8 }, bw);
+  ck("estimateIsometricE1RM: Full Planche @ 91kg, 8s → ~77 kg (= 85% BW)",
+     planFull && Math.abs(planFull.e1RM - 77.4) < 1.0);
+
+  const planTuck = estimateIsometricE1RM(
+    { loadType: "isometric_hold", movementName: "Tuck Planche", holdSeconds: 60 }, bw);
+  ck("estimateIsometricE1RM: Tuck Planche @ 91kg, 60s (SSC) → ~24 kg (20% BW × 1.30)",
+     planTuck && Math.abs(planTuck.e1RM - 23.66) < 1.0); // 91 * 0.20 * 1.30
+
+  // HSPU
+  const hspuFree = estimateIsometricE1RM(
+    { loadType: "isometric_hold", movementName: "Free HSPU", holdSeconds: 10 }, bw);
+  ck("estimateIsometricE1RM: Free HSPU @ 91kg, 10s → ~114 kg (1.25 BW)",
+     hspuFree && Math.abs(hspuFree.e1RM - 113.75) < 1.0);
+
+  // One-arm pull-up
+  const oap = estimateIsometricE1RM(
+    { loadType: "isometric_hold", movementName: "One-arm pull-up unassisted", holdSeconds: 10 }, bw);
+  ck("estimateIsometricE1RM: OAP unassisted @ 91kg, 10s → ~91 kg (1.00 BW)",
+     oap && Math.abs(oap.e1RM - 91) < 1.0);
+
+  // Edge cases
+  ck("estimateIsometricE1RM: external-PR → null (vain isometric_hold)",
+     estimateIsometricE1RM({ loadType: "external", weightKg: 100, reps: 3 }, bw) === null);
+  ck("estimateIsometricE1RM: tuntematon liike → null",
+     estimateIsometricE1RM({ loadType: "isometric_hold", movementName: "L-sit", holdSeconds: 30 }, bw) === null);
+  ck("estimateIsometricE1RM: ei bodyweight → null",
+     estimateIsometricE1RM({ loadType: "isometric_hold", movementName: "Front Lever", holdSeconds: 12 }, 0) === null);
 
   return report;
 }

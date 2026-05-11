@@ -495,6 +495,15 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
+// v4.46.0: Track B Vaihe 2C-δ — Isometric-pitojen e1RM-mallinnus.
+// Wizard q26 isometric_hold-PR:t (Front Lever, Planche, HSPU, One-arm pull-up)
+// muunnetaan e1RM-kg-vastineeksi heuristic-kerroin per liike-taso (Steven Low
+// OG2 + Sommer SSC + Heavyweight Cali/Frinks n=322, kaikki EI peer-reviewed).
+// Hold-keston vaikutus: <5s 0.70×, 5-15s 1.00×, 15-30s 1.15×, >30s 1.30×.
+// Pidot migroidaan movementProgress:iin e1RM-baselineina source="wizard-2c-delta-isometric"
+// EMPIRINEN HEURISTIIKKA -merkinnällä. Yksilövaihtelu ±15-25 %.
+// Mapper 2C-gamma-v1.0 → 2C-delta-v1.0.
+//
 // v4.45.0: Track B Vaihe 2C-γ — Tier-pohjainen kg/vk-progressiokerroin.
 // Pää-app:n weekDef.deltaPctBase säädetään q08_selfLevel:n (+ q02_sex)
 // mukaan: beginner 1.0×, intermediate 0.40×, advanced 0.15×, elite 0.05×;
@@ -532,7 +541,7 @@
 // v4.41.0: Track B Vaihe 2B-γ — q26-PR-migraatio + q30-energiabudjetti.
 // v4.40.0: Track B Vaihe 2B-β — wizard-pohjaisen ohjelman generointi.
 // v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen.
-const APP_VERSION = "4.45.0";
+const APP_VERSION = "4.46.0";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
