@@ -31,7 +31,7 @@
 
 import { SCHEMA_INVARIANTS } from "./wizard-schema.js";
 
-export const MAPPER_VERSION = "2C-beta2-v1.0";
+export const MAPPER_VERSION = "2C-gamma-v1.0";
 
 // ─── Issurin Table V residuaalit (RISTIINTARKISTETTU) ──────────────────
 // Lähde: Issurin & Lustig 2004 / Issurin 2008 Table V, modifoitu.
@@ -585,7 +585,75 @@ function _collectMultiBlockRules(a, sequence, recoveryCapacity, sexModifierAppli
     status: "RISTIINTARKISTETTU",
     source: "Nunes 2021 (MJ-before-SJ) + ACSM 2009 Position Stand",
   });
+  // 2C-γ: Tier-progressio multi-block:lle
+  const tierMultMB = TIER_PROGRESSION_MULTIPLIERS[a.q08_selfLevel];
+  if (typeof tierMultMB === "number") {
+    const sexMultMB = a.q02_sex === "female" ? SEX_PROGRESSION_MULTIPLIER_FEMALE : 1.0;
+    rules.push({
+      rule: `q08_selfLevel="${a.q08_selfLevel}"${sexMultMB !== 1.0 ? " + naiskerroin" : ""} → progressiokerroin ${(tierMultMB*sexMultMB).toFixed(2)}× kullekin blokille (yksilövaihtelu ±50-100 %)`,
+      status: "EMPIRINEN",
+      source: "Latella 2020 powerlifting (n=1897) + Nuckols SBS-kyselydata + Williams 2017 (untrained > trained periodisaatiossa)",
+    });
+  }
   return rules;
+}
+
+// ─── 2C-γ: Tier-pohjainen kg/vk-progressio ────────────────────────────
+//
+// Tutkimuspohja: docs/VAIHE_2C_RESEARCH_VERIFICATION.md (2026-05-11).
+// Lähteet:
+//   - Latella et al. 2020 (J Strength Cond Res 34(9):2412-2418) — powerlifting
+//     Australia n=1897, 2003-2018, kg/päivä total per training-status
+//   - Greg Nuckols Stronger by Science -kyselydata (EMPIRINEN, voluntary
+//     response bias mainittu kirjoittajan caveat:ssa)
+//   - Williams et al. 2017 Sports Med 47(10):2083-2100 (PDF-VERIFIOITU) —
+//     KRIITTINEN: untrained hyötyy ENEMMÄN periodisaatiosta kuin trained
+//     (β = -0.59, p = 0.0305). Tier-kertoimet (1.0 → 0.05) tukevat tätä.
+//
+// STATUS: **EMPIRINEN, EI RCT-VALIDOITU.** Tier-kertoimet ovat
+// powerlifting-kilpailudatan ekstrapolaatiota. Yksilövaihteluväli ±50-100 %
+// (Latella 2020: SD usein > keskiarvo, r² lähtötasolle 0.06-0.12).
+//
+// TÄMÄ TIETO MERKITSE _wizardMeta.rules.source-kenttiin selkeästi.
+
+// Tier-progressiokerroin: skaalaa pää-app:n weekDef.deltaPctBase-arvoa.
+// Pää-app:in nominaali on +2.5%/vk (vk 2), +5%/vk (vk 3). Tier-kerroin
+// vähentää tätä elite-/advanced-atleeteilla joiden absoluuttinen kg/vk on
+// pienempi (Latella Q4 ~0.24 kg/vk total → ~0.05% per liike per vk).
+//
+// VAIN POSITIIVISET deltaPctBase-arvot säädetään (= progressio-viikot vk 2-3).
+// Negatiiviset säilyvät: vk 1 akklimatisaatio (-10%) + vk 4 deload (-25%).
+const TIER_PROGRESSION_MULTIPLIERS = Object.freeze({
+  beginner:     1.00,  // Nominaali (Latella: ~2.3 kg/vk squat = ~2.5% jos 1RM 100kg)
+  intermediate: 0.40,  // ~1% per vk (Latella: 0.75 kg/vk squat = ~0.5-0.6% jos 1RM 130kg)
+  advanced:     0.15,  // ~0.4% per vk (Latella: 0.3 kg/vk squat = ~0.17% jos 1RM 175kg)
+  elite:        0.05,  // ~0.125% per vk (Latella Q4: 0.10 kg/vk squat = ~0.05% jos 1RM 200kg)
+});
+
+// Naiskerroin (Nuckols SBS-kyselydata: nais-kg/vk ≈ 0.5-0.6 × mies-kg/vk).
+// Käytetään keskiarvoa 0.55 — tier-kerrointa kerrotaan tällä jos q02=female.
+const SEX_PROGRESSION_MULTIPLIER_FEMALE = 0.55;
+
+// Soveltaa tier-kertoimen weekDefs-array:lle. Käytetään handleGenerateProgram:ssa
+// generaattorin (single tai multi-block) jälkeen ennen tallennusta DB:hen.
+export function applyTierProgression(weekDefs, tier, sex) {
+  if (!Array.isArray(weekDefs)) return weekDefs;
+  const tierMult = TIER_PROGRESSION_MULTIPLIERS[tier];
+  if (typeof tierMult !== "number") return weekDefs; // tuntematon tier → ei muutosta
+  const sexMult = sex === "female" ? SEX_PROGRESSION_MULTIPLIER_FEMALE : 1.0;
+  const combined = tierMult * sexMult;
+  return weekDefs.map(wd => {
+    // Säilytä deload + akklimatisaatio-viikot (deltaPctBase ≤ 0) — ne ovat
+    // absoluuttisia, eivät progressiokertoimia
+    if (typeof wd.deltaPctBase !== "number" || wd.deltaPctBase <= 0) return wd;
+    return {
+      ...wd,
+      deltaPctBase: Math.round(wd.deltaPctBase * combined * 1000) / 1000,
+      // Säilytetään alkuperäinen nominaali audit-jälkenä
+      _originalDeltaPctBase: wd.deltaPctBase,
+      _tierProgressionApplied: { tier, sex, multiplier: combined },
+    };
+  });
 }
 
 // ─── 2C-β2: Split-filtteri ja volyymi-cap ──────────────────────────────
@@ -886,6 +954,16 @@ function collectAppliedRules(a, goal, weekCount, recoveryCapacity, sexModifierAp
     status: "RISTIINTARKISTETTU",
     source: "Nunes 2021 (MJ-before-SJ, ES=-0.58 SJ-suorituksille) + ACSM 2009 Position Stand",
   });
+  // 2C-γ: Tier-progressio
+  const tierMult = TIER_PROGRESSION_MULTIPLIERS[a.q08_selfLevel];
+  if (typeof tierMult === "number") {
+    const sexMult = a.q02_sex === "female" ? SEX_PROGRESSION_MULTIPLIER_FEMALE : 1.0;
+    rules.push({
+      rule: `q08_selfLevel="${a.q08_selfLevel}"${sexMult !== 1.0 ? " + naiskerroin" : ""} → progressiokerroin ${(tierMult*sexMult).toFixed(2)}× (yksilövaihtelu ±50-100 %)`,
+      status: "EMPIRINEN",
+      source: "Latella 2020 powerlifting (n=1897) + Nuckols SBS-kyselydata + Williams 2017 (untrained > trained periodisaatiossa)",
+    });
+  }
   return rules;
 }
 
@@ -920,7 +998,7 @@ export function selfTestMapper() {
      RESIDUAL_DAYS.maximal_strength.mean === 30 && RESIDUAL_DAYS.maximal_strength.sd === 5);
   ck("RESIDUAL_DAYS maximal_speed = 5 ± 3 (Issurin)",
      RESIDUAL_DAYS.maximal_speed.mean === 5 && RESIDUAL_DAYS.maximal_speed.sd === 3);
-  ck("MAPPER_VERSION on 2C-beta2-v1.0", MAPPER_VERSION === "2C-beta2-v1.0");
+  ck("MAPPER_VERSION on 2C-gamma-v1.0", MAPPER_VERSION === "2C-gamma-v1.0");
 
   // ─── 2. pickStartingBlock ──────────────────────────────────────────
   ck("pickStartingBlock: peaking → hypertrofia",
@@ -1197,7 +1275,7 @@ export function selfTestMapper() {
   ck("Deterministisyys: recoveryCapacity sama", det1.recoveryCapacity === det2.recoveryCapacity);
 
   // ─── 14. _wizardMeta-rakenteen täydellisyys ─────────────────────────
-  ck("_wizardMeta sisältää mapperVersion (2C-beta2-v1.0)", akseliResult._wizardMeta.mapperVersion === "2C-beta2-v1.0");
+  ck("_wizardMeta sisältää mapperVersion (2C-gamma-v1.0)", akseliResult._wizardMeta.mapperVersion === "2C-gamma-v1.0");
   ck("_wizardMeta sisältää wizardSchemaVersion",  akseliResult._wizardMeta.wizardSchemaVersion === "3.3");
   ck("_wizardMeta sisältää rules-array",          Array.isArray(akseliResult._wizardMeta.rules) && akseliResult._wizardMeta.rules.length > 0);
   ck("_wizardMeta.rules sisältää ACSM-säännön (Nunes + ACSM 2009)",
@@ -1437,6 +1515,56 @@ export function selfTestMapper() {
     s + d.slots.filter(x => x.role === "accessory").reduce((ss, x) => ss + x.sets, 0), 0);
   ck("applyVolumeCap hypertrofia cap 16: 18 → ~16",
      totalHyp >= 14 && totalHyp <= 16);
+
+  // ════════════════════════════════════════════════════════════════
+  // ─── 2C-γ: Tier-progressio (kg/vk-kerroin per status) ──────────
+  // ════════════════════════════════════════════════════════════════
+
+  // Tier-kertoimet (Latella 2020 + Nuckols SBS, EMPIRINEN)
+  ck("TIER_PROGRESSION_MULTIPLIERS beginner = 1.0",   TIER_PROGRESSION_MULTIPLIERS.beginner === 1.00);
+  ck("TIER_PROGRESSION_MULTIPLIERS intermediate = 0.40", TIER_PROGRESSION_MULTIPLIERS.intermediate === 0.40);
+  ck("TIER_PROGRESSION_MULTIPLIERS advanced = 0.15",  TIER_PROGRESSION_MULTIPLIERS.advanced === 0.15);
+  ck("TIER_PROGRESSION_MULTIPLIERS elite = 0.05",     TIER_PROGRESSION_MULTIPLIERS.elite === 0.05);
+  ck("SEX_PROGRESSION_MULTIPLIER_FEMALE = 0.55",       SEX_PROGRESSION_MULTIPLIER_FEMALE === 0.55);
+
+  // applyTierProgression — pos. deltaPctBase säädetään, neg. säilyy
+  const mockWeekDefs = [
+    { week: 1, deltaPctBase: -0.10, label: "Akklimatisaatio" }, // SÄILY
+    { week: 2, deltaPctBase: 0.025, label: "Lataus" },          // SÄÄDETÄÄN
+    { week: 3, deltaPctBase: 0.05,  label: "Peak" },            // SÄÄDETÄÄN
+    { week: 4, deltaPctBase: -0.25, label: "Deload" },          // SÄILY
+  ];
+  const eliteApplied = applyTierProgression(mockWeekDefs, "elite", "male");
+  ck("applyTierProgression elite + male: vk 1 (-10%) säilyy",
+     eliteApplied[0].deltaPctBase === -0.10);
+  ck("applyTierProgression elite + male: vk 2 (+2.5%) × 0.05 = +0.125%",
+     Math.abs(eliteApplied[1].deltaPctBase - 0.001) < 0.0005); // 0.025 * 0.05 = 0.00125
+  ck("applyTierProgression elite + male: vk 4 deload (-25%) säilyy",
+     eliteApplied[3].deltaPctBase === -0.25);
+  ck("applyTierProgression elite + male: _originalDeltaPctBase tallessa audit-jälkenä",
+     eliteApplied[1]._originalDeltaPctBase === 0.025);
+
+  const intApplied = applyTierProgression(mockWeekDefs, "intermediate", "male");
+  ck("applyTierProgression intermediate: vk 2 (+2.5%) × 0.40 = +1.0%",
+     Math.abs(intApplied[1].deltaPctBase - 0.01) < 0.0005);
+
+  const begApplied = applyTierProgression(mockWeekDefs, "beginner", "male");
+  ck("applyTierProgression beginner: vk 2 (+2.5%) × 1.0 = +2.5% (nominaali säilyy)",
+     Math.abs(begApplied[1].deltaPctBase - 0.025) < 0.0005);
+
+  const femApplied = applyTierProgression(mockWeekDefs, "intermediate", "female");
+  ck("applyTierProgression intermediate + female: × 0.40 × 0.55 = 0.22 → vk 2 ~+0.55%",
+     Math.abs(femApplied[1].deltaPctBase - 0.0055) < 0.001);
+
+  // Tuntematon tier → ei muutosta
+  const unkApplied = applyTierProgression(mockWeekDefs, "tuntematon", "male");
+  ck("applyTierProgression tuntematon tier → ei muutosta",
+     unkApplied[1].deltaPctBase === 0.025);
+
+  // Auditointi-rules: Akselin (elite, male) generoinnissa pitäisi näkyä tier-sääntö
+  ck("Akselin _wizardMeta.rules sisältää tier-progressio-säännön (elite)",
+     akseliResult._wizardMeta.rules.some(r => r.status === "EMPIRINEN" &&
+       r.rule.includes("elite") && r.source.includes("Latella 2020")));
 
   return report;
 }

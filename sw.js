@@ -495,6 +495,15 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
+// v4.45.0: Track B Vaihe 2C-γ — Tier-pohjainen kg/vk-progressiokerroin.
+// Pää-app:n weekDef.deltaPctBase säädetään q08_selfLevel:n (+ q02_sex)
+// mukaan: beginner 1.0×, intermediate 0.40×, advanced 0.15×, elite 0.05×;
+// naisille × 0.55. Vk 1 akklimatisaatio + vk 4 deload säilyvät.
+// Lähde: Latella 2020 powerlifting Australia n=1897 + Nuckols Stronger by
+// Science -kyselydata, EMPIRINEN (yksilövaihtelu ±50-100 %). Williams 2017
+// PDF: untrained > trained periodisaatiossa (tier-kertoimet noudattavat).
+// Mapper 2C-beta2-v1.0 → 2C-gamma-v1.0. PROGRAM_BUILD_VERSION säilyy 4.38.9.
+//
 // v4.44.0: Track B Vaihe 2C-β2 — Korjauspaketti pilottiohjelman puutteille.
 // 5 isoa korjausta:
 //   1. createIntensifikaatioMesocycle (data.js) - aito Issurin-intensifikaatio
@@ -523,7 +532,7 @@
 // v4.41.0: Track B Vaihe 2B-γ — q26-PR-migraatio + q30-energiabudjetti.
 // v4.40.0: Track B Vaihe 2B-β — wizard-pohjaisen ohjelman generointi.
 // v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen.
-const APP_VERSION = "4.44.0";
+const APP_VERSION = "4.45.0";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
