@@ -1,5 +1,27 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.38.5 — Pikalisäpäivitys: kisaliikkeiden tunnistus toimii myös
+// LeVe AI v4.38.6 — KRIITTINEN BUG-FIX: ReferenceError currentSet bindWorkoutEvents:issa.
+//
+// Käyttäjäpalaute 2026-05-11: työsarja-näkymässä "Bindausvirhe — tarkista konsoli"
+// laukesi heti kun käyttäjä yritti kirjata painoja. Sovellus oli käyttökelvoton.
+// Syy: v4.38.3:n refaktorissa attachVelocityRepLiveSummary extractattiin
+// nimettäväksi funktioksi, mutta bindWorkoutEvents-funktion ulompi scope
+// jätettiin viittaamaan currentSet-muuttujaan (rivi 11260, targetVx-kentässä).
+// currentSet on määriteltynä callback-handlerien SISÄLLÄ, ei bind-funktion
+// ylimmässä scopessa. ReferenceError → bind() rejected → kaikki click-handlerit
+// jäivät attachimatta → koko työsarja-näkymä jumissa.
+//
+// KORJAUS v4.38.6 (index.html bindWorkoutEvents):
+//   const exerciseForCap = w.exercises[w.currentExerciseIdx];
+//   const currentSetForCap = exerciseForCap?.sets?.[w.currentSetIdx];  ← LISÄTTY
+//   ...
+//   targetVx: currentSetForCap?.targetVx ?? null,  ← oli: currentSet?.targetVx
+//
+// Refaktoroinnin TESTAUSPUUTE — tämä on toinen kerta kun vastaava bugi ilmenee
+// (vrt. v4.34.29: "TDZ-fix targetReps siirretty prev-ghost-koodin edelle").
+// Oppi: ennen extracted-funktion käyttöönottoa, suorita silmämääräinen scope-
+// tarkistus muuttujille jotka aiemmin olivat inline:n sisäisiä.
+//
+// v4.38.5 (edellinen) — Pikalisäpäivitys: kisaliikkeiden tunnistus toimii myös
 // vanhoilla movements-tietokannoilla joissa isCompetitionLift-flag puuttuu.
 //
 // Käyttäjäpalaute v4.38.4:n migration jälkeen (2026-05-10): Asetukset →
@@ -396,7 +418,7 @@
 // - v4.34.50 (floor-cap): 120 kg (= viime suorituksen taso)
 // Atletti voi tehdä 130 V4 → engine oppii ja vk 3 LA target on >= 130 kg.
 
-const APP_VERSION = "4.38.5";
+const APP_VERSION = "4.38.6";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
