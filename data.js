@@ -19,6 +19,12 @@ const TIMEZONE = "Europe/Helsinki";
 //  toDay/laDay-funktiot). Init() vertaa mesocyclen programVersion-arvoa tähän
 // ja jos ne eroavat, weekPlans rakennetaan automaattisesti uudelleen säilyttäen
 // käyttäjän edistys (startDateISO, calibration, accessorySlotOverrides).
+// PROGRAM_BUILD_VERSION pysyy 4.38.9:ssä koska v4.39.0:n muutokset ovat
+// PURE UI (wizard-integraatio: onboarding-banneri, Asetukset-kortti,
+// migraatio-banneri). weekPlans-rakenne / PRESET_MOVEMENTS /
+// ACCESSORY_SLOT_CATALOG / DayN-funktiot eivät muutu, joten
+// streetlifting_16w-mesocyclen auto-rebuild EI saa laueta. Sw.js APP_VERSION
+// bumppataan erikseen 4.39.0:ksi PWA-päivitysbannerin triggeröimiseksi.
 const PROGRAM_BUILD_VERSION = "4.38.9";
 
 // ── Store names ──
@@ -5732,6 +5738,129 @@ function rebuildStreetlifting16WMesocycle(existingMesocycle) {
   };
 }
 
+// ── Wizard-integraation tunnistusfunktiot (v4.39.0 — Track B Vaihe 2A) ──
+//
+// Pää-sovellus näyttää onboarding-bannerin uusille käyttäjille ja Asetukset-
+// linkin olemassa oleville. Nämä funktiot tunnistavat käyttäjän tilan.
+//
+// SUUNNITTELUVALINTA: detectIsNewUser tarkistaa AINOASTAAN sessions + sets
+// -storeja — ei movementProgressia eikä mesocyclejä. Syy: ohjelmiston ensim-
+// mäinen avaus voi luoda streetlifting_16w-mesocyclen automaattisesti
+// (createDefaultMesocycle), jolloin mesocycles-store EI ole tyhjä vaikka
+// käyttäjä ei ole tehnyt yhtään sessiota. "Uusi käyttäjä" määritellään
+// käytännössä = "ei vielä yhtään harjoituskertaa kirjattu".
+async function detectIsNewUser() {
+  try {
+    const sessions = await dbGetAll(STORES.sessions);
+    if (Array.isArray(sessions) && sessions.length > 0) return false;
+    const sets = await dbGetAll(STORES.sets);
+    if (Array.isArray(sets) && sets.length > 0) return false;
+    return true;
+  } catch (e) {
+    console.warn("[data] detectIsNewUser failed:", e);
+    return false; // safe fallback: ei näytä onboardingia jos virhe
+  }
+}
+
+// detectWizardStatus avaa LeVeWizardDB:n LUKU-VAIN ilman versionumeroa (sama
+// pattern kuin wizard-movement-bank.js lukee LeVeCoachDB:tä). Tämä EI laukaise
+// wizard-migraatioita pää-app:sta.
+//
+// Palauttaa: { exists, completed, schemaVersion, migratedFrom, lastStepIndex,
+//              wizardId, completedAtISO } tai null jos DB ei avaudu.
+async function detectWizardStatus() {
+  if (typeof indexedDB === "undefined" || !indexedDB) return null;
+  return new Promise((resolve) => {
+    let req;
+    try {
+      req = indexedDB.open("LeVeWizardDB"); // ei versionumeroa → ei migraatioita
+    } catch {
+      resolve(null);
+      return;
+    }
+    // Jos LeVeWizardDB ei vielä ole olemassa, onupgradeneeded laukeaa →
+    // keskeytetään luonti (sama pattern kuin movement-bank).
+    req.onupgradeneeded = (event) => {
+      try { event.target.transaction.abort(); } catch { /* ignore */ }
+    };
+    req.onsuccess = async () => {
+      const db = req.result;
+      const result = {
+        exists: false,
+        completed: false,
+        schemaVersion: null,
+        migratedFrom: null,
+        lastStepIndex: 0,
+        wizardId: null,
+        completedAtISO: null,
+      };
+      try {
+        if (!db.objectStoreNames.contains("wizardConfigs") ||
+            !db.objectStoreNames.contains("wizardMeta")) {
+          db.close();
+          resolve(result);
+          return;
+        }
+        // Lue activeWizardId metasta
+        const activeId = await new Promise((res) => {
+          const tx = db.transaction("wizardMeta", "readonly");
+          const r = tx.objectStore("wizardMeta").get("activeWizardId");
+          r.onsuccess = () => res(r.result && r.result.value);
+          r.onerror   = () => res(null);
+        });
+        if (!activeId) {
+          db.close();
+          resolve(result);
+          return;
+        }
+        const cfg = await new Promise((res) => {
+          const tx = db.transaction("wizardConfigs", "readonly");
+          const r = tx.objectStore("wizardConfigs").get(activeId);
+          r.onsuccess = () => res(r.result || null);
+          r.onerror   = () => res(null);
+        });
+        if (cfg) {
+          result.exists = true;
+          result.completed = !!cfg.completedAtISO;
+          result.schemaVersion = cfg.schemaVersion || null;
+          result.migratedFrom = cfg.migratedFrom || null;
+          result.lastStepIndex = typeof cfg.lastStepIndex === "number" ? cfg.lastStepIndex : 0;
+          result.wizardId = cfg.wizardId;
+          result.completedAtISO = cfg.completedAtISO || null;
+        }
+      } catch (e) {
+        result._error = String(e);
+      } finally {
+        try { db.close(); } catch { /* ignore */ }
+        resolve(result);
+      }
+    };
+    req.onerror   = () => resolve(null);
+    req.onblocked = () => resolve(null);
+  });
+}
+
+// Onboarding-bannerin sulkemis-tila — tallennetaan appMeta:han jotta
+// käyttäjä ei näe banneria uudelleen jos hän on sulkenut sen.
+async function isOnboardingDismissed() {
+  try {
+    const meta = await dbGet(STORES.appMeta, "onboardingDismissed");
+    return !!(meta && meta.value === true);
+  } catch {
+    return false;
+  }
+}
+
+async function setOnboardingDismissed(dismissed) {
+  try {
+    await dbPut(STORES.appMeta, { key: "onboardingDismissed", value: !!dismissed, updatedAtISO: nowISO() });
+    return true;
+  } catch (e) {
+    console.warn("[data] setOnboardingDismissed failed:", e);
+    return false;
+  }
+}
+
 // ── Export module ──
 export {
   // Constants
@@ -5886,4 +6015,9 @@ export {
   // CSV
   parseCSV,
   importHistoricalCSV,
+  // Wizard-integraatio (v4.39.0, Track B Vaihe 2A)
+  detectIsNewUser,
+  detectWizardStatus,
+  isOnboardingDismissed,
+  setOnboardingDismissed,
 };
