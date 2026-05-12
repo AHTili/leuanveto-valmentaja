@@ -537,6 +537,10 @@
 // sijaan. Pure UI -muutos — dayType ja treenin sisältö säilyvät. Mapper
 // 2C-alpha-v1.0 → 2C-beta-v1.0.
 //
+// v4.48.0: Track B Vaihe 2D-β — klassiset voimanosto-ohjelmat (Wendler/TSB/Madcow).
+//          PROGRAM_STYLES 8 → 11 tyyliä (single-wendler531 + single-top-set-backoff + single-madcow-5x5).
+//          AMRAP-tuki (Epley + Brzycki, Reynolds 2006 >10 reps -varoitus).
+//          Liikepankki: Yhden jalan jalkaprässi.
 // v4.47.0: Track B Vaihe 2D-α — adaptive multi-suggestion (PROGRAM_STYLES + pickProgramStyle).
 //          Wizard 3.3 pysyy ennallaan (Tapa 3); top-3 style-kandidaatit näytetään
 //          preview-modaalissa, käyttäjä voi vaihtaa stylen vapaasti.
@@ -545,7 +549,7 @@
 // v4.41.0: Track B Vaihe 2B-γ — q26-PR-migraatio + q30-energiabudjetti.
 // v4.40.0: Track B Vaihe 2B-β — wizard-pohjaisen ohjelman generointi.
 // v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen.
-const APP_VERSION = "4.47.0";
+const APP_VERSION = "4.48.0";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

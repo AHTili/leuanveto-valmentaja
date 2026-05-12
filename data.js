@@ -244,6 +244,8 @@ const PRESET_MOVEMENTS = [
   { name: "Leg curl", category: "alaraaja", isPrimary: false, isPreset: true },
   { name: "Leg extension", category: "alaraaja", isPrimary: false, isPreset: true },
   { name: "Bulgarian split squat", category: "alaraaja", isPrimary: false, isPreset: true },
+  // v4.48.0: yhden jalan jalkaprässi unilateraalinen quad/glute-isolaatio
+  { name: "Yhden jalan jalkaprässi", category: "alaraaja", isPrimary: false, isPreset: true },
   { name: "Hip thrust", category: "alaraaja", isPrimary: false, isPreset: true },
   { name: "Pohjenosto", category: "alaraaja", isPrimary: false, isPreset: true },
   // v4.27.18: calf-isolation variants (Pohkeenkohotus = yleisempi suomenkielinen termi vs Pohjenosto)
@@ -412,6 +414,7 @@ const MOVEMENT_DESCRIPTIONS = {
   "Maastaveto": { howTo: "Tanko lähellä säären, lantio liikkuu taaksepäin (hinge), selkä neutraali. RDL-tyyli: tanko liukuu jalkoja pitkin.", cue: "Pyllyä taakse — ei kyykkää alas" },
   "Hip thrust": { howTo: "Yläselkä penkillä, tanko lantion päällä, työnnä lantio ylös. Pakara puree huipussa.", cue: "Leuka rintaan — älä kaareudu lannerankaan" },
   "Jalkaprässi": { howTo: "Jalat laitteella hartianleveydellä, laske reidet rintaa kohti. Älä lukitse polvia yläpisteessä.", cue: "Kantapää painaa koko liikkeen ajan" },
+  "Yhden jalan jalkaprässi": { howTo: "Jalkaprässi yhdellä jalalla — toinen jalka pois laitteesta. Hyödyllinen unilateraaliseen quad/glute-työhön ilman selkäkuormaa. Aloita kevyemmällä kuormalla.", cue: "Hallittu lasku, kantapää työntää — ei pommitusta" },
   "Leg extension": { howTo: "Polven ekstensio laitteella — puhdas quad-isolaatio.", cue: "Huiput lukitaan 1 s pohjalla" },
   "Bulgarian split squat": { howTo: "Takajalka penkillä, etujalka ~1 m edessä. Laskeudu suoraan alas. Pakara + quad unilateraalisti.", cue: "Etujalan polvi ei ylitä varvasta" },
   "Leg curl": { howTo: "Takareiden koukistus laitteella — makuulla tai istuen. Kontrolloitu alas.", cue: "Lantio pysyy penkissä — ei irtoa" },
@@ -2744,6 +2747,13 @@ const MESOCYCLE_TEMPLATES = [
     about: "Akken referenssi-ohjelma: 16 vk jaettu 4 blokkiin (vk 1-4 Hypertrofia, 5-8 Voima, 9-12 Intensifikaatio, 13-16 Realization/Peak) Issurin 2010 -metodologialla. 4 kisaliikettä: Muscle-up, Leuka, Dippi, Kyykky. Kuormat loadPct-skaalattuja käyttäjän e1RM:ään — vaatii kalibroinnin aloituksessa. Accessory-volyymi taperoituu automaattisesti loppua kohti. Käytä kun: treenaat streetlifting-kisoihin nimenomaan näillä 4 liikkeellä." },
   { id: "custom",            label: "🎯 Räätälöity ohjelma (kysely)", icon: "🎯", desc: "Vastaa kysymyksiin → sovellus rakentaa optimaalisen ohjelman tavoitteesi + liikkeidesi pohjalta", weeks: null, factory: "generateCustomMesocycle",
     about: "Ohjelmageneraattori rakentaa sinulle mesosyklin vastauksiesi pohjalta (tavoite, päälikkeet, päivät/vk, viikkomäärä, palautumiskyky). Käyttää olemassaolevia preseettejä pohjana ja substituoi päälikkeet + accessoryt funktionaalisten roolien kautta (antagonist/synergist-mappaus). Laatu = preseettien laatu, mutta sovitettuna sinun valintoihisi. Käytä kun: haluat treenata muita päälikkeitä kuin leuanveto (esim. penkki + mave), tai viikkomäärä/päivämäärä eivät sovi vakio-preseetteihin." },
+  // v4.48.0 (Track B Vaihe 2D-β): klassiset voimanosto-ohjelmat
+  { id: "wendler531",       label: "Wendler 5/3/1",                 icon: "📅", desc: "4×/vk — Klassinen 4-vk sykli, AMRAP viim. sarja, BBB-assistance", weeks: 4, factory: "createWendler531Mesocycle",
+    about: "Jim Wendlerin klassinen 4-vk sykli (2009/2011). TM = 90% 1RM. Vk 1: 65/75/85% × 5/5/5+, Vk 2: 70/80/90% × 3/3/3+, Vk 3: 75/85/95% × 5/3/1+ (AMRAP viim. sarja), Vk 4: deload 40/50/60% × 5/5/5. TM nousee +2.5 kg upper / +5 kg lower per sykli. Boring But Big (BBB) -assistance: 5×10 @ 50-60% TM samalla liikkeellä. Wendlerin alkuperäinen ohje: 'leave 1-2 reps in tank' viim. sarjassa. Käytä kun: haluat klassisen Wendler 5/3/1 -ohjelman. PDF-VERIFIOITU lähteenä T-Nation 2009 ydinprosenttitaulukko. Streetlifting-substituutio = WENDLER-DERIVED, ei kanoninen." },
+  { id: "topSetBackoff",    label: "Top-set + Backoff",             icon: "🎯", desc: "3×/vk — Yksi raskas single @ RPE 9 + 2-3 backoff @ 80%", weeks: 4, factory: "createTopSetBackoffMesocycle",
+    about: "Minimitehokas voimakoneisto: 1× raskas single @ Vara 0-1 (RPE 9-9.5) + 2-3 backoff-sarjaa × 3 toistoa @ 80% top-singleista. Tutkimuspohja: Androulakis-Korakakis et al. 2021 (PMC8435792, Nuckols co-author, vertaisarvioitu METD-konseptipaperi). Käytä kun: ajan rajallisuus on pullonkaula tai haluat optimaalisen voimasignaalin minimivolyymilla. Backoff-toistomäärä 3 on EI-TUTKIMUSPOHJAINEN oletus." },
+  { id: "madcow5x5",        label: "Madcow 5×5",                    icon: "🏗️", desc: "3×/vk — 5-vk lineaarinen progressio Ma/Ke/Pe, +2.5%/vk", weeks: 5, factory: "createMadcow5x5Mesocycle",
+    about: "Klassinen Madcow 5×5: intermediate-tason lineaarinen progressio (Bill Starr 1976 -pohja, anonyymin Madcow2-mukautus ~2001). HLM-pattern: Ma raskas 5×5 ramp → top, Ke kevyt 4×5, Pe raskas 4×5 ramp + 1×3 @ +2.5% Ma-topista + 1×8 @ ~77.5% Ma-topista. Vk1 = 92.5% nykyisestä 5RM:stä, +2.5%/vk → vk4 = 100%, vk5 = PR-yritys. PROSENTTIPOHJAINEN, EI absoluuttiset +2.5/+5 lb (= StrongLifts/SS). RISTIINTARKISTETTU yhteisön mukautus, EI-TUTKIMUSPOHJAINEN. Advanced (15+v) → harkitse 1.0-1.5%/vk redukointia." },
 ];
 
 // ── Hypertrofiajakso (4 viikkoa, 3×/vk) ──
@@ -3604,6 +3614,403 @@ function createPalautuminenMesocycle(startDateISO) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Track B Vaihe 2D-β — 3 klassista voimanosto-ohjelmaa (v4.48.0)
+// ═══════════════════════════════════════════════════════════════
+//
+// Tutkimuspohja: docs/VAIHE_2D_BETA_RESEARCH_VERIFICATION.md (2026-05-11)
+//   - Wendler 5/3/1 (T-Nation 2009 PDF-VERIFIOITU ydinprosenttitaulukko)
+//   - Top-set + Backoff (Androulakis-Korakakis 2021 PMC8435792)
+//   - Madcow 5×5 (RISTIINTARKISTETTU, anonyymi yhteisön mukautus)
+//
+// AMRAP-slot-rakenne:
+//   slot.amrap = true → viim. sarja on AMRAP (toisto-target on minimi)
+//   slot.amrapTargetReps = N → minimitoistomäärä (UI näyttää "N+")
+//   Pää-app:in engine.js käyttää set.reps-arvoa Epley-pohjaisessa e1RM:ssä
+//   automaattisesti — AMRAP toimii ilman engine-muutoksia.
+
+// ── Wendler 5/3/1 (Classic, 4 vk, 4 päivää/vk) ──
+// Tutkimuspohja: T-Nation 2009 (PDF-VERIFIOITU ydinprosenteille)
+// Kanoninen 4-päiväinen rakenne: 1 päiväpääliikettä Wendlerin 4 kisaliikkeestä.
+// HUOM: Wendler itse kieltää substituution kanonisesti. Jos generateCustomMesocycle
+// distributePrimariesToDays substituoi atletin omat primaryt → tagaa
+// "WENDLER-DERIVED" customConfig:ssa (mapperin tehtävä, ei skeleton:in).
+function createWendler531Mesocycle(startDateISO) {
+  // Helper: rakenna yksi 5/3/1-päivä viim. sarjan AMRAP-flagilla.
+  // pcts/reps-arrayt on 3 sarjaa Wendlerin viikko-rakenteen mukaan.
+  const wendlerDay = ({ dayOfWeek, label, primaryName, primaryCategory, pcts, reps, amrapLastSet, bbbName, bbbCategory }) => ({
+    dayOfWeek,
+    dayType: "heavy",
+    label,
+    slots: [
+      // Lämmittely-info ei ole erillinen slot — Wendler suosittaa autoreguloitua lämpparia
+      // 3 päämääräliikkeen sarjaa (Wendler 5/3/1 -taulukko)
+      {
+        role: "primary", category: primaryCategory, defaultMovementName: primaryName,
+        sets: 1, reps: reps[0], targetVx: null,
+        loadPct: pcts[0], // TM-prosentti
+        wendlerSet: 1,
+      },
+      {
+        role: "primary", category: primaryCategory, defaultMovementName: primaryName,
+        sets: 1, reps: reps[1], targetVx: null,
+        loadPct: pcts[1],
+        wendlerSet: 2,
+      },
+      {
+        role: "primary", category: primaryCategory, defaultMovementName: primaryName,
+        sets: 1, reps: typeof reps[2] === "string" ? parseInt(reps[2]) : reps[2], targetVx: amrapLastSet ? 1 : null,
+        loadPct: pcts[2],
+        wendlerSet: 3,
+        amrap: amrapLastSet,
+        amrapTargetReps: amrapLastSet ? (typeof reps[2] === "string" ? parseInt(reps[2]) : reps[2]) : null,
+      },
+      // Assistance: Boring But Big (BBB) — 5×10 @ 50-60% TM samalla liikkeellä
+      // EMPIRINEN (jimwendler.com blogi)
+      {
+        role: "backoff", category: primaryCategory, defaultMovementName: primaryName,
+        sets: 5, reps: 10, targetVx: 3,
+        loadPct: 0.50, // BBB-aloitus 50% TM (Wendlerin BBB-blogi)
+        note: "BBB 5×10 @ 50% TM",
+      },
+      // Lyhyt accessory antagonistille (Wendler Triumvirate idealla)
+      {
+        role: "accessory", category: bbbCategory, defaultMovementName: bbbName,
+        sets: 3, reps: 10, targetVx: null,
+      },
+    ],
+  });
+
+  // Päivien primary-mapping (Wendlerin 4 kisaliikettä + sopiva accessory antagonistina)
+  // distributePrimariesToDays voi vaihtaa nämä atletin omiin primary:eihin
+  const dayPrimaries = [
+    { day: 1, label: "OHP",     name: "Pystypunnerrus", category: "vertikaalityöntö",   acc: "Lisäpainoleuanveto", accCat: "vertikaaliveto" },
+    { day: 3, label: "Deadlift", name: "Maastaveto",     category: "alaraaja",           acc: "Hyperextensio",       accCat: "core" },
+    { day: 5, label: "Bench",   name: "Penkkipunnerrus", category: "horisontaalityöntö", acc: "Penkkiveto",         accCat: "horisontaaliveto" },
+    { day: 6, label: "Squat",   name: "Takakyykky",     category: "alaraaja",           acc: "Walking lunge",      accCat: "alaraaja" },
+  ];
+
+  // Viikko-prosentit ja toistot (PDF-VERIFIOITU T-Nation 2009)
+  const weeks = [
+    { week: 1, pcts: [0.65, 0.75, 0.85], reps: [5, 5, "5+"], amrap: true,  label: "5/5/5" },
+    { week: 2, pcts: [0.70, 0.80, 0.90], reps: [3, 3, "3+"], amrap: true,  label: "3/3/3" },
+    { week: 3, pcts: [0.75, 0.85, 0.95], reps: [5, 3, "1+"], amrap: true,  label: "5/3/1" },
+    { week: 4, pcts: [0.40, 0.50, 0.60], reps: [5, 5, 5],    amrap: false, label: "Deload" },
+  ];
+
+  // weekDefs (mesocycle-tasolla)
+  const weekDefs = [
+    { week: 1, deltaPctBase: 0,     label: "5/5/5 (Wendler)",     heavyReps: 5, heavyTargetVx: 1 },
+    { week: 2, deltaPctBase: 0.05,  label: "3/3/3 (Wendler)",     heavyReps: 3, heavyTargetVx: 1 },
+    { week: 3, deltaPctBase: 0.10,  label: "5/3/1 (Wendler peak)",heavyReps: 1, heavyTargetVx: 1 },
+    { week: 4, deltaPctBase: -0.25, label: "Deload (Wendler)",    heavyReps: 5, heavyTargetVx: 4 },
+  ];
+
+  const weekPlans = weeks.map(w => ({
+    week: w.week,
+    days: dayPrimaries.map(p =>
+      wendlerDay({
+        dayOfWeek: p.day,
+        label: `Wendler ${p.label} (${w.label})`,
+        primaryName: p.name,
+        primaryCategory: p.category,
+        pcts: w.pcts,
+        reps: w.reps,
+        amrapLastSet: w.amrap,
+        bbbName: p.acc,
+        bbbCategory: p.accCat,
+      })
+    ),
+  }));
+
+  return {
+    mesocycleId: uid(),
+    type: "wendler531",
+    startDateISO: startDateISO || todayISO(),
+    weekCount: 4,
+    weekDefs,
+    weekPlans,
+    postCycleAnalysis: null,
+    // Metadata 2D-β
+    _programMeta: {
+      source: "Wendler 2009 5/3/1 (T-Nation -artikkeli + jimwendler.com BBB)",
+      status: "PDF-VERIFIOITU (ydinprosentit)",
+      tmPercentage: 0.90,
+      tmIncrementUpperKg: 2.5,
+      tmIncrementLowerKg: 5.0,
+      resetReductionPercent: 0.10, // RISTIINTARKISTETTU (yhteisön konsensus)
+      amrapFormula: "epley",
+      amrapDefaultRir: 1,
+    },
+  };
+}
+
+// ── Top-set + Backoff (4 vk, 3 päivää/vk) ──
+// Tutkimuspohja: Androulakis-Korakakis et al. 2021 (PMC8435792, Nuckols co-author)
+// Spesifikaatio: 1× single @ RPE 9-9.5 (Vara 0-1) + 2-3 backoff @ 80% top-singleista
+// Backoff-reps oletus 3 (EI-TUTKIMUSPOHJAINEN, abstrakti ei mainitse).
+function createTopSetBackoffMesocycle(startDateISO) {
+  // Päivien primary-mapping: 3 päivää, kukin oma päämääräliike
+  const dayPrimaries = [
+    { day: 1, label: "A",   name: "Takakyykky",      category: "alaraaja",           acc1Name: "Romanian DL",    acc1Cat: "lonkkahingaus",      acc2Name: "Walking lunge",  acc2Cat: "alaraaja" },
+    { day: 3, label: "B",   name: "Penkkipunnerrus", category: "horisontaalityöntö", acc1Name: "Penkkiveto",     acc1Cat: "horisontaaliveto",   acc2Name: "Vinopenkki",     acc2Cat: "horisontaalityöntö" },
+    { day: 5, label: "C",   name: "Maastaveto",      category: "alaraaja",           acc1Name: "Lisäpainoleuanveto", acc1Cat: "vertikaaliveto", acc2Name: "Hyperextensio",  acc2Cat: "core" },
+  ];
+
+  // Sarjat: top single (Vara 1 = RPE 9) + 2-3 backoff @ 80%
+  const tsbDay = ({ dayOfWeek, label, primaryName, primaryCategory, backoffSets, acc1Name, acc1Cat, acc2Name, acc2Cat }) => ({
+    dayOfWeek,
+    dayType: "heavy",
+    label,
+    slots: [
+      // Top single — Vara 1 = RPE 9 (Helms 2016 mappaus)
+      {
+        role: "primary", category: primaryCategory, defaultMovementName: primaryName,
+        sets: 1, reps: 1, targetVx: 1,
+        loadPct: null, // autoregulated by Vara
+        note: "Top single @ Vara 0-1 (RPE 9-9.5)",
+      },
+      // Backoff: 2-3 sarjaa × 3 toistoa @ 80% top-singleista
+      {
+        role: "backoff", category: primaryCategory, defaultMovementName: primaryName,
+        sets: backoffSets, reps: 3, targetVx: 3,
+        loadPct: 0.80, // PDF-VERIFIOITU (Androulakis-Korakakis 2021)
+        note: "Backoff 2-3×3 @ 80% top-singleista",
+      },
+      // 2 accessory antagonistille/synergistille
+      { role: "accessory", category: acc1Cat, defaultMovementName: acc1Name, sets: 3, reps: 8, targetVx: 2 },
+      { role: "accessory", category: acc2Cat, defaultMovementName: acc2Name, sets: 3, reps: 10, targetVx: 3 },
+      { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise", sets: 3, reps: 10, targetVx: null },
+    ],
+  });
+
+  // Viikko-progressio (Wendler-tyyppinen 4-vk sykli, YHDISTELMÄ — ei suoraa A-K 2021 -progressio-spekifikaatiota)
+  // backoffSets nousee progressiivisesti
+  const weeks = [
+    { week: 1, deltaPct: 0,     label: "Acclimatize",  backoffSets: 2 },
+    { week: 2, deltaPct: 0.025, label: "Top single +", backoffSets: 3 },
+    { week: 3, deltaPct: 0.05,  label: "Peak",         backoffSets: 3 },
+    { week: 4, deltaPct: -0.20, label: "Deload",       backoffSets: 2 },
+  ];
+
+  const weekDefs = weeks.map(w => ({
+    week: w.week,
+    deltaPctBase: w.deltaPct,
+    label: `${w.label} (Top-set+Backoff)`,
+    heavyReps: 1,
+    heavyTargetVx: w.label === "Deload" ? 4 : 1,
+  }));
+
+  const weekPlans = weeks.map(w => ({
+    week: w.week,
+    days: dayPrimaries.map(p => tsbDay({
+      dayOfWeek: p.day,
+      label: `Top-set+Backoff ${p.label} (${w.label})`,
+      primaryName: p.name,
+      primaryCategory: p.category,
+      backoffSets: w.backoffSets,
+      acc1Name: p.acc1Name, acc1Cat: p.acc1Cat,
+      acc2Name: p.acc2Name, acc2Cat: p.acc2Cat,
+    })),
+  }));
+
+  return {
+    mesocycleId: uid(),
+    type: "topSetBackoff",
+    startDateISO: startDateISO || todayISO(),
+    weekCount: 4,
+    weekDefs,
+    weekPlans,
+    postCycleAnalysis: null,
+    _programMeta: {
+      source: "Androulakis-Korakakis 2021 (PMC8435792) METD-konseptipaperi",
+      status: "PDF-VERIFIOITU (abstrakti)",
+      topSetRpe: [9.0, 9.5],
+      topSetVara: [0, 1],
+      backoffPercent: 0.80,
+      backoffReps: 3, // EI-TUTKIMUSPOHJAINEN (oletus)
+      progressionNote: "Wendler-pohjainen +2.5%/5% per sykli YHDISTELMÄ (Androulakis-Korakakis 2021 ei spesifioi progressiota)",
+    },
+  };
+}
+
+// ── Madcow 5×5 (5 vk, 3 päivää/vk Ma/Ke/Pe HLM-pattern) ──
+// Tutkimuspohja: anonyymi Madcow2-mukautus Bill Starr 1976 -pohjasta
+// RISTIINTARKISTETTU 3+ peilattua replikaa (violentzen, powerliftingtowin, stronglifts)
+// EI-TUTKIMUSPOHJAINEN — yhteisön mukautus, n=0 RCT
+//
+// HUOM: Madcow on PROSENTTIPOHJAINEN (+2.5%/vk top-setistä), EI absoluuttinen
+// +2.5/+5 lb/vk (= StrongLifts/SS, ei Madcow:n).
+function createMadcow5x5Mesocycle(startDateISO) {
+  // Ramp-prosentit: 50/62.5/75/87.5/100 % top-setistä (12.5% väli, RISTIINTARKISTETTU)
+  const rampPcts = [0.50, 0.625, 0.75, 0.875, 1.00];
+
+  // Päivien rakenne:
+  //   Ma (heavy):       3 päämääräliikkettä 5×5 ramp → top
+  //   Ke (light):       Squat 4×5 (sets 1-3 = Ma, set 4 = set 3 toistettu) + Press + Deadlift 4×5
+  //   Pe (heavy+backoff): 3 päämääräliikkettä 4×5 ramp + 1×3 @ +2.5% Ma-topista + 1×8 @ ~77.5% Ma-topista
+
+  // Päivän rakentaja-helperit
+  const fiveByFiveRamp = (name, category) => [
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 4, loadPct: rampPcts[0], madcowRampSet: 1 },
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 3, loadPct: rampPcts[1], madcowRampSet: 2 },
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 3, loadPct: rampPcts[2], madcowRampSet: 3 },
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 2, loadPct: rampPcts[3], madcowRampSet: 4 },
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 1, loadPct: rampPcts[4], madcowRampSet: 5, note: "Top set" },
+  ];
+
+  const fourByFiveLightRamp = (name, category) => [
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 4, loadPct: rampPcts[0], madcowRampSet: 1 },
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 4, loadPct: rampPcts[1], madcowRampSet: 2 },
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 3, loadPct: rampPcts[2], madcowRampSet: 3 },
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 3, loadPct: rampPcts[2], madcowRampSet: 4, note: "Wed: set 4 = set 3 toistettuna" },
+  ];
+
+  const fridayBackoff = (name, category) => [
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 4, loadPct: rampPcts[0], madcowRampSet: 1 },
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 3, loadPct: rampPcts[1], madcowRampSet: 2 },
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 3, loadPct: rampPcts[2], madcowRampSet: 3 },
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 5, targetVx: 2, loadPct: rampPcts[3], madcowRampSet: 4 },
+    { role: "primary", category, defaultMovementName: name, sets: 1, reps: 3, targetVx: 1, loadPct: 1.025, madcowRampSet: 5, note: "Fri: 1×3 @ +2.5% Ma-topista" },
+    { role: "backoff", category, defaultMovementName: name, sets: 1, reps: 8, targetVx: 3, loadPct: 0.775, note: "Fri backoff: 1×8 @ ~77.5% Ma-topista" },
+  ];
+
+  // ── Viikkojen rakentaminen ──
+  // weeklyAdjust = loadPct-säätö per viikko. Madcow alkaa vk1 = 92.5% nykyisestä
+  // 5RM:stä → +2.5%/vk → vk4 = 100% → vk5 = PR (102.5%+)
+  // RISTIINTARKISTETTU (Powerliftingtowin matemaattinen johto)
+  const weekAdjustments = [
+    { week: 1, weeklyMult: 0.925, label: "Vk1 (92.5% 5RM)" },
+    { week: 2, weeklyMult: 0.950, label: "Vk2 (95.0% 5RM)" },
+    { week: 3, weeklyMult: 0.975, label: "Vk3 (97.5% 5RM)" },
+    { week: 4, weeklyMult: 1.000, label: "Vk4 (100% 5RM)" },
+    { week: 5, weeklyMult: 1.025, label: "Vk5 PR-yritys (102.5%+ 5RM)" },
+  ];
+
+  // Päivärakenne (Ma/Ke/Pe)
+  const buildWeek = (weekNum, weeklyMult, label) => {
+    // Säädä loadPct viikon multiplierilla
+    const adjust = (slots) => slots.map(s => ({
+      ...s,
+      loadPct: typeof s.loadPct === "number" ? s.loadPct * weeklyMult : s.loadPct,
+    }));
+
+    return {
+      week: weekNum,
+      days: [
+        {
+          dayOfWeek: 1, dayType: "heavy", label: `Madcow Ma (Heavy) — ${label}`,
+          slots: [
+            ...adjust(fiveByFiveRamp("Takakyykky", "alaraaja")),
+            ...adjust(fiveByFiveRamp("Penkkipunnerrus", "horisontaalityöntö")),
+            ...adjust(fiveByFiveRamp("Penkkiveto", "horisontaaliveto")),
+            // Apuliikkeet: Madcow alkuperäinen = weighted hypers + weighted situps
+            { role: "accessory", category: "core", defaultMovementName: "Hyperextensio", sets: 2, reps: 10, targetVx: 3 },
+            { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise", sets: 4, reps: 10, targetVx: null },
+          ],
+        },
+        {
+          dayOfWeek: 3, dayType: "volume", label: `Madcow Ke (Light) — ${label}`,
+          slots: [
+            ...adjust(fourByFiveLightRamp("Takakyykky", "alaraaja")),
+            ...adjust(fourByFiveLightRamp("Pystypunnerrus", "vertikaalityöntö")),
+            ...adjust(fourByFiveLightRamp("Maastaveto", "alaraaja")),
+            { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise", sets: 3, reps: 10, targetVx: null },
+          ],
+        },
+        {
+          dayOfWeek: 5, dayType: "heavy", label: `Madcow Pe (Heavy+Backoff) — ${label}`,
+          slots: [
+            ...adjust(fridayBackoff("Takakyykky", "alaraaja")),
+            ...adjust(fridayBackoff("Penkkipunnerrus", "horisontaalityöntö")),
+            ...adjust(fridayBackoff("Penkkiveto", "horisontaaliveto")),
+            // Apuliikkeet: weighted dips, curls, triceps (alkuperäinen)
+            { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Dippi (kehonpaino)", sets: 3, reps: 8, targetVx: 3 },
+            { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 3, reps: 10, targetVx: null },
+          ],
+        },
+      ],
+    };
+  };
+
+  const weekPlans = weekAdjustments.map(w => buildWeek(w.week, w.weeklyMult, w.label));
+
+  const weekDefs = weekAdjustments.map(w => ({
+    week: w.week,
+    deltaPctBase: w.weeklyMult - 1.0, // -7.5%, -5%, -2.5%, 0%, +2.5%
+    label: w.label,
+    heavyReps: w.week === 5 ? 3 : 5,
+    heavyTargetVx: w.week === 5 ? 1 : (w.week >= 4 ? 1 : 2),
+  }));
+
+  return {
+    mesocycleId: uid(),
+    type: "madcow5x5",
+    startDateISO: startDateISO || todayISO(),
+    weekCount: 5,
+    weekDefs,
+    weekPlans,
+    postCycleAnalysis: null,
+    _programMeta: {
+      source: "Madcow2 EliteFitness anonyymi mukautus (Bill Starr 1976 -pohja)",
+      status: "RISTIINTARKISTETTU (3+ peilattua replikaa), EI-TUTKIMUSPOHJAINEN",
+      rampPercentages: rampPcts,
+      weeklyIncrementPercent: 0.025, // EI absoluuttinen +2.5/+5 lb!
+      fridayTriplePercentOfMondayTop: 1.025,
+      fridayBackoffPercentOfMondayTop: 0.775,
+      week1StartPercentOf5rm: 0.925,
+      weekToReachCurrent5rm: 4,
+      weekFirstPrAttempt: 5,
+      advancedWarning: "+2.5%/vk progressio on intermediate-lifterille. Advanced (15+v) → harkitse 1.0-1.5%/vk redukointia.",
+    },
+  };
+}
+
+// ─── AMRAP-konversio (Epley primary + Brzycki vertailu) ───────────────
+// Tutkimuspohja: Epley 1985 (Poundage Chart), Brzycki 1993 (JOPERD 64(1):88-90)
+// Reynolds 2006 (PDF-VERIFIOITU): >10 reps → linear-formulat epäluotettavia.
+// Wendler-kirjan kaava = Epley (PDF-VERIFIOITU yhdenmukaisuus).
+const MAX_RELIABLE_AMRAP_REPS = 10;       // PDF-VERIFIOITU (Reynolds 2006)
+const AMRAP_DEFAULT_RIR = 1;              // RISTIINTARKISTETTU (Wendler "1-2 reps in tank")
+
+function calculateE1RM_Epley(weight, reps) {
+  if (!Number.isFinite(weight) || weight <= 0) return 0;
+  if (!Number.isFinite(reps) || reps < 1) return 0;
+  if (reps === 1) return weight;
+  return weight * (1 + reps / 30);
+}
+
+function calculateE1RM_Brzycki(weight, reps) {
+  if (!Number.isFinite(weight) || weight <= 0) return 0;
+  if (!Number.isFinite(reps) || reps < 1) return 0;
+  if (reps >= 37) return 0; // Brzycki diverges
+  if (reps === 1) return weight;
+  return weight / (1.0278 - 0.0278 * reps);
+}
+
+// AMRAP-rep-määrästä → e1RM-arvio + reliability-info.
+// Käytetään esim. Wendler vk 3 1+ -sarjassa: jos atletti saa 5 toistoa @ 95% TM,
+// e1RM nousee niin paljon että seuraavan syklin TM voi nousta enemmän kuin
+// vakio +5/+10 lb. Tämä on Wendlerin "PR-set"-päätös.
+function amrapToE1RM(weight, achievedReps) {
+  const epley = calculateE1RM_Epley(weight, achievedReps);
+  const brzycki = calculateE1RM_Brzycki(weight, achievedReps);
+  const divergencePct = epley > 0 ? Math.abs(epley - brzycki) / epley * 100 : 0;
+  return {
+    e1rmPrimary: epley,
+    e1rmBrzycki: brzycki,
+    divergencePct,
+    isReliable: achievedReps <= MAX_RELIABLE_AMRAP_REPS,
+    warning: achievedReps > MAX_RELIABLE_AMRAP_REPS
+      ? "Reynolds 2006: linear formulas unreliable >10 reps" : null,
+    confidence: achievedReps <= 5 ? "high"
+              : achievedReps <= 10 ? "medium" : "low",
+    inferredRir: AMRAP_DEFAULT_RIR,
+    formulaUsed: "epley",
+    source: "Epley 1985 + Reynolds 2006 R²-validointi",
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // PROGRAM GENERATOR / WIZARD (v4.27)
 // ═══════════════════════════════════════════════════════════════
 //
@@ -3769,31 +4176,37 @@ const SKELETON_CATEGORY_TO_ROLE = {
 };
 
 // Goal → skeleton preset factory name
-// v4.47.0 (Track B Vaihe 2D-α): laajennettu 4 → 7 single-block-tyyliin.
-// Uudet: eksentrinen (4 vk), siirtyma (3 vk natiivi), palautuminen (2 vk natiivi).
-// HUOM: siirtyma + palautuminen ovat ainoita skeletoneja joiden natiivipituus
-// EI ole 4 vk. scaleWeekCount() ei tue 2/3-pituuksia → näille bypass-haara
-// generateCustomMesocycle:ssa joka säilyttää natiivipituuden.
+// v4.48.0 (Track B Vaihe 2D-β): laajennettu 7 → 10 single-block-tyyliin.
+// Uudet: wendler531 (4 vk), topSetBackoff (4 vk), madcow5x5 (5 vk natiivi).
+// HUOM: madcow5x5 on ainoa uusi joka käyttää natiivipituutta 5 vk (vk5 = PR-yritys).
 const GOAL_SKELETONS = {
-  hypertrofia:  "createHypertrofiaMesocycle",
-  maksimivoima: "createMaksimivoimaMesocycle",
-  yhdistelma:   "createDefaultMesocycle",
-  undulating:   "createDUPMesocycle",
-  eksentrinen:  "createEksenterinenMesocycle",
-  siirtyma:     "createSiirtymaMesocycle",
-  palautuminen: "createPalautuminenMesocycle",
+  hypertrofia:    "createHypertrofiaMesocycle",
+  maksimivoima:   "createMaksimivoimaMesocycle",
+  yhdistelma:     "createDefaultMesocycle",
+  undulating:     "createDUPMesocycle",
+  eksentrinen:    "createEksenterinenMesocycle",
+  siirtyma:       "createSiirtymaMesocycle",
+  palautuminen:   "createPalautuminenMesocycle",
+  // 2D-β:
+  wendler531:     "createWendler531Mesocycle",
+  topSetBackoff:  "createTopSetBackoffMesocycle",
+  madcow5x5:      "createMadcow5x5Mesocycle",
 };
 
 // Natiivipituudet (vk) skeleton-factory:ille. Jos goalin natiivipituus !== 4
 // → bypass scaleWeekCount() ja säilytä natiivipituus.
 const GOAL_NATIVE_WEEKS = {
-  hypertrofia:  4,
-  maksimivoima: 4,
-  yhdistelma:   4,
-  undulating:   4,
-  eksentrinen:  4,
-  siirtyma:     3,
-  palautuminen: 2,
+  hypertrofia:    4,
+  maksimivoima:   4,
+  yhdistelma:     4,
+  undulating:     4,
+  eksentrinen:    4,
+  siirtyma:       3,
+  palautuminen:   2,
+  // 2D-β:
+  wendler531:     4,
+  topSetBackoff:  4,
+  madcow5x5:      5,  // vk5 = PR-yritys (Powerliftingtowin RISTIINTARKISTETTU)
 };
 
 // ── Generator helpers ──
@@ -4022,7 +4435,7 @@ function generateCustomMesocycle(answers, startDateISOArg) {
   } = answers;
   const startDateISO = startDateISOArg || answers.startDateISO || todayISO();
 
-  // 1. Hae skeleton (v4.47.0: laajennettu 4 → 7 tyyliä)
+  // 1. Hae skeleton (v4.48.0: laajennettu 7 → 10 tyyliä — 2D-β klassikot)
   const skeletonFactoryName = GOAL_SKELETONS[goal] || GOAL_SKELETONS.yhdistelma;
   const skeletonFactories = {
     createHypertrofiaMesocycle,
@@ -4032,6 +4445,10 @@ function generateCustomMesocycle(answers, startDateISOArg) {
     createEksenterinenMesocycle,
     createSiirtymaMesocycle,
     createPalautuminenMesocycle,
+    // 2D-β:
+    createWendler531Mesocycle,
+    createTopSetBackoffMesocycle,
+    createMadcow5x5Mesocycle,
   };
   const factory = skeletonFactories[skeletonFactoryName];
   if (!factory) {
@@ -6328,6 +6745,13 @@ export {
   // v4.44.0 (Track B Vaihe 2C-β2): aito intensifikaatio + peaking-skeleton multi-blockille
   createIntensifikaatioMesocycle,
   createMultiBlockPeakingSkeleton,
+  // v4.48.0 (Track B Vaihe 2D-β): klassiset voimanosto-ohjelmat
+  createWendler531Mesocycle,
+  createTopSetBackoffMesocycle,
+  createMadcow5x5Mesocycle,
+  amrapToE1RM,
+  calculateE1RM_Epley,
+  calculateE1RM_Brzycki,
   // Custom program generator (v4.27)
   generateCustomMesocycle,
   // v4.42.0 (Track B Vaihe 2C-α): multi-blokki-mesocycle

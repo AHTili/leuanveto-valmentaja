@@ -31,7 +31,7 @@
 
 import { SCHEMA_INVARIANTS } from "./wizard-schema.js";
 
-export const MAPPER_VERSION = "2D-alpha-v1.0";
+export const MAPPER_VERSION = "2D-beta-v1.0";
 
 // ═══════════════════════════════════════════════════════════════════════
 // PROGRAM_STYLES — Adaptive multi-suggestion (Track B Vaihe 2D-α)
@@ -158,6 +158,43 @@ export const PROGRAM_STYLES = Object.freeze({
     goal: "palautuminen",
     factoryHint: "createPalautuminenMesocycle",
     sourceLabel: "Aktiivisen palautumisen konventio (Pää-app-skeleton)",
+  },
+  // ── 2D-β: klassiset voimanosto-ohjelmat ──
+  "single-wendler531": {
+    id: "single-wendler531",
+    label: "Wendler 5/3/1",
+    shortDesc: "Klassinen 4-vk sykli, AMRAP viim. sarja, BBB-assistance",
+    weekCount: 4,
+    bestFor: "Klassinen voimanostorakenne, autoreguloitu AMRAP",
+    iconHint: "📅",
+    isMultiBlock: false,
+    goal: "wendler531",
+    factoryHint: "createWendler531Mesocycle",
+    sourceLabel: "Wendler 2009 5/3/1 (T-Nation -artikkeli PDF-VERIFIOITU ydinprosenteille)",
+  },
+  "single-top-set-backoff": {
+    id: "single-top-set-backoff",
+    label: "Top-set + Backoff",
+    shortDesc: "1 raskas single @ Vara 0-1 + 2-3 backoff @ 80% top-singleista",
+    weekCount: 4,
+    bestFor: "Minimitehokas voimasignaali, ajan rajallisuus",
+    iconHint: "🎯",
+    isMultiBlock: false,
+    goal: "topSetBackoff",
+    factoryHint: "createTopSetBackoffMesocycle",
+    sourceLabel: "Androulakis-Korakakis 2021 (PMC8435792, METD-konseptipaperi)",
+  },
+  "single-madcow-5x5": {
+    id: "single-madcow-5x5",
+    label: "Madcow 5×5",
+    shortDesc: "5-vk lineaarinen progressio Ma/Ke/Pe HLM-pattern, +2.5%/vk",
+    weekCount: 5,
+    bestFor: "Intermediate, klassinen 5×5 ramp + PR-yritys vk5",
+    iconHint: "🏗️",
+    isMultiBlock: false,
+    goal: "madcow5x5",
+    factoryHint: "createMadcow5x5Mesocycle",
+    sourceLabel: "Madcow 5×5 (anonyymi yhteisön mukautus Bill Starr 1976 -pohjasta)",
   },
 });
 
@@ -436,11 +473,129 @@ export function pickProgramStyle(answers, opts = {}) {
     candidates.push(c);
   }
 
-  // ── Cap-säännöt (rajoittavat tyylejä sopimattomissa konteksteissa) ──
+  // ── 9. SINGLE-WENDLER531 (2D-β) ──
+  // Wendler 5/3/1 — klassinen voimanostorakenne, sopii kun atletti haluaa
+  // strukturoidun 4-vk-syklin AMRAP-progressiolla. Hyvä useimmille kokeneille.
+  {
+    const c = { styleId: "single-wendler531", style: PROGRAM_STYLES["single-wendler531"], confidence: 0, rationale: [], weekCount: 4 };
+    // Kohdeyleisö: powerlifting + max-tavoite + kokenut
+    if (isMaxGoal) {
+      c.confidence += 35;
+      c.rationale.push("Max-tavoite → Wendler 5/3/1 on klassinen voimanostorakenne (PDF-VERIFIOITU)");
+    } else if (isGenStrength) {
+      c.confidence += 20;
+      c.rationale.push("Yleinen voima → Wendler 5/3/1 tukee kestoa ja PR-progressiota");
+    }
+    if (isIntermPlus) {
+      c.confidence += 15;
+      c.rationale.push("Keskitaso+ pystyy hyödyntämään AMRAP-autoregulaatiota tarkasti");
+    } else {
+      c.confidence -= 5;
+      c.rationale.push("Aloittelijalle Wendler 5/3/1 vaatii kokemusta AMRAP-arviointiin (Vara ±1 tarkkuus)");
+    }
+    if (recent === "hypertrophy" || recent === "strength") {
+      c.confidence += 10;
+      c.rationale.push("Edellinen perinteinen blokki → Wendler on luonteva askel strukturoidulle voimasyklille");
+    } else if (recent === "peaking" || recent === "deload") {
+      c.confidence -= 5;
+      c.rationale.push(`Edellinen ${recent} → Wendler voi olla liian intensiivinen ilman volyymivaihetta`);
+    }
+    if (a.q25_rpePrecision === "vara_calibrated") {
+      c.confidence += 5;
+      c.rationale.push("Kalibroitunut Vara (±1) → AMRAP-tarkkuus parantaa Wendlerin TM-säätöä");
+    }
+    if (cutAggressive) {
+      c.confidence -= 10;
+      c.rationale.push("Aggressivinen cut + AMRAP-Wendler = ristiriita (BBB-volyymi 5×10 raskas)");
+    }
+    candidates.push(c);
+  }
+
+  // ── 10. SINGLE-TOP-SET-BACKOFF (2D-β) ──
+  // Androulakis-Korakakis 2021: minimitehokas voima — sopii kun aika rajallinen
+  // tai atletti haluaa puhdasta voimaa ilman korkeaa volyymia.
+  {
+    const c = { styleId: "single-top-set-backoff", style: PROGRAM_STYLES["single-top-set-backoff"], confidence: 0, rationale: [], weekCount: 4 };
+    if (isMaxGoal) {
+      c.confidence += 30;
+      c.rationale.push("Max-tavoite → top-single @ RPE 9 + 80% backoff on tehokas voimasignaali");
+    }
+    if (a.q23_volumePref === "MEV") {
+      c.confidence += 25;
+      c.rationale.push("Volyymipreferenssi MEV → minimitehokas top-set+backoff sopii suoraan");
+    } else if (a.q23_volumePref === "MAV") {
+      c.confidence += 5;
+      c.rationale.push("MAV-preferenssi → top-set+backoff:n volyymi on hieman alle suosittelusi");
+    } else if (a.q23_volumePref === "MRV") {
+      c.confidence -= 10;
+      c.rationale.push("MRV-preferenssi → top-set+backoff EI tuota tarpeeksi volyymia (vain 3-4 työnsarjaa/lift)");
+    }
+    if (isAdvancedPlus) {
+      c.confidence += 10;
+      c.rationale.push("Edistynyt taso sietää RPE 9-9.5 -voimasinglet (Zourdos 2016: kokenut atletti tarkka)");
+    } else if (tier === "beginner") {
+      c.confidence -= 15;
+      c.rationale.push("Aloittelijan RIR-tarkkuus heikko (Zourdos 2016 ES > NS p=0.023) → singlet riskialttiit");
+    }
+    // Lyhyt sessio ja tehokkuus
+    const sessionMin = Number(a.q24_frequency?.sessionLengthMinutes) || 60;
+    if (sessionMin < 60) {
+      c.confidence += 10;
+      c.rationale.push(`Sessio < 60 min → minimitehokas top-set+backoff sopii ajalliseen rajoitteeseen`);
+    }
+    if (cutAggressive) {
+      c.confidence += 5;
+      c.rationale.push("Aggressivinen cut → matala volyymi (top-set+backoff) sopii palautumiskapasiteetille");
+    }
+    candidates.push(c);
+  }
+
+  // ── 11. SINGLE-MADCOW-5x5 (2D-β) ──
+  // Madcow 5×5: intermediate-tason lineaarinen progressio. EI advanced (15+v)
+  // lifterille suoraan — yhteisön ohjeessa "+2.5%/vk on intermediate-arvo".
+  {
+    const c = { styleId: "single-madcow-5x5", style: PROGRAM_STYLES["single-madcow-5x5"], confidence: 0, rationale: [], weekCount: 5 };
+    if (tier === "intermediate") {
+      c.confidence += 40;
+      c.rationale.push("Keskitaso (1-3 v) → Madcow 5×5 on kohdistettu intermediate-LP:lle");
+    } else if (tier === "beginner") {
+      c.confidence += 15;
+      c.rationale.push("Aloittelija → Madcow toimii LP-ohjelmana, mutta StrongLifts/Starting Strength on yleensä parempi alkuun");
+    } else if (tier === "advanced") {
+      c.confidence -= 10;
+      c.rationale.push("Edistynyt (3-8 v) → +2.5%/vk progressio epärealistinen; redukoi 1-1.5%/vk tai harkitse blokkimallia");
+    } else if (tier === "elite") {
+      c.confidence -= 20;
+      c.rationale.push("Eliitti (8+ v) → +2.5%/vk on liian aggressiivinen, stagnaatio ehkä vk 5");
+    }
+    if (isMaxGoal || isGenStrength) {
+      c.confidence += 15;
+      c.rationale.push("Voima/yleinen voima → Madcow:n 5×5-ramp tukee voimakasvua");
+    }
+    if (recent === "off_program" || recent === "deload") {
+      c.confidence += 10;
+      c.rationale.push("Tulet pois ohjelmattomasta/deloadista → Madcow:n lineaarinen progressio palauttaa pohjan");
+    }
+    if (a.q24_frequency?.daysPerWeek === 3) {
+      c.confidence += 5;
+      c.rationale.push("3 päivää/vk → sopii suoraan Madcow:n Ma/Ke/Pe-rakenteeseen");
+    } else if (a.q24_frequency?.daysPerWeek > 3) {
+      c.confidence -= 5;
+      c.rationale.push("Yli 3 päivää/vk → Madcow:n HLM-pattern ei laajene helposti");
+    }
+    candidates.push(c);
+  }
+
+  // ── Cap-säännöt + rationale-fallback (rajoittavat tyylejä sopimattomissa konteksteissa) ──
   for (const c of candidates) {
-    // Eksentrinen MAX 70 jos beginner/intermediate
+    // Eksentrinen MAX 25 jos beginner/intermediate
     if (c.styleId === "single-eksentrinen" && !isAdvancedPlus && c.confidence > 5) {
       c.confidence = Math.min(c.confidence, 25);
+    }
+    // Rationale-fallback: jos style ei saanut yhtään perustelua, lisää geneerinen.
+    // Tämä takaa että UI näyttää aina jotain (eikä tyhjää korttia).
+    if (!Array.isArray(c.rationale) || c.rationale.length === 0) {
+      c.rationale = ["Yleisesti soveltuva tyyli — ei vahvaa kohdistusta profiiliisi tässä tapauksessa"];
     }
     // Min/max-rajoitus 0-100
     c.confidence = Math.max(0, Math.min(100, Math.round(c.confidence)));
@@ -1465,11 +1620,13 @@ export function mapWizardToMesocycle(wizardConfig, mainAppState, opts = {}) {
     goal = pickStartingBlock(a.q29_recentBlock, a.q12_primaryGoal);
   }
 
-  // 2D-α: viikkomäärä — jos goal-tyylin natiivipituus on lukko (siirtyma=3,
-  // palautuminen=2), käytä sitä. Muutoin tier-pohjainen pickWeekCount + anchor.
+  // 2D-α + 2D-β: viikkomäärä — jos goal-tyylin natiivipituus on lukko, käytä sitä.
+  // Lukot: siirtyma=3, palautuminen=2, madcow5x5=5 (PR-vk5 lopussa).
+  // Muutoin tier-pohjainen pickWeekCount + anchor.
   const PROGRAM_STYLE_NATIVE_WEEKS = {
     siirtyma: 3,
     palautuminen: 2,
+    madcow5x5: 5,
   };
   let weekCount;
   let anchorResult = { anchored: false, warning: null };
@@ -1699,14 +1856,25 @@ export function selfTestMapper() {
      RESIDUAL_DAYS.maximal_strength.mean === 30 && RESIDUAL_DAYS.maximal_strength.sd === 5);
   ck("RESIDUAL_DAYS maximal_speed = 5 ± 3 (Issurin)",
      RESIDUAL_DAYS.maximal_speed.mean === 5 && RESIDUAL_DAYS.maximal_speed.sd === 3);
-  ck("MAPPER_VERSION on 2D-alpha-v1.0", MAPPER_VERSION === "2D-alpha-v1.0");
+  ck("MAPPER_VERSION on 2D-beta-v1.0", MAPPER_VERSION === "2D-beta-v1.0");
 
-  // ─── 1b. PROGRAM_STYLES + pickProgramStyle (Track B Vaihe 2D-α) ────
+  // ─── 1b. PROGRAM_STYLES + pickProgramStyle (Track B Vaihe 2D-α + 2D-β) ────
   ck("PROGRAM_STYLES sisältää multi-issurin",
      !!PROGRAM_STYLES["multi-issurin"]);
-  ck("PROGRAM_STYLES sisältää 7 single-tyyliä",
+  ck("PROGRAM_STYLES sisältää 7 single-tyyliä (2D-α)",
      ["single-hypertrofia","single-maksimivoima","single-yhdistelma","single-dup","single-eksentrinen","single-siirtyma","single-palautuminen"]
        .every(k => !!PROGRAM_STYLES[k]));
+  ck("PROGRAM_STYLES sisältää 3 klassista voimanostotyyliä (2D-β)",
+     ["single-wendler531","single-top-set-backoff","single-madcow-5x5"]
+       .every(k => !!PROGRAM_STYLES[k]));
+  ck("PROGRAM_STYLES kokonaismäärä = 11 (1 multi + 10 single)",
+     Object.keys(PROGRAM_STYLES).length === 11);
+  ck("PROGRAM_STYLES single-wendler531 goal=wendler531",
+     PROGRAM_STYLES["single-wendler531"].goal === "wendler531");
+  ck("PROGRAM_STYLES single-madcow-5x5 weekCount=5",
+     PROGRAM_STYLES["single-madcow-5x5"].weekCount === 5);
+  ck("PROGRAM_STYLES single-top-set-backoff goal=topSetBackoff",
+     PROGRAM_STYLES["single-top-set-backoff"].goal === "topSetBackoff");
   ck("PROGRAM_STYLES single-siirtyma natiivipituus 3 vk",
      PROGRAM_STYLES["single-siirtyma"].weekCount === 3);
   ck("PROGRAM_STYLES single-palautuminen natiivipituus 2 vk",
@@ -1813,8 +1981,8 @@ export function selfTestMapper() {
     const unique = new Set(styleIds);
     ck("pickProgramStyle: ei duplikaatteja kandidaattilistalla",
        unique.size === styleIds.length);
-    ck("pickProgramStyle: kaikki 8 tyyliä esiintyy kandidaattilistalla",
-       styleIds.length === 8);
+    ck("pickProgramStyle: kaikki 11 tyyliä esiintyy kandidaattilistalla (2D-β)",
+       styleIds.length === 11);
   }
 
   // pickProgramStyle: kaikilla rationale[] täytetty
@@ -2125,7 +2293,7 @@ export function selfTestMapper() {
   ck("Deterministisyys: recoveryCapacity sama", det1.recoveryCapacity === det2.recoveryCapacity);
 
   // ─── 14. _wizardMeta-rakenteen täydellisyys ─────────────────────────
-  ck("_wizardMeta sisältää mapperVersion (2D-alpha-v1.0)", akseliResult._wizardMeta.mapperVersion === "2D-alpha-v1.0");
+  ck("_wizardMeta sisältää mapperVersion (2D-beta-v1.0)", akseliResult._wizardMeta.mapperVersion === "2D-beta-v1.0");
   ck("_wizardMeta sisältää wizardSchemaVersion",  akseliResult._wizardMeta.wizardSchemaVersion === "3.3");
   ck("_wizardMeta sisältää rules-array",          Array.isArray(akseliResult._wizardMeta.rules) && akseliResult._wizardMeta.rules.length > 0);
   ck("_wizardMeta.rules sisältää ACSM-säännön (Nunes + ACSM 2009)",
@@ -2587,6 +2755,145 @@ export function selfTestMapper() {
      dispResult4.isMultiBlock === true);
   ck("mapWizardToProgram(multi-issurin + kisapäivä): styleCandidates sisältää multi-issurin top-1",
      dispResult4._wizardMeta.styleCandidates[0].styleId === "multi-issurin");
+
+  // ════════════════════════════════════════════════════════════════
+  // ─── 2D-β: Klassiset voimanosto-ohjelmat (Wendler/TSB/Madcow) ────
+  // ════════════════════════════════════════════════════════════════
+
+  // pickProgramStyle: Wendler — max-tavoite + intermediate+ + kalibroitunut Vara
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "intermediate", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "auto",
+      q14_cutting: "no", q25_rpePrecision: "vara_calibrated",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 75 },
+    });
+    const wendler = cands.find(c => c.styleId === "single-wendler531");
+    ck("pickProgramStyle: max + intermediate + vara_calibrated → Wendler confidence > 50",
+       wendler && wendler.confidence > 50);
+  }
+
+  // pickProgramStyle: Top-set+Backoff — MEV + lyhyt sessio
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "strength", q23_volumePref: "MEV",
+      q14_cutting: "no",
+      q24_frequency: { daysPerWeek: 3, sessionLengthMinutes: 45 },
+    });
+    const tsb = cands.find(c => c.styleId === "single-top-set-backoff");
+    ck("pickProgramStyle: MEV + lyhyt sessio + advanced + max → top-set-backoff confidence > 60",
+       tsb && tsb.confidence > 60);
+  }
+
+  // pickProgramStyle: Top-set+Backoff — MRV → matala confidence
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "MRV",
+      q14_cutting: "no",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 90 },
+    });
+    const tsb = cands.find(c => c.styleId === "single-top-set-backoff");
+    ck("pickProgramStyle: MRV → top-set-backoff confidence pienempi (matala volyymi vs preferenssi)",
+       tsb && tsb.confidence < 40);
+  }
+
+  // pickProgramStyle: Madcow 5×5 — intermediate top-1 -kandidaatissa
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "intermediate", q12_primaryGoal: "general_strength",
+      q29_recentBlock: "off_program", q23_volumePref: "auto",
+      q14_cutting: "no",
+      q24_frequency: { daysPerWeek: 3, sessionLengthMinutes: 75 },
+    });
+    const madcow = cands.find(c => c.styleId === "single-madcow-5x5");
+    ck("pickProgramStyle: intermediate + general_strength + 3pv → Madcow confidence > 55",
+       madcow && madcow.confidence > 55);
+  }
+
+  // pickProgramStyle: Madcow EI sovellu eliitille (advanced/elite → penalty)
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "elite", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "MAV",
+      q14_cutting: "no",
+      q24_frequency: { daysPerWeek: 3, sessionLengthMinutes: 90 },
+    });
+    const madcow = cands.find(c => c.styleId === "single-madcow-5x5");
+    ck("pickProgramStyle: elite + max_1RM → Madcow confidence < 35 (LP epärealistinen)",
+       madcow && madcow.confidence < 35);
+  }
+
+  // mapWizardToMesocycle pakottaa Wendler531-goalin
+  {
+    const wendlerForced = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-wendler531" });
+    ck("mapWizardToMesocycle(selectedStyleId='single-wendler531'): goal=wendler531",
+       wendlerForced.goal === "wendler531");
+    ck("mapWizardToMesocycle Wendler: weekCount=4 (kanoninen sykli)",
+       wendlerForced.weekCount === 4);
+  }
+
+  // mapWizardToMesocycle pakottaa Top-set+Backoff-goalin
+  {
+    const tsbForced = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-top-set-backoff" });
+    ck("mapWizardToMesocycle(selectedStyleId='single-top-set-backoff'): goal=topSetBackoff",
+       tsbForced.goal === "topSetBackoff");
+  }
+
+  // mapWizardToMesocycle pakottaa Madcow-goalin (5 vk natiivi)
+  {
+    const madcowForced = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-madcow-5x5" });
+    ck("mapWizardToMesocycle(selectedStyleId='single-madcow-5x5'): goal=madcow5x5",
+       madcowForced.goal === "madcow5x5");
+    ck("mapWizardToMesocycle Madcow: weekCount=5 (natiivipituus PR-vk5)",
+       madcowForced.weekCount === 5);
+  }
+
+  // mapWizardToProgram dispatcher: kaikki 3 uutta styleId:tä
+  {
+    const dispWendler = mapWizardToProgram(akseliBase, null, { selectedStyleId: "single-wendler531" });
+    ck("mapWizardToProgram(single-wendler531): goal=wendler531",
+       dispWendler.goal === "wendler531");
+    ck("mapWizardToProgram(single-wendler531): chosenStyleId tallennettu",
+       dispWendler._wizardMeta.chosenStyleId === "single-wendler531");
+
+    const dispTSB = mapWizardToProgram(akseliBase, null, { selectedStyleId: "single-top-set-backoff" });
+    ck("mapWizardToProgram(single-top-set-backoff): goal=topSetBackoff",
+       dispTSB.goal === "topSetBackoff");
+
+    const dispMadcow = mapWizardToProgram(akseliBase, null, { selectedStyleId: "single-madcow-5x5" });
+    ck("mapWizardToProgram(single-madcow-5x5): weekCount=5",
+       dispMadcow.weekCount === 5);
+  }
+
+  // pickProgramStyle: 11 tyyliä esiintyy (ei duplikaatteja)
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "intermediate", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "MAV",
+      q14_cutting: "no",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 75 },
+    });
+    const styleIds = cands.map(c => c.styleId);
+    const unique = new Set(styleIds);
+    ck("pickProgramStyle (2D-β): 11 tyyliä esiintyy",
+       styleIds.length === 11);
+    ck("pickProgramStyle (2D-β): ei duplikaatteja",
+       unique.size === styleIds.length);
+  }
+
+  // pickProgramStyle: Wendler-rationaali sisältää AMRAP-tarkennuksen kalibroitunut Vara:lle
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "strength", q23_volumePref: "MAV",
+      q14_cutting: "no", q25_rpePrecision: "vara_calibrated",
+    });
+    const wendler = cands.find(c => c.styleId === "single-wendler531");
+    ck("pickProgramStyle Wendler: kalibroitunut Vara mainitaan rationale-listässä",
+       wendler && wendler.rationale.some(r => r.toLowerCase().includes("kalibr") || r.toLowerCase().includes("amrap")));
+  }
 
   return report;
 }
