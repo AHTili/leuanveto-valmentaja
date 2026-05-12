@@ -1464,6 +1464,31 @@ function dbPutBulk(storeName, items) {
   });
 }
 
+// v4.51.2: ensure new preset movements added in later versions get migrated
+// to existing IDB. seedPresets() ajetaan vain kerran (first install), joten
+// uudet liikkeet (esim. "Yhden jalan jalkaprässi" v4.48.0:ssa) eivät tule
+// automaattisesti vanhoille käyttäjille. Tämä funktio kutsutaan init():ssä
+// jokaisen sovelluksen avauksen yhteydessä — turvallinen idempotentti
+// (lisää vain puuttuvat nimet, ei muokkaa olemassa olevia rivejä).
+async function ensureNewPresetMovements() {
+  const existingMovements = await dbGetAll(STORES.movements);
+  if (existingMovements.length === 0) return { added: 0 }; // seedPresets hoitaa first-install
+  const existingNames = new Set(existingMovements.map(m => m.name));
+  const missing = PRESET_MOVEMENTS.filter(p => !existingNames.has(p.name));
+  if (missing.length === 0) return { added: 0 };
+  const toAdd = missing.map(m => ({
+    movementId: uid(),
+    name: m.name,
+    category: m.category,
+    isPrimary: m.isPrimary,
+    countsAsPullVolume: PULL_VOLUME_CATEGORIES.has(m.category),
+    isPreset: true,
+    tags: [],
+  }));
+  await dbPutBulk(STORES.movements, toAdd);
+  return { added: toAdd.length, names: toAdd.map(m => m.name) };
+}
+
 // ── Initialization: seed preset movements + variants ──
 async function seedPresets() {
   const existingMovements = await dbGetAll(STORES.movements);
@@ -7670,6 +7695,8 @@ export {
   // v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion auto-learn
   updateAggressivenessLearned,
   resetAggressivenessLearned,
+  // v4.51.2: migration helper — lisää uudet preset-liikkeet olemassa oleviin DB:ihin
+  ensureNewPresetMovements,
   // Backup / Restore
   exportFullBackup,
   importFullBackup,

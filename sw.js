@@ -640,7 +640,14 @@
 //          (q33_aggressivenessDefault lisäys schemassa). Pilot-regressio
 //          bittitarkasti: Akseli 64/64 0 ERROR, beginner 12/12 0 flagia,
 //          elite-female 12/12 0 flagia.
-const APP_VERSION = "4.51.1";
+// v4.51.2: ensureNewPresetMovements()-migraatio init():iin. seedPresets() ajaa
+//          vain kerran (first install), joten v4.48.0:n "Yhden jalan jalkaprässi"
+//          yms. uudet liikkeet eivät tulleet automaattisesti vanhoille
+//          käyttäjille. Nyt jokainen sovelluksen avaus tarkistaa puuttuvat
+//          preset-liikkeet ja lisää ne idempotentisti olemassa olevaan
+//          DB:hen ilman duplikointia. Live-verifioitu: poistettu liike IDB:stä,
+//          reload palauttaa sen automaattisesti.
+const APP_VERSION = "4.51.2";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
