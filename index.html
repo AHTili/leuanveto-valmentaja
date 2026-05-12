@@ -6244,12 +6244,17 @@ function renderActiveWorkout() {
   // MVT-haku liikkeelle (näytetään caveat jos < 0.5 m/s alueella, Behrmann 2025)
   const movementMvt = (typeof MOVEMENT_MVT !== "undefined" && MOVEMENT_MVT[exercise.name]) || null;
   const isLowVelocityZone = movementMvt !== null && movementMvt < 0.5;
+  // v4.49.2 QF-3: Zone-kynnys-rivi POISTETTU vel-panelista. velocityStop on jo
+  // näkyvissä exercise-heading-subBits:issä per-slot ("💎 Velocity-ankkuri · zone ≥
+  // X.XX m/s", rivi 5975) — primary ja backoff erikseen omilla arvoillaan. Vel-panel
+  // on per-set syöttöalue eikä per-slot meta — sama tieto kahdessa kohdassa hämmensi
+  // atleettia (K3 audit-flag). Set-termination-logiikka kerrotaan slotin metadatassa,
+  // ei per-rep-syötössä.
   const velocityPanelHTML = velocityAllowedForThisSet
     ? `<div class="vel-panel" id="vel-panel" style="display:none">
         <label>📊 Velocity per rep (m/s) <span class="hint">syötä 2 numeroa = "0,XX" · 3 numeroa = ≥ 1,0 m/s (esim. 120 = 1,20)</span></label>
         <div class="vel-rep-grid" id="vel-rep-grid">${repCellsHTML}</div>
         <div class="vel-rep-summary" id="vel-rep-summary"></div>
-        ${exercise.velocityStop ? `<div class="muted" style="font-size:11px;margin-top:4px">🎯 Zone-kynnys: ${exercise.velocityStop.toFixed(2)} m/s</div>` : ""}
         ${isLowVelocityZone ? `<div class="vel-caveat">⚠ Enode-mittaus tällä hidasalueella (alle 0,5 m/s) yliarvioi nopeutta hieman. Käytä mittauksia trendin seuraamiseen — älä luota yksittäiseen lukuun kisapäivän opener-valinnassa.</div>` : ""}
       </div>`
     : `<input type="hidden" id="input-set-velocity" value="">`;
@@ -11813,25 +11818,40 @@ async function startWorkout(backfillDateISO = null) {
   let warmupSets = [];
   if (!isPeakingMeso) {
     const wuLoad = rec?.targetExternalLoad;
-    const warmupPcts = wuLoad && wuLoad >= 60
-      ? [0, 0.30, 0.55, 0.75, 0.90]
-      : wuLoad && wuLoad >= 30
-        ? [0, 0.50, 0.80]
-        : wuLoad && wuLoad >= 20
-          ? [0, 0.60]
-          : null;
+    // v4.49.2 QF-1: Lue primary-slotin warmupSets-skeletonia (data.js RAMP_DEFAULT /
+    // RAMP_BARBELL tai presetti-spesifi). Aiemmin UI hardkoodasi [0.30, 0.55, 0.75, 0.90]
+    // ohittaen slot.warmupSets:in, mikä laukaisi K1-auditflag:in foundation V3-V4-
+    // tavoitteella (90% neural primer liian raskas). Fallback hardcoded-ramppiin jos
+    // skeletonia ei ole.
+    const primarySlotForWarmup = rec?.dayPlan?.slots?.find(s => s.role === "primary");
+    const skeletonRamp = Array.isArray(primarySlotForWarmup?.warmupSets) && primarySlotForWarmup.warmupSets.length > 0
+      ? primarySlotForWarmup.warmupSets
+      : null;
+    const warmupPcts = skeletonRamp && wuLoad
+      ? [0, ...skeletonRamp.map(r => r.pct).filter(p => typeof p === "number")]
+      : wuLoad && wuLoad >= 60
+        ? [0, 0.30, 0.55, 0.75, 0.90]
+        : wuLoad && wuLoad >= 30
+          ? [0, 0.50, 0.80]
+          : wuLoad && wuLoad >= 20
+            ? [0, 0.60]
+            : null;
     if (warmupPcts) {
-      warmupSets = warmupPcts.map((pct, i) => ({
-        idx: i,
-        targetReps: pct === 0 ? 5 : pct < 0.7 ? 3 : 2,
-        targetVx: null,
-        loadKg: roundToHalf(wuLoad * pct),
-        reps: null,
-        actualVx: null,
-        velocity: null,
-        completed: false,
-        isWarmup: true,
-      }));
+      warmupSets = warmupPcts.map((pct, i) => {
+        const skel = skeletonRamp ? skeletonRamp[i - 1] : null;
+        return {
+          idx: i,
+          targetReps: skel?.reps ?? (pct === 0 ? 5 : pct < 0.7 ? 3 : 2),
+          targetVx: null,
+          loadKg: roundToHalf(wuLoad * pct),
+          reps: null,
+          actualVx: null,
+          velocity: null,
+          completed: false,
+          isWarmup: true,
+          ...(skel?.note ? { note: skel.note } : {}),
+        };
+      });
     } else {
       // v4.22: Fallback — ensimmäisessä sessiossa rec.targetExternalLoad on
       // tyypillisesti null koska e1RM-historiaa ei ole. Generoi silti yleinen

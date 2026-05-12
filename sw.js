@@ -1,5 +1,42 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
-// LeVe AI v4.38.9 — Accessory-liikkeiden kuormat näkyviin Dashboardin
+// LeVe AI v4.49.2 — Track B Vaihe 2D-ε engine-korjaukset (QF-1/3/4/5 + MED-4 + Q1).
+//
+// QF-4 (engine.js:3105 DELOAD_OVERRIDE): label-pohjainen aktivointi pakottaa
+// volume-day myös presetti-built-in deload-vk:lle (streetlifting_16w vk 4/8/12,
+// default-meso vk 4). DELOAD_HEAVY_DAYTYPE 7/8 → 0/8.
+//
+// QF-5 (engine.js:2847 VL_CAP_RESOLVED): vlCapForContext-funktioon emit-callback,
+// recommend()-funktioon kutsu joka emittoi VL_CAP_RESOLVED-tracen primary-slotin
+// kontekstilla — audit-engine voi verifioida cap%, source ja targetRir.
+//
+// MED-4 (engine.js:2827 BLOCK_PHASE_TARGET_RIR.hypertrophy): lisätty hypertrophy: 2.5
+// (MAV-mid-range, Pareja-Blanco 25-35% VL). Audit-engine deriveBlockPhase tunnistaa
+// hypertrofia-meson erikseen. Elite-female K2 9 → 0.
+//
+// QF-1 (index.html:11816 K1 warmup-ramp): UI lukee primary-slot.warmupSets-skeletonia
+// hardcoded [0.30,0.55,0.75,0.90] sijaan. Engine.js injektoi ENGINE_DEFAULT_WARMUP_RAMP
+// (Helms 2017 40/55/70/85%) primary-slot:eihin joilla skeleton puuttuu. K1 6/8 → 0/8.
+//
+// QF-3 (index.html:6248 K3 vel-panel): "🎯 Zone-kynnys"-rivi POISTETTU vel-panelista.
+// velocityStop näkyy edelleen exercise-heading-subBits:issä per-slot ("💎 Velocity-
+// ankkuri · zone ≥ X.XX m/s"). Audit-engine K3-säännön kynnys tiukennettu 0.15 m/s.
+// K3 1/8 → 0/8.
+//
+// Q1 (engine.js:2664 slot.targetVx + bias-detection): targetRep1VelocityRange ottaa
+// slot.targetVx + biasDetected. Hybridi-päätös: RTF-reliable + ei-bias → slot luotettu,
+// muuten min(slot, block-default). detectGrindyBias laskee VBT_E1RM_CROSSCHECK
+// SIGNIFICANT ≥3 viim. 8 sessiossa. SLOT_TARGETVx_RESOLVED-trace dokumentoi päätöksen.
+// K2 7/8 → 0/8.
+//
+// Audit-engine.mjs (tools/engine-pilot/lib/): K1 Variant B poistettu (UI korjattu),
+// K2 käyttää tutkimusrange-tarkistusta + hand-tuned preset opt-out, K3 kynnys tiuken-
+// nettu, deriveBlockPhase tunnistaa "Loading"/"Overreach" labelit + hypertrofia-meson.
+//
+// Akselin streetlifting_16w preset säilyy PRESET_PROGRESSION_BY_DESIGN (30) +
+// uusi PRESET_TARGETVX_BY_DESIGN (7) — molemmat INFO-tasolla _programMeta.handTuned:in
+// kautta.
+//
+// v4.38.9 — Accessory-liikkeiden kuormat näkyviin Dashboardin
 // päivänäkymässä. Aiemmin vain pääliikkeen (⭐) kuorma näkyi; backoff +
 // secondary + calibration näkyivät jo, mutta accessory-liikkeet (Chest-
 // supported row, Incline curl jne.) jäivät ilman kuormaa.
@@ -555,7 +592,7 @@
 // v4.41.0: Track B Vaihe 2B-γ — q26-PR-migraatio + q30-energiabudjetti.
 // v4.40.0: Track B Vaihe 2B-β — wizard-pohjaisen ohjelman generointi.
 // v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen.
-const APP_VERSION = "4.49.1";
+const APP_VERSION = "4.49.2";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
