@@ -912,6 +912,34 @@
     .vel-panel label { margin-top: 0; font-size: 11px; }
     .vel-panel input { margin-top: 4px; }
 
+    /* v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion cards */
+    .sugg-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 10px; }
+    @media (max-width: 480px) { .sugg-row { grid-template-columns: 1fr; gap: 6px; } }
+    .sugg-card { background: var(--card2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px 10px; cursor: pointer; transition: all 0.15s ease; position: relative; }
+    .sugg-card:hover { border-color: var(--border2, var(--border)); background: var(--card); }
+    .sugg-card.selected { border-color: var(--acc); background: rgba(79, 140, 255, 0.06); box-shadow: 0 0 0 1px var(--acc) inset; }
+    .sugg-card.default-pick::before { content: "Suositus"; position: absolute; top: -8px; left: 8px; background: var(--acc); color: #fff; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 3px; letter-spacing: 0.3px; }
+    .sugg-card .sugg-label { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .sugg-card.selected .sugg-label { color: var(--acc); }
+    .sugg-card .sugg-load { font-size: 18px; font-weight: 800; color: var(--text, var(--txt)); font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .sugg-card .sugg-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .sugg-card .sugg-rationale { font-size: 10px; color: var(--dim); margin-top: 6px; line-height: 1.35; }
+    .sugg-card .sugg-why-btn { font-size: 9px; color: var(--acc); cursor: pointer; margin-top: 5px; display: inline-block; padding: 2px 0; user-select: none; }
+    .sugg-card .sugg-why-btn:hover { text-decoration: underline; }
+    .sugg-hint { font-size: 10.5px; color: var(--dim); margin-top: 8px; line-height: 1.4; padding: 6px 8px; background: rgba(99, 102, 241, 0.04); border-left: 2px solid rgba(99, 102, 241, 0.3); border-radius: 3px; }
+    .sugg-why-panel { margin-top: 8px; padding: 10px 12px; background: var(--card2); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 11.5px; line-height: 1.45; }
+    .sugg-why-panel h4 { margin: 0 0 6px; font-size: 12px; color: var(--text, var(--txt)); }
+    .sugg-why-panel .sugg-why-row { padding: 4px 0; border-bottom: 1px dashed var(--border); display: flex; gap: 8px; align-items: flex-start; }
+    .sugg-why-panel .sugg-why-row:last-child { border-bottom: none; }
+    .sugg-why-panel .sugg-why-icon { flex-shrink: 0; opacity: 0.7; }
+    .sugg-why-panel .sugg-why-text { flex: 1; color: var(--muted); }
+    .sugg-why-panel .sugg-why-text b { color: var(--text, var(--txt)); }
+    .sugg-trace-toggle { font-size: 10px; color: var(--acc); cursor: pointer; margin-top: 8px; display: inline-block; user-select: none; }
+    .sugg-trace-toggle:hover { text-decoration: underline; }
+    .sugg-trace-panel { margin-top: 6px; padding: 8px 10px; background: var(--card); border: 1px dashed var(--border); border-radius: var(--radius-sm); font-size: 10.5px; line-height: 1.4; color: var(--muted); }
+    .sugg-trace-panel .sugg-trace-row { padding: 3px 0; border-bottom: 1px dotted var(--border); }
+    .sugg-trace-panel .sugg-trace-row:last-child { border-bottom: none; }
+
     /* v4.38.0 (Phase 1C): Per-rep MV-grid (mvReps[]) — Enode working-set syöttö */
     .vel-rep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 6px; margin-top: 6px; }
     .vel-rep-cell { display: flex; flex-direction: column; align-items: stretch; }
@@ -1045,6 +1073,8 @@ import {
   getVariantsForMovement, getVariantByName, getAllVariants,
   getAllSessions, getSession, saveSession, deleteSession,
   getSetsForSession, getAllSets, saveSet, saveSets, deleteSet,
+  // v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion auto-learn
+  updateAggressivenessLearned, resetAggressivenessLearned,
   // v4.38.1 (Phase 2D): saveDecisionTrace VL_CAP_TRIGGERED-loggaukseen
   saveDecisionTrace,
   savePendingWorkoutLocal, loadPendingWorkoutLocal, clearPendingWorkoutLocal,
@@ -3999,6 +4029,25 @@ async function handleGenerateProgram() {
     console.warn("[LeVe] PR-migraatio epäonnistui (mesocycle aktivoitu silti):", e);
   }
 
+  // 8b. v4.51.0 (Track B 2D-δ-C): Seed preferredSuggestionBias + aggressivenessLearned
+  // wizardin q33_aggressivenessDefault -vastauksesta. Aiemmat asetukset ohitetaan
+  // wizard-jälkeisessä uudessa ohjelmassa (käyttäjä voi muuttaa Asetuksista jälkikäteen).
+  try {
+    const styleAnswer = wizardConfig.answers?.q33_aggressivenessDefault;
+    if (styleAnswer === "stable" || styleAnswer === "balanced" || styleAnswer === "challenging") {
+      const seedLearned = styleAnswer === "stable" ? -0.3
+        : styleAnswer === "challenging" ? 0.3
+        : 0;
+      const curSettings = await getSettings();
+      curSettings.preferredSuggestionBias = styleAnswer;
+      curSettings.aggressivenessLearned = seedLearned;
+      await saveSettings(curSettings);
+      state.settings = curSettings;
+    }
+  } catch (e) {
+    console.warn("[LeVe] preferredSuggestionBias seed epäonnistui:", e);
+  }
+
   // 9. Päivitä state + redirect Dashboard:lle + toast
   state.mesocycle = newMeso;
   state.allMesocycles = await getAllMesocycles();
@@ -5811,6 +5860,286 @@ function renderModalSession(sess) {
   </div>`;
 }
 
+// v4.51.0 (Track B 2D-δ-C): Suomenkielinen trace-explainer Q3:n "Miksi tämä paino?"
+// -näkymälle. EI tutkijaviittauksia UI-stringeissä (Pareja-Blanco / Behrmann /
+// Helms / Latella). Map<ruleId, (trace) → { icon, label, detail }>. detail saa
+// trace.after / trace.before kentät kontekstina jotta arvot tulevat dynaamisesti.
+const SUGGESTION_TRACE_EXPLAINERS = {
+  PLAN_BASED_E1RM: (t) => ({
+    icon: "🚀",
+    label: "Plan-based-aktivointi",
+    detail: t.after?.e1rmExternal
+      ? `Edellinen sessio meni hyvin — 1RM-arvio nostettu ${Number(t.after.e1rmExternal).toFixed(1)} kg`
+      : "Edellinen sessio meni hyvin — 1RM-arvio nostettu suunnitelman pohjalta",
+  }),
+  CFG_DRIFT_APPLIED: (t) => {
+    const drift = Number(t.after?.driftPct);
+    const dStr = Number.isFinite(drift) ? `${(drift * 100).toFixed(1)} %` : "tunnistetun verran";
+    return {
+      icon: "📐",
+      label: "Engine on oppinut sinusta",
+      detail: `Engine on oppinut, että teet ${dStr} paremmin kuin engine alunperin arvioi`,
+    };
+  },
+  VARA_TREND_CORRECTION: (t) => {
+    const adj = Number(t.after?.adjustmentPct);
+    const adjStr = Number.isFinite(adj) ? `${(adj * 100).toFixed(1)} %` : "korjauksen verran";
+    const meanVx = t.after?.meanOvershoot;
+    return {
+      icon: "📊",
+      label: "Vx-trendi-korjaus",
+      detail: meanVx != null
+        ? `Viimeiset sarjat: keskimäärin V+${meanVx.toFixed?.(1) ?? meanVx} → kuorma-säätö ${adjStr}`
+        : `Vx-trendi havaittu: kuorma-säätö ${adjStr}`,
+    };
+  },
+  VBT_E1RM_CROSSCHECK: (t) => {
+    const sig = t.after?.significance;
+    if (sig === "SIGNIFICANT") {
+      return {
+        icon: "💎",
+        label: "Velocity-data ristiintarkistettu",
+        detail: "Velocity-data viittaa hieman eri tasoon kuin Vx-raportointi — engine suosii varovaisuutta",
+      };
+    }
+    return {
+      icon: "💎",
+      label: "Velocity-ristiintarkistus",
+      detail: "Velocity-data on linjassa Vx-raportoinnin kanssa",
+    };
+  },
+  SLOT_TARGETVx_RESOLVED: (t) => {
+    const tgt = t.after?.targetVx;
+    const src = t.after?.source;
+    const tStr = tgt != null ? `V${tgt}` : "V?";
+    if (src === "preset" || src === "slot.targetVx") {
+      return {
+        icon: "🎯",
+        label: "Tavoite-Vx",
+        detail: `Tavoite ${tStr} — lähde: ohjelma-tekijän valinta (luotettu)`,
+      };
+    }
+    if (src === "block-default") {
+      return {
+        icon: "🎯",
+        label: "Tavoite-Vx",
+        detail: `Tavoite ${tStr} — lähde: blokin oletus (konservatiivinen suoja)`,
+      };
+    }
+    return {
+      icon: "🎯",
+      label: "Tavoite-Vx",
+      detail: `Tavoite ${tStr}`,
+    };
+  },
+  VL_CAP_RESOLVED: (t) => {
+    const cap = t.after?.cap;
+    const capStr = typeof cap === "number" ? `${cap} %` : "blokki-oletus";
+    return {
+      icon: "🛡",
+      label: "Velocity-loss-yläraja",
+      detail: `Sarjan sisäinen nopeuden pudotus-stop: ${capStr}`,
+    };
+  },
+  RTF_MODEL_STATUS: (t) => {
+    const status = t.after?.status;
+    const n = t.after?.n;
+    if (status === "reliable") {
+      return {
+        icon: "✅",
+        label: "Velocity-malli luotettava",
+        detail: n ? `Henkilökohtainen velocity-malli kalibroitu (${n} datapistettä)` : "Henkilökohtainen velocity-malli kalibroitu",
+      };
+    }
+    if (status === "preview") {
+      return {
+        icon: "🌱",
+        label: "Velocity-malli rakentuu",
+        detail: "Velocity-malli rakentuu — engine pitää lisätietoa varovaisuutena",
+      };
+    }
+    if (status === "insufficient" || status === "no-data") {
+      return {
+        icon: "📭",
+        label: "Velocity-data puuttuu",
+        detail: "Velocity-mallia ei ole vielä — engine käyttää konservatiivisia oletuksia",
+      };
+    }
+    return {
+      icon: "📊",
+      label: "Velocity-malli",
+      detail: `Tila: ${status || "tuntematon"}`,
+    };
+  },
+  PROGRESSION_RATE_LIMIT: (t) => {
+    const cap = t.after?.weeklyCap;
+    const capStr = typeof cap === "number" ? `${(cap * 100).toFixed(0)} %` : "yläraja";
+    return {
+      icon: "🛡",
+      label: "Progressio-yläraja",
+      detail: `Max ${capStr} kuorma-kasvua per viikko`,
+    };
+  },
+  PROGRESSION_FLOOR_CAP: () => ({
+    icon: "⬆",
+    label: "Suoja edelliseen",
+    detail: "Engine ei laske kuormaa edelliseen verrattuna ilman erityistä syytä",
+  }),
+  PRESET_PROGRESSION_BY_DESIGN: () => ({
+    icon: "🎯",
+    label: "Ohjelma-tekijän valinta",
+    detail: "Tämän viikon kuorma-hyppy on tarkoituksellinen kokeneen atletin ohjelmassa",
+  }),
+  PRESET_TARGETVX_BY_DESIGN: () => ({
+    icon: "🎯",
+    label: "Ohjelma-tekijän Vx-valinta",
+    detail: "Vx-tavoite on tarkoituksellinen ohjelma-tekijän valinta",
+  }),
+};
+
+// v4.51.0: Suppression-syiden suomennos (rec.suggestionContext.aggressiveSuppressedReasons).
+// Käytetään UI:n vihjeessä kun AGGRESSIVE-kortti piilotettu.
+const SUGGESTION_SUPPRESSION_LABELS = {
+  "readiness-cap": "Palautuminen kesken",
+  "recent-failure": "Edellinen sessio meni failureen",
+  "grindy-bias": "Engine huomasi epätarkkuutta Vx-raportoinnissa",
+  "rtf-not-reliable": "Velocity-malli rakentuu",
+  "deload-phase": "Kevennysviikko",
+  "non-progression-day": "Speed-/kisapäivä — ei progressiota",
+};
+
+// v4.51.0: Top-3 priorisointi traceille (Q3 design). Korkein järjestyspaikka ensin.
+const SUGGESTION_TRACE_PRIORITY = [
+  "PLAN_BASED_E1RM",
+  "CFG_DRIFT_APPLIED",
+  "VARA_TREND_CORRECTION",
+  "VBT_E1RM_CROSSCHECK",
+  "SLOT_TARGETVx_RESOLVED",
+  "VL_CAP_RESOLVED",
+  "RTF_MODEL_STATUS",
+  "PROGRESSION_RATE_LIMIT",
+  "PROGRESSION_FLOOR_CAP",
+  "PRESET_PROGRESSION_BY_DESIGN",
+  "PRESET_TARGETVX_BY_DESIGN",
+];
+
+// v4.51.0: Renderöi 1-3 suggestion-korttia primary-työsarjalle.
+// rec = state.recommendation, w = state.workout, exercise = aktiivinen primary-ex.
+function renderSuggestionCardsHTML(rec, w, exercise) {
+  if (!rec || !Array.isArray(rec.suggestions) || rec.suggestions.length === 0) return "";
+  if (exercise.role !== "primary") return "";
+  // Atletti valitsee ennen 1. työsarjan completionia. Sen jälkeen valinta lukittuu
+  // ja kortit näkyvät vain "selected"-tilassa muistutuksena.
+  const workSetsCompleted = exercise.sets.filter(s => s.completed && !s.isWarmup).length;
+  const selectionLocked = workSetsCompleted >= 1;
+  const selectedId = w.selectedSuggestionId
+    || rec.defaultSuggestionId
+    || "target";
+  const cards = rec.suggestions.map(s => {
+    const isSelected = s.id === selectedId;
+    const isDefault = s.id === rec.defaultSuggestionId;
+    const loadStr = typeof s.targetExternalLoad === "number"
+      ? `${roundToHalf(s.targetExternalLoad)} kg`
+      : "—";
+    const vxStr = (typeof s.targetVx === "number") ? `V${s.targetVx}` : "—";
+    const reps = s.targetReps ?? "?";
+    const sets = s.setCount ?? "?";
+    const clickAttr = selectionLocked
+      ? ""
+      : ` data-sugg-pick="${s.id}"`;
+    return `<div class="sugg-card${isSelected ? " selected" : ""}${isDefault ? " default-pick" : ""}"${clickAttr}>
+      <div class="sugg-label">${escapeHtml(s.label || s.id)}</div>
+      <div class="sugg-load">${loadStr}</div>
+      <div class="sugg-meta">${sets}×${reps} · ${vxStr}</div>
+      <div class="sugg-rationale">${escapeHtml(s.rationaleShort || "")}</div>
+      <span class="sugg-why-btn" data-sugg-why="${s.id}">Miksi tämä?</span>
+    </div>`;
+  }).join("");
+  const suppressed = rec.suggestionContext?.aggressiveSuppressedReasons || [];
+  let hintHTML = "";
+  if (suppressed.length > 0) {
+    const labels = suppressed.map(r => SUGGESTION_SUPPRESSION_LABELS[r] || r).join(" · ");
+    hintHTML = `<div class="sugg-hint">Rohkea-kortti piilotettu: ${escapeHtml(labels)}</div>`;
+  }
+  const lockedHint = selectionLocked
+    ? `<div class="sugg-hint">Valinta lukittu — sarja on aloitettu</div>`
+    : "";
+  // Trace-paneeli (collapsed by default) — atletti voi avata "Miksi tämä paino?"
+  const traceToggleHTML = `<span class="sugg-trace-toggle" data-sugg-trace-toggle>📊 Näytä koko päätösketju</span>
+    <div class="sugg-trace-panel" id="sugg-trace-panel" style="display:none">${renderSuggestionTracePanelHTML(rec)}</div>`;
+  // Per-kortti delta-rationale -paneeli (collapsed). Avautuu "Miksi tämä?"-klikistä.
+  const whyPanelHTML = `<div class="sugg-why-panel" id="sugg-why-panel" style="display:none"></div>`;
+  return `<div class="sugg-row">${cards}</div>${hintHTML}${lockedHint}${whyPanelHTML}${traceToggleHTML}`;
+}
+
+// v4.51.0: Renderöi jaettu trace-paneeli (Q3 C: collapsed by default).
+function renderSuggestionTracePanelHTML(rec) {
+  const traces = Array.isArray(rec.traces) ? rec.traces : [];
+  if (traces.length === 0) return `<div class="sugg-trace-row">Ei trace-tietoa saatavilla.</div>`;
+  // Priorisoi top-3 + lisää RTF/VL/SLOT-trace:t
+  const priorityIds = new Set(SUGGESTION_TRACE_PRIORITY);
+  const matched = traces.filter(t => priorityIds.has(t.ruleId));
+  // Järjestä prioriteetin mukaan
+  matched.sort((a, b) => {
+    const ai = SUGGESTION_TRACE_PRIORITY.indexOf(a.ruleId);
+    const bi = SUGGESTION_TRACE_PRIORITY.indexOf(b.ruleId);
+    return ai - bi;
+  });
+  if (matched.length === 0) {
+    return `<div class="sugg-trace-row">Ei prioriteettitraceja tälle ehdotukselle.</div>`;
+  }
+  // Pidä max 6 riviä jotta UI ei kasva liikaa
+  const items = matched.slice(0, 6).map(t => {
+    const exp = SUGGESTION_TRACE_EXPLAINERS[t.ruleId];
+    const out = exp ? exp(t) : { icon: "•", label: t.ruleId, detail: t.why || "" };
+    return `<div class="sugg-trace-row"><span style="margin-right:6px">${out.icon}</span><b>${escapeHtml(out.label)}</b> — ${escapeHtml(out.detail)}</div>`;
+  });
+  return items.join("");
+}
+
+// v4.51.0: Per-kortti delta-rationale (Q5 C). Avautuu "Miksi tämä?"-klikistä.
+function renderSuggestionWhyHTML(suggId, rec) {
+  if (!rec) return "";
+  const sugg = (rec.suggestions || []).find(s => s.id === suggId);
+  if (!sugg) return "";
+  const target = (rec.suggestions || []).find(s => s.id === "target");
+  const targetLoad = target?.targetExternalLoad;
+  const targetVx = target?.targetVx;
+  let rows = [];
+  if (suggId === "safe") {
+    rows.push({ icon: "🛡", text: "<b>Varovainen-tier:</b> 1.5 % kevyempi kuin Tavoite + 1 V-yksikkö enemmän varaa." });
+    rows.push({ icon: "💡", text: "Sopii väsyneenä, palautumisen yhteydessä, tai kun haluat kunnioittavan päivän." });
+    if (typeof targetLoad === "number" && typeof sugg.targetExternalLoad === "number") {
+      const diff = sugg.targetExternalLoad - targetLoad;
+      rows.push({ icon: "📐", text: `Kuorma-ero Tavoitteeseen: <b>${diff.toFixed(1)} kg</b> (V${sugg.targetVx} vs V${targetVx}).` });
+    }
+  } else if (suggId === "target") {
+    rows.push({ icon: "🎯", text: "<b>Tavoite-tier:</b> engine-suositus nykyisestä progressiosta." });
+    rows.push({ icon: "📊", text: "Tämä on backward-compat-ankkuri — kaikki engine-laskenta tähtää tähän pisteeseen." });
+    rows.push({ icon: "📋", text: "Avaa alta koko päätösketju näkyviin." });
+  } else if (suggId === "aggressive") {
+    rows.push({ icon: "🔥", text: "<b>Rohkea-tier:</b> 1.5 % raskaampi kuin Tavoite + 1 V-yksikkö vähemmän varaa." });
+    rows.push({ icon: "💡", text: "Konteksti tukee korkeampaa stimulusta: palautuminen kunnossa, edellinen sessio meni hyvin, velocity-malli luotettava." });
+    if (typeof targetLoad === "number" && typeof sugg.targetExternalLoad === "number") {
+      const diff = sugg.targetExternalLoad - targetLoad;
+      rows.push({ icon: "📐", text: `Kuorma-ero Tavoitteeseen: <b>+${diff.toFixed(1)} kg</b> (V${sugg.targetVx} vs V${targetVx}).` });
+    }
+  }
+  const rowsHTML = rows.map(r => `<div class="sugg-why-row"><span class="sugg-why-icon">${r.icon}</span><span class="sugg-why-text">${r.text}</span></div>`).join("");
+  return `<h4>${escapeHtml(sugg.label || sugg.id)} — Miksi tämä?</h4>${rowsHTML}`;
+}
+
+// v4.51.0: Pieni HTML-escape jotta käyttäjäsyötteet eivät vuoda DOMiin.
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function renderActiveWorkout() {
   const w = state.workout;
   if (!w) return "";
@@ -6153,6 +6482,14 @@ function renderActiveWorkout() {
         <span class="vals">${targetReps} ${repsUnit} · ${targetVxStr}</span>
       </div>${vxExplainerHTML}`;
 
+  // v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion -kortit primary-työsarjalle.
+  // Kortit näkyvät vain primary-roolissa työsarjojen aikana (ei warmupissa). Backward
+  // compat: jos rec.suggestions puuttuu (esim. fallback-tilassa), suggCardsHTML on
+  // tyhjä eikä mitään näy. heroHTML:n alarivi pysyy ennallaan (targetRowHTML).
+  const suggCardsHTML = (!isWarmupSet && exercise.role === "primary")
+    ? renderSuggestionCardsHTML(rec, w, exercise)
+    : "";
+
   // Work-set hero
   const heroHTML = isWarmupSet ? "" : `<div class="load-hero">
     <div class="set-line">
@@ -6167,6 +6504,7 @@ function renderActiveWorkout() {
     <div class="load-edit-hint">Napauta lukua muokataksesi painoa</div>
     ${prevGhostHTML}
     ${targetRowHTML}
+    ${suggCardsHTML}
   </div>`;
 
   // Warmup card (simpler — chip + load + hint)
@@ -10035,6 +10373,45 @@ function renderSettingsView() {
       </div>
     </div>
 
+    ${(() => {
+      // v4.51.0 (Track B 2D-δ-C): Adaptive suggestion bias -asetukset
+      const bias = s.preferredSuggestionBias || "balanced";
+      const learned = typeof s.aggressivenessLearned === "number" ? s.aggressivenessLearned : 0;
+      const learnedLabel = learned >= 0.4 ? "suosit haastavia"
+        : learned <= -0.4 ? "suosit vakaita"
+        : Math.abs(learned) <= 0.1 ? "tasapainoinen"
+        : learned > 0 ? "lievästi haastavia"
+        : "lievästi vakaita";
+      const learnedBar = Math.round((learned + 1) * 50);
+      return `<div class="card">
+        <div class="card-title">🎚 Adaptiivinen ehdotusvalinta</div>
+        <div class="muted" style="font-size:12px;margin-bottom:10px">Engine ehdottaa pää­liikkeessä 1–3 vaihtoehtoa (Varovainen / Tavoite / Rohkea). Valitse oletustyyli — engine oppii valintahistoriastasi ja säätää automaattisesti.</div>
+        <label style="margin-top:0;font-size:13px;font-weight:600">Oletusvalinta-tyyli</label>
+        <div class="btn-group" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px">
+          <button class="btn btn-sm btn-outline ${bias === "stable" ? "active" : ""}" data-sugg-bias="stable">Vakaa</button>
+          <button class="btn btn-sm btn-outline ${bias === "balanced" ? "active" : ""}" data-sugg-bias="balanced">Tasapainoinen</button>
+          <button class="btn btn-sm btn-outline ${bias === "challenging" ? "active" : ""}" data-sugg-bias="challenging">Haastava</button>
+        </div>
+        <div class="muted" style="font-size:11px;margin-top:6px">
+          ${bias === "stable" ? "Engine suosii Varovaista — sopii palautuvalle tai epävarmalle tilanteelle." :
+            bias === "challenging" ? "Engine suosii Rohkeaa — kokenut atletti joka tuntee kapasiteettinsa." :
+            "Engine valitsee kontekstin perusteella."}
+        </div>
+        <div style="margin-top:14px;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--card2)">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.3px">Engine on oppinut sinusta</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <div style="flex:1;height:8px;background:var(--border);border-radius:4px;position:relative;overflow:hidden">
+              <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--dim)"></div>
+              <div style="position:absolute;top:0;bottom:0;background:var(--acc);width:6px;left:calc(${learnedBar}% - 3px);border-radius:3px"></div>
+            </div>
+            <span style="font-size:11px;font-variant-numeric:tabular-nums;min-width:50px;text-align:right">${learned >= 0 ? "+" : ""}${learned.toFixed(2)}</span>
+          </div>
+          <div class="muted" style="font-size:11px;margin-top:6px">Tulkinta: <b>${learnedLabel}</b>. Päivittyy automaattisesti session-historian perusteella (3 peräkkäistä saman tier:n valintaa siirtää bias-arvoa; failure/RED-cap palauttaa varovaisemmaksi).</div>
+          <button class="btn btn-sm btn-outline" id="btn-reset-aggressiveness" style="margin-top:8px">↺ Nollaa oppimistila</button>
+        </div>
+      </div>`;
+    })()}
+
     ${state.mesocycle?.type === "streetlifting_16w" ? `<div class="card">
       <div class="card-title">📅 Mesocycle-aloituspäivä</div>
       <div class="muted" style="font-size:12px;margin-bottom:10px">Ohjelman ensimmäisen viikon maanantain päivämäärä. Auto-snappaa lähimpään edelliseen maanantaihin (pl. tänään jos tänään on maanantai). Tarvitaan jos haluat backfillata menneitä päiviä — niiden täytyy osua mesocyclen viikkoihin 1-16.</div>
@@ -11479,6 +11856,30 @@ function bind() {
     });
   });
 
+  // v4.51.0 (Track B 2D-δ-C): preferredSuggestionBias-valinta
+  $$("[data-sugg-bias]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const newBias = btn.dataset.suggBias;
+      state.settings.preferredSuggestionBias = newBias;
+      await saveSettings(state.settings);
+      // Refresh aktiivinen rec, jotta UI:n suggestion-näkymät päivittyvät
+      await computeRecommendation();
+      showToast(`Oletustyyli: ${newBias === "stable" ? "Vakaa" : newBias === "challenging" ? "Haastava" : "Tasapainoinen"}`, "ok", 1800);
+      render();
+    });
+  });
+
+  // v4.51.0 (Track B 2D-δ-C): aggressivenessLearned reset
+  const resetAggBtn = $("#btn-reset-aggressiveness");
+  if (resetAggBtn) resetAggBtn.addEventListener("click", async () => {
+    const ok = confirm("Nollataanko oppimistila? Engine palaa neutraaliin lähtötilaan ja alkaa oppia uudelleen valinnoistasi.");
+    if (!ok) return;
+    await resetAggressivenessLearned();
+    state.settings.aggressivenessLearned = 0;
+    showToast("Oppimistila nollattu", "ok", 1800);
+    render();
+  });
+
   // v4.38.2 (Phase 3): RTF-testin tallennusmodaali kisaliikkeille
   $$("[data-rtf-add]").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -11901,9 +12302,16 @@ async function startWorkout(backfillDateISO = null) {
           loadKg = rec.attemptLoads.third;
         }
       } else if (isPrimary && rec.targetExternalLoad !== null) {
+        // v4.51.0 (Track B 2D-δ-C): käytä defaultSuggestionId:n kuormaa primary-
+        // slotille. Backward compat: jos suggestions puuttuu tai default ei löydy,
+        // käytetään rec.targetExternalLoad:ia (= TARGET-tier, sama kuin ennen).
+        const defaultSugg = (rec.suggestions || []).find(s => s.id === rec.defaultSuggestionId);
+        const baseLoad = (defaultSugg && typeof defaultSugg.targetExternalLoad === "number")
+          ? defaultSugg.targetExternalLoad
+          : rec.targetExternalLoad;
         // Apply variant load modifier (with athlete overrides)
         const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
-        loadKg = roundToHalf(rec.targetExternalLoad * (1 + vMod));
+        loadKg = roundToHalf(baseLoad * (1 + vMod));
       } else if ((isBackoff || isSecondary || slot.role === "calibration") && typeof slot.resolvedLoadKg === "number") {
         // v4.27.13: Engine-resolvoitu loadPct-kuorma backoff/secondary-slotille.
         // v4.34.15: Lisätty calibration-rooli — cal-päivän slotit saavat nyt loadPct-resolution
@@ -11935,6 +12343,15 @@ async function startWorkout(backfillDateISO = null) {
       // Variant tempo override
       const vOverride = variantRepOverride(slot.variantName);
 
+      // v4.51.0 (Track B 2D-δ-C): primary-slotin targetVx haetaan default-
+      // suggestion:in arvosta (= TARGET tai SAFE tai AGGRESSIVE riippuen
+      // engineLearningsista). Muut roolit käyttävät slot.targetVx:ää suoraan.
+      const defaultSuggForVx = (isPrimary && rec?.suggestions)
+        ? rec.suggestions.find(s => s.id === rec.defaultSuggestionId)
+        : null;
+      const setTargetVx = (defaultSuggForVx && typeof defaultSuggForVx.targetVx === "number")
+        ? defaultSuggForVx.targetVx
+        : slot.targetVx;
       // Build per-set loads (warmup sets have different loads)
       const setsList = Array.from({ length: slot.sets }, (_, i) => {
         let setLoad = loadKg;
@@ -11944,7 +12361,7 @@ async function startWorkout(backfillDateISO = null) {
         return {
           idx: i,
           targetReps: slot.reps,
-          targetVx: slot.targetVx,
+          targetVx: setTargetVx,
           loadKg: setLoad,
           reps: null,
           actualVx: null,
@@ -12033,6 +12450,22 @@ async function startWorkout(backfillDateISO = null) {
     //   best, loadKg, movementId, timestamp }
     // Kun käyttäjä ohittaa: { done:false, skipped:true }
     primer: null,
+    // v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion -valinta.
+    // selectedSuggestionId on TARGET, SAFE tai AGGRESSIVE — alustetaan
+    // engine:n suosittelemaan defaultiin. Atletti voi vaihtaa ennen 1. työsarjan
+    // completionia; sen jälkeen valinta lukittuu (mutta talteen-kentät säilyvät).
+    selectedSuggestionId: rec?.defaultSuggestionId || "target",
+    appliedSuggestion: (() => {
+      const def = rec?.defaultSuggestionId || "target";
+      const sugg = (rec?.suggestions || []).find(s => s.id === def);
+      if (!sugg) return null;
+      return {
+        id: sugg.id,
+        targetExternalLoad: sugg.targetExternalLoad,
+        targetVx: sugg.targetVx,
+        deltaPct: sugg.deltaPct,
+      };
+    })(),
   };
 
   // v4.22: hanki Wake Lock koko treenin ajaksi (näyttö pysyy auki).
@@ -12122,6 +12555,76 @@ function bindWorkoutEvents() {
       nextBtn.textContent = "Valitse toistot ja vara";
     }
   }
+
+  // v4.51.0 (Track B 2D-δ-C): Suggestion-card click → vaihtaa valinta, päivittää
+  // exercise.loadKg + sets[].loadKg/targetVx kaikille jäljellä oleville työsarjoille.
+  // Vain ennen 1. työsarjan completionia (locked sen jälkeen).
+  $$("[data-sugg-pick]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const pickedId = btn.dataset.suggPick;
+      const rec = state.recommendation;
+      const sugg = (rec?.suggestions || []).find(s => s.id === pickedId);
+      if (!sugg) return;
+      const exercise = w.exercises[w.currentExerciseIdx];
+      if (!exercise || exercise.role !== "primary") return;
+      // Tarkista valinta-lukko (ei voi vaihtaa kun yksi työsarja on jo tehty)
+      const workSetsCompleted = exercise.sets.filter(s => s.completed && !s.isWarmup).length;
+      if (workSetsCompleted >= 1) {
+        showToast("Valinta lukittu — sarja on aloitettu", "info", 2200);
+        return;
+      }
+      // Sovita uuden tier:n arvot kaikille jäljellä oleville työsarjoille
+      const vMod = variantLoadModifier(exercise.variantName, state.settings?.variantModifiers);
+      const newLoad = typeof sugg.targetExternalLoad === "number"
+        ? roundToHalf(sugg.targetExternalLoad * (1 + vMod))
+        : exercise.loadKg;
+      exercise.loadKg = newLoad;
+      exercise.targetVx = sugg.targetVx ?? exercise.targetVx;
+      for (const s of exercise.sets) {
+        if (s.isWarmup) continue;
+        if (s.completed) continue;
+        s.loadKg = newLoad;
+        if (typeof sugg.targetVx === "number") s.targetVx = sugg.targetVx;
+      }
+      w.selectedSuggestionId = pickedId;
+      w.appliedSuggestion = {
+        id: sugg.id,
+        targetExternalLoad: sugg.targetExternalLoad,
+        targetVx: sugg.targetVx,
+        deltaPct: sugg.deltaPct,
+      };
+      savePendingWorkoutLocal(w);
+      render();
+    });
+  });
+
+  // "Miksi tämä?" -painike → avaa per-kortti delta-rationale-paneeli
+  $$("[data-sugg-why]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const suggId = btn.dataset.suggWhy;
+      const panel = $("#sugg-why-panel");
+      if (!panel) return;
+      const rec = state.recommendation;
+      const html = renderSuggestionWhyHTML(suggId, rec);
+      panel.innerHTML = html;
+      panel.style.display = panel.style.display === "none" ? "block" : "none";
+      if (panel.style.display === "block") {
+        panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+  });
+
+  // "Näytä koko päätösketju" -toggle → avaa/sulkee trace-paneelin
+  $$("[data-sugg-trace-toggle]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const panel = $("#sugg-trace-panel");
+      if (!panel) return;
+      panel.style.display = panel.style.display === "none" ? "block" : "none";
+      btn.textContent = panel.style.display === "none"
+        ? "📊 Näytä koko päätösketju"
+        : "📊 Piilota päätösketju";
+    });
+  });
 
   // Warmup done — advance to next warmup set (or first work set)
   const warmupDoneBtn = $("#btn-warmup-done");
@@ -12921,6 +13424,17 @@ function bindWorkoutEvents() {
     const sessionNotes = ($("#input-session-notes")?.value || "").trim().slice(0, 500);
     await saveWorkoutToDb(sessionNotes);
     clearPendingWorkoutLocal();
+    // v4.51.0 (Track B 2D-δ-C): päivitä aggressivenessLearned session-historian
+    // pohjalta. Auto-learn-säätö tehdään tallennuksen JÄLKEEN jotta uusi sessio
+    // näkyy historiakyselyssä.
+    try {
+      const result = await updateAggressivenessLearned();
+      if (result && result.delta !== 0) {
+        console.log("[aggressiveness-learn]", result);
+      }
+    } catch (e) {
+      console.warn("[aggressiveness-learn] failed:", e?.message || e);
+    }
     showToast("Treeni tallennettu!", "ok");
     state.workout = null;
     releaseWakeLock();
@@ -13317,6 +13831,12 @@ async function saveWorkoutToDb(sessionNotes = "") {
     startedAt: startedAtISO,
     endedAt: endedAtISO,
     durationMin: durationMin,
+    // v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion -tallennus. Atletin
+    // valinta tallennetaan session-recordiin auto-learn-analyysiä varten.
+    // Vanhat sessiot, joissa nämä puuttuvat, fallbackaavat "target":iin.
+    selectedSuggestionId: w.selectedSuggestionId || rec?.defaultSuggestionId || "target",
+    appliedSuggestion: w.appliedSuggestion || null,
+    suggestionContext: rec?.suggestionContext || null,
   };
   await saveSession(session);
 

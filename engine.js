@@ -3125,6 +3125,7 @@ function generateSuggestions(ctx) {
     blockPhase,
     dayType,
     preferredBias,
+    aggressivenessLearned,
   } = ctx;
 
   const SAFE_SPACING = 0.015;       // 1.5 pp kevyempi
@@ -3197,19 +3198,37 @@ function generateSuggestions(ctx) {
   suggestions.push(targetSuggestion);
   if (aggressiveSuggestion) suggestions.push(aggressiveSuggestion);
 
-  // Default-suggestion-päätös (Akselin Q3 C-muokattu):
-  //   1. capLevel ≥ 1 → SAFE (pakotettu, ohittaa preferredBias)
-  //   2. preferredBias "stable" + SAFE saatavilla → SAFE
-  //   3. preferredBias "challenging" + AGGRESSIVE saatavilla → AGGRESSIVE
-  //   4. Muuten → TARGET (default)
+  // Default-suggestion-päätös (Akselin Q3 C-muokattu + 2D-δ-C auto-learn):
+  //   1. capLevel ≥ 1 → SAFE (pakotettu, ohittaa preferredBias + learned)
+  //   2. effectiveBias yhdistää preferredBias + aggressivenessLearned:
+  //        preferredBias  base    learnedAdd  → effectiveBias
+  //        "stable"       -0.6    + learned   → ...
+  //        "balanced"      0.0    + learned   → ...
+  //        "challenging"  +0.6    + learned   → ...
+  //      effectiveBias > +0.4 → AGGRESSIVE (jos available)
+  //      effectiveBias < -0.4 → SAFE (jos available)
+  //      muuten → TARGET
+  // Auto-learn osaa nostaa tai laskea biasta ilman että preferredBias muuttuu.
+  // Kaikki numeeriset rajat on tutkimuspohjaisesti tasapainotettu siten että
+  // pelkkä preferredBias riittää oletusvalintaan, mutta atletin valintahistoria
+  // voi sitä päinvastoin painostaa (TARGET-streak → ei muutu; SAFE-streak →
+  // siirtyy SAFE-suuntaan).
+  const biasBase = preferredBias === "stable" ? -0.6
+    : preferredBias === "challenging" ? 0.6
+    : 0;
+  const learnedAdjustment = typeof aggressivenessLearned === "number"
+    ? Math.max(-1, Math.min(1, aggressivenessLearned))
+    : 0;
+  const effectiveBias = biasBase + learnedAdjustment;
+
   let defaultSuggestionId = "target";
   const capForcesSafe = typeof capLevel === "number" && capLevel >= 1 && safeSuggestion;
   if (capForcesSafe) {
     defaultSuggestionId = "safe";
-  } else if (preferredBias === "stable" && safeSuggestion) {
-    defaultSuggestionId = "safe";
-  } else if (preferredBias === "challenging" && aggressiveAvailable) {
+  } else if (effectiveBias > 0.4 && aggressiveAvailable) {
     defaultSuggestionId = "aggressive";
+  } else if (effectiveBias < -0.4 && safeSuggestion) {
+    defaultSuggestionId = "safe";
   }
 
   return {
@@ -3217,6 +3236,7 @@ function generateSuggestions(ctx) {
     defaultSuggestionId,
     suppressedReasons,
     aggressiveAvailable,
+    effectiveBias,
   };
 }
 
@@ -4741,6 +4761,7 @@ async function recommend(options = {}) {
       blockPhase: inferredBlockPhase,
       dayType,
       preferredBias: settings.preferredSuggestionBias ?? "balanced",
+      aggressivenessLearned: settings.aggressivenessLearned ?? 0,
     });
     trace("SUGGESTIONS_GENERATED",
       { tierCount: suggestionsResult.suggestions.length, defaultId: suggestionsResult.defaultSuggestionId },
@@ -4820,6 +4841,9 @@ async function recommend(options = {}) {
       grindyBiasDetected: detectGrindyBias(sessions).detected,
       aggressiveSuppressedReasons: suggestionsResult.suppressedReasons,
       preferredBias: settings.preferredSuggestionBias ?? "balanced",
+      aggressivenessLearned: settings.aggressivenessLearned ?? 0,
+      effectiveBias: typeof suggestionsResult.effectiveBias === "number"
+        ? suggestionsResult.effectiveBias : 0,
     },
     // v4.34.43: cfg-drift result. UI persistoi mesocycleen jos driftPct > 0.
     cfgDriftApplied: cfgDriftResult,
@@ -7328,6 +7352,8 @@ export {
   DEFAULT_RTF_SLOPE,
   // v4.49.2 Q1: grindy-bias-detection slot.targetVx-hybridille
   detectGrindyBias,
+  // v4.50.0+ (Track B 2D-δ): Adaptive multi-suggestion -tier-generaattori
+  generateSuggestions,
   // v4.38.5 — kisaliikkeiden tunnistus fallback nimellä
   isCompetitionLiftMovement,
   COMPETITION_LIFT_NAMES_FALLBACK,

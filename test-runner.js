@@ -48,6 +48,8 @@ import {
   // v4.35.0: eliittitason progressio-malli (Helms 2018, Cumming 2024, Issurin 2010)
   PROGRESSION_CONFIG,
   computeProgressionTarget,
+  // v4.50.0+ (Track B 2D-δ): Adaptive multi-suggestion -tier-generaattori
+  generateSuggestions,
 } from "./engine.js";
 
 import {
@@ -2158,6 +2160,9 @@ export async function runTests() {
   await testBackupRoundtrip();
   // v4.34.45: mesosykli-historia + uudelleen-aktivointi
   await testMesocycleHistoryActivation();
+  // v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion engine + auto-learn
+  testAdaptiveSuggestions();
+  testAdaptiveSuggestionsLearned();
 
   console.log(`\n=== Results: ${_passed} passed, ${_failed} failed ===`);
 
@@ -2707,5 +2712,218 @@ function testComputeProgressionTarget() {
       'E12 hard-cap: autoreg 117 → hard-cap 115 kg rajaa');
     assert(result.decisionTrace.ruleHits.includes('PROGRESSION_HARD_CAP'),
       'E12: HARD_CAP-flag aktivoituu');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// v4.51.0 — Adaptive multi-suggestion engine (Track B 2D-δ-C)
+// ═══════════════════════════════════════════════════════════════
+
+function testAdaptiveSuggestions() {
+  // BASE CTX — GREEN-readiness, RTF reliable, ei failurea
+  const baseCtx = {
+    targetExternalLoad: 100,
+    targetVx: 2,
+    deltaPct: 0.025,
+    targetReps: 3,
+    setCount: 5,
+    capLevel: 0,
+    hadFailure: false,
+    grindyBiasDetected: false,
+    rtfModelStatus: "reliable",
+    blockPhase: "strength",
+    dayType: "heavy",
+    preferredBias: "balanced",
+    aggressivenessLearned: 0,
+  };
+
+  // T1: GREEN + reliable RTF → 3 tier (SAFE+TARGET+AGGRESSIVE)
+  {
+    const result = generateSuggestions(baseCtx);
+    assertEqual(result.suggestions.length, 3,
+      "T1 GREEN+reliable: 3 tier (SAFE+TARGET+AGGRESSIVE)");
+    assert(result.aggressiveAvailable === true,
+      "T1: aggressiveAvailable=true");
+    assertEqual(result.suppressedReasons.length, 0,
+      "T1: ei suppression-syitä");
+  }
+
+  // T2: capLevel=1 (YELLOW) → AGGRESSIVE suppressed + default="safe"
+  {
+    const result = generateSuggestions({ ...baseCtx, capLevel: 1 });
+    assertEqual(result.suggestions.length, 2,
+      "T2 capLevel=1: vain 2 tier (SAFE+TARGET, AGGRESSIVE suppressed)");
+    assert(result.suppressedReasons.includes("readiness-cap"),
+      "T2: readiness-cap suppression-syynä");
+    assertEqual(result.defaultSuggestionId, "safe",
+      "T2: cap pakottaa default=safe");
+  }
+
+  // T3: hadFailure → AGGRESSIVE suppressed
+  {
+    const result = generateSuggestions({ ...baseCtx, hadFailure: true });
+    assert(result.suppressedReasons.includes("recent-failure"),
+      "T3 hadFailure: recent-failure suppression-syynä");
+    assertEqual(result.aggressiveAvailable, false,
+      "T3: aggressiveAvailable=false");
+  }
+
+  // T4: rtfModelStatus="preview" → AGGRESSIVE suppressed
+  {
+    const result = generateSuggestions({ ...baseCtx, rtfModelStatus: "preview" });
+    assert(result.suppressedReasons.includes("rtf-not-reliable"),
+      "T4 RTF preview: rtf-not-reliable suppression-syynä");
+  }
+
+  // T5: dayType="speed" → AGGRESSIVE suppressed
+  {
+    const result = generateSuggestions({ ...baseCtx, dayType: "speed" });
+    assert(result.suppressedReasons.includes("non-progression-day"),
+      "T5 speed-day: non-progression-day suppression-syynä");
+  }
+
+  // T6: blockPhase="deload" → AGGRESSIVE suppressed
+  {
+    const result = generateSuggestions({ ...baseCtx, blockPhase: "deload" });
+    assert(result.suppressedReasons.includes("deload-phase"),
+      "T6 deload: deload-phase suppression-syynä");
+  }
+
+  // T7: grindyBiasDetected → AGGRESSIVE suppressed
+  {
+    const result = generateSuggestions({ ...baseCtx, grindyBiasDetected: true });
+    assert(result.suppressedReasons.includes("grindy-bias"),
+      "T7 grindy-bias: grindy-bias suppression-syynä");
+  }
+
+  // T8: TARGET-parity — TARGET-tier:n arvot vastaavat rec-input:ia
+  {
+    const result = generateSuggestions(baseCtx);
+    const target = result.suggestions.find(s => s.id === "target");
+    assertEqual(target.targetExternalLoad, baseCtx.targetExternalLoad,
+      "T8 TARGET-parity: load identtinen");
+    assertEqual(target.targetVx, baseCtx.targetVx,
+      "T8 TARGET-parity: Vx identtinen");
+    assertClose(target.deltaPct, baseCtx.deltaPct, 1e-6,
+      "T8 TARGET-parity: deltaPct identtinen");
+  }
+
+  // T9: SAFE-spacing — 1.5% kevyempi + +1 Vx
+  {
+    const result = generateSuggestions(baseCtx);
+    const safe = result.suggestions.find(s => s.id === "safe");
+    assertClose(safe.targetExternalLoad, 98.5, 0.5,
+      "T9 SAFE: 100 × 0.985 = 98.5 kg");
+    assertEqual(safe.targetVx, 3,
+      "T9 SAFE: targetVx = TARGET +1 = 3");
+  }
+
+  // T10: AGGRESSIVE-spacing — 1.5% raskaampi + -1 Vx
+  {
+    const result = generateSuggestions(baseCtx);
+    const agg = result.suggestions.find(s => s.id === "aggressive");
+    assertClose(agg.targetExternalLoad, 101.5, 0.5,
+      "T10 AGGRESSIVE: 100 × 1.015 = 101.5 kg");
+    assertEqual(agg.targetVx, 1,
+      "T10 AGGRESSIVE: targetVx = TARGET -1 = 1");
+  }
+
+  // T11: preferredBias="stable" → default=safe
+  {
+    const result = generateSuggestions({ ...baseCtx, preferredBias: "stable" });
+    assertEqual(result.defaultSuggestionId, "safe",
+      "T11 stable-bias: default=safe");
+  }
+
+  // T12: preferredBias="challenging" → default=aggressive
+  {
+    const result = generateSuggestions({ ...baseCtx, preferredBias: "challenging" });
+    assertEqual(result.defaultSuggestionId, "aggressive",
+      "T12 challenging-bias: default=aggressive");
+  }
+
+  // T13: preferredBias="balanced" → default=target
+  {
+    const result = generateSuggestions(baseCtx);
+    assertEqual(result.defaultSuggestionId, "target",
+      "T13 balanced-bias: default=target");
+  }
+
+  // T14: Fallback — targetExternalLoad=null → vain TARGET-tier (ei kuormaa)
+  {
+    const result = generateSuggestions({ ...baseCtx, targetExternalLoad: null });
+    assertEqual(result.suggestions.length, 1,
+      "T14 no-load: 1 tier (target, ei SAFE/AGGRESSIVE laskettavissa)");
+    assertEqual(result.suggestions[0].id, "target",
+      "T14: ainoa tier on target");
+  }
+}
+
+function testAdaptiveSuggestionsLearned() {
+  const baseCtx = {
+    targetExternalLoad: 100,
+    targetVx: 2,
+    deltaPct: 0.025,
+    targetReps: 3,
+    setCount: 5,
+    capLevel: 0,
+    hadFailure: false,
+    grindyBiasDetected: false,
+    rtfModelStatus: "reliable",
+    blockPhase: "strength",
+    dayType: "heavy",
+    preferredBias: "balanced",
+    aggressivenessLearned: 0,
+  };
+
+  // L1: learned=0.5 → effectiveBias=0.5 > 0.4 → default=aggressive
+  {
+    const result = generateSuggestions({ ...baseCtx, aggressivenessLearned: 0.5 });
+    assertEqual(result.defaultSuggestionId, "aggressive",
+      "L1 learned=+0.5 balanced: default=aggressive (effectiveBias 0.5 > 0.4)");
+  }
+
+  // L2: learned=-0.5 → effectiveBias=-0.5 < -0.4 → default=safe
+  {
+    const result = generateSuggestions({ ...baseCtx, aggressivenessLearned: -0.5 });
+    assertEqual(result.defaultSuggestionId, "safe",
+      "L2 learned=-0.5 balanced: default=safe (effectiveBias -0.5 < -0.4)");
+  }
+
+  // L3: learned=0.3 + balanced → effectiveBias=0.3 → default=target (ei ylitä 0.4)
+  {
+    const result = generateSuggestions({ ...baseCtx, aggressivenessLearned: 0.3 });
+    assertEqual(result.defaultSuggestionId, "target",
+      "L3 learned=+0.3 balanced: default=target (effectiveBias 0.3 ≤ 0.4)");
+  }
+
+  // L4: stable + learned=-0.3 → effectiveBias=-0.9 → safe (vahvistaa stableä)
+  {
+    const result = generateSuggestions({ ...baseCtx, preferredBias: "stable", aggressivenessLearned: -0.3 });
+    assertEqual(result.defaultSuggestionId, "safe",
+      "L4 stable+learned=-0.3: default=safe (effectiveBias -0.9)");
+  }
+
+  // L5: challenging + learned=+0.3 → effectiveBias=+0.9 → aggressive
+  {
+    const result = generateSuggestions({ ...baseCtx, preferredBias: "challenging", aggressivenessLearned: 0.3 });
+    assertEqual(result.defaultSuggestionId, "aggressive",
+      "L5 challenging+learned=+0.3: default=aggressive (effectiveBias +0.9)");
+  }
+
+  // L6: cap-state ohittaa learned-arvon (pakottaa safe)
+  {
+    const result = generateSuggestions({ ...baseCtx, aggressivenessLearned: 0.8, capLevel: 1 });
+    assertEqual(result.defaultSuggestionId, "safe",
+      "L6 cap+learned=+0.8: default=safe (cap pakottaa, ohittaa learned)");
+  }
+
+  // L7: clamp — learned > 1 clampataan 1:een (ei vaikuta pidemmälle)
+  {
+    const result = generateSuggestions({ ...baseCtx, aggressivenessLearned: 5.0 });
+    assertEqual(result.defaultSuggestionId, "aggressive",
+      "L7 learned=5.0 (clamped 1.0): default=aggressive");
+    assert(typeof result.effectiveBias === "number",
+      "L7: effectiveBias on lukuna palautettu");
   }
 }

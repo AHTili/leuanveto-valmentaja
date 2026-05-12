@@ -610,7 +610,27 @@
 //          targetVx / deltaPct = TARGET-tier:n arvot. rec.suggestions[], defaultSuggestionId,
 //          suggestionContext lisätty. SUGGESTIONS_GENERATED + SUGGESTION_SUPPRESSED tracet.
 //          Audit-engine.mjs verifioi rakenteen ja TARGET-parity:n. UI + auto-learn 2D-δ-C:ssä.
-const APP_VERSION = "4.50.0";
+// v4.51.0 (Track B Vaihe 2D-δ-C): Adaptive multi-suggestion UI + auto-learn.
+//          Workout-näkymä renderöi 1-3 suggestion-korttia primary-työsarjoille
+//          (Varovainen / Tavoite / Rohkea), default-kortti highlightattu "Suositus"-merkillä.
+//          Atletti voi vaihtaa valinnan ennen 1. työsarjan completionia → exercise.loadKg
+//          + targetVx päivittyy kaikille jäljellä oleville sarjoille; valinta lukittuu
+//          1. työsarjan jälkeen. "Miksi tämä?" -painike avaa per-kortti delta-rationale,
+//          ja erillinen "Näytä koko päätösketju" avaa jaettu trace-explainer-paneeli
+//          (top-3 priorisointi: PLAN_BASED_E1RM, CFG_DRIFT_APPLIED, VARA_TREND_CORRECTION,
+//          VBT_E1RM_CROSSCHECK, SLOT_TARGETVx_RESOLVED, VL_CAP_RESOLVED, RTF_MODEL_STATUS)
+//          suomenkielellä ilman tutkijaviittauksia. Auto-learn data.js:n
+//          updateAggressivenessLearned() lukee viim. 3 session.selectedSuggestionId:t ja
+//          päivittää settings.aggressivenessLearned ∈ [-1, +1] saveSession-jälkeen.
+//          Reset-säännöt: 3× SAFE-streak -0.15, 3× AGGRESSIVE-streak +0.15, FAILURE V0
+//          -0.30, RED-cap -0.30. Engine.js generateSuggestions yhdistää
+//          settings.preferredSuggestionBias + aggressivenessLearned effectiveBias:ksi
+//          (raja-arvot ±0.4). Wizard q33_aggressivenessDefault seedaa alkuarvon
+//          (stable=-0.3, balanced=0, challenging=+0.3). Settings UI näyttää bar-graphin
+//          oppimistilasta + nollaus-painike. 32 uutta selain-testiä (testAdaptiveSuggestions
+//          T1-T14 + testAdaptiveSuggestionsLearned L1-L7 + lisät). Akselin regressio
+//          bittitarkasti läpi (64/64 päivää, 0 ERROR, 41 audit-flaggia = baseline-identti).
+const APP_VERSION = "4.51.0";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
