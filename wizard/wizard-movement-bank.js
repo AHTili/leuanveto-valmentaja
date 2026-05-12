@@ -65,6 +65,7 @@ export const FALLBACK_MOVEMENT_BANK = [
   // ─── Leg-variaatiot (5) ───
   { id: "fb_rdl",                   name: "Romanialainen maastaveto (RDL)", category: "lonkkahingaus",  loadType: "external" },
   { id: "fb_leg_press",             name: "Jalkaprässi",                    category: "alaraaja",       loadType: "external" },
+  { id: "fb_leg_press_unilateral",  name: "Yhden jalan jalkaprässi",        category: "alaraaja",       loadType: "external" },
   { id: "fb_bulgarian_split",       name: "Bulgarian split squat",          category: "alaraaja",       loadType: "external" },
   { id: "fb_walking_lunge",         name: "Walking lunge",                  category: "alaraaja",       loadType: "external" },
   { id: "fb_calf_raise",            name: "Pohjenosto",                     category: "muu",            loadType: "external" },
