@@ -327,6 +327,17 @@ const PRESET_MOVEMENTS = [
   { name: "Board press",           category: "horisontaalityöntö", isPrimary: false, isPreset: true },
   // OHP-spesifit
   { name: "Push press",        category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  // v4.49.0 (Track B Vaihe 2D-γ): Westside ME-Upper -liikkeet + GZCL T2 -variantit + Sheiko accessory
+  { name: "Floor press",       category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Pin press",         category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "JM press",          category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Wide-grip bench",   category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Long pause bench",  category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Rack pull",         category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Glute-Ham Raise",   category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Hyperextensio",     category: "core",     isPrimary: false, isPreset: true },
+  { name: "Dumbbell fly",      category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Power shrug",       category: "muu",      isPrimary: false, isPreset: true },
   { name: "Seated OHP",        category: "vertikaalityöntö", isPrimary: false, isPreset: true },
   { name: "Z-press",           category: "vertikaalityöntö", isPrimary: false, isPreset: true },
   // ─── Dippi-prehab-variantit (v4.27.4) — sternum/pec-insertion-kestävyys
@@ -437,6 +448,17 @@ const MOVEMENT_DESCRIPTIONS = {
   // Penkki-spesifit
   "Paused bench press": { howTo: "Penkkipunnerrus 1–3 s pysähdyksellä rinnalla (ei pomppua). Voimanostajan kisakäytäntö — startti nollasta alhaalta.", cue: "Rinta pysyy tiukkana pysähdyksessä — ei vajoa" },
   "Spoto press": { howTo: "Penkkipunnerrus 2–3 cm rinnasta pysähdyksellä (tanko ei kosketa rintaa). Rakentaa 'bottom-position overload' -voimaa ja eliminoi pomppu täysin.", cue: "Tanko hengähtää ilmassa — ei koskaan rintaan" },
+  // v4.49.0 (Track B Vaihe 2D-γ): WSBB ME-Upper + GZCL T2 + Sheiko accessory -liikkeet
+  "Floor press": { howTo: "Penkkipunnerrus lattialla maaten — kyynärpäät pysähtyvät lattiaan ennen seuraavaa toistoa. Eliminoi stretch-reflex + alarata. Lockout + tricep-vahvuus. WSBB ME-Upper -rotaation kanoninen variantti.", cue: "Kyynärpäät lattiaan, pysähdys 1 s, työnnä ylös" },
+  "Pin press": { howTo: "Penkkipunnerrus räkki-tapeilta starttaen (rinnan korkeudella tai hieman yli). Eliminoi stretch-reflex, partial ROM, tricep-/lockout-vahvuus. WSBB ME-Upper.", cue: "Tanko pinnille ennen jokaista toistoa — ei pompu" },
+  "JM press": { howTo: "Penkkipunnerruksen + skullcrusherin hybridi. Tanko lasketaan kohti otsaa kyynärpäät edessä (close-grip). Tricep-erikois-liike. WSBB ja tricep-vahvuuden rakentaminen.", cue: "Kyynärpäät ovat liikkeen akseli — ei levitä" },
+  "Wide-grip bench": { howTo: "Penkkipunnerrus leveällä otteella (sormet rengas-merkeissä tai leveämmin). Korostaa pec-volyymia, pienempi ROM. GZCL T2-variantti.", cue: "Tanko nousee suoraan, älä työnnä taakse — pec puree" },
+  "Long pause bench": { howTo: "Penkkipunnerrus 3–5 sek pysähdyksellä rinnalla. Eliminoi stretch-reflex täysin, opettaa pohja-asennon hallintaa. GZCL T2-variantti.", cue: "Pidä tanko rinnalla — laske yksi mississippi, kaksi mississippi — sitten työnnä" },
+  "Rack pull": { howTo: "Maastaveto häkin tappien päältä polven korkeudella tai yli. Lockout-vahvuus, ylä-ROM-overload. WSBB ME-rotaation kanoninen variantti.", cue: "Starttaa polvista, lapaluut lukossa — kuormat raskaammat kuin perus-DL:ssä" },
+  "Glute-Ham Raise": { howTo: "GHR-laitteella tai bench-rolloilla: aloita pystyssä, laskeudu hallitusti eteen pohkeiden ankkuroinnilla, nouse takareisien voimalla takaisin pystyyn. Pakara + hamstrings.", cue: "Hidas eccentric, pakara tiukkana koko liikkeen ajan" },
+  "Hyperextensio": { howTo: "Hyperextension-laitteella tai romanialaisella penkillä: laskeudu kumarrukseen pyörittäen lantiosta, nouse takaisin vaakatasoon. Voi tehdä lisäpainolla rinnan päällä.", cue: "Älä yli-ojentaudu lannerangasta — pysähdy vaakatasoon" },
+  "Dumbbell fly": { howTo: "Käsipainot kädessä penkille selälleen, kädet kaarena auki rinnan tasolle ja takaisin yhteen. Korostaa rinnan adductio-toimintoa. Sheikon accessory-konventio.", cue: "Kyynärpäät lievässä koukussa koko liikkeen ajan — älä suorista täysin" },
+  "Power shrug": { howTo: "Maastaveton ylä-asennosta tehty räjähtävä shrugs (kohautus) lisäkuormalla. Trapezius + vetolihakset + lockout-räjähtävyys. Coan-Phillipi -ohjelman accessory.", cue: "Räjähtävä kohautus ylös, hidas alas — älä kierrä hartioita" },
   "Larsen press": { howTo: "Penkkipunnerrus jalat penkin päällä (ei maakontaktia). Eliminoi leg drive → puhdas ylävartalon voima. Erinomainen kontrollin ja teknisen puhtauden rakentamiseen.", cue: "Pakara penkissä, jalat ilmassa — ei pomppua" },
   "Board press": { howTo: "Penkkipunnerrus lauta rinnalla (1–3 lautaa päällekkäin). Lyhyempi liikerata → raskaampi kuorma lockout-vaiheeseen. Supramaksimaalinen tricep + lockout.", cue: "Tanko koskee lautaan, pysähdys, työnnä ylös" },
   // OHP-spesifit
@@ -2754,6 +2776,19 @@ const MESOCYCLE_TEMPLATES = [
     about: "Minimitehokas voimakoneisto: 1× raskas single @ Vara 0-1 (RPE 9-9.5) + 2-3 backoff-sarjaa × 3 toistoa @ 80% top-singleista. Tutkimuspohja: Androulakis-Korakakis et al. 2021 (PMC8435792, Nuckols co-author, vertaisarvioitu METD-konseptipaperi). Käytä kun: ajan rajallisuus on pullonkaula tai haluat optimaalisen voimasignaalin minimivolyymilla. Backoff-toistomäärä 3 on EI-TUTKIMUSPOHJAINEN oletus." },
   { id: "madcow5x5",        label: "Madcow 5×5",                    icon: "🏗️", desc: "3×/vk — 5-vk lineaarinen progressio Ma/Ke/Pe, +2.5%/vk", weeks: 5, factory: "createMadcow5x5Mesocycle",
     about: "Klassinen Madcow 5×5: intermediate-tason lineaarinen progressio (Bill Starr 1976 -pohja, anonyymin Madcow2-mukautus ~2001). HLM-pattern: Ma raskas 5×5 ramp → top, Ke kevyt 4×5, Pe raskas 4×5 ramp + 1×3 @ +2.5% Ma-topista + 1×8 @ ~77.5% Ma-topista. Vk1 = 92.5% nykyisestä 5RM:stä, +2.5%/vk → vk4 = 100%, vk5 = PR-yritys. PROSENTTIPOHJAINEN, EI absoluuttiset +2.5/+5 lb (= StrongLifts/SS). RISTIINTARKISTETTU yhteisön mukautus, EI-TUTKIMUSPOHJAINEN. Advanced (15+v) → harkitse 1.0-1.5%/vk redukointia." },
+  // v4.49.0 (Track B Vaihe 2D-γ): 6 edistynyttä metodologiaa
+  { id: "westsideConjugate", label: "Westside Conjugate",           icon: "🔀", desc: "4×/vk — ME-Lower/ME-Upper/DE-Lower/DE-Upper, viikoittainen rotaatio", weeks: 4, factory: "createWestsideConjugateMesocycle",
+    about: "Louie Simmonsin klassinen Conjugate-metodi: 4 päivää/vk, jakautuu Max Effort (ME) + Dynamic Effort (DE) -päiviksi. ME-päivinä työnnetään 1RM single ≥90% (3RM Good Morning-varianteille); ME-liikkeet rotatoituvat viikoittain advanced-tasolla. DE-päivinä speed work: DE-Lower 10×2 @ 50/55/60% (3-vk aalto), DE-Upper 9×3 @ 50-60% kaikki 3 viikkoa, 3 tartuntaa × 3 sarjaa. Lähde: Simmons 2007 + WSBB-blogit. HUOM: alunperin equipped-PL → tämä on WESTSIDE-DERIVED kun ME-Upper-rotaatio sisältää weighted dip/leuka raw-substituuttina." },
+  { id: "gzclJT20",          label: "GZCL Jacked & Tan 2.0",       icon: "📊", desc: "4×/vk — 12 vk, T1/T2/T3 tier-rakenne, RM-targetit", weeks: 12, factory: "createGZCLMesocycle",
+    about: "Cody Lefeverin Jacked & Tan 2.0 (2016): 12 vk = 2× 6vk blokkia, 4 päivää/vk. T1 (pääliike, >85% 1RM, viikoittainen RM-target 10→8→6→4→2→1, LSAMRAP-cap 10), T2 (variantti, 65-85%, 3×8 @ drop-pct 67.5→78.5% TM), T3 (apuliike, <65%, 3×15+). Training Max = ~90% 1RM ≈ 2RM. AMRAP-konversio Epley-kaavalla (yhteensopiva Wendler-ekosysteemin kanssa). EMPIRINEN-blogi (Lefever 2012/2016 kokoteksti luettu)." },
+  { id: "sheikoDerived",     label: "Sheiko #29 (johdettu)",       icon: "🇷🇺", desc: "3×/vk — Sheiko #29 prep + streetlifting-laajennus", weeks: 4, factory: "createSheikoDerivedMesocycle",
+    about: "Boris Sheiko #29 Preparatory Block 4 vk: 3 päivää/vk, squat 2×, bench 3×, DL 1×. Pyramidi-pohjaiset %1RM-taulukot, max-intensiteetti vk1 75%, vk3 85%. Lähde: foorumi-spreadsheet kolmannen osapuolen kopiosta — Sheikon 2018 kirjaa EI luettu. **SHEIKO-DERIVED** -leima: leuka + dippi lisätty 5×5 additional exerciseinä ilman %-skeemaa (Sheiko ei kanonisoi näitä). EMPIRINEN-yhteisökopio + lopputuotos on 'Sheiko-inspired hybrid', ei kanoninen Sheiko." },
+  { id: "minimalistRP",      label: "Minimalist RP (Israetel)",    icon: "📐", desc: "3×/vk — RP volume landmarks, MEV → MAV sets-progressio", weeks: 4, factory: "createMinimalistRPMesocycle",
+    about: "Mike Israetelin RP-volyymimallit (rpstrength.com 2017+): MV/MEV/MAV/MRV per lihasryhmä. Tämä mesosykli soveltaa MEV → MAV -sarjaprogressiota (vk1: 2 sets, vk2: 3 sets, vk3: 4 sets, vk4: deload 1 set). 3 päivää/vk push/pull/legs -jaolla. Sarjan määritelmä: 30-85% 1RM, 5-30 reps, RIR 0-4. DOKUMENTOITU RP-blogi (EI peer-reviewed). 'Effective reps' on Beardsleyn (~2017), EI Israetelin. Streetlifting-vinkki: käytä apuliikkeisiin, ei pääliikkeen 1RM-progressioon." },
+  { id: "smolovJr",          label: "Smolov Jr",                   icon: "💀", desc: "4×/vk — 3 vk + 1RM-testi, yhden liikkeen intensiivinen blokki", weeks: 4, factory: "createSmolovJrMesocycle",
+    about: "Smolov Jr (lyhyt versio): 3 vk + 1 lepoviikko/1RM-testi. Day 1 6×6@70%, Day 2 7×5@75%, Day 3 8×4@80%, Day 4 10×3@85%. Kuormalisäys vk2 +2.5%/päivä, vk3 +5%/päivä. **PAKOLLISIA EHTOJA:** training max ≤90% todellisesta 1RM:stä, max 1 sykli ilman lepoviikkoa, vain yksi liike kerrallaan (leuka TAI dippi, ei molemmat). Täys-Smolov 13 vk on KONTRAINDIKOITU advanced streetlifting-lifterille (jännerakenne-riski 4×/vk -frekvenssillä). DOKUMENTOITU yhteisö." },
+  { id: "coanPhillipi",      label: "Coan-Phillipi (DL)",          icon: "🎖️", desc: "1×/vk — 10 vk + meet vk11, deadlift-spesialisaatio", weeks: 11, factory: "createCoanPhillipiMesocycle",
+    about: "Mark Phillipi -alkuperäinen Ed Coan -inspiroitu DL-peakaus: 10 vk + meet vk 11 (EI 12 vk). 1× DL/vk, lineaarinen %-progressio 'Desired 1RM' (current + 9-18 kg) -pohjalta. Heavy-set + speed-set (60-75%) + circuit-/päivän-spesifi assistance. Vk1 75%×2 → vk10 100%×1 → vk11 MEET. Assistance vaihtelee: vk1-4 circuit (stiff-leg DL, BB row, lat PD, GM), vk5+ power shrugs + reduced assistance. Lähde: Mark Phillipi -essee (powerpage.net, URL kuollut), mirrorit yksimielisiä. Streetlifting-mukautus = COAN-PHILLIPI-DERIVED — speed-volyymi pienennettävä 30-40% lisäpaino-leukailussa." },
 ];
 
 // ── Hypertrofiajakso (4 viikkoa, 3×/vk) ──
@@ -3965,6 +4000,712 @@ function createMadcow5x5Mesocycle(startDateISO) {
   };
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Track B Vaihe 2D-γ — 6 edistynyttä metodologiaa (v4.49.0)
+// ═══════════════════════════════════════════════════════════════
+//
+// Tutkimuspohja:
+//   - docs/VAIHE_2D_GAMMA_OSA1_RESEARCH_VERIFICATION.md (Westside/GZCL/Sheiko)
+//   - docs/VAIHE_2D_GAMMA_OSA2_RESEARCH_VERIFICATION.md (RP/Smolov/Coan-Phillipi)
+//
+// Status-attribuutiot per metodologia:
+//   - Westside Conjugate: WSBB-OFFICIAL + Simmons 2011 PDF + KIRJA-VIITATTU
+//   - GZCL J&T 2.0: EMPIRINEN-blogi (Lefever 2012/2016 kokoteksti luettu)
+//   - Sheiko #29-derived: EMPIRINEN-yhteisökopio, "SHEIKO-DERIVED"-leima
+//   - Minimalist RP: DOKUMENTOITU RP-blogi (EI peer-reviewed)
+//   - Smolov Jr: DOKUMENTOITU yhteisö (kanoninen 13 vk EI suositella streetliftingiin)
+//   - Coan-Phillipi: DOKUMENTOITU Mark Phillipi -alkuperäisessee (10 vk + meet, EI 12 vk)
+//
+// Kaikki streetlifting-laajennukset merkitty selvästi _programMeta:n status-kentässä.
+
+// ── Westside Conjugate (4 vk, 4 päivää/vk: ME-Lower/ME-Upper/DE-Lower/DE-Upper) ──
+// WSBB-OFFICIAL spec: ME top single ≥90% 1RM, DE-Lower 10×2 @ 50/55/60% (raw Malli A),
+// DE-Upper 9×3 @ 50-60% (kaikki 3 vk), 3 tartuntaa.
+// Streetlifting-mukautus: ME-rotaatio sisältää weighted pull-up / weighted dip (3RM)
+// raw-substituuttina equipped-PL-liikkeille (board press, suspended GM). HUOM:
+// alkuperäinen Westside on equipped-PL — streetlifting-versio on "WESTSIDE-DERIVED".
+function createWestsideConjugateMesocycle(startDateISO) {
+  // ME-rotaation viikkokohtaiset liikkeet (4 vk advanced-rotaatio = 1 vk/liike)
+  const meLowerRotation = [
+    { name: "Box squat",      category: "alaraaja",            note: "Box squat (parallel)" },
+    { name: "Good morning",   category: "alaraaja",            note: "GM 3RM (ei single)", topSetReps: 3 },
+    { name: "Deficit DL",     category: "alaraaja",            note: "Deficit DL 3-10cm" },
+    { name: "Front squat",    category: "alaraaja",            note: "Front squat" },
+  ];
+  const meUpperRotation = [
+    { name: "Floor press",       category: "horisontaalityöntö", note: "Floor press lockout" },
+    { name: "Pin press",         category: "horisontaalityöntö", note: "Pin press (rinta-korkeudella)" },
+    { name: "Close-grip bench",  category: "horisontaalityöntö", note: "Close-grip bench" },
+    { name: "Lisäpainodippi",    category: "horisontaalityöntö", note: "Weighted dip 3-5RM" },
+  ];
+
+  const weekDefs = [
+    { week: 1, deltaPctBase: 0,     label: "WSBB vk1 (ME-rotaatio 1)", heavyReps: 1, heavyTargetVx: 1 },
+    { week: 2, deltaPctBase: 0,     label: "WSBB vk2 (ME-rotaatio 2)", heavyReps: 1, heavyTargetVx: 1 },
+    { week: 3, deltaPctBase: 0,     label: "WSBB vk3 (ME-rotaatio 3)", heavyReps: 1, heavyTargetVx: 1 },
+    { week: 4, deltaPctBase: -0.15, label: "WSBB vk4 deload + DE-low", heavyReps: 1, heavyTargetVx: 4 },
+  ];
+
+  // DE-Lower 10×2 (raw Malli A): vk1 50%, vk2 55%, vk3 60%, vk4 50% deload
+  const deLowerPcts = [0.50, 0.55, 0.60, 0.50];
+  // DE-Upper 9×3 @ 50-60%: 3 tartuntaa × 3 sarjaa = 9. Kaikki 3 vk pieni vaihtelu.
+  const deUpperPcts = [0.50, 0.55, 0.60, 0.50];
+
+  const weekPlans = weekDefs.map((wd, idx) => {
+    const meL = meLowerRotation[idx % meLowerRotation.length];
+    const meU = meUpperRotation[idx % meUpperRotation.length];
+    const meLowerTopReps = meL.topSetReps || 1;
+    const meUpperTopReps = meU.topSetReps || 1;
+    const deLowerPct = deLowerPcts[idx];
+    const deUpperPct = deUpperPcts[idx];
+
+    return {
+      week: wd.week,
+      days: [
+        // Ma: ME-Lower (max effort lower)
+        {
+          dayOfWeek: 1, dayType: "heavy", label: `ME-Lower (${meL.name})`,
+          slots: [
+            // Lämmittely + top single (autoreguloitu — käyttäjä työntää 1RM:ään)
+            { role: "primary", category: meL.category, defaultMovementName: meL.name,
+              sets: 1, reps: meLowerTopReps, targetVx: 1, note: `${meL.note} — top single (≥90% 1RM)` },
+            // Apuliikkeet: GHR + reverse hyper (kanoniset WSBB)
+            { role: "accessory", category: "alaraaja", defaultMovementName: "Glute-Ham Raise",
+              sets: 4, reps: 8, targetVx: 3, note: "GHR — hamstring/glute" },
+            { role: "accessory", category: "core", defaultMovementName: "Hyperextensio",
+              sets: 4, reps: 10, targetVx: 3, note: "Reverse hyper proxy" },
+            { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise",
+              sets: 3, reps: 12, targetVx: null },
+          ],
+        },
+        // Ke: ME-Upper (max effort upper)
+        {
+          dayOfWeek: 3, dayType: "heavy", label: `ME-Upper (${meU.name})`,
+          slots: [
+            { role: "primary", category: meU.category, defaultMovementName: meU.name,
+              sets: 1, reps: meUpperTopReps, targetVx: 1, note: `${meU.note} — top single (≥90% 1RM)` },
+            // Apuliikkeet: Lat + tricep WSBB-tradition mukaisesti
+            { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto",
+              sets: 4, reps: 8, targetVx: 2, note: "Lat-volyymi" },
+            { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "JM press",
+              sets: 3, reps: 8, targetVx: 3, note: "Tricep-specialty" },
+            { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Sivunosto",
+              sets: 3, reps: 12, targetVx: null },
+          ],
+        },
+        // Pe: DE-Lower (dynamic effort lower)
+        {
+          dayOfWeek: 5, dayType: "speed", label: "DE-Lower (Box squat)",
+          slots: [
+            { role: "primary", category: "alaraaja", defaultMovementName: "Box squat",
+              sets: 10, reps: 2, targetVx: 4, loadPct: deLowerPct,
+              note: `DE squat 10×2 @ ${Math.round(deLowerPct*100)}% (45-60s rest)` },
+            // DE-DL välissä (6×1 @ 70% kanoninen, käytetään yksinkertaistettuna)
+            { role: "primary", category: "alaraaja", defaultMovementName: "Maastaveto",
+              sets: 6, reps: 1, targetVx: 4, loadPct: 0.70,
+              note: "DE deadlift 6×1 @ 70%" },
+            { role: "accessory", category: "core", defaultMovementName: "Hyperextensio",
+              sets: 4, reps: 20, targetVx: null, note: "Reverse hyper light (4×20)" },
+            { role: "accessory", category: "core", defaultMovementName: "Pallof press",
+              sets: 3, reps: 10, targetVx: null },
+          ],
+        },
+        // La: DE-Upper (dynamic effort upper) — 3 grippiä × 3 sarjaa = 9×3
+        {
+          dayOfWeek: 6, dayType: "speed", label: "DE-Upper (Bench 9×3)",
+          slots: [
+            { role: "primary", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus",
+              sets: 9, reps: 3, targetVx: 4, loadPct: deUpperPct,
+              note: `Bench 9×3 @ ${Math.round(deUpperPct*100)}% (3 tartuntaa × 3 sarjaa)` },
+            { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Penkkiveto",
+              sets: 4, reps: 8, targetVx: 3, note: "BB row (lat-volyymi)" },
+            { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "JM press",
+              sets: 3, reps: 8, targetVx: 3, note: "Tricep-specialty" },
+            { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko",
+              sets: 3, reps: 10, targetVx: null },
+          ],
+        },
+      ],
+    };
+  });
+
+  return {
+    mesocycleId: uid(),
+    type: "westsideConjugate",
+    startDateISO: startDateISO || todayISO(),
+    weekCount: 4,
+    weekDefs,
+    weekPlans,
+    postCycleAnalysis: null,
+    _programMeta: {
+      source: "Simmons 2007 + WSBB-blogit (2018-2025) + Simmons 2011 CrossFit Journal PDF",
+      status: "WSBB-OFFICIAL + KIRJA-VIITATTU",
+      meRotationPeriodWeeks: 1,           // advanced-tasolla
+      meStagnationTrigger: "2 vk no PR → switch to 5RM top set for 1 week",
+      deLowerWavePcts: [0.50, 0.55, 0.60],
+      deUpperPctRange: [0.50, 0.60],
+      accommodatingResistancePct: null,   // raw Malli A: ilman AR
+      restSecondsDE: [45, 60],
+      restSecondsME: [180, 300],
+      streetliftingExtensionWarning: "Westside on alunperin equipped-PL. Tämä on WESTSIDE-DERIVED — ME-Upper-rotaation lisäpaino-dippi/leuka ei ole Simmonsin kanonisoima.",
+    },
+  };
+}
+
+// ── GZCL J&T 2.0 (12 vk = 2× 6vk blokkia, 4 päivää/vk) ──
+// EMPIRINEN-blogi (Lefever 2016 kokoteksti luettu)
+// T1 Training Max = ~90% 1RM (~2RM). Vk RM-targetit blokki 1: 10,8,6,4,2,1.
+// Drop-set %:t TM:stä: 67.5/70/72.5/75/78.5/null (vk6 = 1RM-testi).
+function createGZCLMesocycle(startDateISO) {
+  // Blokki 1 (vk 1-6): RM-target laskee 10 → 1
+  // Blokki 2 (vk 7-12): toistetaan samaa rakennetta korkeammilla kuormilla
+  const block1Rms       = [10, 8, 6, 4, 2, 1];
+  const block1DropPcts  = [0.675, 0.70, 0.725, 0.75, 0.785, null]; // null = 1RM-testi
+  // Blokki 2 -targetit (PENDING tarkka, käytetään konservatiivisia arvoja yhteisön mukautusten pohjalta)
+  const block2Rms       = [8, 6, 5, 3, 2, 1];
+  const block2DropPcts  = [0.70, 0.725, 0.75, 0.775, 0.80, null];
+
+  const allWeekRms       = [...block1Rms, ...block2Rms];
+  const allWeekDropPcts  = [...block1DropPcts, ...block2DropPcts];
+
+  // Päiväkohtainen T1/T2/T3-rakenne (Lefever J&T 2.0: 4 päivää, T1+T2+T3 per päivä)
+  // T1: pääliike viikoittainen RM-target
+  // T2: T2-variantti 3×8-10 @ drop-pct
+  // T3: accessory 3×15+ (LSAMRAP)
+  const buildDay = ({ dayOfWeek, label, t1Name, t1Cat, t2Name, t2Cat, t3Name, t3Cat, weekRm, dropPct }) => ({
+    dayOfWeek, dayType: weekRm <= 3 ? "heavy" : "volume", label,
+    slots: [
+      // T1: pääliike — RM-target target with AMRAP if dropPct present
+      {
+        role: "primary", category: t1Cat, defaultMovementName: t1Name,
+        sets: 1, reps: weekRm, targetVx: 1,
+        amrap: dropPct !== null,
+        amrapTargetReps: dropPct !== null ? weekRm : null,
+        note: `T1 ${weekRm}RM (LSAMRAP, RIR 1-2, cap 10)`,
+        gzclTier: 1,
+      },
+      // T2: 3×8 @ drop-pct (skip vk6/vk12 — 1RM-testi)
+      ...(dropPct !== null ? [{
+        role: "backoff", category: t2Cat, defaultMovementName: t2Name,
+        sets: 3, reps: 8, targetVx: 3, loadPct: dropPct,
+        note: `T2 3×8 @ ${Math.round(dropPct*100)}% TM`,
+        gzclTier: 2,
+      }] : []),
+      // T3: 3×15+ AMRAP
+      {
+        role: "accessory", category: t3Cat, defaultMovementName: t3Name,
+        sets: 3, reps: 15, targetVx: 4,
+        amrap: true, amrapTargetReps: 15,
+        note: "T3 3×15+ (LSAMRAP, T3:ssa AMRAP cap-vapaa)",
+        gzclTier: 3,
+      },
+    ],
+  });
+
+  // Kanoninen J&T 2.0 päiväjako: Squat A, Bench A, Squat B (eri variantti), Bench B
+  // Streetlifting-mukautus: säilytä klassinen pohja (Squat/Bench/DL/OHP)
+  const dayDefs = [
+    { day: 1, label: "T1 Squat / T2 Front Squat / T3 Walking lunge",
+      t1Name: "Takakyykky", t1Cat: "alaraaja",
+      t2Name: "Front squat", t2Cat: "alaraaja",
+      t3Name: "Walking lunge", t3Cat: "alaraaja" },
+    { day: 2, label: "T1 Bench / T2 Close-grip bench / T3 Penkkiveto",
+      t1Name: "Penkkipunnerrus", t1Cat: "horisontaalityöntö",
+      t2Name: "Close-grip bench", t2Cat: "horisontaalityöntö",
+      t3Name: "Penkkiveto", t3Cat: "horisontaaliveto" },
+    { day: 4, label: "T1 Deadlift / T2 Paused DL / T3 Romanian DL",
+      t1Name: "Maastaveto", t1Cat: "alaraaja",
+      t2Name: "Paused DL", t2Cat: "alaraaja",
+      t3Name: "Romanian DL", t3Cat: "alaraaja" },
+    { day: 5, label: "T1 OHP / T2 Push press / T3 Pystypunnerrus",
+      t1Name: "Pystypunnerrus", t1Cat: "vertikaalityöntö",
+      t2Name: "Push press", t2Cat: "vertikaalityöntö",
+      t3Name: "Pystypunnerrus", t3Cat: "vertikaalityöntö" },
+  ];
+
+  const weekDefs = allWeekRms.map((rm, idx) => ({
+    week: idx + 1,
+    deltaPctBase: idx < 6 ? (idx * 0.01) : (0.06 + (idx-6) * 0.01),
+    label: `GZCL J&T 2.0 vk${idx+1} (RM=${rm}${allWeekDropPcts[idx] === null ? ", 1RM-testi" : ""})`,
+    heavyReps: rm,
+    heavyTargetVx: rm <= 3 ? 1 : (rm <= 6 ? 2 : 3),
+  }));
+
+  const weekPlans = allWeekRms.map((rm, idx) => ({
+    week: idx + 1,
+    days: dayDefs.map(d => buildDay({
+      ...d, weekRm: rm, dropPct: allWeekDropPcts[idx],
+    })),
+  }));
+
+  return {
+    mesocycleId: uid(),
+    type: "gzclJT20",
+    startDateISO: startDateISO || todayISO(),
+    weekCount: 12,
+    weekDefs,
+    weekPlans,
+    postCycleAnalysis: null,
+    _programMeta: {
+      source: "Lefever 2016 'Jacked & Tan 2.0' -blogi (swoleateveryheight.blogspot.com)",
+      status: "EMPIRINEN-blogi",
+      durationWeeks: 12,
+      sessionsPerWeek: 4,
+      blocks: [6, 6],
+      trainingMaxPctOf1RM: 0.90,
+      amrapRir: [1, 2],
+      amrapCapT1: 10,
+      e1rmFormula: "epley",
+      block1WeeklyRmTargets: block1Rms,
+      block1DropsetPctTm: block1DropPcts,
+      block2WeeklyRmTargets: block2Rms,
+      block2DropsetPctTm: block2DropPcts,
+      block2PctsStatus: "PENDING — Lefeverin J&T 2.0 vk 7-12 tarkat %:t vain Boostcamp-appissa; käytetty yhteisön konservatiivinen mukautus",
+    },
+  };
+}
+
+// ── Sheiko #29-derived (4 vk, 3 päivää/vk) ──
+// EMPIRINEN-yhteisökopio + KRIITTINEN: "SHEIKO-DERIVED, ei kanoninen"
+// Sheiko on EKSKLUSIIVISESTI squat/bench/deadlift. Streetlifting (leuka/dippi) ei
+// ole kanonisessa Sheikossa. Leuka/dippi lisätty "additional exercise 5×5" -muotoon.
+function createSheikoDerivedMesocycle(startDateISO) {
+  // #29 viikko 1-3 päiväkohtaiset rakenteet (foorumi-spreadsheet KOLMANNEN OSAPUOLEN)
+  // Yksinkertaistus: käytä keskimääräistä intensiteettiä per päivä, max-int. nousee vk1→vk3
+  const weekConfigs = [
+    { week: 1, maxIntPct: 0.75, label: "#29 vk1 (max 75% 1RM)" },
+    { week: 2, maxIntPct: 0.80, label: "#29 vk2 (max 80% 1RM)" },
+    { week: 3, maxIntPct: 0.85, label: "#29 vk3 (max 85% 1RM)" },
+    { week: 4, maxIntPct: 0.70, label: "#29 vk4 deload (max 70%)" },
+  ];
+
+  const weekDefs = weekConfigs.map(wc => ({
+    week: wc.week,
+    deltaPctBase: wc.week === 4 ? -0.20 : (wc.week - 1) * 0.025,
+    label: wc.label,
+    heavyReps: 3,
+    heavyTargetVx: wc.week === 4 ? 4 : 2,
+  }));
+
+  // Per päivä: Sheikon klassinen pyramidi-pohja. Squat 2x/vk, Bench 3x/vk, DL 1x/vk
+  // Streetlifting-laajennus: leuka & dippi additional 5×5 ilman %-skeemaa.
+  const weekPlans = weekConfigs.map(wc => ({
+    week: wc.week,
+    days: [
+      // Ma: Squat + Bench + Squat-toisto (Sheikon klassinen rakenne)
+      {
+        dayOfWeek: 1, dayType: "volume", label: `Sheiko Ma — ${wc.label}`,
+        slots: [
+          // Squat-pyramidi 50/60/70/(85% max)
+          { role: "primary", category: "alaraaja", defaultMovementName: "Takakyykky",
+            sets: 1, reps: 5, targetVx: 4, loadPct: 0.50, note: "Squat warm-up 1×5 @ 50%" },
+          { role: "primary", category: "alaraaja", defaultMovementName: "Takakyykky",
+            sets: 2, reps: 5, targetVx: 4, loadPct: 0.60, note: "Squat warm-up 2×5 @ 60%" },
+          { role: "primary", category: "alaraaja", defaultMovementName: "Takakyykky",
+            sets: 5, reps: 5, targetVx: 3, loadPct: Math.min(0.70, wc.maxIntPct),
+            note: `Squat working 5×5 @ ${Math.round(Math.min(0.70, wc.maxIntPct)*100)}%` },
+          // Bench-pyramidi
+          { role: "primary", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus",
+            sets: 4, reps: 4, targetVx: 2, loadPct: wc.maxIntPct,
+            note: `Bench top 4×4 @ ${Math.round(wc.maxIntPct*100)}%` },
+          // Accessory (Sheikon kanonin mukaisesti)
+          { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Dumbbell fly",
+            sets: 5, reps: 10, targetVx: 3, note: "DB fly (Sheiko classic acc.)" },
+          { role: "accessory", category: "alaraaja", defaultMovementName: "Good morning",
+            sets: 5, reps: 5, targetVx: 3, note: "GM seisten (Sheiko classic)" },
+        ],
+      },
+      // Ke: Deadlift + Bench + lat-acc.
+      {
+        dayOfWeek: 3, dayType: "heavy", label: `Sheiko Ke — DL + Bench`,
+        slots: [
+          { role: "primary", category: "alaraaja", defaultMovementName: "Maastaveto",
+            sets: 4, reps: 3, targetVx: 2, loadPct: wc.maxIntPct,
+            note: `DL top 4×3 @ ${Math.round(wc.maxIntPct*100)}%` },
+          { role: "primary", category: "horisontaalityöntö", defaultMovementName: "Vinopenkkipunnerrus",
+            sets: 6, reps: 4, targetVx: 3, loadPct: 0.70, note: "Incline bench 6×4 (Sheiko #29)" },
+          // Streetlifting-laajennus: dippi additional 5×5 (SHEIKO-DERIVED tagi)
+          { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Lisäpainodippi",
+            sets: 5, reps: 5, targetVx: 3,
+            note: "Lisäpaino-dippi 5×5 (SHEIKO-DERIVED LAAJENNUS — ei kanoninen Sheiko)" },
+          { role: "accessory", category: "alaraaja", defaultMovementName: "Yhden jalan jalkaprässi",
+            sets: 5, reps: 5, targetVx: 3, note: "One-leg press (Sheiko classic)" },
+          { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise",
+            sets: 3, reps: 10, targetVx: null },
+        ],
+      },
+      // Pe: Bench-aalto + Squat-toisto
+      {
+        dayOfWeek: 5, dayType: "volume", label: `Sheiko Pe — Bench wave + Squat`,
+        slots: [
+          // Bench-aalto 50/60/70/80/(max%)/80/70/60/50
+          { role: "primary", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus",
+            sets: 1, reps: 4, targetVx: 2, loadPct: wc.maxIntPct,
+            note: `Bench peak 1×4 @ ${Math.round(wc.maxIntPct*100)}% (aaltohuippu)` },
+          { role: "primary", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus",
+            sets: 3, reps: 5, targetVx: 3, loadPct: 0.65, note: "Bench taper 3×5 @ 65%" },
+          { role: "primary", category: "alaraaja", defaultMovementName: "Takakyykky",
+            sets: 4, reps: 4, targetVx: 3, loadPct: 0.70, note: "Squat second hit 4×4 @ 70%" },
+          // Streetlifting-laajennus: leuka additional 5×5
+          { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto",
+            sets: 5, reps: 5, targetVx: 3,
+            note: "Lisäpaino-leuka 5×5 (SHEIKO-DERIVED LAAJENNUS — ei kanoninen Sheiko)" },
+          { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Dumbbell fly",
+            sets: 5, reps: 10, targetVx: 3 },
+        ],
+      },
+    ],
+  }));
+
+  return {
+    mesocycleId: uid(),
+    type: "sheikoDerived",
+    startDateISO: startDateISO || todayISO(),
+    weekCount: 4,
+    weekDefs,
+    weekPlans,
+    postCycleAnalysis: null,
+    _programMeta: {
+      source: "Sheiko #29 (anonyymi yhteisökopio foorumi-spreadsheetistä); Boris Sheikon kirja 2018 EI luettu",
+      status: "EMPIRINEN-yhteisökopio + 'SHEIKO-DERIVED' (ei kanoninen)",
+      durationWeeks: 4,
+      sessionsPerWeek: 3,
+      squatFrequency: 2,
+      benchFrequency: 3,
+      deadliftFrequency: 1,
+      avgIntensityPct: 0.70,
+      maxIntensityWeek1Pct: 0.75,
+      maxIntensityWeek3Pct: 0.85,
+      streetliftingExtensionWarning: "SHEIKO-DERIVED LAAJENNUS: leuka + dippi 5×5 additional exerciseinä ilman %-skeemaa. Sheiko ei kanonisoi tätä — Sheiko kattaa vain squat/bench/deadlift. Lopputuotos on 'Sheiko-inspired hybrid'.",
+      volumeRiskWarning: "Sheiko-volyymi (200-400 NL/vk yli 50%:lla) + streetlifting-volyymi = ristikkäisvolyymi-riski. Akseli (advanced/elite) → harkitse Intermediate Medium Load -versiota.",
+    },
+  };
+}
+
+// ── Minimalist RP (4 vk, hypertrofia-fokus, MEV → MAV progressio) ──
+// Tutkimuspohja: Israetel RP-blogi 2017+ (DOKUMENTOITU, ei VERIFIOITU peer-reviewed).
+// "Effective reps" on Chris Beardsleyn konsepti (~2017), EI Israetelin.
+// Sarjan määritelmä: 30-85% 1RM, 5-30 reps, RIR 0-4 — vain prime-mover-/isolaatiosarjat.
+function createMinimalistRPMesocycle(startDateISO) {
+  // 4 vk mesosykli: vk1 MEV, vk2 + 2 sarjaa, vk3 lähellä MAV, vk4 deload
+  // 3 päivää/vk push-pull-legs -tyyppinen jako (yksinkertaistus)
+  const weekDefs = [
+    { week: 1, deltaPctBase: 0,     label: "RP Min vk1 (MEV)",         heavyReps: 8, heavyTargetVx: 2 },
+    { week: 2, deltaPctBase: 0.025, label: "RP Min vk2 (MEV+2 sets)",  heavyReps: 8, heavyTargetVx: 2 },
+    { week: 3, deltaPctBase: 0.05,  label: "RP Min vk3 (lähellä MAV)", heavyReps: 8, heavyTargetVx: 1 },
+    { week: 4, deltaPctBase: -0.25, label: "RP Min vk4 (deload)",      heavyReps: 6, heavyTargetVx: 4 },
+  ];
+
+  // Sets-first-progressio: lisää sarjoja ennen kuormaa.
+  // Esim. vk1 = 2 sarjaa per liike, vk2 = 3 sarjaa, vk3 = 4 sarjaa, vk4 = 1 sarja (deload)
+  const setsPerWeek = [2, 3, 4, 1];
+
+  const weekPlans = weekDefs.map((wd, idx) => {
+    const sets = setsPerWeek[idx];
+    const targetRir = idx === 3 ? 4 : (idx === 2 ? 0 : 1); // vk3 lähellä failurea, vk4 deload
+    return {
+      week: wd.week,
+      days: [
+        // Ma: Push (rinta + olkapää + tricep)
+        {
+          dayOfWeek: 1, dayType: "volume", label: `RP Push (vk${wd.week}, ${sets} sets/movement)`,
+          slots: [
+            { role: "primary", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus",
+              sets, reps: 10, targetVx: targetRir, note: `MEV-progressio: ${sets} sarjaa` },
+            { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Vinopenkkipunnerrus",
+              sets, reps: 10, targetVx: targetRir, note: `Upper chest, ${sets} sarjaa` },
+            { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Sivunosto",
+              sets, reps: 15, targetVx: targetRir, note: `Side delt, ${sets} sarjaa` },
+            { role: "accessory", category: "ojentajaekstensio", defaultMovementName: "Tricep pushdown",
+              sets, reps: 12, targetVx: targetRir, note: `Tricep, ${sets} sarjaa` },
+          ],
+        },
+        // Ke: Pull (selkä + biceps + taka-olkapää)
+        {
+          dayOfWeek: 3, dayType: "volume", label: `RP Pull (vk${wd.week}, ${sets} sets/movement)`,
+          slots: [
+            { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto",
+              sets, reps: 8, targetVx: targetRir, note: `Vertical pull, ${sets} sarjaa` },
+            { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto",
+              sets, reps: 10, targetVx: targetRir, note: `Horizontal pull, ${sets} sarjaa` },
+            { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Face pull",
+              sets, reps: 15, targetVx: targetRir, note: `Rear delt, ${sets} sarjaa` },
+            { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko",
+              sets, reps: 12, targetVx: targetRir, note: `Biceps, ${sets} sarjaa` },
+          ],
+        },
+        // Pe: Legs (quad + ham + glute + calf)
+        {
+          dayOfWeek: 5, dayType: "volume", label: `RP Legs (vk${wd.week}, ${sets} sets/movement)`,
+          slots: [
+            { role: "primary", category: "alaraaja", defaultMovementName: "Takakyykky",
+              sets, reps: 8, targetVx: targetRir, note: `Quad-dom, ${sets} sarjaa` },
+            { role: "accessory", category: "alaraaja", defaultMovementName: "Romanian DL",
+              sets, reps: 10, targetVx: targetRir, note: `Hamstring/glute, ${sets} sarjaa` },
+            { role: "accessory", category: "alaraaja", defaultMovementName: "Bulgarian split squat",
+              sets, reps: 10, targetVx: targetRir, note: `Unilateral quad, ${sets} sarjaa` },
+            { role: "accessory", category: "alaraaja", defaultMovementName: "Pohjenosto",
+              sets, reps: 15, targetVx: targetRir, note: `Calf, ${sets} sarjaa` },
+            { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise",
+              sets, reps: 12, targetVx: null },
+          ],
+        },
+      ],
+    };
+  });
+
+  return {
+    mesocycleId: uid(),
+    type: "minimalistRP",
+    startDateISO: startDateISO || todayISO(),
+    weekCount: 4,
+    weekDefs,
+    weekPlans,
+    postCycleAnalysis: null,
+    _programMeta: {
+      source: "Israetel RP-blogi 2017+ (rpstrength.com Training Volume Landmarks)",
+      status: "DOKUMENTOITU (ei VERIFIOITU peer-reviewed); 'Effective reps' on Beardsleyn (~2017), ei Israetelin",
+      volumeLandmarksDocumented: true,
+      mevToMavProgression: setsPerWeek,
+      rirRangeMain: [0, 2],
+      streetliftingApplicabilityWarning: "RP MV/MEV/MAV/MRV on hypertrofialle (30-85% 1RM, 5-30 reps). 1RM-spesialisaatio (≥85% 1RM) on volyymilandmarkin ulkopuolella → käytä RP:tä apuliikkeisiin, ei pääliikkeen 1RM-progressioon.",
+    },
+  };
+}
+
+// ── Smolov Jr (4 vk = 3 vk harjoitus + 1 vk lepoviikko/1RM-testi) ──
+// DOKUMENTOITU yhteisö (smolovjr.com, Lift Vault, PowerliftingToWin)
+// HUOM: Tsatsouline kanoninen 13 vk Smolov EI suositella streetliftingiin.
+// Smolov Jr on lyhyempi, jaettu volyymi → riskialttomampi advanced-lifterille.
+// PAKOLLISIA EHTOJA: training max ≤90% todellisesta 1RM:stä, max 1 sykli, 1 liike kerrallaan.
+function createSmolovJrMesocycle(startDateISO) {
+  // Smolov Jr klassinen 4-päiväinen rakenne:
+  //   Day 1: 6×6 @ 70%
+  //   Day 2: 7×5 @ 75%
+  //   Day 3: 8×4 @ 80%
+  //   Day 4: 10×3 @ 85%
+  // Kuormalisäys per viikko: +5-10 lbs/päivä (vk2), +10-20 lbs/päivä (vk3)
+  // Approksimaatio metric: +2.5-5 kg/päivä vk2, +5-10 kg/päivä vk3
+  const smolovDays = [
+    { dow: 1, sets: 6, reps: 6, basePct: 0.70, label: "Smolov Jr Day 1 (6×6@70%)" },
+    { dow: 2, sets: 7, reps: 5, basePct: 0.75, label: "Smolov Jr Day 2 (7×5@75%)" },
+    { dow: 4, sets: 8, reps: 4, basePct: 0.80, label: "Smolov Jr Day 3 (8×4@80%)" },
+    { dow: 6, sets: 10, reps: 3, basePct: 0.85, label: "Smolov Jr Day 4 (10×3@85%)" },
+  ];
+
+  // Vk-multiplierit: vk1 = base, vk2 = +0.025, vk3 = +0.05, vk4 = lepo + 1RM-testi
+  const weekDefs = [
+    { week: 1, deltaPctBase: 0,     label: "Smolov Jr vk1 (base)",     heavyReps: 4, heavyTargetVx: 2 },
+    { week: 2, deltaPctBase: 0.025, label: "Smolov Jr vk2 (+2.5%)",    heavyReps: 4, heavyTargetVx: 1 },
+    { week: 3, deltaPctBase: 0.05,  label: "Smolov Jr vk3 (+5%) peak", heavyReps: 4, heavyTargetVx: 1 },
+    { week: 4, deltaPctBase: -0.25, label: "Smolov Jr vk4 (lepo + 1RM-testi)", heavyReps: 1, heavyTargetVx: 1 },
+  ];
+
+  const buildSmolovDay = (sd, weekMult, isTestWeek) => {
+    if (isTestWeek) {
+      // Vk4 = lepo + 1RM-testi (vain 1 sessio sd.dow=1)
+      if (sd.dow !== 1) return null;
+      return {
+        dayOfWeek: 1, dayType: "heavy", label: "Smolov Jr vk4 — 1RM-testi",
+        slots: [
+          { role: "primary", category: "alaraaja", defaultMovementName: "Takakyykky",
+            sets: 1, reps: 1, targetVx: 1, note: "1RM-testi (uusi PR-arvio)" },
+          { role: "accessory", category: "core", defaultMovementName: "Pallof press",
+            sets: 3, reps: 10, targetVx: null, note: "Aktiivinen palautuminen" },
+        ],
+      };
+    }
+    const adjustedPct = sd.basePct * (1 + weekMult);
+    return {
+      dayOfWeek: sd.dow, dayType: "heavy", label: sd.label,
+      slots: [
+        // Smolov Jr -pääliike (default Takakyykky; substituutio leuka/dippi atletin tarpeen mukaan)
+        {
+          role: "primary", category: "alaraaja", defaultMovementName: "Takakyykky",
+          sets: sd.sets, reps: sd.reps, targetVx: 2,
+          loadPct: Math.min(0.95, adjustedPct), // hard cap 95%
+          note: `${sd.sets}×${sd.reps} @ ${Math.round(adjustedPct*100)}% (TM ≤90% todellisesta 1RM:stä)`,
+        },
+        // Minimal accessory volyymitukena
+        { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise",
+          sets: 3, reps: 10, targetVx: null },
+      ],
+    };
+  };
+
+  const weekPlans = weekDefs.map((wd, idx) => {
+    const isTestWeek = idx === 3;
+    const weekMult = idx === 0 ? 0 : (idx === 1 ? 0.025 : (idx === 2 ? 0.05 : 0));
+    const days = smolovDays.map(sd => buildSmolovDay(sd, weekMult, isTestWeek)).filter(d => d !== null);
+    return { week: wd.week, days };
+  });
+
+  return {
+    mesocycleId: uid(),
+    type: "smolovJr",
+    startDateISO: startDateISO || todayISO(),
+    weekCount: 4,
+    weekDefs,
+    weekPlans,
+    postCycleAnalysis: null,
+    _programMeta: {
+      source: "Smolov Jr (Sergei Smolov / Tsatsouline-välitys; yhteisön mukautus smolovjr.com)",
+      status: "DOKUMENTOITU yhteisö (kanoninen 13 vk Smolov EI suositella streetliftingiin)",
+      durationWeeks: 4,
+      sessionsPerWeek: 4,
+      trainingMaxCapPct: 0.90,        // ≤90% todellisesta 1RM:stä
+      streetliftingApplicabilityWarning: "13 vk täys-Smolov on KONTRAINDIKOITU advanced streetlifting-lifterille (jännerakenne-riski). Smolov Jr (3 vk + lepoviikko) on järkevämpi mukautus, mutta vain yksi liike kerrallaan (leuka TAI dippi, ei molemmat samanaikaisesti).",
+      mandatoryConditions: [
+        "Training max ≤90% todellisesta 1RM:stä",
+        "Max 1 sykli ilman lepoviikkoa",
+        "Vain yksi liike kerrallaan (leuka TAI dippi)",
+        "Selvä deload/peakaus syklin jälkeen",
+      ],
+    },
+  };
+}
+
+// ── Coan-Phillipi (11 vk = 10 vk + meet vk 11) ──
+// KORJATTU: Alkuperäinen on 10 vk + meet, EI 12 vk. Mark Phillipi -essee
+// (powerpage.net, URL kuollut), EI Marty Gallagher.
+// "Desired 1RM" = current 1RM + 9-18 kg (atletin valinta tavoitteen mukaan).
+function createCoanPhillipiMesocycle(startDateISO) {
+  // 10+1 vk taulukko Mark Phillipi -alkuperäisesta + mirror-versioista
+  const cpWeeks = [
+    { week: 1,  heavyPct: 0.75, heavySets: 1, heavyReps: 2, speedPct: 0.60, speedSets: 8, speedReps: 3, label: "CP vk1" },
+    { week: 2,  heavyPct: 0.80, heavySets: 1, heavyReps: 2, speedPct: 0.65, speedSets: 8, speedReps: 3, label: "CP vk2" },
+    { week: 3,  heavyPct: 0.85, heavySets: 1, heavyReps: 2, speedPct: 0.70, speedSets: 6, speedReps: 3, label: "CP vk3" },
+    { week: 4,  heavyPct: 0.90, heavySets: 1, heavyReps: 2, speedPct: 0.75, speedSets: 5, speedReps: 3, label: "CP vk4" },
+    { week: 5,  heavyPct: 0.80, heavySets: 3, heavyReps: 3, speedPct: 0.65, speedSets: 3, speedReps: 3, label: "CP vk5 (ainoa moni-työsarjainen)" },
+    { week: 6,  heavyPct: 0.85, heavySets: 1, heavyReps: 2, speedPct: 0.70, speedSets: 3, speedReps: 3, label: "CP vk6" },
+    { week: 7,  heavyPct: 0.90, heavySets: 1, heavyReps: 2, speedPct: 0.75, speedSets: 3, speedReps: 3, label: "CP vk7" },
+    { week: 8,  heavyPct: 0.95, heavySets: 1, heavyReps: 2, speedPct: 0.70, speedSets: 3, speedReps: 3, label: "CP vk8" },
+    { week: 9,  heavyPct: 0.975, heavySets: 1, heavyReps: 1, speedPct: 0.70, speedSets: 2, speedReps: 3, label: "CP vk9" },
+    { week: 10, heavyPct: 1.00, heavySets: 1, heavyReps: 1, speedPct: 0.60, speedSets: 2, speedReps: 3, label: "CP vk10 peak" },
+    { week: 11, heavyPct: null, heavySets: 0, heavyReps: 0, speedPct: null, speedSets: 0, speedReps: 0, label: "CP vk11 MEET (avaa 100%+)" },
+  ];
+
+  const weekDefs = cpWeeks.map(w => ({
+    week: w.week,
+    deltaPctBase: w.heavyPct ? (w.heavyPct - 0.75) : 0,
+    label: w.label,
+    heavyReps: w.heavyReps || 1,
+    heavyTargetVx: w.week === 11 ? 1 : (w.heavyPct >= 0.95 ? 1 : 2),
+  }));
+
+  // Assistance per viikko-kategoria
+  const buildAssistance = (week) => {
+    if (week <= 4) {
+      // Vk 1-4: circuit (Stiff-leg DL + BB row + lat pulldown + good morning)
+      return [
+        { role: "accessory", category: "alaraaja", defaultMovementName: "Romanian DL",
+          sets: 3, reps: 8, targetVx: 3, note: "Circuit (3 kierrosta, 90 s liike, 2-3 min kierros)" },
+        { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto",
+          sets: 3, reps: 8, targetVx: 3, note: "Circuit" },
+        { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja",
+          sets: 3, reps: 8, targetVx: 3, note: "Lat PD circuit" },
+        { role: "accessory", category: "alaraaja", defaultMovementName: "Good morning",
+          sets: 3, reps: 8, targetVx: 3, note: "Circuit" },
+      ];
+    }
+    if (week === 5 || week === 6) {
+      const shrugPct = week === 5 ? 0.60 : 0.65;
+      return [
+        { role: "accessory", category: "muu", defaultMovementName: "Power shrug",
+          sets: 3, reps: 5, targetVx: 2, loadPct: shrugPct, note: `Power shrugs @ ${Math.round(shrugPct*100)}% 1RM` },
+        { role: "accessory", category: "alaraaja", defaultMovementName: "Romanian DL",
+          sets: 3, reps: 5, targetVx: 3 },
+        { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto",
+          sets: 3, reps: 5, targetVx: 3 },
+        { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja",
+          sets: 3, reps: 5, targetVx: 3 },
+        { role: "accessory", category: "alaraaja", defaultMovementName: "Good morning",
+          sets: 3, reps: 5, targetVx: 3 },
+      ];
+    }
+    if (week === 7 || week === 8) {
+      const shrugPct = week === 7 ? 0.70 : 0.75;
+      return [
+        { role: "accessory", category: "muu", defaultMovementName: "Power shrug",
+          sets: 2, reps: 5, targetVx: 2, loadPct: shrugPct, note: `Power shrugs @ ${Math.round(shrugPct*100)}%` },
+        { role: "accessory", category: "alaraaja", defaultMovementName: "Romanian DL",
+          sets: 2, reps: 5, targetVx: 3 },
+        { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto",
+          sets: 2, reps: 5, targetVx: 3 },
+      ];
+    }
+    if (week === 9) {
+      return [
+        { role: "accessory", category: "muu", defaultMovementName: "Power shrug",
+          sets: 2, reps: 5, targetVx: 2, loadPct: 0.75 },
+        { role: "accessory", category: "alaraaja", defaultMovementName: "Romanian DL",
+          sets: 2, reps: 5, targetVx: 3 },
+      ];
+    }
+    // Vk 10 + 11: ei assistance-työtä
+    return [];
+  };
+
+  const weekPlans = cpWeeks.map(w => {
+    if (w.week === 11) {
+      // MEET-viikko: vain 1 päivä, openeri + attempts
+      return {
+        week: 11,
+        days: [{
+          dayOfWeek: 6, dayType: "heavy", label: "CP MEET — DL 100%+",
+          slots: [{
+            role: "primary", category: "alaraaja", defaultMovementName: "Maastaveto",
+            sets: 1, reps: 1, targetVx: 1, loadPct: 1.00, note: "MEET-päivä: opener 92.5%, 2nd 97.5%, 3rd 100%+",
+          }],
+        }],
+      };
+    }
+    return {
+      week: w.week,
+      days: [{
+        dayOfWeek: 6, dayType: "heavy", label: w.label,
+        slots: [
+          // Heavy DL
+          { role: "primary", category: "alaraaja", defaultMovementName: "Maastaveto",
+            sets: w.heavySets, reps: w.heavyReps, targetVx: w.heavyPct >= 0.95 ? 1 : 2,
+            loadPct: w.heavyPct, note: `Heavy: ${w.heavySets}×${w.heavyReps} @ ${Math.round(w.heavyPct*100)}% Desired 1RM` },
+          // Speed-work
+          { role: "backoff", category: "alaraaja", defaultMovementName: "Maastaveto",
+            sets: w.speedSets, reps: w.speedReps, targetVx: 4,
+            loadPct: w.speedPct, note: `Speed: ${w.speedSets}×${w.speedReps} @ ${Math.round(w.speedPct*100)}%` },
+          // Assistance
+          ...buildAssistance(w.week),
+        ],
+      }],
+    };
+  });
+
+  return {
+    mesocycleId: uid(),
+    type: "coanPhillipi",
+    startDateISO: startDateISO || todayISO(),
+    weekCount: 11,
+    weekDefs,
+    weekPlans,
+    postCycleAnalysis: null,
+    _programMeta: {
+      source: "Mark Phillipi -alkuperäisessee (powerpage.net, URL kuollut); Mirror: ontariostrongman, tsampa, stoic, liftvault",
+      status: "DOKUMENTOITU yhteisökonsensus (kanoninen 10+1 vk, EI 12 vk)",
+      durationWeeks: 11,
+      sessionsPerWeekDL: 1,
+      desiredOneRmFormula: "current_1RM + 9-18 kg",
+      peakWeek: 10,
+      meetWeek: 11,
+      streetliftingApplicabilityWarning: "Coan-Phillipi on DL-spesifinen yksittäisliike-spesialisaatio. Streetlifting-mukautus = COAN-PHILLIPI-DERIVED (vaihda DL → leuka/dippi). Speed-work-volyymi (60% × 8×3 = 24 reps) on liian olkapää-kuormittava lisäpaino-leukailussa → pienennä 30-40% kun substituoit.",
+      taskCorrections: [
+        "10 vk + meet vk 11, EI 12 vk",
+        "Mark Phillipi (ei 'Karl Phillipi')",
+        "Mark Phillipin oma essee (ei Marty Gallagher)",
+      ],
+    },
+  };
+}
+
 // ─── AMRAP-konversio (Epley primary + Brzycki vertailu) ───────────────
 // Tutkimuspohja: Epley 1985 (Poundage Chart), Brzycki 1993 (JOPERD 64(1):88-90)
 // Reynolds 2006 (PDF-VERIFIOITU): >10 reps → linear-formulat epäluotettavia.
@@ -4176,37 +4917,51 @@ const SKELETON_CATEGORY_TO_ROLE = {
 };
 
 // Goal → skeleton preset factory name
-// v4.48.0 (Track B Vaihe 2D-β): laajennettu 7 → 10 single-block-tyyliin.
-// Uudet: wendler531 (4 vk), topSetBackoff (4 vk), madcow5x5 (5 vk natiivi).
-// HUOM: madcow5x5 on ainoa uusi joka käyttää natiivipituutta 5 vk (vk5 = PR-yritys).
+// v4.49.0 (Track B Vaihe 2D-γ): laajennettu 10 → 16 single-block-tyyliin.
+// Uudet 2D-γ: westsideConjugate (4 vk), gzclJT20 (12 vk), sheikoDerived (4 vk),
+// minimalistRP (4 vk), smolovJr (4 vk), coanPhillipi (11 vk).
 const GOAL_SKELETONS = {
-  hypertrofia:    "createHypertrofiaMesocycle",
-  maksimivoima:   "createMaksimivoimaMesocycle",
-  yhdistelma:     "createDefaultMesocycle",
-  undulating:     "createDUPMesocycle",
-  eksentrinen:    "createEksenterinenMesocycle",
-  siirtyma:       "createSiirtymaMesocycle",
-  palautuminen:   "createPalautuminenMesocycle",
+  hypertrofia:        "createHypertrofiaMesocycle",
+  maksimivoima:       "createMaksimivoimaMesocycle",
+  yhdistelma:         "createDefaultMesocycle",
+  undulating:         "createDUPMesocycle",
+  eksentrinen:        "createEksenterinenMesocycle",
+  siirtyma:           "createSiirtymaMesocycle",
+  palautuminen:       "createPalautuminenMesocycle",
   // 2D-β:
-  wendler531:     "createWendler531Mesocycle",
-  topSetBackoff:  "createTopSetBackoffMesocycle",
-  madcow5x5:      "createMadcow5x5Mesocycle",
+  wendler531:         "createWendler531Mesocycle",
+  topSetBackoff:      "createTopSetBackoffMesocycle",
+  madcow5x5:          "createMadcow5x5Mesocycle",
+  // 2D-γ:
+  westsideConjugate:  "createWestsideConjugateMesocycle",
+  gzclJT20:           "createGZCLMesocycle",
+  sheikoDerived:      "createSheikoDerivedMesocycle",
+  minimalistRP:       "createMinimalistRPMesocycle",
+  smolovJr:           "createSmolovJrMesocycle",
+  coanPhillipi:       "createCoanPhillipiMesocycle",
 };
 
 // Natiivipituudet (vk) skeleton-factory:ille. Jos goalin natiivipituus !== 4
 // → bypass scaleWeekCount() ja säilytä natiivipituus.
 const GOAL_NATIVE_WEEKS = {
-  hypertrofia:    4,
-  maksimivoima:   4,
-  yhdistelma:     4,
-  undulating:     4,
-  eksentrinen:    4,
-  siirtyma:       3,
-  palautuminen:   2,
+  hypertrofia:        4,
+  maksimivoima:       4,
+  yhdistelma:         4,
+  undulating:         4,
+  eksentrinen:        4,
+  siirtyma:           3,
+  palautuminen:       2,
   // 2D-β:
-  wendler531:     4,
-  topSetBackoff:  4,
-  madcow5x5:      5,  // vk5 = PR-yritys (Powerliftingtowin RISTIINTARKISTETTU)
+  wendler531:         4,
+  topSetBackoff:      4,
+  madcow5x5:          5,  // vk5 = PR-yritys (Powerliftingtowin RISTIINTARKISTETTU)
+  // 2D-γ:
+  westsideConjugate:  4,
+  gzclJT20:           12, // 2× 6vk blokkia (Lefever J&T 2.0)
+  sheikoDerived:      4,
+  minimalistRP:       4,
+  smolovJr:           4,  // 3 vk + 1 lepoviikko/1RM-testi
+  coanPhillipi:       11, // 10 vk + meet vk 11 (Mark Phillipi alkuperäinen)
 };
 
 // ── Generator helpers ──
@@ -4435,7 +5190,7 @@ function generateCustomMesocycle(answers, startDateISOArg) {
   } = answers;
   const startDateISO = startDateISOArg || answers.startDateISO || todayISO();
 
-  // 1. Hae skeleton (v4.48.0: laajennettu 7 → 10 tyyliä — 2D-β klassikot)
+  // 1. Hae skeleton (v4.49.0: laajennettu 10 → 16 tyyliä — 2D-γ edistyneet metodologiat)
   const skeletonFactoryName = GOAL_SKELETONS[goal] || GOAL_SKELETONS.yhdistelma;
   const skeletonFactories = {
     createHypertrofiaMesocycle,
@@ -4449,6 +5204,13 @@ function generateCustomMesocycle(answers, startDateISOArg) {
     createWendler531Mesocycle,
     createTopSetBackoffMesocycle,
     createMadcow5x5Mesocycle,
+    // 2D-γ:
+    createWestsideConjugateMesocycle,
+    createGZCLMesocycle,
+    createSheikoDerivedMesocycle,
+    createMinimalistRPMesocycle,
+    createSmolovJrMesocycle,
+    createCoanPhillipiMesocycle,
   };
   const factory = skeletonFactories[skeletonFactoryName];
   if (!factory) {
@@ -6752,6 +7514,13 @@ export {
   amrapToE1RM,
   calculateE1RM_Epley,
   calculateE1RM_Brzycki,
+  // v4.49.0 (Track B Vaihe 2D-γ): edistyneet metodologiat
+  createWestsideConjugateMesocycle,
+  createGZCLMesocycle,
+  createSheikoDerivedMesocycle,
+  createMinimalistRPMesocycle,
+  createSmolovJrMesocycle,
+  createCoanPhillipiMesocycle,
   // Custom program generator (v4.27)
   generateCustomMesocycle,
   // v4.42.0 (Track B Vaihe 2C-α): multi-blokki-mesocycle
