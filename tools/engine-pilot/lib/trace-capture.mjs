@@ -120,6 +120,30 @@ export function captureTrace({ profileId, scenarioId, weekNum, dayOfWeek, dateIS
         : null,
       cfgDriftApplied: rec?.cfgDriftApplied ?? null,
       slots,
+      // v4.50.0 (Track B 2D-δ): adaptive multi-suggestion -audit
+      suggestions: Array.isArray(rec?.suggestions)
+        ? rec.suggestions.map((s) => ({
+            id: s.id,
+            label: s.label ?? null,
+            deltaPct: typeof s.deltaPct === "number" ? s.deltaPct : null,
+            targetVx: s.targetVx ?? null,
+            targetExternalLoad: s.targetExternalLoad ?? null,
+            setCount: s.setCount ?? null,
+            targetReps: s.targetReps ?? null,
+          }))
+        : null,
+      defaultSuggestionId: rec?.defaultSuggestionId ?? null,
+      suggestionContext: rec?.suggestionContext
+        ? {
+            rtfModelStatus: rec.suggestionContext.rtfModelStatus ?? null,
+            capLevel: rec.suggestionContext.capLevel ?? null,
+            grindyBiasDetected: rec.suggestionContext.grindyBiasDetected ?? null,
+            preferredBias: rec.suggestionContext.preferredBias ?? null,
+            aggressiveSuppressedReasons: Array.isArray(rec.suggestionContext.aggressiveSuppressedReasons)
+              ? rec.suggestionContext.aggressiveSuppressedReasons
+              : [],
+          }
+        : null,
     },
     traces: traceSnapshots,
     auditFlags: [], // täytetään audit-engine.mjs:ssa
