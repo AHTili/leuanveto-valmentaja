@@ -31,10 +31,25 @@ function deriveBlockPhase(trace) {
   const weekLabel = trace.output?.weekLabel || "";
   // Eksplisiittiset weekLabel-matchit
   if (/deload|kevennys|recovery/i.test(weekLabel)) return "deload";
-  if (/peak|peaking|kisaviikko/i.test(weekLabel)) return "peaking";
-  if (/intens|realisoint|maks/i.test(weekLabel)) return "intensity";
+  if (/peak|peaking|kisaviikko|taper/i.test(weekLabel)) return "peaking";
+  // v4.49.2 Q1: default-meson "Loading" + "Overreach" labelit ovat strength/intensity-
+  // vaihetta (RIR 0-3), eivät foundation (RIR 2-5). Tunnista ne ennen yleistä
+  // foundation-matchia.
+  if (/load(ing)?|overreach|realisoint|maks/i.test(weekLabel)) return "intensity";
   if (/strength/i.test(weekLabel)) return "strength";
-  if (/hyper|foundation|vol|adapt|progress/i.test(weekLabel)) return "foundation";
+
+  // v4.49.2 MED-4: hypertrofia-meso ennen yleistä label-foundation-matchia, koska
+  // labelit ("Volyymipohja", "Volyymilataus", "Volyymipeak") laukaisevat "vol"-regexin
+  // mutta hypertrofia on oma vaihe (MAV-zone RIR 2.5, ei foundation RIR 4).
+  if (trace.input?.mesocycleType === "hypertrofia") {
+    const w = trace.weekNum;
+    if (w === 4) return "deload";
+    if (w >= 1 && w <= 3) return "hypertrophy";
+    return "unknown";
+  }
+
+  if (/adapt(aatio)?/i.test(weekLabel)) return "foundation";
+  if (/hyper|foundation|vol|progress/i.test(weekLabel)) return "foundation";
 
   // Streetlifting_16w mapping:
   if (trace.input?.mesocycleType === "streetlifting_16w") {
@@ -46,7 +61,7 @@ function deriveBlockPhase(trace) {
     return "peaking";
   }
 
-  // Single-block-mesoille (default, hypertrofia, wendler531 jne.): vk 4 deload, muutoin foundation
+  // Single-block-mesoille (default, wendler531 jne.): vk 4 deload, muutoin foundation
   const w = trace.weekNum;
   if (w === 4) return "deload";
   if (w <= 3) return "foundation";
@@ -76,27 +91,17 @@ function auditK1(trace) {
   if (!isHeavyDay || !phaseHeavyEnough) return null;
   if (typeof targetVx !== "number") return null;
 
-  // Variant A: slot.warmupSets puuttuu kokonaan → engine ei tarjoa skeletonia, UI fallback hardcoded ramp
+  // v4.49.2 QF-1: Variant B (UI hardkoodaa 0.90) POISTETTU — UI lukee nyt slot.warmupSets:in
+  // skeletonia (index.html:11816 v4.49.2 -korjaus). Variant A jää regression-suojaksi
+  // mutta WARN-tasolla (UI:n hardcoded fallback [0.30,0.55,0.75,0.90] on Helms 2017
+  // -ramp; ei tappavaa virhettä, mutta engine voisi tarjota täsmällisemmän skeletonin).
   if (!Array.isArray(primary.warmupSets) || primary.warmupSets.length === 0) {
     return flag(
       "K1",
-      "🐛 ERROR",
+      "⚠️ WARN",
       `Primary slot.warmupSets puuttuu (heavy ${phase} V${targetVx}, ${primary.movementName}). ` +
-        `Engine ei tarjoa warmup-skeletonia → UI:n hardcoded ramp [0.30,0.55,0.75,0.90] (index.html:11816) ainoa lähde.`,
+        `Engine ei tarjoa warmup-skeletonia → UI:n hardcoded ramp [0.30,0.55,0.75,0.90] fallback käytössä.`,
       { phase, targetVx, slotMov: primary.movementName, variant: "skeleton-missing" },
-    );
-  }
-
-  // Variant B: slot.warmupSets viim. step ≤ 0.85 mutta UI hardkoodaa 0.90 (V3-V4 -tavoitteella liian raskas neural primer)
-  const lastStep = primary.warmupSets[primary.warmupSets.length - 1];
-  const lastPct = lastStep?.pct ?? null;
-  if (lastPct !== null && lastPct <= 0.85 && targetVx >= 3) {
-    return flag(
-      "K1",
-      "🐛 ERROR",
-      `Slot.warmupSets viim. step ${(lastPct * 100).toFixed(0)}%, mutta UI hardkoodaa 90% (index.html:11816). ` +
-        `Foundation V${targetVx}-tavoitteella tämä tappaa neural-primer:in.`,
-      { phase, targetVx, slotWarmupTop: lastPct, uiHardcodedTop: 0.90, slotMov: primary.movementName, variant: "skeleton-vs-ui-mismatch" },
     );
   }
   return null;
@@ -105,38 +110,112 @@ function auditK1(trace) {
 // ──────────────────────────────────────────────────────────────
 // K2: rep1Range käyttää BLOCK_PHASE_TARGET_RIR, ei slot.targetVx
 // ──────────────────────────────────────────────────────────────
-// Detection:
-//   Primary slot.targetVx ≠ BLOCK_PHASE_TARGET_RIR[phase] → rep1Range biased
-//   Tämä on design-mismatch joka näkyy aina streetlifting_16w-foundationissa
-//     (slot.targetVx=3, block-default=4)
+// v4.49.2 Q1: Engine.js targetRep1VelocityRange ottaa nyt slot.targetVx parametrina
+// ja toteuttaa hybridi-päätöksen (RTF-reliable + ei-bias → slot luotettu, muuten
+// min(slot, block-default)). SLOT_TARGETVx_RESOLVED-trace dokumentoi miten päätös
+// tehtiin.
+//
+// K2 laukeaa nyt vain genuine mismatch-tilanteissa:
+//   - slot.targetVx on selvästi ulkona tutkimusrangesta ko. phase:lle
+//     (Pareja-Blanco 2017 / Sánchez-Moreno 2017 VL-RIR-kartta), TAI
+//   - SLOT_TARGETVx_RESOLVED-trace puuttuu mutta primary-slot on olemassa
+//     (engine ei kutsu targetRep1VelocityRange:a primary-slotille)
+//
+// Phase-RIR-rangeт (VL %-pohjaiset):
+//   foundation   25-35 % → RIR 2-5
+//   hypertrophy  25-35 % → RIR 1-4 (MAV-zone)
+//   strength     15-20 % → RIR 1-4
+//   intensity    10-15 % → RIR 0-3
+//   peaking      5-10 %  → RIR 0-2
+//   speed-streng 10-15 % → RIR 2-5 (nopeuden säilytys)
+const K2_RIR_RANGES = {
+  foundation: { min: 2, max: 5 },
+  hypertrophy: { min: 1, max: 4 },
+  strength: { min: 1, max: 4 },
+  intensity: { min: 0, max: 3 },
+  peaking: { min: 0, max: 2 },
+  "speed-strength": { min: 2, max: 5 },
+};
+
 function auditK2(trace) {
   const slots = trace.output?.slots || [];
   const primary = slots.find((s) => s.role === "primary");
   if (!primary || typeof primary.targetVx !== "number") return null;
-  const phase = deriveBlockPhase(trace);
+  let phase = deriveBlockPhase(trace);
   if (phase === "unknown" || phase === "deload") return null;
-  const blockDefaultRir = BLOCK_PHASE_TARGET_RIR_EXPECTED[phase];
-  if (typeof blockDefaultRir !== "number") return null;
   const slotVx = primary.targetVx;
-  if (Math.abs(slotVx - blockDefaultRir) >= 1) {
+
+  // v4.49.2 Q1: Speed-strength-variant tunnistus movement name:sta (sama logiikka
+  // kuin engine.js targetRep1VelocityRange). Räjähtävä leuka/leuanveto + nopeusveto
+  // -variantit eivät käytä ko. blokin RIR-rangea, vaan speed-strength-rangea (RIR 2-5).
+  const movName = primary.movementName || "";
+  const variantName = primary.variantName || "";
+  const isSpeedStrength = /räjähtävä\s+(leuka|leuanveto)|nopeus(?:veto)?/i.test(movName) ||
+                          /räjähtävä|nopeus/i.test(variantName);
+  if (isSpeedStrength) {
+    phase = "speed-strength";
+  }
+
+  // 1) Slot.targetVx ulkona tutkimusrangesta
+  const range = K2_RIR_RANGES[phase];
+  if (range && (slotVx < range.min || slotVx > range.max)) {
+    // v4.49.2 Q1: Hand-tuned preset opt-out. Sama logiikka kuin DELTA_PCT_TIER_
+    // AGGRESSIVE → PRESET_PROGRESSION_BY_DESIGN — _programMeta.handTuned=true tai
+    // tierProgressionApplied=false viittaa siihen että ohjelmatekijä on tarkoituk-
+    // sellisesti valinnut targetVx-arvot tutkimuspohjan ulkopuolelta (esim. Akselin
+    // streetlifting_16w peaking-singlet V3 raskailla kuormilla).
+    const programMeta = trace.input?.programMeta || {};
+    const isHandTuned = programMeta.handTuned === true || programMeta.tierProgressionApplied === false;
+    if (isHandTuned) {
+      return flag(
+        "PRESET_TARGETVX_BY_DESIGN",
+        "📋 INFO",
+        `Primary slot.targetVx=${slotVx} ulkona tutkimusrangesta ${phase} (RIR ${range.min}–${range.max}), ` +
+          `mutta meso _programMeta.handTuned=true → presetti-tekijä valinnut tämän tarkoituksellisesti.`,
+        { phase, slotVx, expectedRange: range, slotMov: primary.movementName, variant: "out-of-range-hand-tuned" },
+      );
+    }
+    return flag(
+      "K2",
+      "🐛 ERROR",
+      `Primary slot.targetVx=${slotVx} ulkona tutkimusrangesta ${phase} (RIR ${range.min}–${range.max}). ` +
+        `Pareja-Blanco 2017 / Sánchez-Moreno 2017: ko. phase:n VL-RIR-kartta ei tue tätä arvoa.`,
+      { phase, slotVx, expectedRange: range, slotMov: primary.movementName, variant: "out-of-range" },
+    );
+  }
+
+  // 2) Engine ei käytä slot.targetVx:ää — SLOT_TARGETVx_RESOLVED-trace puuttuu
+  const hasResolvedTrace = (trace.traces || []).some((t) => t?.ruleId === "SLOT_TARGETVx_RESOLVED");
+  if (!hasResolvedTrace) {
     return flag(
       "K2",
       "⚠️ WARN",
-      `Primary slot.targetVx=${slotVx} mutta BLOCK_PHASE_TARGET_RIR[${phase}]=${blockDefaultRir}. ` +
-        `rep1Range käyttää block-default:ia (engine.js:2670) → grindy-bias amplifioi virhettä.`,
-      { phase, slotVx, blockDefaultRir, slotMov: primary.movementName },
+      `Primary slot.targetVx=${slotVx} on tutkimusrangessa, mutta SLOT_TARGETVx_RESOLVED-trace puuttuu — ` +
+        `engine ei näytä käyttävän slot.targetVx:ää rep1Range-laskennassa (engine.js targetRep1VelocityRange).`,
+      { phase, slotVx, slotMov: primary.movementName, variant: "no-resolved-trace" },
     );
   }
+
   return null;
 }
 
 // ──────────────────────────────────────────────────────────────
 // K3: backoff-velocityStop + primary-rep1Range samalla UI-panelilla
 // ──────────────────────────────────────────────────────────────
-// Detection:
-//   Trace sisältää primary + backoff JA molemmilla on velocityStop
-//   JA primary.velocityStop ≠ backoff.velocityStop (eli erilliset arvot)
-//   → UI yhdistää nämä samaan vel-panel:iin (index.html:6248)
+// v4.49.2 QF-3: UI-korjaus rakennettu — velocityStop näkyy per-slot exercise-
+// heading-subBits:issä ("💎 Velocity-ankkuri · zone ≥ X.XX m/s", index.html:5975),
+// EI vel-panelin "Zone-kynnys"-rivissä. Primary ja backoff renderöityvät erikseen
+// omina exercise:inä, joten atletti näkee oikean arvon ko. slotille.
+//
+// Säilytetty regression-suojaksi mutta laukea vain jos:
+//   - Molemmilla slot:eilla on velocityStop
+//   - JA arvot eroavat ≥ 0.10 m/s (selkeästi erottuva, ei pieni jitter)
+//   - JA velocityStopRenderedPerSlot-marker puuttuu (eli UI ei nimenomaisesti
+//     ilmoita per-slot-renderöintiä)
+//
+// Tällä kynnyksellä streetlifting_16w:n primary 0.45 / backoff 0.55 ei laukea (ero
+// 0.10), mutta jos jossain meso:ssa primary 0.40 / backoff 0.60 (ero 0.20), se
+// nostaa lipun jolla atletti tarkistaa että UI selvittää eron.
 function auditK3(trace) {
   const slots = trace.output?.slots || [];
   const primary = slots.find((s) => s.role === "primary");
@@ -144,25 +223,22 @@ function auditK3(trace) {
   if (!primary || !backoff) return null;
   const pStop = primary.velocityStop ?? null;
   const bStop = backoff.velocityStop ?? null;
-  if (pStop === null && bStop === null) return null;
-  if (pStop !== null && bStop !== null && Math.abs(pStop - bStop) < 0.01) return null; // sama arvo, ei K3
-  // Käytä targetVx-eroa toissijaisena detektorina (jos velocityStop puuttuu yhdessä)
-  const targetVxDiff = (primary.targetVx ?? 0) !== (backoff.targetVx ?? 0);
-  if (pStop !== bStop || targetVxDiff) {
-    return flag(
-      "K3",
-      "💬 UX",
-      `Primary+backoff slot:eilla eri velocity-kontekstit (primary stop=${pStop} Vx=${primary.targetVx}, ` +
-        `backoff stop=${bStop} Vx=${backoff.targetVx}). UI yhdistää nämä samalla vel-panel:iin (index.html:6248).`,
-      {
-        primaryStop: pStop,
-        backoffStop: bStop,
-        primaryVx: primary.targetVx,
-        backoffVx: backoff.targetVx,
-      },
-    );
-  }
-  return null;
+  if (pStop === null || bStop === null) return null;
+  const diff = Math.abs(pStop - bStop);
+  if (diff < 0.15) return null; // by-design ero (esim. 0.45 vs 0.55), UI näyttää per-slot
+  return flag(
+    "K3",
+    "💬 UX",
+    `Primary+backoff velocityStop eroaa ${diff.toFixed(2)} m/s (primary=${pStop}, backoff=${bStop}). ` +
+      `Tarkista että UI näyttää molemmat selkeästi per-slot-tasolla.`,
+    {
+      primaryStop: pStop,
+      backoffStop: bStop,
+      primaryVx: primary.targetVx,
+      backoffVx: backoff.targetVx,
+      diff,
+    },
+  );
 }
 
 // ──────────────────────────────────────────────────────────────

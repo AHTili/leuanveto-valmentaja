@@ -2661,13 +2661,61 @@ function isCompetitionLiftMovement(movement) {
   return COMPETITION_LIFT_NAMES_FALLBACK.has(movement.name);
 }
 
-function targetRep1VelocityRange(movementName, blockPhase, rtfModel = null) {
+// v4.49.2 Q1: Grindy-bias-detection. Atletti joka jatkuvasti raportoi V3 mutta
+// VBT-data näyttää e1RM-mismatchin (SIGNIFICANT, >7 %) → slot.targetVx-arvoon ei
+// voi luottaa, kunnes data palautuu linjaan. Bias on tunnistettu kun ≥3 viimeisestä
+// 8 sessiosta sisältää VBT_E1RM_CROSSCHECK SIGNIFICANT -tracen.
+function detectGrindyBias(sessions, opts = {}) {
+  const windowSize = opts.windowSize ?? 8;
+  const threshold = opts.threshold ?? 3;
+  const reason = { detected: false, count: 0, sessionsConsidered: 0, windowSize, threshold };
+  if (!Array.isArray(sessions) || sessions.length === 0) return reason;
+  const recent = sessions.slice(-windowSize);
+  let significantCount = 0;
+  for (const session of recent) {
+    const traces = session?.decisionTraces || session?.traces || [];
+    const hasSignificant = traces.some((t) => {
+      if (t?.ruleId !== "VBT_E1RM_CROSSCHECK") return false;
+      if (t?.after?.severity === "SIGNIFICANT") return true;
+      return /SIGNIFICANT/.test(t?.why || "");
+    });
+    if (hasSignificant) significantCount++;
+  }
+  return {
+    detected: significantCount >= threshold,
+    count: significantCount,
+    sessionsConsidered: recent.length,
+    windowSize,
+    threshold,
+  };
+}
+
+function targetRep1VelocityRange(movementName, blockPhase, rtfModel = null, slotTargetVx = null, biasDetected = false) {
   // Resolvoi efektiivinen blokki-vaihe (sama logiikka kuin vlCapForContext:issa)
   let effectivePhase = blockPhase;
   if (movementName && /räjähtävä\s+(leuka|leuanveto)/i.test(movementName)) {
     effectivePhase = "speed-strength";
   }
-  const targetRir = BLOCK_PHASE_TARGET_RIR[effectivePhase] ?? BLOCK_PHASE_TARGET_RIR.strength;
+  const blockDefaultRir = BLOCK_PHASE_TARGET_RIR[effectivePhase] ?? BLOCK_PHASE_TARGET_RIR.strength;
+
+  // v4.49.2 Q1: Hybridi target-RIR. Akselin design-päätös: konservatiivisempi
+  // arvo voittaa kun joko RTF-malli ei ole vielä luotettava TAI grindy-bias on
+  // tunnistettu (Vx-raportointi epäluotettava). Reliable + ei-bias → luota
+  // slot.targetVx:ään (preset-tekijä tietää mitä haluaa).
+  let targetRir;
+  let targetRirSource;
+  const slotVxValid = typeof slotTargetVx === "number" && slotTargetVx >= 0;
+  const isReliableModel = rtfModel && rtfModel.status === "reliable";
+  if (slotVxValid && isReliableModel && !biasDetected) {
+    targetRir = slotTargetVx;
+    targetRirSource = "slot-targetVx-trusted";
+  } else if (slotVxValid) {
+    targetRir = Math.min(slotTargetVx, blockDefaultRir);
+    targetRirSource = biasDetected ? "min-bias-detected-safety" : "min-rtf-uncertain";
+  } else {
+    targetRir = blockDefaultRir;
+    targetRirSource = "block-default-fallback";
+  }
 
   // Intercept (V@failure): ensisijaisesti rtfModel, toissijaisesti MOVEMENT_MVT
   let intercept, slope;
@@ -2692,6 +2740,10 @@ function targetRep1VelocityRange(movementName, blockPhase, rtfModel = null) {
     upper,
     center,
     targetRir,
+    targetRirSource,
+    blockDefaultRir,
+    slotTargetVx: slotVxValid ? slotTargetVx : null,
+    biasDetected: !!biasDetected,
     phase: effectivePhase,
     source: (rtfModel && rtfModel.status === "reliable") ? "rtf-individual" : "default",
     intercept,
@@ -2810,6 +2862,7 @@ function predictVxFromVelocity(mvReps, rtfModel, reportedVx = null) {
 // yksilöllisesti — toistaiseksi default = range-keskellä.
 const VL_CAP_PER_BLOCK = Object.freeze({
   foundation: 30,        // 25–35 % range-keskellä
+  hypertrophy: 30,       // 25–35 % MAV-zone (Pareja-Blanco 2017 PMC5497611)
   strength: 17.5,        // 15–20 %
   intensity: 12.5,       // 10–15 %
   peaking: 7.5,          //  5–10 %
@@ -2819,13 +2872,19 @@ const VL_CAP_PER_BLOCK = Object.freeze({
 // v4.38.3 (Phase 3.5): Blokki-spesifi target-RIR yksilölliselle cap-laskennalle
 // RTF-mallista. Mid-range-arvot synteesin VL-cap-rangeista, jotka karkeasti
 // vastaavat: korkea VL → korkea RIR (paljon väsymystä), matala VL → matala RIR.
-// Foundation 25-35% → RIR 4 (mid 4-5 = paljon varaa)
+// Foundation  25-35% → RIR 4 (mid 4-5 = paljon varaa)
+// Hypertrophy 25-35% → RIR 2.5 (MAV-mid-range, V2-V3 - lähempänä failurea kuin foundation)
 // Strength    15-20% → RIR 2.5 (mid 2-3)
 // Intensity   10-15% → RIR 1.5 (mid 1-2)
 // Peaking      5-10% → RIR 1   (mid 0-1, peak-vaiheen raskaat singlet)
 // Speed       10-15% → RIR 4   (mid 4-5 = nopeuden säilytys, ei väsymystä)
+//
+// v4.49.2 MED-4: Lisätty hypertrophy: 2.5. Hypertrofia-meson slot.targetVx (2-3)
+// vertailtiin aiemmin foundation-default 4:ää vasten → K2-false-positiveja
+// elite-female-hypertrophy:lla. Nyt hypertrofia-meso saa oman target-RIR-arvon.
 const BLOCK_PHASE_TARGET_RIR = Object.freeze({
   foundation: 4,
+  hypertrophy: 2.5,
   strength: 2.5,
   intensity: 1.5,
   peaking: 1,
@@ -2846,71 +2905,96 @@ const BLOCK_PHASE_TARGET_RIR = Object.freeze({
 //   Muuten fallback nykyiseen logiikkaan (settings → defaults).
 function vlCapForContext(ctx = {}) {
   const { blockPhase = null, exerciseName = null, dayType = null, targetVx = null, settings = {},
-          rtfModel = null, rep1Velocity = null } = ctx;
+          rtfModel = null, rep1Velocity = null, emitTrace = null } = ctx;
 
-  // Resolvoi efektiivinen blokki-vaihe (sama logiikka kuin defaultien valinnassa)
-  let effectivePhase;
-  let defaultSource;
-  const isSpeedStrengthMovement = exerciseName && /räjähtävä\s+(leuka|leuanveto)/i.test(exerciseName);
-  const isSpeedDay = dayType === "speed" && typeof targetVx === "number" && targetVx >= 4;
-  if (isSpeedStrengthMovement || isSpeedDay) {
-    effectivePhase = "speed-strength";
-    defaultSource = isSpeedStrengthMovement ? "movement-name" : "speed-day";
-  } else if (["foundation", "strength", "intensity", "peaking"].includes(blockPhase)) {
-    effectivePhase = blockPhase;
-    defaultSource = "block-phase";
-  } else {
-    effectivePhase = "default";
-    defaultSource = "fallback";
-  }
+  function resolve() {
+    // Resolvoi efektiivinen blokki-vaihe (sama logiikka kuin defaultien valinnassa)
+    let effectivePhase;
+    let defaultSource;
+    const isSpeedStrengthMovement = exerciseName && /räjähtävä\s+(leuka|leuanveto)/i.test(exerciseName);
+    const isSpeedDay = dayType === "speed" && typeof targetVx === "number" && targetVx >= 4;
+    if (isSpeedStrengthMovement || isSpeedDay) {
+      effectivePhase = "speed-strength";
+      defaultSource = isSpeedStrengthMovement ? "movement-name" : "speed-day";
+    } else if (["foundation", "hypertrophy", "strength", "intensity", "peaking"].includes(blockPhase)) {
+      effectivePhase = blockPhase;
+      defaultSource = "block-phase";
+    } else {
+      effectivePhase = "default";
+      defaultSource = "fallback";
+    }
 
-  // RTF-yksilöllinen cap jos malli reliable + rep1Velocity saatavilla
-  if (rtfModel && rtfModel.status === "reliable" &&
-      typeof rep1Velocity === "number" && rep1Velocity > 0 &&
-      typeof rtfModel.slope === "number" && typeof rtfModel.intercept === "number") {
-    const targetRir = BLOCK_PHASE_TARGET_RIR[effectivePhase] ?? BLOCK_PHASE_TARGET_RIR.strength;
-    const velocityAtTarget = rtfModel.intercept + rtfModel.slope * targetRir;
-    if (velocityAtTarget > 0 && velocityAtTarget < rep1Velocity) {
-      const capIndividual = ((rep1Velocity - velocityAtTarget) / rep1Velocity) * 100;
-      // Sanity-check: yksilöllinen cap tulisi olla 3–60 % välillä — ulkopuolelle
-      // jäävät arvot viittaavat mallin epäluotettavuuteen tai poikkeavaan rep1:een.
-      if (capIndividual >= 3 && capIndividual <= 60) {
-        return {
-          cap: capIndividual,
-          phase: effectivePhase,
-          source: "rtf-individual",
-          targetRir,
-          velocityAtTargetRir: velocityAtTarget,
-          rtfR2: rtfModel.r2,
-        };
+    // RTF-yksilöllinen cap jos malli reliable + rep1Velocity saatavilla
+    if (rtfModel && rtfModel.status === "reliable" &&
+        typeof rep1Velocity === "number" && rep1Velocity > 0 &&
+        typeof rtfModel.slope === "number" && typeof rtfModel.intercept === "number") {
+      const targetRir = BLOCK_PHASE_TARGET_RIR[effectivePhase] ?? BLOCK_PHASE_TARGET_RIR.strength;
+      const velocityAtTarget = rtfModel.intercept + rtfModel.slope * targetRir;
+      if (velocityAtTarget > 0 && velocityAtTarget < rep1Velocity) {
+        const capIndividual = ((rep1Velocity - velocityAtTarget) / rep1Velocity) * 100;
+        // Sanity-check: yksilöllinen cap tulisi olla 3–60 % välillä — ulkopuolelle
+        // jäävät arvot viittaavat mallin epäluotettavuuteen tai poikkeavaan rep1:een.
+        if (capIndividual >= 3 && capIndividual <= 60) {
+          return {
+            cap: capIndividual,
+            phase: effectivePhase,
+            source: "rtf-individual",
+            targetRir,
+            velocityAtTargetRir: velocityAtTarget,
+            rtfR2: rtfModel.r2,
+          };
+        }
       }
+    }
+
+    // Fallback: populaatio-default + settings-override (Phase 2 -käyttäytyminen)
+    if (effectivePhase === "speed-strength") {
+      return {
+        cap: settings.vlCapSpeedStrength ?? VL_CAP_PER_BLOCK["speed-strength"],
+        phase: "speed-strength",
+        source: defaultSource,
+        targetRir: BLOCK_PHASE_TARGET_RIR["speed-strength"],
+      };
+    }
+    switch (effectivePhase) {
+      case "foundation":
+        return { cap: settings.vlCapFoundation ?? VL_CAP_PER_BLOCK.foundation, phase: "foundation", source: "block-phase", targetRir: BLOCK_PHASE_TARGET_RIR.foundation };
+      case "hypertrophy":
+        return { cap: settings.vlCapHypertrophy ?? VL_CAP_PER_BLOCK.hypertrophy, phase: "hypertrophy", source: "block-phase", targetRir: BLOCK_PHASE_TARGET_RIR.hypertrophy };
+      case "strength":
+        return { cap: settings.vlCapStrength ?? VL_CAP_PER_BLOCK.strength, phase: "strength", source: "block-phase", targetRir: BLOCK_PHASE_TARGET_RIR.strength };
+      case "intensity":
+        return { cap: settings.vlCapIntensity ?? VL_CAP_PER_BLOCK.intensity, phase: "intensity", source: "block-phase", targetRir: BLOCK_PHASE_TARGET_RIR.intensity };
+      case "peaking":
+        return { cap: settings.vlCapPeaking ?? VL_CAP_PER_BLOCK.peaking, phase: "peaking", source: "block-phase", targetRir: BLOCK_PHASE_TARGET_RIR.peaking };
+      default:
+        return {
+          cap: settings.vlStopPercent ?? VL_CAP_PER_BLOCK.strength,
+          phase: "default",
+          source: "fallback",
+          targetRir: null,
+        };
     }
   }
 
-  // Fallback: populaatio-default + settings-override (Phase 2 -käyttäytyminen)
-  if (effectivePhase === "speed-strength") {
-    return {
-      cap: settings.vlCapSpeedStrength ?? VL_CAP_PER_BLOCK["speed-strength"],
-      phase: "speed-strength",
-      source: defaultSource,
-    };
+  const result = resolve();
+  // v4.49.2 QF-5: emit VL_CAP_RESOLVED-trace jos kutsuja antoi emitTrace-callbackin.
+  // Mahdollistaa audit-enginen verifioida VL-cap-arvoja (cap%, source, targetRir)
+  // ilman että cap pitää inferoida slot.velocityStop:ista tai testata erikseen.
+  if (typeof emitTrace === "function") {
+    emitTrace({
+      ruleId: "VL_CAP_RESOLVED",
+      before: { phase: blockPhase, exerciseName, dayType, targetVx },
+      after: {
+        cap: result.cap,
+        source: result.source,
+        targetRir: result.targetRir ?? null,
+        effectivePhase: result.phase,
+      },
+      why: `VL-cap ${result.cap.toFixed(1)}% (phase=${result.phase}, source=${result.source})`,
+    });
   }
-  switch (effectivePhase) {
-    case "foundation":
-      return { cap: settings.vlCapFoundation ?? VL_CAP_PER_BLOCK.foundation, phase: "foundation", source: "block-phase" };
-    case "strength":
-      return { cap: settings.vlCapStrength ?? VL_CAP_PER_BLOCK.strength, phase: "strength", source: "block-phase" };
-    case "intensity":
-      return { cap: settings.vlCapIntensity ?? VL_CAP_PER_BLOCK.intensity, phase: "intensity", source: "block-phase" };
-    case "peaking":
-      return { cap: settings.vlCapPeaking ?? VL_CAP_PER_BLOCK.peaking, phase: "peaking", source: "block-phase" };
-    default:
-      return {
-        cap: settings.vlStopPercent ?? VL_CAP_PER_BLOCK.strength,
-        phase: "default",
-        source: "fallback",
-      };
-  }
+  return result;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2962,6 +3046,47 @@ function generateDefaultDayPlan(dayType, weekDef, accessoryCapActive) {
 function velocityLossPercent(rep1Velocity, lastRepVelocity) {
   if (!rep1Velocity || !lastRepVelocity || rep1Velocity <= 0) return null;
   return ((rep1Velocity - lastRepVelocity) / rep1Velocity) * 100;
+}
+
+// v4.49.2 QF-1: Helms 2017 -warmup-ramp default-skeleton. Käytetään kun preset ei
+// määrittele primary-slot.warmupSets:ia (default-meso, beginner/returner/cut/shoulder/
+// uncalibrated -profiilit). UI:n hardcoded fallback käyttää tätä samaa scheme:a kun
+// skeletonia ei ole, mutta tämä injektio takaa että slot.warmupSets on aina olemassa
+// trace-outputissa ja audit ei laukea K1-warning:iä.
+const ENGINE_DEFAULT_WARMUP_RAMP = Object.freeze([
+  Object.freeze({ pct: 0.40, reps: 5, note: "Liikemalli, kevyt" }),
+  Object.freeze({ pct: 0.55, reps: 3, note: "Lämpö" }),
+  Object.freeze({ pct: 0.70, reps: 2, note: "Aktivaatio" }),
+  Object.freeze({ pct: 0.85, reps: 1, note: "Neural primer" }),
+]);
+
+// v4.49.2 QF-5: blockPhase-päättely VL_CAP_RESOLVED-tracen ja muiden phase-tietoisten
+// trace-pisteiden tueksi. Samaa heuristiikkaa kuin audit-engine.mjs deriveBlockPhase,
+// jotta auditti ja engine pysyvät samalla mappauksella.
+function deriveBlockPhaseFromMesocycle(mesocycleType, weekNum, weekLabel) {
+  const label = String(weekLabel || "");
+  if (/deload|kevennys|recovery/i.test(label)) return "deload";
+  if (/peak|peaking|kisaviikko/i.test(label)) return "peaking";
+  if (/intens|realisoint|maks/i.test(label)) return "intensity";
+  if (/strength/i.test(label)) return "strength";
+  // v4.49.2 MED-4: hypertrofia-meson labelit ("Volyymipohja", "Volyymilataus",
+  // "Volyymipeak") ovat MAV-vaihetta (V2-V3, RIR 2.5) — eivät foundation-RIR 4:ää.
+  if (mesocycleType === "hypertrofia") {
+    if (weekNum === 4) return "deload";
+    if (typeof weekNum === "number" && weekNum >= 1 && weekNum <= 3) return "hypertrophy";
+    return null;
+  }
+  if (/hyper|foundation|vol|adapt|progress/i.test(label)) return "foundation";
+  if (mesocycleType === "streetlifting_16w") {
+    if (weekNum === 4 || weekNum === 8 || weekNum === 12) return "deload";
+    if (weekNum <= 3) return "foundation";
+    if (weekNum <= 7) return "strength";
+    if (weekNum <= 11) return "intensity";
+    return "peaking";
+  }
+  if (weekNum === 4) return "deload";
+  if (typeof weekNum === "number" && weekNum >= 1 && weekNum <= 3) return "foundation";
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3104,8 +3229,16 @@ async function recommend(options = {}) {
 
   const isInsertedDeload = isInsertedDeloadWeek(mesocycle, dateISO);
   const isReplacedDeload = isReplacedDeloadWeek(mesocycle, dateISO);
-  const isDeloadOverride = isInsertedDeload || isReplacedDeload;
-  if (isDeloadOverride) {
+  // v4.49.2 QF-4: laajenna deload-tunnistus presetti-built-in deload-viikoille
+  // (esim. streetlifting_16w vk 4/8/12, default-meso vk 4, wendler531 vk 4). Built-in
+  // deload-viikot määrittelevät jo deltaPctBase/heavyReps/heavyTargetVx labelin "Deload"
+  // kautta — engine ei tähän asti pakottanut dayType="volume", mikä laukaisi
+  // DELOAD_HEAVY_DAYTYPE-auditin 7/8 profiilissa. Nyt label-deloadissa vain dayType
+  // pakotetaan volume:ksi, presetin alkuperäiset deload-arvot säilyvät.
+  const isLabelDeload = /deload|kevennys/i.test(weekDef?.label || "");
+  const isUserDeload = isInsertedDeload || isReplacedDeload;
+  const isDeloadOverride = isUserDeload || isLabelDeload;
+  if (isUserDeload) {
     // Override: käyttäjän kevennysviikko (lisätty tai korvaava).
     // Volyymi ~50%, kuorma -20%, Vx +2, pakotetaan volume-päivä.
     dayType = "volume";
@@ -3124,6 +3257,16 @@ async function recommend(options = {}) {
       dayPlan = { ...dayPlan, slots: prunedSlots, dayType: "volume" };
     }
     trace("DELOAD_OVERRIDE", {}, { weekNum, dayType, mode: isInsertedDeload ? "insert" : "replace" }, `Käyttäjän kevennysviikko (${isInsertedDeload ? "lisätty" : "korvaava"}): volyymi ~50%, kuorma -20%, Vx +2`);
+  } else if (isLabelDeload) {
+    // Built-in deload-viikko presetistä (esim. streetlifting_16w vk 4/8/12 "Deload + testaus"):
+    // presetin omat deltaPctBase + heavyReps + heavyTargetVx säilyvät, mutta dayType
+    // pakotetaan volume:ksi jotta heavy-day-tyyppi ei laukea deload-viikolla.
+    const previousDayType = dayType;
+    dayType = "volume";
+    if (dayPlan) {
+      dayPlan = { ...dayPlan, dayType: "volume" };
+    }
+    trace("DELOAD_OVERRIDE", { dayType: previousDayType }, { weekNum, dayType, mode: "label-builtin", label: weekDef?.label }, `Presetti-deload-viikko (${weekDef?.label}): dayType pakotettu volume:ksi, presetin kuorma-arvot säilytetty`);
   }
 
   trace("MESOCYCLE_PHASE", {}, { weekNum, dayType, label: weekDef?.label }, `Viikko ${weekNum}: ${weekDef?.label || "?"}`);
@@ -3161,6 +3304,7 @@ async function recommend(options = {}) {
   // Detect barbell-only lift (squat): no bodyweight added to system load
   const primarySlotMeta = dayPlan?.slots?.find(s => s.role === "primary");
   const isBarbell = primarySlotMeta?.isBarbell === true;
+  const inferredBlockPhase = deriveBlockPhaseFromMesocycle(mesocycle.type, weekNum, weekDef?.label);
 
   // Filter to primary movement top sets, sorted by date
   // v4.27.15: calibration-setit (AMRAP-testit deload-viikoilla) lasketaan mukaan
@@ -4240,6 +4384,62 @@ async function recommend(options = {}) {
       "Päivän ohjelma generoitu oletusliikkeillä");
   }
 
+  // v4.49.2 QF-1: Injektoi ENGINE_DEFAULT_WARMUP_RAMP primary-slot:eihin, joilla
+  // warmupSets puuttuu. Default-meso ja muut presetit, jotka eivät määrittele
+  // omaa skeletoniä, saavat tämän Helms 2017 -rampin (40/55/70/85 %). UI:n
+  // hardcoded fallback ([0.30,0.55,0.75,0.90]) jää käyttöön vain jos tämä
+  // injektio jostain syystä epäonnistuu.
+  if (dayPlan?.slots) {
+    dayPlan = {
+      ...dayPlan,
+      slots: dayPlan.slots.map((s) => {
+        if (s.role !== "primary") return s;
+        if (Array.isArray(s.warmupSets) && s.warmupSets.length > 0) return s;
+        return { ...s, warmupSets: ENGINE_DEFAULT_WARMUP_RAMP.map((w) => ({ ...w })) };
+      }),
+    };
+  }
+
+  // v4.49.2 QF-5 + Q1: Emit VL_CAP_RESOLVED + SLOT_TARGETVx_RESOLVED -traces tässä
+  // kohtaa kun dayPlan on varmasti olemassa (myös fallback-generaattorin jälkeen).
+  // VL_CAP_RESOLVED: cap%, source, targetRir auditoitavaksi.
+  // SLOT_TARGETVx_RESOLVED: hybridi-päätös slot.targetVx vs block-default-RIR,
+  // grindy-bias-detection mukana.
+  const primarySlotForTraces = dayPlan?.slots?.find(s => s.role === "primary");
+  if (primarySlotForTraces) {
+    vlCapForContext({
+      blockPhase: inferredBlockPhase,
+      exerciseName: primarySlotForTraces?.defaultMovementName,
+      dayType,
+      targetVx: primarySlotForTraces?.targetVx ?? null,
+      settings,
+      emitTrace: (entry) => {
+        traces.push({ traceId: uid(), recId: null, ruleId: entry.ruleId, before: { ...entry.before }, after: { ...entry.after }, why: entry.why });
+      },
+    });
+
+    if (typeof primarySlotForTraces.targetVx === "number") {
+      const grindyBiasInfo = detectGrindyBias(sessions);
+      const rep1Range = targetRep1VelocityRange(
+        primarySlotForTraces.defaultMovementName,
+        inferredBlockPhase,
+        null,
+        primarySlotForTraces.targetVx,
+        grindyBiasInfo.detected,
+      );
+      trace("SLOT_TARGETVx_RESOLVED",
+        { slotTargetVx: primarySlotForTraces.targetVx, blockPhase: inferredBlockPhase, blockDefaultRir: rep1Range.blockDefaultRir },
+        {
+          targetRir: rep1Range.targetRir,
+          targetRirSource: rep1Range.targetRirSource,
+          biasDetected: grindyBiasInfo.detected,
+          biasSignificantCount: grindyBiasInfo.count,
+          biasSessionsConsidered: grindyBiasInfo.sessionsConsidered,
+        },
+        `Primary slot.targetVx=${primarySlotForTraces.targetVx} → rep1Range target-RIR=${rep1Range.targetRir} (lähde: ${rep1Range.targetRirSource}${grindyBiasInfo.detected ? `, bias ${grindyBiasInfo.count}/${grindyBiasInfo.sessionsConsidered}` : ""})`);
+    }
+  }
+
   // Apply accessory cap: reduce accessory set counts by 30% if active
   if (accessoryCapActive && dayPlan && dayPlan.slots) {
     dayPlan = { ...dayPlan, slots: dayPlan.slots.map(s => {
@@ -4356,6 +4556,40 @@ async function recommend(options = {}) {
     ? { status: "candidate", anchorCount: vbtCandidateTrace.after.anchorCount, diffPct: vbtCandidateTrace.after.diffPct, source: "vx" }
     : { status: "not-eligible", anchorCount: 0, diffPct: null, source: "vx" };
 
+  // v4.49.2 DEEP-2: RTF-model status rec-output:iin. UI näyttää atletille milloin
+  // RTF-malli on luotettava (Vx-targetting voi luottaa slot.targetVx:ään, ei
+  // konservatiivista safety-net:iä). Sama enum kuin computeRtfVelocityModel.status:
+  //   reliable    — r²≥0.85, n≥6, voidaan luottaa slot.targetVx:ään
+  //   preview     — r²≥0.70, "rakentuu" -tila
+  //   unreliable  — r²<0.70, mallia ei voida käyttää
+  //   insufficient — n<3 sarjaa, malli ei vielä laskettavissa
+  //   no-data     — primaryMovementId puuttuu tai ei sarjoja
+  let rtfModelStatus = "no-data";
+  let rtfModelStats = null;
+  if (primaryMovementId) {
+    try {
+      const rtfModel = computeRtfVelocityModel(allSets, primaryMovementId);
+      if (rtfModel && rtfModel.status) {
+        rtfModelStatus = rtfModel.status;
+        rtfModelStats = {
+          n: rtfModel.n ?? null,
+          sessionsCount: rtfModel.sessionsCount ?? null,
+          r2: rtfModel.r2 ?? null,
+          slope: rtfModel.slope ?? null,
+          intercept: rtfModel.intercept ?? null,
+          minR2Reliable: rtfModel.minR2Reliable ?? null,
+          minR2Preview: rtfModel.minR2Preview ?? null,
+        };
+      }
+    } catch (_e) {
+      // computeRtfVelocityModel ei saa kaataa recommendia — säilytetään "no-data"
+    }
+  }
+  trace("RTF_MODEL_STATUS",
+    { primaryMovementId: primaryMovementId ?? null },
+    { status: rtfModelStatus, n: rtfModelStats?.n ?? null, r2: rtfModelStats?.r2 ?? null },
+    `RTF-malli ${rtfModelStatus}${rtfModelStats?.n != null ? ` (n=${rtfModelStats.n}, r²=${rtfModelStats.r2?.toFixed(2) ?? "-"})` : ""}`);
+
   const rec = {
     recId: uid(),
     dateISO,
@@ -4379,6 +4613,9 @@ async function recommend(options = {}) {
     accessoryCapActive,
     dayPlan,
     vbtStatus: vbtSummary,
+    // v4.49.2 DEEP-2: RTF-model status UI:n näytettäväksi "Miksi tämä paino?"-näkymässä.
+    rtfModelStatus,
+    rtfModelStats,
     // v4.34.43: cfg-drift result. UI persistoi mesocycleen jos driftPct > 0.
     cfgDriftApplied: cfgDriftResult,
     traces,
@@ -6884,6 +7121,8 @@ export {
   // v4.38.4 (Phase 2.7) kaksisuuntainen autoregulaatio
   targetRep1VelocityRange,
   DEFAULT_RTF_SLOPE,
+  // v4.49.2 Q1: grindy-bias-detection slot.targetVx-hybridille
+  detectGrindyBias,
   // v4.38.5 — kisaliikkeiden tunnistus fallback nimellä
   isCompetitionLiftMovement,
   COMPETITION_LIFT_NAMES_FALLBACK,

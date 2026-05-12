@@ -17,6 +17,9 @@ export const VL_CAP_BASELINES = {
 export const BLOCK_PHASE_TARGET_RIR_EXPECTED = {
   // Engine.js:n vakio — ulottuuko tämä slot-tasolle?
   foundation: 4,
+  // v4.49.2 MED-4: hypertrofia-meson MAV-mid-range RIR 2.5 (Pareja-Blanco 25-35% VL,
+  // V2-V3 RIR). Erottelee hypertrofia-vaiheen foundation-vaiheesta (RIR 4).
+  hypertrophy: 2.5,
   strength: 2.5,
   intensity: 1.5,
   peaking: 1,
