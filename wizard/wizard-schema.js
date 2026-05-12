@@ -75,7 +75,7 @@ export const WIZARD_QUESTIONS = [
     options: [
       { value: "male",   labelFi: "Mies" },
       { value: "female", labelFi: "Nainen" },
-      { value: "other",  labelFi: "Muu / en halua kertoa" },
+      { value: "other",  labelFi: "En halua sanoa" },
     ],
     required: true,
   },
