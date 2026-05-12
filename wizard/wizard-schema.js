@@ -423,6 +423,21 @@ export const WIZARD_QUESTIONS = [
     ],
     required: true,
   },
+  // v4.51.0 (Track B 2D-δ-C): atletin oletusvalinta-tyyli adaptiiviselle
+  // multi-suggestion -näkymälle. Vastaus seedaa settings.preferredSuggestionBias:n
+  // ja aggressivenessLearned:in. Engine oppii valintahistoriasta automaattisesti
+  // — atletti voi vaihtaa preferenssin Asetuksista jälkikäteen.
+  {
+    id: "q33_aggressivenessDefault", stage: "loading", dimension: "D15",
+    type: "radio", labelFi: "Mikä on harjoittelutyylisi?",
+    options: [
+      { value: "stable",       labelFi: "Vakaa — engine suosii varovaisempia ehdotuksia (sopii palautuvalle tai epävarmalle tilanteelle)" },
+      { value: "balanced",     labelFi: "Tasapainoinen — engine valitsee kontekstin perusteella (suositus)" },
+      { value: "challenging",  labelFi: "Haastava — engine suosii rohkeampia ehdotuksia (kokenut atletti, tunnet kapasiteettisi)" },
+    ],
+    smartDefault: "balanced",
+    required: false,
+  },
 ];
 
 // ── Verifioidut menetelmäreferenssit (D10 SWC-kehys) ─────────────────
@@ -480,9 +495,11 @@ export function getStageByOrder(order) {
   return WIZARD_STAGES.find(s => s.order === order) || null;
 }
 
-// Yht. 30 kysymystä, 8 vaihetta, 18 dimensiota (D1–D18) — vrt. WIZARD_SPECIFICATION_v3.3.md
+// Yht. 31 kysymystä (30 alkuperäistä + q33_aggressivenessDefault v4.51.0),
+// 8 vaihetta, 18 dimensiota (D1–D18). q33 lukeutuu D15:n alle (RPE/Vara-tarkkuus
+// + valintatyyli muodostavat yhdessä loading-vaiheen psyko-fysiologisen profiilin).
 export const SCHEMA_INVARIANTS = {
-  totalQuestions: 30,
+  totalQuestions: 31,
   totalStages: 8,
   totalDimensions: 18,
   schemaVersion: WIZARD_SCHEMA_VERSION,

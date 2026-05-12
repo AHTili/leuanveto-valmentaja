@@ -1577,6 +1577,105 @@ async function saveSession(session) {
   return dbPut(STORES.sessions, session);
 }
 
+// v4.51.0 (Track B 2D-δ-C): Auto-learning aggressiveness-bias.
+// Lukee viim. 3 session selectedSuggestionId:n + viim. session V0-failure / RED-cap-
+// tiedon. Päivittää settings.aggressivenessLearned ∈ [-1, +1].
+//
+// Drift-säännöt:
+//   3× SAFE-streak + viim. sessio onnistui (ei V0, ei RED) → -0.15 (siirry SAFE-päin)
+//   3× AGGRESSIVE-streak + viim. sessio onnistui            → +0.15
+//   3× TARGET-streak                                       → drift kohti 0 (-0.05/+0.05)
+//   FAILURE (V0) viim. sessiossa                            → -0.30 (alaspäin SAFE)
+//   RED-cap viim. sessiossa                                 → -0.30
+//   Clamp [-1, +1].
+//
+// Palauttaa { learned, delta, reasonCode } myöhempää trace-emitointia varten.
+// learned-päivitys tallennetaan settingsiin samassa kutsussa.
+async function updateAggressivenessLearned() {
+  const settings = await getSettings();
+  const prevLearned = typeof settings.aggressivenessLearned === "number"
+    ? settings.aggressivenessLearned : 0;
+  let newLearned = prevLearned;
+  let delta = 0;
+  let reasonCode = "no-change";
+
+  // Lue viim. 3 sessiota (uusimmasta vanhimpaan)
+  const allSessions = await dbGetAll(STORES.sessions);
+  const sorted = allSessions
+    .filter(s => s.dateISO)
+    .sort((a, b) => (b.dateISO < a.dateISO ? -1 : 1))
+    .slice(0, 3);
+
+  if (sorted.length === 0) {
+    return { learned: newLearned, delta: 0, reasonCode: "no-sessions" };
+  }
+
+  const lastSession = sorted[0];
+
+  // 1) FAILURE-suoja: jos viim. session sisältää V0-failuren primary-sarjassa
+  // → drop -0.30 (auto-konservatiivinen suoja).
+  let hadFailure = false;
+  try {
+    const lastSets = await dbGetByIndex(STORES.sets, "sessionId", lastSession.sessionId);
+    hadFailure = (lastSets || []).some(s =>
+      s.setRole === "top" && s.actualVx === 0
+    );
+  } catch (_e) {
+    hadFailure = false;
+  }
+  const hadRedCap = lastSession.readinessCapLevel >= 2;
+
+  if (hadFailure) {
+    delta = -0.30;
+    reasonCode = "failure-protection";
+  } else if (hadRedCap) {
+    delta = -0.30;
+    reasonCode = "red-cap-protection";
+  } else if (sorted.length >= 3) {
+    // 2) Streak-detection viim. 3 session valinnoista
+    const ids = sorted.map(s => s.selectedSuggestionId || "target");
+    const allSame = ids.every(x => x === ids[0]);
+    if (allSame) {
+      if (ids[0] === "safe") {
+        delta = -0.15;
+        reasonCode = "safe-streak-3";
+      } else if (ids[0] === "aggressive") {
+        delta = 0.15;
+        reasonCode = "aggressive-streak-3";
+      } else if (ids[0] === "target") {
+        // Drift kohti nollaa (decay)
+        if (prevLearned > 0.05) {
+          delta = -0.05;
+          reasonCode = "target-streak-decay-down";
+        } else if (prevLearned < -0.05) {
+          delta = 0.05;
+          reasonCode = "target-streak-decay-up";
+        } else {
+          delta = 0;
+          reasonCode = "target-streak-stable";
+        }
+      }
+    }
+  }
+
+  newLearned = Math.max(-1, Math.min(1, prevLearned + delta));
+
+  if (newLearned !== prevLearned) {
+    settings.aggressivenessLearned = newLearned;
+    await saveSettings(settings);
+  }
+
+  return { learned: newLearned, prevLearned, delta, reasonCode };
+}
+
+// v4.51.0: Reset aggressivenessLearned arvoon 0 (settings UI -painike).
+async function resetAggressivenessLearned() {
+  const settings = await getSettings();
+  settings.aggressivenessLearned = 0;
+  await saveSettings(settings);
+  return 0;
+}
+
 async function deleteSession(sessionId) {
   // Delete associated sets
   const sets = await dbGetByIndex(STORES.sets, "sessionId", sessionId);
@@ -2034,6 +2133,18 @@ async function getSettings() {
       durationDays: 14,      // 14 pv default; käyttäjä asettaa
       reason: null,          // "injury" | "life" | "illness" | "switch" | null
     },
+    // v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion -biasit.
+    // preferredSuggestionBias on wizard-seedattu atletti-preferenssi joka ohjaa
+    // default-suggestion-valintaa engine.js:n generateSuggestions:issa:
+    //   "stable"      → engine suosii SAFE-vaihtoehtoa (palautuva, epävarma tila)
+    //   "balanced"    → engine valitsee kontekstin perusteella (suositus oletus)
+    //   "challenging" → engine suosii AGGRESSIVE-vaihtoehtoa (kokenut atletti)
+    // aggressivenessLearned on auto-learning floattaalia [-1, +1] joka päivittyy
+    // session-historian perusteella (3 peräkkäistä SAFE/TARGET/AGGRESSIVE-valintaa
+    // → drift suuntaan; FAILURE V0 / RED-cap → drop -0.30). Yhdistetään
+    // preferredBias:iin effectiveBias-laskennassa.
+    preferredSuggestionBias: "balanced",
+    aggressivenessLearned: 0,
   };
   if (!s) return defaults;
   // Täytä puuttuvat kentät oletuksilla (esim. päivitetylle käyttäjälle)
@@ -7556,6 +7667,9 @@ export {
   updateLastOpened,
   getSettings,
   saveSettings,
+  // v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion auto-learn
+  updateAggressivenessLearned,
+  resetAggressivenessLearned,
   // Backup / Restore
   exportFullBackup,
   importFullBackup,
