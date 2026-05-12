@@ -1,4 +1,16 @@
 // sw.js — Service Worker (offline-first, network-first navigation, cache-first assets)
+// LeVe AI v4.49.3 — DEEP-2: rec.rtfModelStatus engine.js recommend()-output:iin
+// + audit-dokumentaatio päivitetty 2D-δ pre-requisite -lukon avautumisesta.
+//
+// DEEP-2 (engine.js recommend()): Lasketaan computeRtfVelocityModel-pohjainen
+// status primaryMovementId:lle. rec.rtfModelStatus = "reliable" | "preview" |
+// "unreliable" | "insufficient" | "no-data" + rec.rtfModelStats { n, r2, slope,
+// intercept }. RTF_MODEL_STATUS-trace dokumentoi tilan auditille ja UI:n
+// "Miksi tämä paino?"-näkymälle (Q3).
+//
+// docs/ENGINE_BULLETPROOF_AUDIT.md: osio 1.2 + 13 + 11 + 3 (pre-requisite-checklist)
+// päivitetty 2D-ε:n valmistumiseen — 4 systemic-buggia 0/8, 2D-δ TURVALLINEN.
+//
 // LeVe AI v4.49.2 — Track B Vaihe 2D-ε engine-korjaukset (QF-1/3/4/5 + MED-4 + Q1).
 //
 // QF-4 (engine.js:3105 DELOAD_OVERRIDE): label-pohjainen aktivointi pakottaa
@@ -592,7 +604,7 @@
 // v4.41.0: Track B Vaihe 2B-γ — q26-PR-migraatio + q30-energiabudjetti.
 // v4.40.0: Track B Vaihe 2B-β — wizard-pohjaisen ohjelman generointi.
 // v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen.
-const APP_VERSION = "4.49.2";
+const APP_VERSION = "4.49.3";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

@@ -4556,6 +4556,40 @@ async function recommend(options = {}) {
     ? { status: "candidate", anchorCount: vbtCandidateTrace.after.anchorCount, diffPct: vbtCandidateTrace.after.diffPct, source: "vx" }
     : { status: "not-eligible", anchorCount: 0, diffPct: null, source: "vx" };
 
+  // v4.49.2 DEEP-2: RTF-model status rec-output:iin. UI näyttää atletille milloin
+  // RTF-malli on luotettava (Vx-targetting voi luottaa slot.targetVx:ään, ei
+  // konservatiivista safety-net:iä). Sama enum kuin computeRtfVelocityModel.status:
+  //   reliable    — r²≥0.85, n≥6, voidaan luottaa slot.targetVx:ään
+  //   preview     — r²≥0.70, "rakentuu" -tila
+  //   unreliable  — r²<0.70, mallia ei voida käyttää
+  //   insufficient — n<3 sarjaa, malli ei vielä laskettavissa
+  //   no-data     — primaryMovementId puuttuu tai ei sarjoja
+  let rtfModelStatus = "no-data";
+  let rtfModelStats = null;
+  if (primaryMovementId) {
+    try {
+      const rtfModel = computeRtfVelocityModel(allSets, primaryMovementId);
+      if (rtfModel && rtfModel.status) {
+        rtfModelStatus = rtfModel.status;
+        rtfModelStats = {
+          n: rtfModel.n ?? null,
+          sessionsCount: rtfModel.sessionsCount ?? null,
+          r2: rtfModel.r2 ?? null,
+          slope: rtfModel.slope ?? null,
+          intercept: rtfModel.intercept ?? null,
+          minR2Reliable: rtfModel.minR2Reliable ?? null,
+          minR2Preview: rtfModel.minR2Preview ?? null,
+        };
+      }
+    } catch (_e) {
+      // computeRtfVelocityModel ei saa kaataa recommendia — säilytetään "no-data"
+    }
+  }
+  trace("RTF_MODEL_STATUS",
+    { primaryMovementId: primaryMovementId ?? null },
+    { status: rtfModelStatus, n: rtfModelStats?.n ?? null, r2: rtfModelStats?.r2 ?? null },
+    `RTF-malli ${rtfModelStatus}${rtfModelStats?.n != null ? ` (n=${rtfModelStats.n}, r²=${rtfModelStats.r2?.toFixed(2) ?? "-"})` : ""}`);
+
   const rec = {
     recId: uid(),
     dateISO,
@@ -4579,6 +4613,9 @@ async function recommend(options = {}) {
     accessoryCapActive,
     dayPlan,
     vbtStatus: vbtSummary,
+    // v4.49.2 DEEP-2: RTF-model status UI:n näytettäväksi "Miksi tämä paino?"-näkymässä.
+    rtfModelStatus,
+    rtfModelStats,
     // v4.34.43: cfg-drift result. UI persistoi mesocycleen jos driftPct > 0.
     cfgDriftApplied: cfgDriftResult,
     traces,
