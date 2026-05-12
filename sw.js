@@ -555,7 +555,7 @@
 // v4.41.0: Track B Vaihe 2B-γ — q26-PR-migraatio + q30-energiabudjetti.
 // v4.40.0: Track B Vaihe 2B-β — wizard-pohjaisen ohjelman generointi.
 // v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen.
-const APP_VERSION = "4.49.0";
+const APP_VERSION = "4.49.1";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

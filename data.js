@@ -7198,6 +7198,11 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       calibration: { leukaExtKg: L, dippiExtKg: D, kyykkyExtKg: K, bwKg: BW },
       competitionDate: null,
     },
+    _programMeta: {
+      tierProgressionApplied: false,
+      source: "Akseli reference program, 15v empiria",
+      handTuned: true,
+    },
     weekDefs: [
       { week:1,  deltaPctBase:0,     label:"Vk 1 — Hypertrofia: aloitus",     heavyReps:6, heavyTargetVx:3 },
       { week:2,  deltaPctBase:0.03,  label:"Vk 2 — Hypertrofia: kasvu",        heavyReps:6, heavyTargetVx:3 },
