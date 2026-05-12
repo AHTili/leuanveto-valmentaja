@@ -1075,6 +1075,8 @@ import {
   getSetsForSession, getAllSets, saveSet, saveSets, deleteSet,
   // v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion auto-learn
   updateAggressivenessLearned, resetAggressivenessLearned,
+  // v4.51.2: migration helper — uudet preset-liikkeet olemassa olevaan DB:hen
+  ensureNewPresetMovements,
   // v4.38.1 (Phase 2D): saveDecisionTrace VL_CAP_TRIGGERED-loggaukseen
   saveDecisionTrace,
   savePendingWorkoutLocal, loadPendingWorkoutLocal, clearPendingWorkoutLocal,
@@ -1250,6 +1252,19 @@ const state = {
 
 async function init() {
   await initDB();
+  // v4.51.2: ensure new preset movements added in later versions get migrated.
+  // seedPresets() ajetaan vain kerran (first install), joten v4.48.0:n
+  // "Yhden jalan jalkaprässi" yms. uudet liikkeet eivät tule automaattisesti
+  // olemassa oleviin DB:ihin. Tämä idempotentti kutsu lisää vain puuttuvat
+  // nimet, ei muokkaa olemassa olevia rivejä.
+  try {
+    const result = await ensureNewPresetMovements();
+    if (result.added > 0) {
+      console.info(`[LeVe] ✓ Uudet preset-liikkeet lisätty: ${result.names.join(", ")}`);
+    }
+  } catch (e) {
+    console.warn("[LeVe] ensureNewPresetMovements failed:", e);
+  }
   // v4.34.6: PERSISTENT STORAGE -pyyntö heti init:n alussa.
   // Selain merkitsee storagen pysyväksi → "Clear browsing data" EI vaikuta automaattisesti.
   // Vain "Site settings → Clear & reset" pyyhkii (eksplisiittinen toimi).
