@@ -2567,8 +2567,10 @@ export function selfTestMapper() {
   ck("_wizardMeta.rules sisältää ACSM-säännön (Nunes + ACSM 2009)",
      akseliResult._wizardMeta.rules.some(r => r.source.includes("ACSM 2009")));
 
-  // ─── 15. Schema-invariantit (1A:n säilytys) ─────────────────────────
-  ck("SCHEMA_INVARIANTS.totalQuestions === 30", SCHEMA_INVARIANTS.totalQuestions === 30);
+  // ─── 15. Schema-invariantit (1A:n säilytys + v4.51.0 q33 lisäys) ───
+  // v4.51.0 (Track B 2D-δ-C): q33_aggressivenessDefault lisätty loading-stageen
+  // → totalQuestions 30 → 31. Pysyvä invariantti vaihtuu kerran versiointielsä.
+  ck("SCHEMA_INVARIANTS.totalQuestions === 31", SCHEMA_INVARIANTS.totalQuestions === 31);
   ck("SCHEMA_INVARIANTS.totalStages === 8",     SCHEMA_INVARIANTS.totalStages === 8);
 
   // ════════════════════════════════════════════════════════════════
