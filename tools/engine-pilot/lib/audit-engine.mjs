@@ -397,6 +397,106 @@ function auditDeloadDayType(trace) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// Sääntö: adaptive multi-suggestion -rakenne (v4.50.0 Track B 2D-δ)
+// ──────────────────────────────────────────────────────────────
+// Verifioi että rec.suggestions on rakenteellisesti kunnossa:
+//   - suggestions[] sisältää 1-3 alkiota (1 jos fallback, 2 jos AGGRESSIVE
+//     piilotettu, 3 normaalitilanteessa)
+//   - TARGET-suggestion on aina olemassa
+//   - defaultSuggestionId viittaa olemassa olevaan suggestion-id:hen
+//   - jokaisella suggestion:lla on validi id ("safe" | "target" | "aggressive")
+//   - TARGET-tier:n arvot vastaavat rec.targetExternalLoad / targetVx /
+//     deltaPct (backward compat — kriittinen olemassa olevien lukijoiden
+//     toiminnalle)
+function auditSuggestions(trace) {
+  const suggestions = trace.output?.suggestions;
+  const defaultSuggestionId = trace.output?.defaultSuggestionId;
+
+  // Error-state recommend():ssa → ei suggestions-vaatimusta
+  if (trace.output?.error) return null;
+  // Maintenance-mode tai before-start → ei suggestions-vaatimusta
+  if (trace.output?.dayType === "maintenance") return null;
+
+  if (suggestions === null || suggestions === undefined) {
+    return flag(
+      "SUGGESTIONS_MISSING",
+      "🐛 ERROR",
+      "rec.suggestions puuttuu kokonaan — adaptive multi-suggestion -rakenne ei ole generoitunut.",
+      {},
+    );
+  }
+  if (!Array.isArray(suggestions) || suggestions.length === 0) {
+    return flag(
+      "SUGGESTIONS_EMPTY",
+      "🐛 ERROR",
+      `rec.suggestions tyhjä — odotetaan vähintään TARGET-tier (sai ${Array.isArray(suggestions) ? suggestions.length : "ei-array"}).`,
+      { suggestionsLength: Array.isArray(suggestions) ? suggestions.length : null },
+    );
+  }
+
+  const validIds = new Set(["safe", "target", "aggressive"]);
+  const seenIds = new Set();
+  for (const s of suggestions) {
+    if (!s || !validIds.has(s.id)) {
+      return flag(
+        "SUGGESTION_INVALID_ID",
+        "🐛 ERROR",
+        `rec.suggestions sisältää väärän id:n: ${s?.id ?? "(null)"}. Validit: safe / target / aggressive.`,
+        { invalidId: s?.id ?? null },
+      );
+    }
+    seenIds.add(s.id);
+  }
+
+  if (!seenIds.has("target")) {
+    return flag(
+      "SUGGESTIONS_TARGET_MISSING",
+      "🐛 ERROR",
+      "TARGET-suggestion puuttuu — engine ei voi palauttaa rec:ä ilman TARGET-tier:iä.",
+      { ids: Array.from(seenIds) },
+    );
+  }
+
+  if (!defaultSuggestionId || !seenIds.has(defaultSuggestionId)) {
+    return flag(
+      "SUGGESTION_DEFAULT_INVALID",
+      "🐛 ERROR",
+      `defaultSuggestionId="${defaultSuggestionId}" ei ole suggestions-listalla [${Array.from(seenIds).join(", ")}].`,
+      { defaultSuggestionId, availableIds: Array.from(seenIds) },
+    );
+  }
+
+  // Backward compat: TARGET-tier:n arvot vastaavat rec.targetExternalLoad /
+  // targetVx / deltaPct. Q4 A-päätös — kaikki olemassa olevat lukijat luottavat
+  // tähän pariteettiin.
+  const targetTier = suggestions.find((s) => s.id === "target");
+  const recLoad = trace.output?.targetExternalLoad;
+  const recVx = trace.output?.targetVx;
+  const recDeltaPct = trace.output?.deltaPct;
+  if (
+    targetTier.targetExternalLoad !== recLoad ||
+    targetTier.targetVx !== recVx ||
+    Math.abs((targetTier.deltaPct ?? 0) - (recDeltaPct ?? 0)) > 1e-6
+  ) {
+    return flag(
+      "SUGGESTION_TARGET_PARITY",
+      "🐛 ERROR",
+      `TARGET-suggestionin arvot eivät vastaa rec.targetExternalLoad/targetVx/deltaPct — backward compat rikkoutunut.`,
+      {
+        targetTier: {
+          load: targetTier.targetExternalLoad,
+          vx: targetTier.targetVx,
+          deltaPct: targetTier.deltaPct,
+        },
+        rec: { load: recLoad, vx: recVx, deltaPct: recDeltaPct },
+      },
+    );
+  }
+
+  return null;
+}
+
+// ──────────────────────────────────────────────────────────────
 // Pää-funktio: audita yksi trace
 // ──────────────────────────────────────────────────────────────
 export function auditTrace(trace, sessionIndex = 0, allTracesForProfile = [], profile = null) {
@@ -412,6 +512,7 @@ export function auditTrace(trace, sessionIndex = 0, allTracesForProfile = [], pr
     auditWarmupRampShape(trace),
     auditErrorState(trace),
     auditDeloadDayType(trace),
+    auditSuggestions(trace),
   ];
 
   for (const c of checks) {

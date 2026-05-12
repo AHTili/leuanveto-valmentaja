@@ -604,7 +604,13 @@
 // v4.41.0: Track B Vaihe 2B-γ — q26-PR-migraatio + q30-energiabudjetti.
 // v4.40.0: Track B Vaihe 2B-β — wizard-pohjaisen ohjelman generointi.
 // v4.39.0: Track B Vaihe 2A — wizard-integraatio pää-sovellukseen.
-const APP_VERSION = "4.49.3";
+// v4.50.0: Track B Vaihe 2D-δ-B — engine-puoli adaptive multi-suggestion -arkkitehtuurille.
+//          generateSuggestions() tuottaa SAFE/TARGET/AGGRESSIVE-tier-variantit
+//          aritmeettisesti TARGET-laskennasta. Backward compat: rec.targetExternalLoad /
+//          targetVx / deltaPct = TARGET-tier:n arvot. rec.suggestions[], defaultSuggestionId,
+//          suggestionContext lisätty. SUGGESTIONS_GENERATED + SUGGESTION_SUPPRESSED tracet.
+//          Audit-engine.mjs verifioi rakenteen ja TARGET-parity:n. UI + auto-learn 2D-δ-C:ssä.
+const APP_VERSION = "4.50.0";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

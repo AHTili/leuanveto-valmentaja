@@ -112,6 +112,57 @@ async function main() {
     });
   }
 
+  // Test 5: rec.suggestions (v4.50.0 Track B 2D-δ adaptive multi-suggestion)
+  console.log("\n[T5] Adaptive multi-suggestion:");
+  console.log("  suggestions.length:", rec.suggestions?.length);
+  console.log("  defaultSuggestionId:", rec.defaultSuggestionId);
+  if (Array.isArray(rec.suggestions)) {
+    rec.suggestions.forEach((s) => {
+      console.log(
+        `  - ${s.id} (${s.label}): load=${s.targetExternalLoad} Vx=${s.targetVx} ` +
+          `deltaPct=${typeof s.deltaPct === "number" ? s.deltaPct.toFixed(4) : s.deltaPct}`,
+      );
+    });
+  }
+  console.log("  suggestionContext.rtfModelStatus:", rec.suggestionContext?.rtfModelStatus);
+  console.log("  suggestionContext.preferredBias:", rec.suggestionContext?.preferredBias);
+  console.log(
+    "  suggestionContext.aggressiveSuppressedReasons:",
+    (rec.suggestionContext?.aggressiveSuppressedReasons || []).join(", ") || "(none)",
+  );
+
+  if (!Array.isArray(rec.suggestions) || rec.suggestions.length < 1) {
+    throw new Error("T5 FAIL: rec.suggestions puuttuu tai tyhjä");
+  }
+  const targetTier = rec.suggestions.find((s) => s.id === "target");
+  if (!targetTier) {
+    throw new Error("T5 FAIL: TARGET-suggestion puuttuu");
+  }
+  if (!rec.suggestions.some((s) => s.id === rec.defaultSuggestionId)) {
+    throw new Error(
+      `T5 FAIL: defaultSuggestionId=${rec.defaultSuggestionId} ei ole suggestions-listalla`,
+    );
+  }
+
+  // Test 6: Backward compat — TARGET-tier:n arvot vastaavat rec.targetExternalLoad/Vx/deltaPct
+  console.log("\n[T6] Backward compat (TARGET-parity):");
+  console.log(`  rec.targetExternalLoad=${rec.targetExternalLoad} vs target.load=${targetTier.targetExternalLoad}`);
+  console.log(`  rec.targetVx=${rec.targetVx} vs target.targetVx=${targetTier.targetVx}`);
+  console.log(`  rec.deltaPct=${rec.deltaPct} vs target.deltaPct=${targetTier.deltaPct}`);
+  if (
+    targetTier.targetExternalLoad !== rec.targetExternalLoad ||
+    targetTier.targetVx !== rec.targetVx ||
+    Math.abs((targetTier.deltaPct ?? 0) - (rec.deltaPct ?? 0)) > 1e-6
+  ) {
+    throw new Error("T6 FAIL: TARGET-parity rikkoutui (backward compat)");
+  }
+
+  // Test 7: SUGGESTIONS_GENERATED-trace löytyy
+  if (!ruleIds.has("SUGGESTIONS_GENERATED")) {
+    throw new Error("T7 FAIL: SUGGESTIONS_GENERATED-trace puuttuu");
+  }
+  console.log("\n[T7] SUGGESTIONS_GENERATED-trace: ✅");
+
   console.log("\n=== SMOKE TEST PASSED ===");
 }
 

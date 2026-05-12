@@ -3090,6 +3090,137 @@ function deriveBlockPhaseFromMesocycle(mesocycleType, weekNum, weekLabel) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SUGGESTION TIERS (v4.50.0 Track B 2D-δ)
+// ═══════════════════════════════════════════════════════════════
+//
+// Adaptive multi-suggestion: engine tuottaa 2-3 ehdotusta per sessio
+// hybridi-päätösstrategioilla (slot.targetVx + bias-detection + RTF-malli +
+// readiness + cap-state + VBT-status). Tier-arvot johdetaan aritmeettisesti
+// nykyisestä TARGET-laskennasta — laskentaketju säilyy bittitarkasti.
+//
+// Spacing-perustelu (Helms 2018 + Akselin design-päätös Q2):
+//   SAFE       = TARGET kuorma × 0.985, targetVx + 1 (enemmän varaa)
+//   TARGET     = nykyinen recommend() (backward-compat ankkuri)
+//   AGGRESSIVE = TARGET kuorma × 1.015, targetVx − 1 (lähempänä failurea)
+//
+// Suppression (Akselin Q1 B-päätös): AGGRESSIVE piilotetaan kun konteksti
+// ei tue korkeampaa stimulusta (cap, failure, bias, RTF !reliable, deload,
+// speed/competition-päivä). Suppressed-tila kirjoitetaan SUGGESTION_SUPPRESSED-
+// traceen audit-todistettavuuden vuoksi.
+//
+// Backward compat (Akselin Q4 A-päätös): rec.targetExternalLoad / targetVx /
+// deltaPct säilyvät TARGET-tier:n arvoina. Atletin valinta tallennetaan
+// session-recordiin erikseen (session.selectedSuggestionId + valitut arvot).
+function generateSuggestions(ctx) {
+  const {
+    targetExternalLoad,
+    targetVx,
+    deltaPct,
+    targetReps,
+    setCount,
+    capLevel,
+    hadFailure,
+    grindyBiasDetected,
+    rtfModelStatus,
+    blockPhase,
+    dayType,
+    preferredBias,
+  } = ctx;
+
+  const SAFE_SPACING = 0.015;       // 1.5 pp kevyempi
+  const AGGRESSIVE_SPACING = 0.015; // 1.5 pp raskaampi
+  const VX_OFFSET = 1;              // ±1 Vx tier-välien välillä
+
+  const targetSuggestion = {
+    id: "target",
+    label: "Tavoite",
+    deltaPct: typeof deltaPct === "number" ? deltaPct : 0,
+    targetVx,
+    targetExternalLoad,
+    setCount,
+    targetReps,
+    rationaleShort: "Engine-suositus nykyisestä progressiosta",
+  };
+
+  const loadIsNumeric = typeof targetExternalLoad === "number" && targetExternalLoad > 0;
+
+  // SAFE-tier: aina näkyvissä jos kuorma laskettavissa.
+  // Konservatiivisempi vaihtoehto on aina turvallinen — atletti voi valita
+  // tämän väsyneenä ilman engine-veto-oikeutta.
+  let safeSuggestion = null;
+  if (loadIsNumeric) {
+    const safeLoad = roundToHalf(targetExternalLoad * (1 - SAFE_SPACING));
+    const safeVx = typeof targetVx === "number" ? targetVx + VX_OFFSET : null;
+    safeSuggestion = {
+      id: "safe",
+      label: "Varovainen",
+      deltaPct: (typeof deltaPct === "number" ? deltaPct : 0) - SAFE_SPACING,
+      targetVx: safeVx,
+      targetExternalLoad: safeLoad,
+      setCount,
+      targetReps,
+      rationaleShort: "Konservatiivinen — enemmän varaa ja kevyempi kuorma",
+    };
+  }
+
+  // AGGRESSIVE-tier: suppression-tarkistus. Piilotetaan kun konteksti ei
+  // tue korkeampaa stimulusta. Jokainen syy kirjataan suppressedReasons:iin
+  // jotta audit + UI voi näyttää miksi.
+  const suppressedReasons = [];
+  if (typeof capLevel === "number" && capLevel >= 1) suppressedReasons.push("readiness-cap");
+  if (hadFailure) suppressedReasons.push("recent-failure");
+  if (grindyBiasDetected) suppressedReasons.push("grindy-bias");
+  if (rtfModelStatus !== "reliable") suppressedReasons.push("rtf-not-reliable");
+  if (blockPhase === "deload") suppressedReasons.push("deload-phase");
+  if (dayType === "speed" || dayType === "competition") suppressedReasons.push("non-progression-day");
+
+  const aggressiveAvailable = suppressedReasons.length === 0 && loadIsNumeric;
+  let aggressiveSuggestion = null;
+  if (aggressiveAvailable) {
+    const aggLoad = roundToHalf(targetExternalLoad * (1 + AGGRESSIVE_SPACING));
+    const aggVx = typeof targetVx === "number" ? Math.max(0, targetVx - VX_OFFSET) : null;
+    aggressiveSuggestion = {
+      id: "aggressive",
+      label: "Rohkea",
+      deltaPct: (typeof deltaPct === "number" ? deltaPct : 0) + AGGRESSIVE_SPACING,
+      targetVx: aggVx,
+      targetExternalLoad: aggLoad,
+      setCount,
+      targetReps,
+      rationaleShort: "Korkea-stimulus — lähempänä failurea",
+    };
+  }
+
+  // Suggestions-järjestys: SAFE → TARGET → AGGRESSIVE (UI:lla helpompi)
+  const suggestions = [];
+  if (safeSuggestion) suggestions.push(safeSuggestion);
+  suggestions.push(targetSuggestion);
+  if (aggressiveSuggestion) suggestions.push(aggressiveSuggestion);
+
+  // Default-suggestion-päätös (Akselin Q3 C-muokattu):
+  //   1. capLevel ≥ 1 → SAFE (pakotettu, ohittaa preferredBias)
+  //   2. preferredBias "stable" + SAFE saatavilla → SAFE
+  //   3. preferredBias "challenging" + AGGRESSIVE saatavilla → AGGRESSIVE
+  //   4. Muuten → TARGET (default)
+  let defaultSuggestionId = "target";
+  const capForcesSafe = typeof capLevel === "number" && capLevel >= 1 && safeSuggestion;
+  if (capForcesSafe) {
+    defaultSuggestionId = "safe";
+  } else if (preferredBias === "stable" && safeSuggestion) {
+    defaultSuggestionId = "safe";
+  } else if (preferredBias === "challenging" && aggressiveAvailable) {
+    defaultSuggestionId = "aggressive";
+  }
+
+  return {
+    suggestions,
+    defaultSuggestionId,
+    suppressedReasons,
+    aggressiveAvailable,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // RECOMMEND() — DETERMINISTIC RECOMMENDATION ENGINE
 // ═══════════════════════════════════════════════════════════════
 
@@ -4590,6 +4721,66 @@ async function recommend(options = {}) {
     { status: rtfModelStatus, n: rtfModelStats?.n ?? null, r2: rtfModelStats?.r2 ?? null },
     `RTF-malli ${rtfModelStatus}${rtfModelStats?.n != null ? ` (n=${rtfModelStats.n}, r²=${rtfModelStats.r2?.toFixed(2) ?? "-"})` : ""}`);
 
+  // v4.50.0 (Track B 2D-δ): Adaptive multi-suggestion. Generate SAFE / TARGET /
+  // AGGRESSIVE tier-variantit nykyisestä TARGET-laskennasta. Backward compat:
+  // rec.targetExternalLoad / targetVx / deltaPct säilyvät TARGET-arvoina.
+  let suggestionsResult;
+  try {
+    const grindyBiasForSuggestions = detectGrindyBias(sessions);
+    const hadFailureForSuggestions = hadFailureLastSession(recentTopSets);
+    suggestionsResult = generateSuggestions({
+      targetExternalLoad,
+      targetVx,
+      deltaPct,
+      targetReps,
+      setCount,
+      capLevel,
+      hadFailure: hadFailureForSuggestions,
+      grindyBiasDetected: grindyBiasForSuggestions.detected,
+      rtfModelStatus,
+      blockPhase: inferredBlockPhase,
+      dayType,
+      preferredBias: settings.preferredSuggestionBias ?? "balanced",
+    });
+    trace("SUGGESTIONS_GENERATED",
+      { tierCount: suggestionsResult.suggestions.length, defaultId: suggestionsResult.defaultSuggestionId },
+      {
+        tiers: suggestionsResult.suggestions.map(s => ({
+          id: s.id,
+          load: s.targetExternalLoad,
+          vx: s.targetVx,
+          deltaPct: typeof s.deltaPct === "number" ? Number(s.deltaPct.toFixed(4)) : null,
+        })),
+        defaultSuggestionId: suggestionsResult.defaultSuggestionId,
+        aggressiveAvailable: suggestionsResult.aggressiveAvailable,
+      },
+      `${suggestionsResult.suggestions.length} ehdotusta generoitu, default=${suggestionsResult.defaultSuggestionId}`);
+    if (suggestionsResult.suppressedReasons.length > 0) {
+      trace("SUGGESTION_SUPPRESSED",
+        { tier: "aggressive" },
+        { reasons: suggestionsResult.suppressedReasons },
+        `Rohkea-ehdotus piilotettu: ${suggestionsResult.suppressedReasons.join(", ")}`);
+    }
+  } catch (_e) {
+    // Fallback: jos generaatio epäonnistuu, palautetaan vain TARGET — pidetään
+    // backward compat. Tämä on safety-net, ei normaali polku.
+    suggestionsResult = {
+      suggestions: [{
+        id: "target",
+        label: "Tavoite",
+        deltaPct: typeof deltaPct === "number" ? deltaPct : 0,
+        targetVx,
+        targetExternalLoad,
+        setCount,
+        targetReps,
+        rationaleShort: "Engine-suositus",
+      }],
+      defaultSuggestionId: "target",
+      suppressedReasons: [],
+      aggressiveAvailable: false,
+    };
+  }
+
   const rec = {
     recId: uid(),
     dateISO,
@@ -4616,6 +4807,20 @@ async function recommend(options = {}) {
     // v4.49.2 DEEP-2: RTF-model status UI:n näytettäväksi "Miksi tämä paino?"-näkymässä.
     rtfModelStatus,
     rtfModelStats,
+    // v4.50.0 (Track B 2D-δ): adaptive multi-suggestion -kentät. Atletti
+    // valitsee UI:ssa, valinta tallennetaan session-recordiin erikseen.
+    // rec.targetExternalLoad / targetVx / deltaPct (yllä) ovat TARGET-tier:n
+    // arvoja backward compat -syistä — kaikki olemassa olevat lukijat toimivat
+    // muuttumatta.
+    suggestions: suggestionsResult.suggestions,
+    defaultSuggestionId: suggestionsResult.defaultSuggestionId,
+    suggestionContext: {
+      rtfModelStatus,
+      capLevel,
+      grindyBiasDetected: detectGrindyBias(sessions).detected,
+      aggressiveSuppressedReasons: suggestionsResult.suppressedReasons,
+      preferredBias: settings.preferredSuggestionBias ?? "balanced",
+    },
     // v4.34.43: cfg-drift result. UI persistoi mesocycleen jos driftPct > 0.
     cfgDriftApplied: cfgDriftResult,
     traces,
