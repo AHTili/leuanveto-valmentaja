@@ -630,7 +630,17 @@
 //          oppimistilasta + nollaus-painike. 32 uutta selain-testiä (testAdaptiveSuggestions
 //          T1-T14 + testAdaptiveSuggestionsLearned L1-L7 + lisät). Akselin regressio
 //          bittitarkasti läpi (64/64 päivää, 0 ERROR, 41 audit-flaggia = baseline-identti).
-const APP_VERSION = "4.51.0";
+// v4.51.1 (Track B 2D-δ-C5 send-ready): Kriittinen syntaxbug-korjaus +
+//          cold-start UX-hint + invariantti 31. v4.51.0:n duplikoitu
+//          escapeHtml-funktio (rivit 3674 + 6133) esti ESM-module-lataamisen
+//          → koko UI jäi tyhjäksi. Korjattu poistamalla v4.51.0-duplikaatti.
+//          Cold-start: kun rec.suggestions kaikilla load === null, UI näyttää
+//          "💡 Ensimmäiset sessiot — syötä kuorma manuaalisesti, engine
+//          kalibroituu 2-3 sessiossa". Wizard-mapper invariantti 30 → 31
+//          (q33_aggressivenessDefault lisäys schemassa). Pilot-regressio
+//          bittitarkasti: Akseli 64/64 0 ERROR, beginner 12/12 0 flagia,
+//          elite-female 12/12 0 flagia.
+const APP_VERSION = "4.51.1";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
