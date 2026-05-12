@@ -31,7 +31,7 @@
 
 import { SCHEMA_INVARIANTS } from "./wizard-schema.js";
 
-export const MAPPER_VERSION = "2D-beta-v1.0";
+export const MAPPER_VERSION = "2D-gamma-v1.0";
 
 // ═══════════════════════════════════════════════════════════════════════
 // PROGRAM_STYLES — Adaptive multi-suggestion (Track B Vaihe 2D-α)
@@ -195,6 +195,79 @@ export const PROGRAM_STYLES = Object.freeze({
     goal: "madcow5x5",
     factoryHint: "createMadcow5x5Mesocycle",
     sourceLabel: "Madcow 5×5 (anonyymi yhteisön mukautus Bill Starr 1976 -pohjasta)",
+  },
+  // ── 2D-γ: edistyneet metodologiat ──
+  "single-westside-conjugate": {
+    id: "single-westside-conjugate",
+    label: "Westside Conjugate",
+    shortDesc: "4×/vk ME/DE-rotaatio, viikoittainen liikevaihto, top single ≥90%",
+    weekCount: 4,
+    bestFor: "Advanced/elite, klassinen Conjugate-metodi (raw-mukautus)",
+    iconHint: "🔀",
+    isMultiBlock: false,
+    goal: "westsideConjugate",
+    factoryHint: "createWestsideConjugateMesocycle",
+    sourceLabel: "Simmons 2007 + WSBB-blogit (2018-2025); raw-streetlifting-mukautus = WESTSIDE-DERIVED",
+  },
+  "single-gzcl-jt20": {
+    id: "single-gzcl-jt20",
+    label: "GZCL Jacked & Tan 2.0",
+    shortDesc: "4×/vk 12 vk, T1/T2/T3 tier-rakenne, RM-target laskee 10→1",
+    weekCount: 12,
+    bestFor: "Advanced, strukturoitu tier-malli + AMRAP-progressio",
+    iconHint: "📊",
+    isMultiBlock: false,
+    goal: "gzclJT20",
+    factoryHint: "createGZCLMesocycle",
+    sourceLabel: "Lefever 2016 J&T 2.0 -blogi (EMPIRINEN, ei peer-reviewed)",
+  },
+  "single-sheiko-derived": {
+    id: "single-sheiko-derived",
+    label: "Sheiko #29 (johdettu)",
+    shortDesc: "3×/vk 4 vk, %1RM-pyramidi, max-int. 75-85%; SHEIKO-DERIVED",
+    weekCount: 4,
+    bestFor: "Voimanostotausta, korkea volyymi prep-vaihe",
+    iconHint: "🇷🇺",
+    isMultiBlock: false,
+    goal: "sheikoDerived",
+    factoryHint: "createSheikoDerivedMesocycle",
+    sourceLabel: "Sheiko #29 (yhteisökopio foorumi-spreadsheetistä); leuka+dippi = SHEIKO-DERIVED LAAJENNUS",
+  },
+  "single-minimalist-rp": {
+    id: "single-minimalist-rp",
+    label: "Minimalist RP (Israetel)",
+    shortDesc: "3×/vk MEV→MAV sets-progressio, push/pull/legs, hypertrofia-fokus",
+    weekCount: 4,
+    bestFor: "Hypertrofia-painotus, apuliikkeiden volyymi-hallinta",
+    iconHint: "📐",
+    isMultiBlock: false,
+    goal: "minimalistRP",
+    factoryHint: "createMinimalistRPMesocycle",
+    sourceLabel: "Israetel RP-blogi 2017+ (DOKUMENTOITU, ei peer-reviewed)",
+  },
+  "single-smolov-jr": {
+    id: "single-smolov-jr",
+    label: "Smolov Jr",
+    shortDesc: "4×/vk 3+1 vk intensiivinen blokki, yhden liikkeen specialty",
+    weekCount: 4,
+    bestFor: "Yhden liikkeen PR-yritys lyhyellä syklillä (vain yksi kerrallaan)",
+    iconHint: "💀",
+    isMultiBlock: false,
+    goal: "smolovJr",
+    factoryHint: "createSmolovJrMesocycle",
+    sourceLabel: "Smolov Jr -yhteisömukautus (Tsatsouline-välitysketju)",
+  },
+  "single-coan-phillipi": {
+    id: "single-coan-phillipi",
+    label: "Coan-Phillipi (DL)",
+    shortDesc: "1× DL/vk, 10 vk + meet vk 11, lineaarinen %-progressio",
+    weekCount: 11,
+    bestFor: "Deadlift-spesialisaatio, peakaus kisaan/testaukseen",
+    iconHint: "🎖️",
+    isMultiBlock: false,
+    goal: "coanPhillipi",
+    factoryHint: "createCoanPhillipiMesocycle",
+    sourceLabel: "Mark Phillipi -alkuperäisessee (powerpage.net, mirror-versiot)",
   },
 });
 
@@ -426,7 +499,7 @@ export function pickProgramStyle(answers, opts = {}) {
   {
     const c = { styleId: "single-siirtyma", style: PROGRAM_STYLES["single-siirtyma"], confidence: 0, rationale: [], weekCount: 3 };
     if (recent === "deload") {
-      c.confidence += 40;
+      c.confidence += 60;
       c.rationale.push("Edellinen deload → siirtymäjakso on luonteva askel ennen uutta SPP-vaihetta");
     } else if (recent === "off_program") {
       c.confidence += 30;
@@ -582,6 +655,189 @@ export function pickProgramStyle(answers, opts = {}) {
     } else if (a.q24_frequency?.daysPerWeek > 3) {
       c.confidence -= 5;
       c.rationale.push("Yli 3 päivää/vk → Madcow:n HLM-pattern ei laajene helposti");
+    }
+    candidates.push(c);
+  }
+
+  // ── 12. SINGLE-WESTSIDE-CONJUGATE (2D-γ) ──
+  // WSBB Conjugate: advanced/elite + max-tavoite. Vaatii kokemusta + nelipäiväistä viikkoa.
+  {
+    const c = { styleId: "single-westside-conjugate", style: PROGRAM_STYLES["single-westside-conjugate"], confidence: 0, rationale: [], weekCount: 4 };
+    if (isMaxGoal) {
+      c.confidence += 30;
+      c.rationale.push("Max-tavoite + Westside-rotaatio sopivat klassiseen voimanostokontekstiin");
+    } else if (a.q12_primaryGoal === "powerlifting") {
+      c.confidence += 25;
+      c.rationale.push("Voimanostokisaus → Westside on equipped-PL-tausta, sopii myös rawille");
+    }
+    if (isAdvancedPlus) {
+      c.confidence += 25;
+      c.rationale.push("Edistynyt taso vaaditaan — ME-rotaation viikoittainen vaihto + 1RM-singletkin");
+    } else {
+      c.confidence -= 20;
+      c.rationale.push("Aloittelijalle/intermediate Westside on liian monimutkainen + 1RM-singlet riskialttiit");
+    }
+    if (a.q24_frequency?.daysPerWeek === 4) {
+      c.confidence += 10;
+      c.rationale.push("4 päivää/vk → sopii suoraan ME-Lower/ME-Upper/DE-Lower/DE-Upper -jakoon");
+    } else if (a.q24_frequency?.daysPerWeek < 4) {
+      c.confidence -= 15;
+      c.rationale.push("Westside vaatii 4 päivää/vk — vähemmällä joudut leikkaamaan ME- tai DE-päivän");
+    }
+    if (recent === "peaking" || recent === "deload") {
+      c.confidence -= 10;
+      c.rationale.push(`Edellinen ${recent} → Westside ei ole optimaalinen ennen pohjavaihetta`);
+    }
+    candidates.push(c);
+  }
+
+  // ── 13. SINGLE-GZCL-JT20 (2D-γ) ──
+  // GZCL J&T 2.0: 12 vk, tier-rakenne. Vaatii ajan + advanced.
+  {
+    const c = { styleId: "single-gzcl-jt20", style: PROGRAM_STYLES["single-gzcl-jt20"], confidence: 0, rationale: [], weekCount: 12 };
+    if (isMaxGoal || isGenStrength) {
+      c.confidence += 30;
+      c.rationale.push("Voima/yleinen voima + 12 vk strukturoitu T1/T2/T3-tier-rakenne tukee progressiota");
+    }
+    if (isIntermPlus) {
+      c.confidence += 20;
+      c.rationale.push("Keskitaso+ pystyy hyödyntämään LSAMRAP-progressiota tarkasti");
+    } else {
+      c.confidence -= 10;
+      c.rationale.push("Aloittelijalle J&T 2.0 on liian monimutkainen — GZCLP olisi parempi (mutta sitä ei ole tässä)");
+    }
+    if (volPref === "MAV") {
+      c.confidence += 10;
+      c.rationale.push("MAV-volyymipreferenssi sopii T1+T2+T3 tier-volyymin 1:2:3-suhteeseen");
+    }
+    // 12 vk vaatii aikaa — jos kisapäivä alle 12 vk, penalty
+    if (hasTargetDate && typeof daysUntilTarget === "number" && daysUntilTarget < 84) {
+      c.confidence -= 15;
+      c.rationale.push("Kisapäivä alle 12 vk → J&T 2.0 ei mahdu kalenteriin kokonaisuudessaan");
+    }
+    if (recent === "off_program" || recent === "deload") {
+      c.confidence += 10;
+      c.rationale.push("Tulet pois ohjelmattomasta/deloadista → J&T 2.0:n RM-target 10→1 antaa hyvän progressioväylän");
+    }
+    candidates.push(c);
+  }
+
+  // ── 14. SINGLE-SHEIKO-DERIVED (2D-γ) ──
+  // Sheiko #29 prep: korkea volyymi, voimanosto-tausta.
+  {
+    const c = { styleId: "single-sheiko-derived", style: PROGRAM_STYLES["single-sheiko-derived"], confidence: 0, rationale: [], weekCount: 4 };
+    if (a.q12_primaryGoal === "powerlifting") {
+      c.confidence += 35;
+      c.rationale.push("Voimanostokisaus → Sheiko-volyymi (200-400 NL/vk) on kanoninen prep");
+    } else if (isMaxGoal) {
+      c.confidence += 15;
+      c.rationale.push("Max-tavoite + venäläinen high-volume-tradicio");
+    }
+    if (volPref === "MRV") {
+      c.confidence += 20;
+      c.rationale.push("MRV-volyymipreferenssi → Sheiko-volyymi sopii suoraan");
+    } else if (volPref === "MEV") {
+      c.confidence -= 15;
+      c.rationale.push("MEV-preferenssi → Sheiko-volyymi (3 sessiota × 2h) on liian raskas");
+    }
+    if (isAdvancedPlus) {
+      c.confidence += 10;
+      c.rationale.push("Edistynyt taso vaaditaan — Sheiko-prep on intermediate/advanced -konteksti");
+    } else {
+      c.confidence -= 15;
+      c.rationale.push("Aloittelijalle Sheiko-volyymi on liian raskas");
+    }
+    // Streetlifting-laajennus = SHEIKO-DERIVED → mutta jos atletti ei powerliftaa, isompi malli sopii heikommin
+    if (a.q09_sport === "streetlifting") {
+      c.confidence -= 10;
+      c.rationale.push("Streetlifting-spesialisaatio → leuka/dippi-laajennus on SHEIKO-DERIVED, ei kanoninen");
+    }
+    if (cutAggressive) {
+      c.confidence -= 20;
+      c.rationale.push("Aggressivinen cut + Sheiko-volyymi = ristiriita (palautumiskapasiteetti rajallinen)");
+    }
+    candidates.push(c);
+  }
+
+  // ── 15. SINGLE-MINIMALIST-RP (2D-γ) ──
+  // RP Minimalist: hypertrofia-fokus, MEV → MAV. Pääliikkeen 1RM-progressio rajallinen.
+  {
+    const c = { styleId: "single-minimalist-rp", style: PROGRAM_STYLES["single-minimalist-rp"], confidence: 0, rationale: [], weekCount: 4 };
+    if (isHypGoal) {
+      c.confidence += 40;
+      c.rationale.push("Hypertrofia-tavoite → RP volume landmarks suoraan kohdistettu");
+    } else if (a.q13_secondaryGoal === "hypertrophy") {
+      c.confidence += 20;
+      c.rationale.push("Sivutavoite hypertrofia → RP-malli tukee apuliikkeitä");
+    } else if (isMaxGoal) {
+      c.confidence -= 15;
+      c.rationale.push("Max-tavoite + RP-hypertrofia = väärä työkalu pääliikkeelle (volyymilandmark on hypertrofialle)");
+    }
+    if (volPref === "MAV" || volPref === "MRV") {
+      c.confidence += 15;
+      c.rationale.push("MAV/MRV-preferenssi → RP-progressio toimii kohdistetusti");
+    }
+    if (cutAggressive) {
+      c.confidence -= 10;
+      c.rationale.push("Aggressivinen cut + hypertrofia = kasvu rajoittuu (sopii silti maintenance:iin)");
+    }
+    candidates.push(c);
+  }
+
+  // ── 16. SINGLE-SMOLOV-JR (2D-γ) ──
+  // Smolov Jr: yhden liikkeen intensiivi-spesialisaatio. Erittäin riskialtis.
+  {
+    const c = { styleId: "single-smolov-jr", style: PROGRAM_STYLES["single-smolov-jr"], confidence: 0, rationale: [], weekCount: 4 };
+    if (isMaxGoal && isAdvancedPlus) {
+      c.confidence += 25;
+      c.rationale.push("Max-tavoite + edistynyt taso → Smolov Jr on yksittäisen liikkeen peak-vaihtoehto");
+    } else if (isMaxGoal) {
+      c.confidence += 10;
+      c.rationale.push("Max-tavoite → Smolov Jr toimii, mutta tarvitset hyvän pohjan");
+    } else {
+      c.confidence = 5;
+      c.rationale.push("Smolov Jr on yhden liikkeen intensiivi-blokki, ei sovi ilman selvää max-tavoitetta");
+    }
+    if (tier === "beginner" || tier === "intermediate") {
+      c.confidence -= 25;
+      c.rationale.push("Aloittelijalle/intermediate Smolov Jr on liian intensiivi (jännerakenne-riski)");
+    }
+    if (cutAggressive) {
+      c.confidence -= 25;
+      c.rationale.push("Aggressivinen cut + Smolov Jr = vaarallinen yhdistelmä (palautumiskapasiteetti+lisävaatimukset)");
+    }
+    if (recent === "peaking" || recent === "deload") {
+      c.confidence -= 15;
+      c.rationale.push(`Edellinen ${recent} → Smolov Jr vaatii hyvän pohjan, ei sovi heti peakingin jälkeen`);
+    }
+    candidates.push(c);
+  }
+
+  // ── 17. SINGLE-COAN-PHILLIPI (2D-γ) ──
+  // Coan-Phillipi: DL-spesifinen peakaus 10 vk + meet.
+  {
+    const c = { styleId: "single-coan-phillipi", style: PROGRAM_STYLES["single-coan-phillipi"], confidence: 0, rationale: [], weekCount: 11 };
+    if (a.q12_primaryGoal === "powerlifting") {
+      c.confidence += 30;
+      c.rationale.push("Voimanostokisaus + DL-spesialisaatio → Coan-Phillipi on kanoninen peakaus");
+    } else if (isMaxGoal) {
+      c.confidence += 15;
+      c.rationale.push("Max-tavoite → Coan-Phillipi DL-peakaus toimii, jos DL on prioriteetti");
+    }
+    if (hasTargetDate && typeof daysUntilTarget === "number" && daysUntilTarget >= 70 && daysUntilTarget <= 84) {
+      c.confidence += 25;
+      c.rationale.push(`Kisapäivä ${daysUntilTarget} pv → Coan-Phillipi 11 vk osuu täsmälleen kisapäivään`);
+    } else if (hasTargetDate && typeof daysUntilTarget === "number" && (daysUntilTarget < 70 || daysUntilTarget > 91)) {
+      c.confidence -= 10;
+      c.rationale.push(`Kisapäivä ${daysUntilTarget} pv ei sovi Coan-Phillipi 10+1 vk -kalenteriin tarkasti`);
+    }
+    if (isAdvancedPlus) {
+      c.confidence += 10;
+      c.rationale.push("Edistynyt taso vaaditaan — 'Desired 1RM' edellyttää realistista 1RM-tietämystä");
+    }
+    if (a.q09_sport === "streetlifting") {
+      c.confidence -= 15;
+      c.rationale.push("Streetlifting-spesialisaatio → Coan-Phillipi on DL-spesifi, leuka/dippi-mukautus = COAN-PHILLIPI-DERIVED");
     }
     candidates.push(c);
   }
@@ -1620,13 +1876,16 @@ export function mapWizardToMesocycle(wizardConfig, mainAppState, opts = {}) {
     goal = pickStartingBlock(a.q29_recentBlock, a.q12_primaryGoal);
   }
 
-  // 2D-α + 2D-β: viikkomäärä — jos goal-tyylin natiivipituus on lukko, käytä sitä.
-  // Lukot: siirtyma=3, palautuminen=2, madcow5x5=5 (PR-vk5 lopussa).
+  // 2D-α + 2D-β + 2D-γ: viikkomäärä — jos goal-tyylin natiivipituus on lukko, käytä sitä.
+  // Lukot 2D-α/β: siirtyma=3, palautuminen=2, madcow5x5=5 (PR-vk5 lopussa).
+  // Lukot 2D-γ: gzclJT20=12 (J&T 2.0 2×6 vk), coanPhillipi=11 (10 vk + meet vk 11).
   // Muutoin tier-pohjainen pickWeekCount + anchor.
   const PROGRAM_STYLE_NATIVE_WEEKS = {
     siirtyma: 3,
     palautuminen: 2,
     madcow5x5: 5,
+    gzclJT20: 12,
+    coanPhillipi: 11,
   };
   let weekCount;
   let anchorResult = { anchored: false, warning: null };
@@ -1856,9 +2115,9 @@ export function selfTestMapper() {
      RESIDUAL_DAYS.maximal_strength.mean === 30 && RESIDUAL_DAYS.maximal_strength.sd === 5);
   ck("RESIDUAL_DAYS maximal_speed = 5 ± 3 (Issurin)",
      RESIDUAL_DAYS.maximal_speed.mean === 5 && RESIDUAL_DAYS.maximal_speed.sd === 3);
-  ck("MAPPER_VERSION on 2D-beta-v1.0", MAPPER_VERSION === "2D-beta-v1.0");
+  ck("MAPPER_VERSION on 2D-gamma-v1.0", MAPPER_VERSION === "2D-gamma-v1.0");
 
-  // ─── 1b. PROGRAM_STYLES + pickProgramStyle (Track B Vaihe 2D-α + 2D-β) ────
+  // ─── 1b. PROGRAM_STYLES + pickProgramStyle (Track B 2D-α + 2D-β + 2D-γ) ────
   ck("PROGRAM_STYLES sisältää multi-issurin",
      !!PROGRAM_STYLES["multi-issurin"]);
   ck("PROGRAM_STYLES sisältää 7 single-tyyliä (2D-α)",
@@ -1867,14 +2126,23 @@ export function selfTestMapper() {
   ck("PROGRAM_STYLES sisältää 3 klassista voimanostotyyliä (2D-β)",
      ["single-wendler531","single-top-set-backoff","single-madcow-5x5"]
        .every(k => !!PROGRAM_STYLES[k]));
-  ck("PROGRAM_STYLES kokonaismäärä = 11 (1 multi + 10 single)",
-     Object.keys(PROGRAM_STYLES).length === 11);
+  ck("PROGRAM_STYLES sisältää 6 edistynyttä metodologiaa (2D-γ)",
+     ["single-westside-conjugate","single-gzcl-jt20","single-sheiko-derived","single-minimalist-rp","single-smolov-jr","single-coan-phillipi"]
+       .every(k => !!PROGRAM_STYLES[k]));
+  ck("PROGRAM_STYLES kokonaismäärä = 17 (1 multi + 16 single)",
+     Object.keys(PROGRAM_STYLES).length === 17);
   ck("PROGRAM_STYLES single-wendler531 goal=wendler531",
      PROGRAM_STYLES["single-wendler531"].goal === "wendler531");
   ck("PROGRAM_STYLES single-madcow-5x5 weekCount=5",
      PROGRAM_STYLES["single-madcow-5x5"].weekCount === 5);
   ck("PROGRAM_STYLES single-top-set-backoff goal=topSetBackoff",
      PROGRAM_STYLES["single-top-set-backoff"].goal === "topSetBackoff");
+  ck("PROGRAM_STYLES single-gzcl-jt20 weekCount=12 (2D-γ)",
+     PROGRAM_STYLES["single-gzcl-jt20"].weekCount === 12);
+  ck("PROGRAM_STYLES single-coan-phillipi weekCount=11 (10 vk + meet vk 11)",
+     PROGRAM_STYLES["single-coan-phillipi"].weekCount === 11);
+  ck("PROGRAM_STYLES single-westside-conjugate goal=westsideConjugate",
+     PROGRAM_STYLES["single-westside-conjugate"].goal === "westsideConjugate");
   ck("PROGRAM_STYLES single-siirtyma natiivipituus 3 vk",
      PROGRAM_STYLES["single-siirtyma"].weekCount === 3);
   ck("PROGRAM_STYLES single-palautuminen natiivipituus 2 vk",
@@ -1981,8 +2249,8 @@ export function selfTestMapper() {
     const unique = new Set(styleIds);
     ck("pickProgramStyle: ei duplikaatteja kandidaattilistalla",
        unique.size === styleIds.length);
-    ck("pickProgramStyle: kaikki 11 tyyliä esiintyy kandidaattilistalla (2D-β)",
-       styleIds.length === 11);
+    ck("pickProgramStyle: kaikki 17 tyyliä esiintyy kandidaattilistalla (2D-γ)",
+       styleIds.length === 17);
   }
 
   // pickProgramStyle: kaikilla rationale[] täytetty
@@ -2293,7 +2561,7 @@ export function selfTestMapper() {
   ck("Deterministisyys: recoveryCapacity sama", det1.recoveryCapacity === det2.recoveryCapacity);
 
   // ─── 14. _wizardMeta-rakenteen täydellisyys ─────────────────────────
-  ck("_wizardMeta sisältää mapperVersion (2D-beta-v1.0)", akseliResult._wizardMeta.mapperVersion === "2D-beta-v1.0");
+  ck("_wizardMeta sisältää mapperVersion (2D-gamma-v1.0)", akseliResult._wizardMeta.mapperVersion === "2D-gamma-v1.0");
   ck("_wizardMeta sisältää wizardSchemaVersion",  akseliResult._wizardMeta.wizardSchemaVersion === "3.3");
   ck("_wizardMeta sisältää rules-array",          Array.isArray(akseliResult._wizardMeta.rules) && akseliResult._wizardMeta.rules.length > 0);
   ck("_wizardMeta.rules sisältää ACSM-säännön (Nunes + ACSM 2009)",
@@ -2877,9 +3145,9 @@ export function selfTestMapper() {
     });
     const styleIds = cands.map(c => c.styleId);
     const unique = new Set(styleIds);
-    ck("pickProgramStyle (2D-β): 11 tyyliä esiintyy",
-       styleIds.length === 11);
-    ck("pickProgramStyle (2D-β): ei duplikaatteja",
+    ck("pickProgramStyle (2D-γ): 17 tyyliä esiintyy",
+       styleIds.length === 17);
+    ck("pickProgramStyle (2D-γ): ei duplikaatteja",
        unique.size === styleIds.length);
   }
 
@@ -2893,6 +3161,180 @@ export function selfTestMapper() {
     const wendler = cands.find(c => c.styleId === "single-wendler531");
     ck("pickProgramStyle Wendler: kalibroitunut Vara mainitaan rationale-listässä",
        wendler && wendler.rationale.some(r => r.toLowerCase().includes("kalibr") || r.toLowerCase().includes("amrap")));
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // ─── 2D-γ: Edistyneet metodologiat (6 uutta) ────────────────────
+  // ════════════════════════════════════════════════════════════════
+
+  // pickProgramStyle: Westside — advanced + max + 4 päivää → korkea confidence
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "MAV",
+      q14_cutting: "no",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 75 },
+    });
+    const wsbb = cands.find(c => c.styleId === "single-westside-conjugate");
+    ck("pickProgramStyle Westside: advanced + max + 4pv → confidence > 50",
+       wsbb && wsbb.confidence > 50);
+  }
+
+  // pickProgramStyle: Westside ei sovi aloittelijalle
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "beginner", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "off_program", q23_volumePref: "auto",
+      q14_cutting: "no",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 75 },
+    });
+    const wsbb = cands.find(c => c.styleId === "single-westside-conjugate");
+    ck("pickProgramStyle Westside: beginner → confidence < 30",
+       wsbb && wsbb.confidence < 30);
+  }
+
+  // pickProgramStyle: GZCL J&T 2.0 — advanced + general_strength → top-3
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "general_strength",
+      q29_recentBlock: "off_program", q23_volumePref: "MAV",
+      q14_cutting: "no",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 75 },
+    });
+    const gzcl = cands.find(c => c.styleId === "single-gzcl-jt20");
+    ck("pickProgramStyle GZCL J&T 2.0: advanced + general_strength + MAV → confidence > 50",
+       gzcl && gzcl.confidence > 50);
+  }
+
+  // pickProgramStyle: GZCL kisapäivä < 12 vk → penalty
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "MAV",
+      q14_cutting: "no", q27_targetDate: "2026-07-01",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 75 },
+    }, { daysUntilTarget: 35 });
+    const gzcl = cands.find(c => c.styleId === "single-gzcl-jt20");
+    ck("pickProgramStyle GZCL: kisapäivä < 12 vk → confidence pienempi",
+       gzcl && gzcl.confidence < 50);
+  }
+
+  // pickProgramStyle: Sheiko — powerlifting + MRV → korkea
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "powerlifting",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "MRV",
+      q14_cutting: "no", q09_sport: "powerlifting",
+      q24_frequency: { daysPerWeek: 3, sessionLengthMinutes: 120 },
+    });
+    const sheiko = cands.find(c => c.styleId === "single-sheiko-derived");
+    ck("pickProgramStyle Sheiko: powerlifting + MRV → confidence > 50",
+       sheiko && sheiko.confidence > 50);
+  }
+
+  // pickProgramStyle: Sheiko streetlifting → penalty
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "MAV",
+      q14_cutting: "no", q09_sport: "streetlifting",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 75 },
+    });
+    const sheiko = cands.find(c => c.styleId === "single-sheiko-derived");
+    ck("pickProgramStyle Sheiko: streetlifting-sport → rationale mainitsee SHEIKO-DERIVED",
+       sheiko && sheiko.rationale.some(r => r.toLowerCase().includes("sheiko-derived") || r.toLowerCase().includes("streetlifting")));
+  }
+
+  // pickProgramStyle: RP Minimalist — hypertrofia → top-1 -ehdokas
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "intermediate", q12_primaryGoal: "hypertrophy",
+      q29_recentBlock: "off_program", q23_volumePref: "MAV",
+      q14_cutting: "no",
+      q24_frequency: { daysPerWeek: 3, sessionLengthMinutes: 60 },
+    });
+    const rp = cands.find(c => c.styleId === "single-minimalist-rp");
+    ck("pickProgramStyle RP Minimalist: hypertrofia → confidence > 50",
+       rp && rp.confidence > 50);
+  }
+
+  // pickProgramStyle: Smolov Jr — advanced + max → kohtuullinen, mutta beginner-cap
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "strength", q23_volumePref: "MAV",
+      q14_cutting: "no",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 75 },
+    });
+    const smolov = cands.find(c => c.styleId === "single-smolov-jr");
+    ck("pickProgramStyle Smolov Jr: advanced + max → confidence > 20",
+       smolov && smolov.confidence > 20);
+  }
+
+  // pickProgramStyle: Smolov Jr cut → penalty
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "max_1RM",
+      q29_recentBlock: "strength", q23_volumePref: "MAV",
+      q14_cutting: "yes", q30_energyBudget: { deficitKcal: 700 },
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 75 },
+    });
+    const smolov = cands.find(c => c.styleId === "single-smolov-jr");
+    ck("pickProgramStyle Smolov Jr: aggressivinen cut → confidence pienenee",
+       smolov && smolov.confidence < 25);
+  }
+
+  // pickProgramStyle: Coan-Phillipi — kisapäivä ~10-11 vk → korkea match
+  {
+    const cands = pickProgramStyle({
+      q08_selfLevel: "advanced", q12_primaryGoal: "powerlifting",
+      q29_recentBlock: "hypertrophy", q23_volumePref: "MAV",
+      q14_cutting: "no", q27_targetDate: "2026-07-28", q28_targetType: "competition",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 75 },
+    }, { daysUntilTarget: 77 });
+    const cp = cands.find(c => c.styleId === "single-coan-phillipi");
+    ck("pickProgramStyle Coan-Phillipi: kisa 77 pv + powerlifting → confidence > 50",
+       cp && cp.confidence > 50);
+  }
+
+  // mapWizardToMesocycle pakottaa 6 uutta goalia
+  {
+    const wsbbForced = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-westside-conjugate" });
+    ck("mapWizardToMesocycle Westside: goal=westsideConjugate + weekCount=4",
+       wsbbForced.goal === "westsideConjugate" && wsbbForced.weekCount === 4);
+
+    const gzclForced = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-gzcl-jt20" });
+    ck("mapWizardToMesocycle GZCL J&T 2.0: goal=gzclJT20 + weekCount=12 (natiivi)",
+       gzclForced.goal === "gzclJT20" && gzclForced.weekCount === 12);
+
+    const sheikoForced = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-sheiko-derived" });
+    ck("mapWizardToMesocycle Sheiko-derived: goal=sheikoDerived + weekCount=4",
+       sheikoForced.goal === "sheikoDerived" && sheikoForced.weekCount === 4);
+
+    const rpForced = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-minimalist-rp" });
+    ck("mapWizardToMesocycle RP Minimalist: goal=minimalistRP",
+       rpForced.goal === "minimalistRP");
+
+    const smolovForced = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-smolov-jr" });
+    ck("mapWizardToMesocycle Smolov Jr: goal=smolovJr + weekCount=4 (3 vk + 1RM-testi)",
+       smolovForced.goal === "smolovJr" && smolovForced.weekCount === 4);
+
+    const cpForced = mapWizardToMesocycle(akseliBase, null, { selectedStyleId: "single-coan-phillipi" });
+    ck("mapWizardToMesocycle Coan-Phillipi: goal=coanPhillipi + weekCount=11 (10 vk + meet)",
+       cpForced.goal === "coanPhillipi" && cpForced.weekCount === 11);
+  }
+
+  // mapWizardToProgram dispatcher: kaikki 6 uutta tyyliä reitittyvät oikein
+  {
+    const dispWSBB = mapWizardToProgram(akseliBase, null, { selectedStyleId: "single-westside-conjugate" });
+    ck("mapWizardToProgram(single-westside-conjugate): goal=westsideConjugate",
+       dispWSBB.goal === "westsideConjugate");
+    const dispGZCL = mapWizardToProgram(akseliBase, null, { selectedStyleId: "single-gzcl-jt20" });
+    ck("mapWizardToProgram(single-gzcl-jt20): goal=gzclJT20",
+       dispGZCL.goal === "gzclJT20");
+    const dispCP = mapWizardToProgram(akseliBase, null, { selectedStyleId: "single-coan-phillipi" });
+    ck("mapWizardToProgram(single-coan-phillipi): weekCount=11",
+       dispCP.weekCount === 11);
   }
 
   return report;
