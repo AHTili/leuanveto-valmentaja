@@ -395,14 +395,19 @@ function isEmptyValue(v) {
 // Jos kysymyksellä on skipIfMainAppHas-ehto JA pää-app-data täyttää sen,
 // kysymys piilotetaan (q26 jos cal-data tehty, q29 jos meso aktiivinen).
 //
-// Backward-compat: 1C:n kutsut (kaksi parametria) toimivat edelleen — kolmas
-// parametri on optionaali ja defaultaa null:ksi.
-export function evaluateVisible(q, answers, mainAppState) {
+// v4.51.10: neljäs parametri skipOverrides on Set<string> (qid:t) joille
+// skipIfMainAppHas-tarkistus ohitetaan vaikka pää-app-data täyttäisi ehdon.
+// Käytetään kun atletti klikkaa "Muokkaa silti" -painikkeen skipped-stagessa.
+// Backward-compat: aiemmat kutsut toimivat edelleen.
+export function evaluateVisible(q, answers, mainAppState, skipOverrides) {
   // 1) requiredIf-pohjainen näkyvyys (1C:n logiikka)
   const cond = evaluateConditional(q, answers);
   if (!cond.visible) return false;
-  // 2) skipIfMainAppHas (1D:n logiikka)
+  // 2) skipIfMainAppHas (1D:n logiikka) — ohitetaan jos override aktiivinen
   if (q.skipIfMainAppHas && mainAppState && shouldSkipForMainApp(q, mainAppState)) {
+    if (skipOverrides instanceof Set && skipOverrides.has(q.id)) {
+      return true; // atletti pyysi nähdä kysymyksen vaikka data olisi
+    }
     return false;
   }
   return true;
@@ -1534,7 +1539,10 @@ export function renderStep(stateStore, container, opts = {}) {
   // ne säilyvät IDB:ssä, jotta atletti voi vaihtaa esim. q15 takaisin "running"
   // -tilaan ja saa aiemman q16-vastauksensa takaisin näkyviin.
   // 1D: mainAppState piilottaa skipIfMainAppHas-kysymykset (q26 + q29).
-  const questions = allQuestions.filter(q => evaluateVisible(q, answers, mainAppState));
+  // v4.51.10: skipOverrides Set välitetään evaluateVisible:lle jotta atletti voi
+  // "Muokkaa silti" -painikkeella nähdä piilotetut PR/blokki-kysymykset.
+  const skipOverrides = opts.skipOverrides instanceof Set ? opts.skipOverrides : new Set();
+  const questions = allQuestions.filter(q => evaluateVisible(q, answers, mainAppState, skipOverrides));
 
   // v4.51.3: Reaktiivinen näkyvyys — jos kysymyksen vastaus on TOISEN kysymyksen
   // requiredIf-referenssinä, sen muutos voi tehdä piilotetusta kysymyksestä
@@ -1558,14 +1566,41 @@ export function renderStep(stateStore, container, opts = {}) {
     empty.className = "wiz-step-skipped";
     if (stage.id === "performance") {
       empty.textContent =
-        "Voimataso-vaihe ohitettu — LeVe käyttää sovelluksen aiempaa PR-dataa. " +
-        "Jatka seuraavaan vaiheeseen klikkaamalla 'Seuraava'.";
+        "Voimataso-vaihe ohitettu — LeVe käyttää sovelluksen aiempaa PR-dataa. ";
     } else if (stage.id === "experience") {
-      empty.textContent = "Kysymykset täytetty pää-sovelluksen tiedoista.";
+      empty.textContent = "Kysymykset täytetty pää-sovelluksen tiedoista. ";
     } else {
-      empty.textContent = "Ei näytettäviä kysymyksiä tälle vaiheelle.";
+      empty.textContent = "Ei näytettäviä kysymyksiä tälle vaiheelle. ";
     }
     step.appendChild(empty);
+
+    // v4.51.10: "Muokkaa silti" -painike — paljastaa skipped-stagen kysymykset
+    // jos atletti haluaa päivittää PR-datan / blokki-tiedot. Mutate suoraan
+    // jaettua skipOverrides-Setia (controller jakaa saman referenssin) niin
+    // että muutos säilyy seuraavissa renderöinneissä.
+    const skippedQs = allQuestions.filter(q => q.skipIfMainAppHas);
+    if (skippedQs.length > 0) {
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "wiz-btn";
+      editBtn.style.cssText = "margin-top:10px";
+      editBtn.textContent = stage.id === "performance"
+        ? "✎ Muokkaa PR-dataa silti"
+        : "✎ Muokkaa silti";
+      editBtn.addEventListener("click", () => {
+        for (const q of skippedQs) skipOverrides.add(q.id);
+        renderStep(stateStore, container, opts);
+      });
+      step.appendChild(editBtn);
+
+      // Selventävä ohje "Muokkaa silti":n viereen
+      const hint = document.createElement("div");
+      hint.style.cssText = "margin-top:6px;font-size:11px;color:var(--muted, #999)";
+      hint.textContent = stage.id === "performance"
+        ? "Käytä jos haluat päivittää 1RM-ennätyksiä tai lisätä uusia kisaliikkeitä."
+        : "Käytä jos haluat päivittää aiempia vastauksia.";
+      step.appendChild(hint);
+    }
   }
 
   for (const q of questions) {
@@ -1779,6 +1814,9 @@ export class WizardController {
     // 1D: pää-app-tilan + liikepankin cache. Ladataan kerran init():ssä.
     this._mainAppState = null;
     this._movementBank = null;
+    // v4.51.10: qid:t joille atletti klikkasi "Muokkaa silti" skipped-stagessa.
+    // Transient (ei tallenneta IDB:hen) — palaa null:ksi sovelluksen sulkemisessa.
+    this._skipOverrides = new Set();
   }
 
   async init() {
@@ -1890,6 +1928,9 @@ export class WizardController {
       smartDefaulted: this._smartDefaulted,
       mainAppState: this._mainAppState,
       movementBank: this._movementBank,
+      // v4.51.10: jaa skipOverrides niin että "Muokkaa silti" -valinta säilyy
+      // stage-vaihtojen yli (kunnes sovellus suljetaan).
+      skipOverrides: this._skipOverrides,
     });
     renderErrorSummary(this.stateStore.state, this.errorSummaryEl, this._mainAppState);
     this._refreshNav();
