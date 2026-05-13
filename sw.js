@@ -647,7 +647,18 @@
 //          preset-liikkeet ja lisää ne idempotentisti olemassa olevaan
 //          DB:hen ilman duplikointia. Live-verifioitu: poistettu liike IDB:stä,
 //          reload palauttaa sen automaattisesti.
-const APP_VERSION = "4.51.2";
+// v4.51.3: Wizard reaktiivisuus-bugin korjaus. Aiemmin conditionally visible
+//          kysymykset (q28_targetType riippuvainen q27_targetDate:sta, q30_energyBudget
+//          riippuvainen q14_cutting:sta) eivät ilmestyneet DOM:iin kun referenssi-
+//          kysymys täytettiin — onChange-handleri tallensi vastauksen stateStoreen
+//          mutta EI re-renderöinyt stagea. Käyttäjä asetti q27_targetDate:n, q28
+//          ei ilmestynyt UI:hin, ja "Seuraava"-klikkaus näytti "Mikä on tavoitepäivän
+//          luonne?: Pakollinen kenttä puuttuu" -alapalkki-virheen kysymyksestä
+//          jota käyttäjä ei voinut nähdä. Korjattu: renderStep kerää triggerQuestionIds-
+//          setin (kaikki requiredIf.questionId-arvot), ja onChange-handleri re-renderöi
+//          stagen jos vastattu kysymys on listalla. Live-verifioitu DOM-tasolla:
+//          ennen q27:n täyttöä 0 q28-painiketta, jälkeen 4 painiketta ilmestyivät.
+const APP_VERSION = "4.51.3";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

@@ -1524,6 +1524,20 @@ export function renderStep(stateStore, container, opts = {}) {
   // 1D: mainAppState piilottaa skipIfMainAppHas-kysymykset (q26 + q29).
   const questions = allQuestions.filter(q => evaluateVisible(q, answers, mainAppState));
 
+  // v4.51.3: Reaktiivinen näkyvyys — jos kysymyksen vastaus on TOISEN kysymyksen
+  // requiredIf-referenssinä, sen muutos voi tehdä piilotetusta kysymyksestä
+  // näkyvän (tai päinvastoin). Esim. q27_targetDate asettaminen tekee
+  // q28_targetType:n pakolliseksi/näkyväksi. Ilman tätä uusi kysymys ei
+  // ilmestyisi DOM:iin → käyttäjä ei näe sitä → validation hylkää
+  // "Pakollinen kenttä puuttuu" alapalkissa.
+  // Kerää triggerQuestionIds: id:t joiden vastaus on jonkin toisen kysymyksen
+  // requiredIf.questionId. Re-render stage kun trigger muuttuu.
+  const triggerQuestionIds = new Set(
+    allQuestions
+      .map(q => q.requiredIf?.questionId)
+      .filter(Boolean)
+  );
+
   // 1D: jos vaihe on kokonaan tyhjä skip-ehtojen takia (esim. performance-
   // stage Akselille), näytä selventävä viesti. Käyttäjä ymmärtää miksi
   // vaihe on "tyhjä".
@@ -1552,6 +1566,12 @@ export function renderStep(stateStore, container, opts = {}) {
         const hint = node.querySelector(".wiz-smart-default-hint");
         if (hint) hint.style.display = "none";
         smartDefaulted.delete(q.id);
+      }
+      // v4.51.3: Re-renderöi stage jos vastattava kysymys on TOISEN kysymyksen
+      // requiredIf-referenssi. Tämä paljastaa piilotetut conditional-kysymykset
+      // välittömästi käyttäjälle (esim. q27 → q28).
+      if (triggerQuestionIds.has(q.id)) {
+        renderStep(stateStore, container, opts);
       }
     }, { answers, smartDefaultActive: smartActive, movementBank });
     step.appendChild(node);
