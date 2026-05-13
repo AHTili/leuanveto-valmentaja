@@ -5371,7 +5371,19 @@ function generateCustomMesocycle(answers, startDateISOArg) {
   }
 
   // 3. Substituoi päälikkeet + accessoryt (nyt lopulliselle päivälistalle)
-  weekPlans = distributePrimariesToDays(weekPlans, primaries);
+  // v4.51.7: Wendler 5/3/1 on KANONISESTI 4-liikkeen ohjelma (Pystypunnerrus,
+  // Maastaveto, Penkkipunnerrus, Takakyykky). Wendler itse kieltää substituution
+  // (ks. kommentti rivillä 3805). Aiemmin distributePrimariesToDays korvasi
+  // nämä 4 liikettä atletin q09_sport-defaultilla (esim. hypertrophy →
+  // "Lisäpainoleuanveto" KAIKILLE 4 päivälle, tai fallback "Leuanveto
+  // (kehonpaino)" jos pullup_bar puuttui). Tämä rikkoi Wendlerin koko
+  // metodologian. Korjaus: ohitetaan substituutio wendler531-skeletonille,
+  // säilytetään Wendlerin alkuperäiset 4 päämääräliikettä. Atletin PR-data
+  // (penkki/maave/jne) käytetään silti TM-laskennassa movementProgress.e1RM:n
+  // kautta — PR-migraatio hoitaa tämän.
+  if (goal !== "wendler531") {
+    weekPlans = distributePrimariesToDays(weekPlans, primaries);
+  }
 
   // 4. Skaalaa weekCount (skip jos natiivipituus !== 4, ks. yllä)
   let weekDefs = skeleton.weekDefs;

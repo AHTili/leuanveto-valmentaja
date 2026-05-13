@@ -680,7 +680,18 @@
 //          Nyt: uusi checkboxes-kysymys q31 (optional, MA-SU). Validointi: jos
 //          täytetty, määrä = q24.daysPerWeek. Mapper prioritisoi atletin valinnan,
 //          fallback defaulttiin. SCHEMA_INVARIANTS 31 → 32.
-const APP_VERSION = "4.51.6";
+// v4.51.7: Wendler 5/3/1 -mesocyclen kanoninen rakenne säilyy. Käyttäjäpalaute:
+//          "klikkasin wendler 531, ohjelma näytti 'leuanveto (kehopaino) 1×5'".
+//          Root-cause: generateCustomMesocycle kutsui distributePrimariesToDays:tä
+//          Wendler-skeletonille, mikä korvasi Wendlerin 4 kanonista liikettä
+//          (Pystypunnerrus, Maastaveto, Penkkipunnerrus, Takakyykky) atletin
+//          q09_sport-defaultilla. Jos pullup_bar puuttui kalustosta, fallback
+//          oli "Leuanveto (kehonpaino)" KAIKILLE 4 päivälle. Tämä rikkoi
+//          Wendlerin metodologian (Wendler itse kieltää substituution).
+//          Korjaus: ohitetaan distributePrimariesToDays kun goal === "wendler531".
+//          Atletin 1RM-data (penkki/maave) käytetään TM-laskennassa
+//          movementProgress.e1RM:n kautta (PR-migraatio).
+const APP_VERSION = "4.51.7";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
