@@ -413,6 +413,28 @@ export const WIZARD_QUESTIONS = [
     ],
     required: true,
   },
+  // v4.51.6: atletti voi valita itse treenipäivät viikon päivinä. Optional —
+  // jos jätetty tyhjäksi, mapper käyttää oletusta pickPreferredDaysOfWeek()
+  // (tasaisesti jaetut päivät lepopäivän kanssa raskaiden välissä).
+  // Päivänumerointi 0=Ma...6=Su yhteensopiva mapper:n nykyisen logiikan kanssa.
+  // Engine optimoi treeniliikkeiden jakautumisen valittuihin päiviin huomioiden
+  // lihasryhmien palautumistarpeet (esim. ei kahta raskasta alaraajapäivää peräkkäin).
+  {
+    id: "q31_preferredDays", stage: "loading", dimension: "D14",
+    type: "checkboxes", labelFi: "Mitkä viikonpäivät treenaat? (valitse yhtä monta kuin treenipäivää viikossa)",
+    helperFi: "Valinnainen — jos jätät tyhjäksi, LeVe jakaa päivät tasaisesti automaattisesti. " +
+              "Jos valitset päivät itse, engine optimoi liikkeiden järjestyksen huomioiden palautumistarpeet.",
+    options: [
+      { value: 0, labelFi: "Maanantai" },
+      { value: 1, labelFi: "Tiistai" },
+      { value: 2, labelFi: "Keskiviikko" },
+      { value: 3, labelFi: "Torstai" },
+      { value: 4, labelFi: "Perjantai" },
+      { value: 5, labelFi: "Lauantai" },
+      { value: 6, labelFi: "Sunnuntai" },
+    ],
+    required: false,
+  },
   {
     id: "q25_rpePrecision", stage: "loading", dimension: "D15",
     type: "radio", labelFi: "Kuinka tarkka olet RPE/Vara-arviossasi?",
@@ -495,11 +517,11 @@ export function getStageByOrder(order) {
   return WIZARD_STAGES.find(s => s.order === order) || null;
 }
 
-// Yht. 31 kysymystä (30 alkuperäistä + q33_aggressivenessDefault v4.51.0),
-// 8 vaihetta, 18 dimensiota (D1–D18). q33 lukeutuu D15:n alle (RPE/Vara-tarkkuus
-// + valintatyyli muodostavat yhdessä loading-vaiheen psyko-fysiologisen profiilin).
+// Yht. 32 kysymystä (30 alkuperäistä + q33_aggressivenessDefault v4.51.0 +
+// q31_preferredDays v4.51.6), 8 vaihetta, 18 dimensiota (D1–D18).
+// q31 + q33 lukeutuvat D14/D15:n alle (loading-vaiheen frekvenssi+valintatyyli).
 export const SCHEMA_INVARIANTS = {
-  totalQuestions: 31,
+  totalQuestions: 32,
   totalStages: 8,
   totalDimensions: 18,
   schemaVersion: WIZARD_SCHEMA_VERSION,

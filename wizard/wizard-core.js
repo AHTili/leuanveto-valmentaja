@@ -575,6 +575,18 @@ export function validateCurrentStep(state, mainAppState) {
     }
 
     // String-list: tyhjät rivit eivät ole virhe — listataan toleranssilla.
+
+    // v4.51.6: q31_preferredDays — jos atletti valitsi päiviä, määrän pitää
+    // täsmätä q24.daysPerWeek -arvon kanssa. Tyhjä lista on ok (käytä defaulttia).
+    if (q.id === "q31_preferredDays" && Array.isArray(v) && v.length > 0) {
+      const targetDays = Number(answers.q24_frequency?.daysPerWeek);
+      if (Number.isInteger(targetDays) && v.length !== targetDays) {
+        extraErrors.push({
+          questionId: q.id,
+          reason: `Valitse tasan ${targetDays} päivää (nyt ${v.length}) tai jätä tyhjäksi.`,
+        });
+      }
+    }
   }
 
   const errors = [...baseErrors, ...extraErrors];
