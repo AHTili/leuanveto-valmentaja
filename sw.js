@@ -710,7 +710,18 @@
 //          ("Tanko + räkki (squat rack, levypainot)", "Erilliset kuntosalilaitteet
 //          (leg press, smith, hack squat, hauislaite ym.)") + helperFi joka
 //          ohjeistaa selkeästi valitsemaan useita vaihtoehtoja.
-const APP_VERSION = "4.51.9";
+// v4.51.10: Wizard skipped-stage saa "Muokkaa silti" -painikkeen.
+//           Käyttäjäpalaute: "Vaihe 4/8 (PR-data) ohitettiin koska sovellus
+//           käyttää aiempaa PR-dataa, mutta haluaisin päivittää sitä".
+//           Aiemmin skipped-vaihe näytti pelkän info-tekstin eikä antanut
+//           atletille mahdollisuutta muokata. Korjaus: evaluateVisible saa
+//           neljannen parametrin skipOverrides (Set<qid>) joka ohittaa
+//           skipIfMainAppHas-tarkistuksen valituille kysymyksille. UI:hin
+//           lisätty "✎ Muokkaa silti" -painike skipped-näkymään (mukana
+//           selventävä ohje). WizardController säilyttää _skipOverrides
+//           transient-tilana (sovelluksen sulkemisessa nollautuu). Klikkaus
+//           paljastaa stagen kysymykset välittömästi re-renderöinnillä.
+const APP_VERSION = "4.51.10";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
