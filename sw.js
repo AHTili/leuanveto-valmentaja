@@ -691,7 +691,16 @@
 //          Korjaus: ohitetaan distributePrimariesToDays kun goal === "wendler531".
 //          Atletin 1RM-data (penkki/maave) käytetään TM-laskennassa
 //          movementProgress.e1RM:n kautta (PR-migraatio).
-const APP_VERSION = "4.51.7";
+// v4.51.8: pickProgramStyle:n Wendler 5/3/1 -kandidaatti tarkistaa nyt 3
+//          edellytystä ennen suositusta: (1) barbell_rack kalustossa, (2) 1RM-
+//          PR-data 4 kisaliikkeelle (Pystypunnerrus/Maastaveto/Penkkipunnerrus/
+//          Takakyykky), (3) ei absoluuttisia vammoja jotka estäisivät noita
+//          liikkeitä. Aiemmin Wendler nousi top-suositukseksi pelkän max-tavoite
+//          + kokenut-yhdistelmän perusteella, vaikka atletilla ei ollut
+//          edellytyksiä. Confidence-rangaistukset: ei tankoa = 0 (force out),
+//          puuttuvat 3+ PR:t = -30, puuttuvat 1-2 PR:t = -10 + selkeä viesti
+//          mitä puuttuu, jokainen estävä vamma = -25.
+const APP_VERSION = "4.51.8";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
