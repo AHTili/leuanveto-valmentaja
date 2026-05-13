@@ -666,7 +666,14 @@
 //          → seuraava avaus alkoi alusta. Korjaus: lisätty "← Palaa sovellukseen"
 //          -primary CTA (href="../") + restart painike pienempänä + confirm-
 //          dialogi joka kertoo että vastaukset poistuvat. Live-verifioitu.
-const APP_VERSION = "4.51.4";
+// v4.51.5: Wizard-PR-migraation e1RM-laskenta — 1×1RM-yritys EI saa Epley-korjausta.
+//          Käyttäjäpalaute: "kaveriasi arvioitu 180×1 nostettu e1RM 186, lisäpainoleuka
+//          160 → 165 — miksi ohjelma nosti maksimiarvioita?". Root-cause:
+//          _computeE1RMFromPR() käytti w × (1 + r/30) kaikille r-arvoille, mukaan
+//          lukien r=1. Epley-kaava on suunniteltu r ≥ 2 -tilanteille (ennustaa 1RM
+//          tehdyistä toistoista) — yksittäinen 1RM-yritys ON 1RM. Korjaus: if
+//          (r === 1) return w. 5-rep PR:t säilyvät Epley-korjattuina (150×5 → 175).
+const APP_VERSION = "4.51.5";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
