@@ -658,7 +658,15 @@
 //          setin (kaikki requiredIf.questionId-arvot), ja onChange-handleri re-renderöi
 //          stagen jos vastattu kysymys on listalla. Live-verifioitu DOM-tasolla:
 //          ennen q27:n täyttöä 0 q28-painiketta, jälkeen 4 painiketta ilmestyivät.
-const APP_VERSION = "4.51.3";
+// v4.51.4: Wizard done-view UX-korjaus. Käyttäjäpalaute: "vastasin 28/30 onnistuneesti,
+//          sovellus ei palannut kotinäkymään vaan alkoi alusta 1/8". Root-cause:
+//          done-view jätti käyttäjän paikalleen "Aloita uudelleen" -painikkeen
+//          kanssa ilman selkeää paluuohjausta pää-sovellukseen → käyttäjä
+//          todennäköisesti klikkasi restart erehdyksessä → wizard tyhjentyi
+//          → seuraava avaus alkoi alusta. Korjaus: lisätty "← Palaa sovellukseen"
+//          -primary CTA (href="../") + restart painike pienempänä + confirm-
+//          dialogi joka kertoo että vastaukset poistuvat. Live-verifioitu.
+const APP_VERSION = "4.51.4";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:

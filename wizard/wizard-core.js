@@ -1694,8 +1694,13 @@ export function renderDoneView(stateStore, container, controller) {
   p1.textContent = `Tallensit ${answersCount} vastausta. Konfiguraatio tallennettu paikallisesti.`;
   wrap.appendChild(p1);
 
+  // v4.51.4: selkeä ohjaus pää-sovellukseen. Aiemmin done-näkymä jätti käyttäjän
+  // paikalleen "Aloita uudelleen" -painikkeen kanssa, eikä kertonut miten päästä
+  // takaisin sovellukseen. Käyttäjäpalaute: "wizard alkoi alusta 1/8" — käyttäjä
+  // todennäköisesti klikkasi restart-painiketta erehdyksessä.
   const p2 = document.createElement("p");
-  p2.textContent = "Vaihe 2 integroi wizardin pää-sovellukseen ja luo räätälöidyn ohjelman vastausten pohjalta.";
+  p2.innerHTML = "Seuraava: <b>Palaa sovellukseen</b> ja generoi räätälöity ohjelma vastausten pohjalta. " +
+                 "Löydät 'Generoi ohjelma' -painikkeen kotinäkymästä tai Asetuksista.";
   wrap.appendChild(p2);
 
   const summary = document.createElement("div");
@@ -1707,12 +1712,25 @@ export function renderDoneView(stateStore, container, controller) {
     `completedAt: ${cfg.completedAtISO || "—"}`;
   wrap.appendChild(summary);
 
+  // v4.51.4: ensisijainen "Palaa sovellukseen" -painike (primary CTA).
+  // Wizard on alikansiossa /wizard/wizard.html, joten "../" vie juureen.
+  const homeBtn = document.createElement("a");
+  homeBtn.href = "../";
+  homeBtn.className = "wiz-btn wiz-btn--primary";
+  homeBtn.style.cssText = "margin-top:16px;display:inline-block;text-decoration:none;margin-right:8px";
+  homeBtn.textContent = "← Palaa sovellukseen";
+  wrap.appendChild(homeBtn);
+
+  // Restart on toissijainen — selvempi labeli + confirm-dialogi suojaa erehdyksiltä.
   const restartBtn = document.createElement("button");
   restartBtn.type = "button";
   restartBtn.className = "wiz-btn";
   restartBtn.style.marginTop = "16px";
-  restartBtn.textContent = "Aloita uudelleen";
-  restartBtn.addEventListener("click", () => controller.restart());
+  restartBtn.textContent = "↺ Aloita wizard alusta (poistaa vastaukset)";
+  restartBtn.addEventListener("click", () => {
+    const ok = confirm("Aloitetaanko wizard alusta? Tämä poistaa nykyiset vastaukset ja palauttaa kysymykset alusta. Et voi peruuttaa.");
+    if (ok) controller.restart();
+  });
   wrap.appendChild(restartBtn);
 
   container.appendChild(wrap);
