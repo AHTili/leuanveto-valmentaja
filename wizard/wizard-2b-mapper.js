@@ -1160,16 +1160,27 @@ export function pickPrimaries(answers) {
 
 // ─── Vaihe 5: pickPreferredDaysOfWeek ──────────────────────────────────
 //
-// Yksinkertainen kuvio: ottaen huomioon että pää-app:n createDefaultMesocycle
-// käyttää Ma/Ke/Pe-rakenteen ja distributePrimariesToDays jakaa primaryt
-// roolien perusteella, palautamme tasaisesti jaetut päivät joissa on
-// lepopäivä raskaiden treenien välissä.
+// v4.51.6: Lukee q31_preferredDays ensisijaisesti. Jos atletti valitsi päivät
+// itse JA listan pituus täsmää q24.daysPerWeek-arvon kanssa, käytetään hänen
+// valintaansa. Muuten fallback tasaisesti jaettuihin defaultti-päiviin
+// (lepopäivä raskaiden välissä). Tämä antaa atletille kontrollin treeniajoista
+// säilyttäen samalla älykkään defaultin niille jotka eivät halua valita.
 //
 // Päivänumerot: 0=Ma, 1=Ti, 2=Ke, 3=To, 4=Pe, 5=La, 6=Su.
-export function pickPreferredDaysOfWeek(q24_frequency) {
+export function pickPreferredDaysOfWeek(q24_frequency, q31_preferredDays) {
   const days = Number(q24_frequency?.daysPerWeek);
   if (Number.isNaN(days) || days < 1) return null;
-  // Tasaisesti jaetut päivät lepopäivän kanssa raskaiden treenien välissä:
+  // v4.51.6: prioritisoi käyttäjän valinta jos lista on validi.
+  if (Array.isArray(q31_preferredDays) && q31_preferredDays.length === days) {
+    const validDays = q31_preferredDays
+      .map(d => Number(d))
+      .filter(d => Number.isInteger(d) && d >= 0 && d <= 6);
+    if (validDays.length === days) {
+      // Järjestä päivänumerot nousevasti jotta jako toimii ennustettavasti
+      return validDays.sort((a, b) => a - b);
+    }
+  }
+  // Fallback: tasaisesti jaetut päivät lepopäivän kanssa raskaiden välissä.
   if (days === 1) return [0];                       // Ma
   if (days === 2) return [1, 4];                    // Ti, Pe
   if (days === 3) return [1, 3, 5];                 // Ti, To, La
@@ -1336,7 +1347,8 @@ export function mapWizardToMultiBlockMesocycle(wizardConfig, mainAppState) {
   // Yhteiset kentät (sama logiikka kuin 2B-α/γ)
   const recoveryCapacity = pickRecoveryCapacity(a);
   const primaries = pickPrimaries(a);
-  const preferredDaysOfWeek = pickPreferredDaysOfWeek(a.q24_frequency);
+  // v4.51.6: lue q31_preferredDays (atletin oma valinta) jos annettu
+  const preferredDaysOfWeek = pickPreferredDaysOfWeek(a.q24_frequency, a.q31_preferredDays);
   const daysPerWeek = Number(a.q24_frequency?.daysPerWeek) || 3;
 
   const sexModifierApplied =
@@ -1899,7 +1911,8 @@ export function mapWizardToMesocycle(wizardConfig, mainAppState, opts = {}) {
 
   const recoveryCapacity = pickRecoveryCapacity(a);
   const primaries = pickPrimaries(a);
-  const preferredDaysOfWeek = pickPreferredDaysOfWeek(a.q24_frequency);
+  // v4.51.6: lue q31_preferredDays (atletin oma valinta) jos annettu
+  const preferredDaysOfWeek = pickPreferredDaysOfWeek(a.q24_frequency, a.q31_preferredDays);
   const daysPerWeek = Number(a.q24_frequency?.daysPerWeek) || 3;
 
   const sexModifierApplied =
@@ -2569,8 +2582,8 @@ export function selfTestMapper() {
 
   // ─── 15. Schema-invariantit (1A:n säilytys + v4.51.0 q33 lisäys) ───
   // v4.51.0 (Track B 2D-δ-C): q33_aggressivenessDefault lisätty loading-stageen
-  // → totalQuestions 30 → 31. Pysyvä invariantti vaihtuu kerran versiointielsä.
-  ck("SCHEMA_INVARIANTS.totalQuestions === 31", SCHEMA_INVARIANTS.totalQuestions === 31);
+  // → totalQuestions 30 → 31. v4.51.6: q31_preferredDays → 32.
+  ck("SCHEMA_INVARIANTS.totalQuestions === 32", SCHEMA_INVARIANTS.totalQuestions === 32);
   ck("SCHEMA_INVARIANTS.totalStages === 8",     SCHEMA_INVARIANTS.totalStages === 8);
 
   // ════════════════════════════════════════════════════════════════

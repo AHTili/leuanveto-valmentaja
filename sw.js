@@ -673,7 +673,14 @@
 //          lukien r=1. Epley-kaava on suunniteltu r ≥ 2 -tilanteille (ennustaa 1RM
 //          tehdyistä toistoista) — yksittäinen 1RM-yritys ON 1RM. Korjaus: if
 //          (r === 1) return w. 5-rep PR:t säilyvät Epley-korjattuina (150×5 → 175).
-const APP_VERSION = "4.51.5";
+// v4.51.6: Wizard q31_preferredDays — atletti voi valita treenipäivät itse.
+//          Käyttäjäpalaute: "miksi en voi valita ti, to ja su itse — sovellus
+//          optimoi sitten liikkeet palautumistarpeet huomioiden". Aiemmin
+//          pickPreferredDaysOfWeek palautti hardkoodatut päivät (3/vk → Ti/To/La).
+//          Nyt: uusi checkboxes-kysymys q31 (optional, MA-SU). Validointi: jos
+//          täytetty, määrä = q24.daysPerWeek. Mapper prioritisoi atletin valinnan,
+//          fallback defaulttiin. SCHEMA_INVARIANTS 31 → 32.
+const APP_VERSION = "4.51.6";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
