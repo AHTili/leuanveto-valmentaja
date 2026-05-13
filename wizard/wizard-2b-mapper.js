@@ -549,39 +549,99 @@ export function pickProgramStyle(answers, opts = {}) {
   // ── 9. SINGLE-WENDLER531 (2D-β) ──
   // Wendler 5/3/1 — klassinen voimanostorakenne, sopii kun atletti haluaa
   // strukturoidun 4-vk-syklin AMRAP-progressiolla. Hyvä useimmille kokeneille.
+  //
+  // v4.51.8: Suodatus jolla varmistetaan että Wendler on todella sopiva:
+  //   - Wendler on KANONISESTI 4-liikkeen ohjelma (Pystypunnerrus, Maastaveto,
+  //     Penkkipunnerrus, Takakyykky). Sen TM-laskenta = 90% 1RM jokaiselle.
+  //     Ilman 1RM-dataa tai tankoa Wendler ei toimi.
+  //   - Estävät rajoitukset: selkä/polvi/olkapää-vammat blokkaavat osan 4
+  //     kisaliikkeestä → Wendler ei sovi.
   {
     const c = { styleId: "single-wendler531", style: PROGRAM_STYLES["single-wendler531"], confidence: 0, rationale: [], weekCount: 4 };
-    // Kohdeyleisö: powerlifting + max-tavoite + kokenut
-    if (isMaxGoal) {
-      c.confidence += 35;
-      c.rationale.push("Max-tavoite → Wendler 5/3/1 on klassinen voimanostorakenne (PDF-VERIFIOITU)");
-    } else if (isGenStrength) {
-      c.confidence += 20;
-      c.rationale.push("Yleinen voima → Wendler 5/3/1 tukee kestoa ja PR-progressiota");
-    }
-    if (isIntermPlus) {
-      c.confidence += 15;
-      c.rationale.push("Keskitaso+ pystyy hyödyntämään AMRAP-autoregulaatiota tarkasti");
+
+    // PRE-CHECK 1: Kalusto — Wendler vaatii barbell_rack:in
+    const eqSet = new Set(Array.isArray(a.q17_equipment) ? a.q17_equipment : []);
+    const hasBarbellRack = eqSet.has("barbell_rack");
+    if (!hasBarbellRack) {
+      c.confidence = 0;
+      c.rationale.push("Wendler 5/3/1 vaatii tangon + kyykkytelineen — Wendlerin 4 kisaliikettä (Pystypunnerrus, Maastaveto, Penkkipunnerrus, Takakyykky) eivät onnistu ilman kalustoa");
+      candidates.push(c);
+      // Skip muut tarkistukset — confidence on jo nollattu
+      // (kandidaatti silti pushed jotta UI näyttää syyn miksi tämä ei sovi)
     } else {
-      c.confidence -= 5;
-      c.rationale.push("Aloittelijalle Wendler 5/3/1 vaatii kokemusta AMRAP-arviointiin (Vara ±1 tarkkuus)");
+      // PRE-CHECK 2: 1RM-data 4 kisaliikkeelle
+      const wendlerLifts = ["pystypunnerrus", "maastaveto", "penkkipunnerrus", "takakyykky"];
+      const prs = Array.isArray(a.q26_personalRecords) ? a.q26_personalRecords : [];
+      const prNamesLower = prs
+        .filter(p => p && (p.loadType === "external" || p.loadType === "system"))
+        .map(p => (p.movementName || "").toLowerCase());
+      const matchedWendlerLifts = wendlerLifts.filter(lift =>
+        prNamesLower.some(prName => prName.includes(lift))
+      );
+      const missingCount = wendlerLifts.length - matchedWendlerLifts.length;
+
+      // Kohdeyleisö: powerlifting + max-tavoite + kokenut
+      if (isMaxGoal) {
+        c.confidence += 35;
+        c.rationale.push("Max-tavoite → Wendler 5/3/1 on klassinen voimanostorakenne (PDF-VERIFIOITU)");
+      } else if (isGenStrength) {
+        c.confidence += 20;
+        c.rationale.push("Yleinen voima → Wendler 5/3/1 tukee kestoa ja PR-progressiota");
+      }
+      if (isIntermPlus) {
+        c.confidence += 15;
+        c.rationale.push("Keskitaso+ pystyy hyödyntämään AMRAP-autoregulaatiota tarkasti");
+      } else {
+        c.confidence -= 5;
+        c.rationale.push("Aloittelijalle Wendler 5/3/1 vaatii kokemusta AMRAP-arviointiin (Vara ±1 tarkkuus)");
+      }
+      if (recent === "hypertrophy" || recent === "strength") {
+        c.confidence += 10;
+        c.rationale.push("Edellinen perinteinen blokki → Wendler on luonteva askel strukturoidulle voimasyklille");
+      } else if (recent === "peaking" || recent === "deload") {
+        c.confidence -= 5;
+        c.rationale.push(`Edellinen ${recent} → Wendler voi olla liian intensiivinen ilman volyymivaihetta`);
+      }
+      if (a.q25_rpePrecision === "vara_calibrated") {
+        c.confidence += 5;
+        c.rationale.push("Kalibroitunut Vara (±1) → AMRAP-tarkkuus parantaa Wendlerin TM-säätöä");
+      }
+      if (cutAggressive) {
+        c.confidence -= 10;
+        c.rationale.push("Aggressivinen cut + AMRAP-Wendler = ristiriita (BBB-volyymi 5×10 raskas)");
+      }
+
+      // PRE-CHECK 2-tulos: PR-data Wendlerin 4 kisaliikkeelle
+      if (missingCount >= 3) {
+        c.confidence -= 30;
+        c.rationale.push(`Wendler vaatii 1RM-arvion 4 kisaliikkeelle (Pystypunnerrus, Maastaveto, Penkkipunnerrus, Takakyykky). Annoit ${matchedWendlerLifts.length}/4 — TM-laskenta ei toimi ilman 1RM:ää`);
+      } else if (missingCount >= 1) {
+        c.confidence -= 10;
+        const missingNames = wendlerLifts
+          .filter(lift => !matchedWendlerLifts.includes(lift))
+          .map(s => s.charAt(0).toUpperCase() + s.slice(1));
+        c.rationale.push(`Wendler-TM-laskentaan tarvitaan vielä 1RM: ${missingNames.join(", ")}`);
+      } else {
+        c.confidence += 5;
+        c.rationale.push("1RM annettu kaikille 4 Wendler-kisaliikkeelle → TM-laskenta voidaan tehdä suoraan");
+      }
+
+      // PRE-CHECK 3: Vammat jotka estävät Wendlerin kisaliikkeitä
+      const injuries = Array.isArray(a.q11_injuries) ? a.q11_injuries : [];
+      const absoluteAreas = injuries
+        .filter(i => i && i.type === "absolute" && typeof i.area === "string")
+        .map(i => i.area.toLowerCase());
+      const wendlerInjuryBlocks = [];
+      if (absoluteAreas.some(a => /selk|alaselk|back/.test(a))) wendlerInjuryBlocks.push("Maastaveto");
+      if (absoluteAreas.some(a => /polvi|knee/.test(a))) wendlerInjuryBlocks.push("Takakyykky");
+      if (absoluteAreas.some(a => /olka|olkapää|shoulder/.test(a))) wendlerInjuryBlocks.push("Pystypunnerrus / Penkkipunnerrus");
+      if (wendlerInjuryBlocks.length > 0) {
+        c.confidence -= 25 * wendlerInjuryBlocks.length;
+        c.rationale.push(`Absoluuttinen vamma estää: ${wendlerInjuryBlocks.join(" + ")} — Wendler ei sovi koska 4 kisaliikettä ovat välttämättömiä`);
+      }
+
+      candidates.push(c);
     }
-    if (recent === "hypertrophy" || recent === "strength") {
-      c.confidence += 10;
-      c.rationale.push("Edellinen perinteinen blokki → Wendler on luonteva askel strukturoidulle voimasyklille");
-    } else if (recent === "peaking" || recent === "deload") {
-      c.confidence -= 5;
-      c.rationale.push(`Edellinen ${recent} → Wendler voi olla liian intensiivinen ilman volyymivaihetta`);
-    }
-    if (a.q25_rpePrecision === "vara_calibrated") {
-      c.confidence += 5;
-      c.rationale.push("Kalibroitunut Vara (±1) → AMRAP-tarkkuus parantaa Wendlerin TM-säätöä");
-    }
-    if (cutAggressive) {
-      c.confidence -= 10;
-      c.rationale.push("Aggressivinen cut + AMRAP-Wendler = ristiriita (BBB-volyymi 5×10 raskas)");
-    }
-    candidates.push(c);
   }
 
   // ── 10. SINGLE-TOP-SET-BACKOFF (2D-β) ──
