@@ -321,12 +321,16 @@ export const WIZARD_QUESTIONS = [
   {
     id: "q17_equipment", stage: "metrics", dimension: "D9",
     type: "checkboxes", labelFi: "Mitä kalustoa sinulla on käytössä?",
+    helperFi: "Valitse KAIKKI mitä voit käyttää. Vaihtoehdot eivät sisällä toisiaan — esim. " +
+              "yleiskuntosalilla on yleensä KAIKKI: tanko+räkki, leukatanko, dippiteline, vaijerilaite, " +
+              "käsipainot ja laitteet. Älä valitse vain 'Yleiset kuntosalilaitteet' jos sinulla on " +
+              "myös tanko ja räkki — silloin merkitse molemmat.",
     options: [
-      { value: "barbell_rack",   labelFi: "Tanko + räkki" },
+      { value: "barbell_rack",   labelFi: "Tanko + räkki (squat rack, levypainot)" },
       { value: "pullup_bar",     labelFi: "Leukatanko" },
       { value: "dip_station",    labelFi: "Dippiteline" },
-      { value: "cable_machine",  labelFi: "Vaijerilaite" },
-      { value: "machines",       labelFi: "Yleiset kuntosalilaitteet" },
+      { value: "cable_machine",  labelFi: "Vaijerilaite (cable / lat pulldown)" },
+      { value: "machines",       labelFi: "Erilliset kuntosalilaitteet (leg press, smith, hack squat, hauislaite ym.)" },
       { value: "dumbbells",      labelFi: "Käsipainot" },
       { value: "rings",          labelFi: "Renkaat / TRX" },
     ],

@@ -700,7 +700,17 @@
 //          edellytyksiä. Confidence-rangaistukset: ei tankoa = 0 (force out),
 //          puuttuvat 3+ PR:t = -30, puuttuvat 1-2 PR:t = -10 + selkeä viesti
 //          mitä puuttuu, jokainen estävä vamma = -25.
-const APP_VERSION = "4.51.8";
+// v4.51.9: q17_equipment UX-korjaus. Käyttäjäpalaute: "klikkasin yleiset
+//          kuntosalilaitteet, enkä klikkaillut kaikkia muitakin koska luulin
+//          että tämä sisältää kaiken". Aiemmin labelit antoivat ymmärtää että
+//          'Yleiset kuntosalilaitteet' olisi katto-luokka — todellisuudessa se
+//          tarkoittaa vain laite-pohjaisia liikkeitä (leg press, smith jne.).
+//          Käyttäjä jätti merkitsemättä tankon + räkin → Wendler-suositus
+//          tönäisi väärille raiteille. Korjaus: tarkemmat labelfi-tekstit
+//          ("Tanko + räkki (squat rack, levypainot)", "Erilliset kuntosalilaitteet
+//          (leg press, smith, hack squat, hauislaite ym.)") + helperFi joka
+//          ohjeistaa selkeästi valitsemaan useita vaihtoehtoja.
+const APP_VERSION = "4.51.9";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
