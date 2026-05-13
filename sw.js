@@ -721,7 +721,14 @@
 //           selventävä ohje). WizardController säilyttää _skipOverrides
 //           transient-tilana (sovelluksen sulkemisessa nollautuu). Klikkaus
 //           paljastaa stagen kysymykset välittömästi re-renderöinnillä.
-const APP_VERSION = "4.51.10";
+// v4.51.11: docs + esittely.html stand-alone esittelysivu eliittitason
+//           urheilijoille. Asetukset-näkymässä uusi "Tietoja LeVe AI:sta"
+//           -kortti johon "Avaa esittely" -linkki (target=_blank). Sivu
+//           on jaettavissa suoralla URL:llä (kaverille linkkinä) ja
+//           käyttää samaa värimaailmaa (#0b1220 / #e8eefc) kuin pää-app.
+//           Ei sekoita arjen käyttöä — esittely on omassa polussaan ja
+//           kortti on Asetukset-näkymän loppupuolella, Diagnostiikan EDELLÄ.
+const APP_VERSION = "4.51.11";
 
 // v4.34.50 oli aiempi APP_VERSION (= "4.34.50") tässä kohdassa.
 // v4.34.49 muutoshistoria:
