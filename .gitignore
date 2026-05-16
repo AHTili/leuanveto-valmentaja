@@ -1,7 +1,12 @@
 # Claude Code -hakemisto: preview-server-konfiguraatiot, sessio-tiedostot,
 # auto-memory yms. Nämä ovat dev-tooli- ja käyttäjäkohtaisia, eivät kuulu
 # repositorioon.
-.claude/
+# Poikkeus: settings.json on Stop hook -turvaverkko jonka pitää säilyä
+# worktree-/kontribuoija-vaihdoissa (vaihe 6 strategisesta prosessista).
+# HUOM: ".claude/*" (ei ".claude/") jotta negaatio toimii — git ei tarkista
+# tiedosto-poikkeuksia kun koko hakemisto on ignoroitu.
+.claude/*
+!.claude/settings.json
 
 # OS-tason roskat
 .DS_Store

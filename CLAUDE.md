@@ -1,0 +1,114 @@
+# LeVe AI — repon spec-ankkuri
+
+> **Tarkoitus:** Tämä tiedosto on jokaisen Claude Code -session pakollinen luettava ennen muutostyötä. Konsolidoi spec, acceptance criteria -periaate, tutkimusinvariantit, ja sub-agent/skill-käyttöohjeet yhdeksi ankkuriksi joka selviää sessioiden välillä ja vastustaa "rikkinäisen puhelimen" -ajautumaa.
+>
+> Tämä on **vaihe 4 strategisesta prosessista (1–8)**. Tehty 2026-05-16.
+
+---
+
+## 1. Sovelluksen ydin
+
+LeVe AI on suomenkielinen voimaharjoittelusovellus (PWA, paikallinen IndexedDB, ei serveriä). Kohderyhmä: kokeneet voimanostajat, streetliftaajat, kovan tason atletit. Engine on adaptiivinen autoregulaatio-moottori joka säätää kuormaa sääntöpohjaisesti tutkimusperustaisten rajojen sisällä.
+
+**Arkkitehtuuri:**
+- `engine.js` — kaikki laskenta (e1RM, readiness, mesocycle, recommend())
+- `data.js` — IndexedDB-kerros (12 storea, schema-versio 5)
+- `index.html` — UI + CSS + workout-flow
+- `wizard/` — kysymys-vastaus → ohjelma-mappaus (32 kysymystä, 17 ohjelmointityyliä)
+- `tools/engine-pilot/` — regression-pilot-harness (8 profiilia × 148 sessiota)
+- `test-runner.js` — selain-yksikkötestit (473 testiä, ?test=1)
+- `sw.js` — service worker (PWA auto-update)
+
+**Versio:** v4.51.11 (kts. `sw.js` APP_VERSION).
+
+---
+
+## 2. Vaiheen 8 lukko: tutkimusinvariantit (ehdoton)
+
+Vaiheen 8 oppiva engine (8a) ei saa missään tilanteessa rikkoa alla olevia tutkimuspohjaisia turvarajoja. Yksityiskohtainen taulukko: [docs/TUTKIMUS_INVARIANTIT.md](docs/TUTKIMUS_INVARIANTIT.md).
+
+| Parametri | Turvaraja | Lähde | Status |
+|---|---|---|---|
+| VL-cap foundation | 25–35 % | Pareja-Blanco 2017 (PMC5497611) | VERIFIOITU |
+| VL-cap strength | 15–20 % | Pareja-Blanco 2017, 2020 | VERIFIOITU |
+| VL-cap intensity | 10–15 % | Pareja-Blanco 2017 | VERIFIOITU |
+| VL-cap peaking | 5–10 % | Pareja-Blanco 2017 | VERIFIOITU |
+| Deload Δ% | −20…−30 % | Helms 2018 (PMID 30153841) | VERIFIOITU |
+| Tier-progression elite | ≤ 0,05 ×/vk | Latella 2020 (PMID 32706692) | VERIFIOITU |
+| Rep1 MPV slope per RIR | ~0,045 m/s | Sánchez-Moreno 2017 | VERIFIOITU |
+| Failure-jälkeinen kuormapudotus | 5 % | Refalo 2023 | VERIFIOITU |
+
+**Säännöt opittavien parametrien suhteen (vaihe 8a):**
+1. Jokaisella opittavalla parametrilla on **prior** näistä tutkimusarvoista
+2. Posterior saa terävöityä **vain priorin ±2 SD sisällä**
+3. Jos posterior karkaa ±2 SD ulkopuolelle, engine emittoi `LEARNED_PARAM_OUTLIER`-tracen ja **clamppaa arvon takaisin priori-rajaan**
+4. Stop hook (vaihe 6) varmistaa ettei /goal-kierros valmistu jos invarianteet rikkoutuvat
+
+---
+
+## 3. Acceptance criteria -periaate
+
+Aukot, korjaukset ja uudet ominaisuudet muotoillaan testattaviksi kriteereiksi (A1, A2, …) ennen kuin /goal-kierros käynnistyy. Skeema: [docs/ACCEPTANCE_CRITERIA_SKEEMA.md](docs/ACCEPTANCE_CRITERIA_SKEEMA.md).
+
+Esimerkki (8a, opittava parametri):
+- **A1:** `learnedVlCap.strength` on aina välillä [0,15; 0,20]
+- **A2:** Jos posterior karkaisi rajan ulkopuolelle, engine emittoi `LEARNED_PARAM_OUTLIER`-tracen ja clamppaa
+- **A3:** Akselin pilot-regressio (148 sessiota) tuottaa identtiset kuorma-arvot baseline-versiona, ellei eksplisiittisesti todettu että oppiva malli muuttaa niitä; tällöin uudet arvot pysyvät invarianttien sisällä
+
+**/goal-kierros ei valmistu** ennen kuin: koodi kääntyy + lint clean + selain-testit passaavat + regressio-pilot passaa + acceptance criterion -testi passaa + spec→koodi-diff tyhjä.
+
+---
+
+## 4. Stop hook -validointiketju
+
+`.claude/settings.json` sisältää Stop hookin joka ajaa peräkkäin:
+1. `node tools/engine-pilot/lib/smoke-test.mjs` — sanity check
+2. `node tools/engine-pilot/run-pilot.mjs --profile=akseli-elite-streetlifter --scenario=full-16w` — bittitarkka regressio
+
+Jos jompikumpi epäonnistuu (exit ≠ 0), hook palauttaa `exit 1` → Claude jatkaa työskentelyä eikä voi pinnata "valmis":ksi.
+
+Selain-tasoiset testit (`?test=1`, 473 testiä) ajetaan manuaalisesti tai osana laajempaa /goal-kierrosta — niitä ei voi ajaa CLI:stä ilman headless-selainta.
+
+---
+
+## 5. Sub-agent ja skill -käyttö
+
+**Käytä Explore-agenttia** kun:
+- Etsit "missä X on" tai "miten Y toimii" useammasta moduulista samaan aikaan
+- Audit-tyyppinen luku jossa pakkaat tulokset tiiviiksi raportiksi
+
+**Käytä suomen-kieli-skilliä** kun:
+- Tuotat käyttäjälle näkyvää suomenkielistä tekstiä (UI-stringit, dokumentaatio)
+
+**Käytä Plan-agenttia** kun:
+- Suunnittelet ison muutoksen joka koskee 5+ tiedostoa
+
+**Älä käytä:**
+- Geneerisiä yleisluontoisia kehotteita ulkoisille tutkimuksille — ks. `docs/SYVATUTKIMUS_*` -mallit
+- "Heitettyjä" /goal:eja jotka eivät ole muotoiltu acceptance criteria -tyyppisesti
+
+---
+
+## 6. Käyttäjä- ja tyylimuistutukset
+
+- **Atletti = valmentaja, ei nanny** — engine ei yli-suojaa. Älä lisää tarpeettomia "varmistus"-cap:eja jotka eivät ole tutkimuspohjaisia.
+- **UI-stringeissä EI tutkijanimiä** (Pareja-Blanco, Helms, Jukic, …). Tutkimusperusta säilyy koodikommenteissa.
+- **Eliittitason itse-arviointi rehellisesti** — älä anna pyöreitä myötäileviä numeroita; nimeä puuttuvat pisteet konkreettisesti.
+- **Tarkista git log + status ennen edit-vaiheita** — auto-memory-snapshot voi olla vanhentunut.
+
+---
+
+## 7. Vaiheiden 1–8 tila (2026-05-16)
+
+| Vaihe | Tila | Tiedosto / mekanismi |
+|---|---|---|
+| 1 Audit, kolmiankkuroituna | OSITTAIN (koodi-ankkuri valmis) | `docs/VAIHE_8_AUDIT_JA_AUKOT.md`, `docs/ENGINE_BULLETPROOF_AUDIT.md` |
+| 2 Acceptance criteria | SKEEMA VALMIS | `docs/ACCEPTANCE_CRITERIA_SKEEMA.md` (täytetään per /goal) |
+| 3 Tutkimusinvarianttitaulukko | VALMIS | `docs/TUTKIMUS_INVARIANTIT.md` |
+| 4 CLAUDE.md / spec-ankkuri | VALMIS | tämä tiedosto |
+| 5 Validointi-toolchain | OSITTAIN | `tools/engine-pilot/` valmis; edge-case-generator + bug-reproducer backlogissa |
+| 6 Stop hook -validointiketju | VALMIS | `.claude/settings.json` |
+| 7 /goal per moduuli | EI ALOITETTU | Käyttöön kun α/β-tulokset palaavat |
+| 8 Harjoitusmoottorin ydinkehitys | TUTKIMUSVAIHE | α/β käynnissä erillisessä keskustelussa |
+
+**Insinöörikorjausten backlog:** [docs/BACKLOG_VAIHE_1_2.md](docs/BACKLOG_VAIHE_1_2.md).
