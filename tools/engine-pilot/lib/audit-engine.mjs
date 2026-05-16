@@ -17,6 +17,10 @@ import {
   CUT_DEFICIT_THRESHOLD,
   DELTA_PCT_HARD_CLAMP,
   DELTA_PCT_EXPECTED_RANGE,
+  // ENG-14: lisätyt invariantit (Latella, Refalo, Sánchez-Moreno)
+  TIER_PROGRESSION_MULT_BASELINES,
+  FAILURE_DROP_BASELINE,
+  REP1_MPV_SLOPE_BASELINE,
 } from "./audit-baselines.mjs";
 
 function flag(code, severity, msg, extra = {}) {
@@ -515,11 +519,184 @@ export function auditTrace(trace, sessionIndex = 0, allTracesForProfile = [], pr
     auditSuggestions(trace),
   ];
 
+  // ENG-14: auditInvariants palauttaa arrayn (0..N flagia) — flatataan checks:iin
+  const invariantFlags = auditInvariants(trace, profile);
+  if (Array.isArray(invariantFlags)) {
+    for (const f of invariantFlags) checks.push(f);
+  }
+
   for (const c of checks) {
     if (c) flags.push(c);
   }
 
   trace.auditFlags = flags;
+  return flags;
+}
+
+// ──────────────────────────────────────────────────────────────
+// ENG-14: auditInvariants — tarkista että engine ehdottaa arvoja
+// tutkimuspohjaisten turvarajojen sisällä.
+//
+// Yksi totuuden lähde: audit-baselines.mjs (ei kovakoodausta).
+//
+// INVARIANT-KATE (mikä invariantti tarkistetaan miltä trace-kanavalta):
+//   A VL-cap (VL_CAP_BASELINES)              → trace.traces[VL_CAP_RESOLVED].after.cap
+//   C Deload Δ% (DELOAD_DELTA_RANGE)         → trace.output.deltaPct + deload-detect
+//   D Tier-mult (TIER_PROGRESSION_MULT_BASELINES) → trace.output.deltaPct vs tier-mult
+//      Tarkistus aktivoituu vain jos programMeta.tierProgressionApplied !== false
+//      (Akselin streetlifting_16w-preset on by-design opt-out).
+//   G Slot-Vx (BLOCK_PHASE_TARGET_RIR_EXPECTED) → trace.traces[SLOT_TARGETVx_RESOLVED]
+//
+// EI INVARIANTTIKATETTA (engine-säätökanavat joita ei voi auditoida runtime-traceista):
+//   B Rep1 MPV slope (REP1_MPV_SLOPE_BASELINE): engine.js-vakio targetRep1VelocityRange-
+//      funktiossa, ei runtime-trace. Henkilökohtainen RTF-malli (kun reliable) voi
+//      poiketa priorin keskiarvosta tolerance-arvon verran — tämä on engine-side-
+//      tarkistus jota ei voi audita ulkopuolelta. Toistaiseksi: EI tarkasteta.
+//   E Failure-drop (FAILURE_DROP_BASELINE): engine.js failureReaction-funktion
+//      sisäinen laskenta. Tulos näkyy e1RM:ssä mutta tarkkaa drop-%:tia ei
+//      emit:ata erilliseen traceen. Toistaiseksi: EI tarkasteta.
+//   F Block-residual (ISSURIN_BLOCK_RESIDUALS): mesocycle-compile-time-rakenne
+//      (data.js generateMultiBlockMesocycle), ei runtime-päätös. Auditoidaan
+//      mesocycle-luonti-vaiheessa, ei trace-tasolla.
+//   H Sex modifier (SEX_MODIFIER): wizard-mapper-tasoinen (q15+q08+q02 →
+//      recoveryCapacity), ei engine-runtime. Auditoidaan wizard-mapping-
+//      vaiheessa, ei trace-tasolla.
+//
+// Tämä eksplisiittinen "ei katetta" -lista on ohjeen ENG-14 vaatimuksen mukainen
+// — älä jätä kanavia hiljaa pois. Niiden auditointi on jätetty myöhempään
+// vaiheeseen (ENG-15 voi tuottaa edge-case-dataa B:tä varten, F+H tarvitsevat
+// erillisen compile-time-auditorin).
+//
+// INVARIANT_VIOLATION-flagin sisältö: kanava, ehdotettu arvo, invariantti,
+// rikkonut raja (min tai max), ylityksen suuruus.
+// ──────────────────────────────────────────────────────────────
+function auditInvariants(trace, profile = null) {
+  const flags = [];
+  const traces = Array.isArray(trace.traces) ? trace.traces : [];
+
+  // ─── A: VL-cap per phase ────────────────────────────────────
+  const vlCapTrace = traces.find((t) => t.ruleId === "VL_CAP_RESOLVED");
+  if (vlCapTrace && typeof vlCapTrace.after?.cap === "number") {
+    const phase = vlCapTrace.after.phase || deriveBlockPhase(trace);
+    const baseline = VL_CAP_BASELINES[phase];
+    if (baseline) {
+      const cap = vlCapTrace.after.cap;
+      if (cap < baseline.min || cap > baseline.max) {
+        flags.push(
+          flag(
+            "INVARIANT_VIOLATION",
+            "🐛 ERROR",
+            `Invariantti A (VL-cap): phase=${phase}, ehdotettu cap=${cap}% on ulkona rajasta [${baseline.min}%, ${baseline.max}%]. Ylitys: ${cap < baseline.min ? (baseline.min - cap).toFixed(1) + "% alle min:n" : (cap - baseline.max).toFixed(1) + "% yli max:n"}.`,
+            {
+              channel: "vl_cap",
+              invariant: "A",
+              phase,
+              proposedValue: cap,
+              boundMin: baseline.min,
+              boundMax: baseline.max,
+              source: baseline.source,
+            },
+          ),
+        );
+      }
+    }
+  }
+
+  // ─── C: Deload Δ% ────────────────────────────────────────────
+  // Tarkistetaan vain deload-viikoilla. Päällekkäinen auditDeltaPctClamp:in
+  // (WARN) kanssa — ENG-14 emittoi ERROR-tason INVARIANT_VIOLATION:n
+  // täydentäväksi (samalla rangella).
+  const phaseForDelta = deriveBlockPhase(trace);
+  const isDeload = phaseForDelta === "deload" || /deload|kevennys|recovery/i.test(trace.output?.weekLabel || "");
+  if (isDeload && typeof trace.output?.deltaPct === "number") {
+    const dp = trace.output.deltaPct;
+    if (dp < DELOAD_DELTA_RANGE.min || dp > DELOAD_DELTA_RANGE.max) {
+      flags.push(
+        flag(
+          "INVARIANT_VIOLATION",
+          "🐛 ERROR",
+          `Invariantti C (Deload Δ%): deltaPct=${(dp * 100).toFixed(2)}% on ulkona rajasta [${(DELOAD_DELTA_RANGE.min * 100).toFixed(0)}%, ${(DELOAD_DELTA_RANGE.max * 100).toFixed(0)}%].`,
+          {
+            channel: "deload_delta_pct",
+            invariant: "C",
+            proposedValue: dp,
+            boundMin: DELOAD_DELTA_RANGE.min,
+            boundMax: DELOAD_DELTA_RANGE.max,
+            source: DELOAD_DELTA_RANGE.source,
+          },
+        ),
+      );
+    }
+  }
+
+  // ─── D: Tier-progression multiplier ──────────────────────────
+  // Tarkistetaan vain jos tier on tunnettu JA tierProgressionApplied != false.
+  // Streetlifting_16w (Akseli) -preset käyttää by-design suurempia hyppyjä
+  // tierProgressionApplied:false-flagilla — se on tarkoituksellinen poikkeus,
+  // ei rajaylitys.
+  const tier = profile?.meta?.level;
+  const programMeta = trace.input?.programMeta || trace.input?._programMeta;
+  const tierProgressionApplied = programMeta?.tierProgressionApplied;
+  if (
+    tier &&
+    TIER_PROGRESSION_MULT_BASELINES[tier] &&
+    tierProgressionApplied !== false &&
+    typeof trace.output?.deltaPct === "number" &&
+    trace.output.deltaPct > 0 &&
+    !isDeload
+  ) {
+    const baseline = TIER_PROGRESSION_MULT_BASELINES[tier];
+    const dp = trace.output.deltaPct;
+    if (dp > baseline.max) {
+      flags.push(
+        flag(
+          "INVARIANT_VIOLATION",
+          "🐛 ERROR",
+          `Invariantti D (Tier-progression): tier=${tier}, deltaPct=${(dp * 100).toFixed(2)}% ylittää tier-mult-rajan ${(baseline.max * 100).toFixed(2)}%/vk. Ylitys: ${((dp - baseline.max) * 100).toFixed(2)}%.`,
+          {
+            channel: "tier_progression_mult",
+            invariant: "D",
+            tier,
+            proposedValue: dp,
+            boundMax: baseline.max,
+            source: baseline.source,
+          },
+        ),
+      );
+    }
+  }
+
+  // ─── G: Slot target Vx per phase ─────────────────────────────
+  const slotVxTrace = traces.find((t) => t.ruleId === "SLOT_TARGETVx_RESOLVED");
+  if (slotVxTrace && typeof slotVxTrace.after?.targetVx === "number") {
+    const phase = slotVxTrace.after.phase || deriveBlockPhase(trace);
+    const expected = BLOCK_PHASE_TARGET_RIR_EXPECTED[phase];
+    if (typeof expected === "number") {
+      const actual = slotVxTrace.after.targetVx;
+      // Tolerance ±1 RIR-yksikkö (engine voi pyöristää, slot.targetVx voi
+      // overridata block-defaultin). INVARIANT_VIOLATION laukeaa vain
+      // selvistä poikkeamista (esim. peaking-vaiheessa Vx=5 = liian helppo).
+      const tolerance = 1;
+      if (Math.abs(actual - expected) > tolerance) {
+        flags.push(
+          flag(
+            "INVARIANT_VIOLATION",
+            "🐛 ERROR",
+            `Invariantti G (Slot target Vx): phase=${phase}, targetVx=${actual} poikkeaa odotetusta ${expected} enemmän kuin tolerance ±${tolerance}.`,
+            {
+              channel: "slot_target_vx",
+              invariant: "G",
+              phase,
+              proposedValue: actual,
+              expected,
+              tolerance,
+            },
+          ),
+        );
+      }
+    }
+  }
+
   return flags;
 }
 

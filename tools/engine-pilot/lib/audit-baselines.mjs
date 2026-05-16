@@ -95,3 +95,42 @@ export const DELTA_PCT_EXPECTED_RANGE = {
   eliteMax: 0.03, // ~1-3% / vk elite-tier (tier-mult 0.05)
   source: "Latella 2020 PMID 32706692 + Helms 2018 PMID 30153841",
 };
+
+// Latella 2020 — powerlifting tier-progression -multiplier per viikko per tier.
+// Käytetään engine.js applyTierProgression-funktion clamp-tarkistuksessa: weekly
+// progression-rate × tier-multiplier ei saa ylittää näitä rajoja per viikko per tier.
+// HUOM: streetlifting_16w-preset käyttää by-design suurempia hyppyjä
+// `_programMeta.tierProgressionApplied: false` -flagin alla — tämä invariantti
+// ei velvoita poikkeusta. ENG-14 INVARIANT_VIOLATION laukeaa vain jos
+// tierProgressionApplied: true JA arvo yli rajan.
+export const TIER_PROGRESSION_MULT_BASELINES = {
+  beginner: { max: 1.0, source: "Latella 2020 PMID 32706692 — beginner-tier-mult 1.0" },
+  intermediate: { max: 0.5, source: "Latella 2020 PMID 32706692 — intermediate-tier-mult 0.5" },
+  advanced: { max: 0.25, source: "Latella 2020 PMID 32706692 — advanced-tier-mult 0.25" },
+  elite: { max: 0.05, source: "Latella 2020 PMID 32706692 — elite-tier-mult 0.05" },
+};
+
+// Refalo 2023 — failure-jälkeinen kuormapudotus seuraavalle sessiolle.
+// Engine.js failureReaction-funktio soveltaa tätä droppia kun primary-sarja
+// päättyy V0:lla (failure). Drop EI saa olla suurempi (eli kuorma EI saa pudota
+// enemmän kuin tämä) eikä pienempi (Refalo: 5% on optimaalinen recovery-trigger).
+// Tolerance ±1% kattaa roundToHalf-pyöristyksen.
+export const FAILURE_DROP_BASELINE = {
+  pct: 0.05, // 5% drop seuraavalle sessiolle V0-failure jälkeen
+  tolerance: 0.01, // ±1% siedosalue (engine voi pyöristää roundToHalf-kautta)
+  source: "Refalo 2023 — failure-reaction strategy",
+};
+
+// Sánchez-Moreno 2017 — Rep1 MPV slope per RIR-yksikkö.
+// Engine.js targetRep1VelocityRange + computeRtfVelocityModel käyttävät tätä:
+// jokainen RIR-yksikkö (V0→V1, V1→V2 jne.) vastaa noin 0.045 m/s MPV-eroa.
+// Henkilökohtainen RTF-malli (kun reliable) voi poiketa tästä mutta priorin
+// keskiarvo on 0.045 m/s/RIR. ENG-14 ei estä henkilökohtaista mallia, mutta
+// jos engine ehdottaa rep1-target-MPV:tä jossa per-RIR-slope poikkeaa enemmän
+// kuin tolerance-arvon verran yleisrap-laskuissa (ei reliable-RTF-tilassa),
+// INVARIANT_VIOLATION laukeaa.
+export const REP1_MPV_SLOPE_BASELINE = {
+  slopeMpvPerRir: 0.045, // m/s per RIR-yksikkö
+  tolerance: 0.020, // ±0.020 m/s henkilökohtaisen mallin sallittu poikkeama priorista
+  source: "Sánchez-Moreno 2017 + Jukic 2024 RIR-V-malli",
+};
