@@ -72,6 +72,16 @@ Nämä paljastettiin K1-rejakon kautta (master-dokumentin osa 2:n uudelleentarka
 
 ---
 
+## ENG-16, ENG-17 — Avoimet päätöskohdat (kriittinen havaintotesti 2026-05-16)
+
+**ENG-16 — Juurisyy 1: Default-mesocyclen phase ↔ VL-cap -ristiriita.** Identtinen kaava 5 default-mesocycle-profiilissa (beginner, cut-aggressive, returner, shoulder-limit, uncalibrated). Engine ehdottaa vk1 d5:lle 12,5 % VL-cap (auditin tutkimusrange foundation 25–35 %) ja vk2-3 d1/d3:lle 30 % (auditin range intensity 10–15 %). **Vaatii Akselin harjoitusteoreettisen arvostelman** (hypoteesi a/b/c, ks. `docs/SESSION_CLOSE_2026-05-16.md` osio 3.1). EI korjattu autonomisesti. Ratkaisuvaihtoehdot: (a) engine.js VL-cap-logiikan korjaus, (b) audit-baselines.mjs `DEFAULT_MESO_VL_CAP_BASELINES`-laajennus, (c) `deriveBlockPhase`-refaktorointi default-mesoille.
+
+**ENG-17 — Juurisyy 2: Akselin streetlifting_16w vk12 deload-syvyys.** Helms 2018 -range vaatii ≥ −15 % deloadia. Akselin presetti antaa Δ% = −12 % ja −13,5 % (4 päivää: 1, 2, 4, 6). **Vaatii Akselin muistitarkistuksen**: tietoinen poikkeama vai unohtunut drift? Ratkaisuvaihtoehdot: (a) korjaa preset → vk12 deload ≥ −15 %, (b) lisää `deloadApplied: false`-mesometa-flagi samalla logiikalla kuin `tierProgressionApplied: false` + ENG-14 haarautuu, (c) jos "en muista" → siirtyy ENG-16:n kanssa samaan kategoriaan.
+
+**KRIITTINEN PERIAATE:** 8a-implementointia EI saa aloittaa ennen kuin ENG-16 ja ENG-17 ratkeavat ja Akselin pilot-regressio palauttaa 0 INVARIANT_VIOLATION-flagia 8/8 profiililla. Oppivan mallin rakentaminen invariantteja rikkovan pohjan päälle on koko prosessin estämä vikatila.
+
+---
+
 ## ENG-14, ENG-15 — Turvaverkon insinöörityö (voidaan aloittaa NYT, ei riipu α/β:sta)
 
 | ID | Tyyppi | Tila |
