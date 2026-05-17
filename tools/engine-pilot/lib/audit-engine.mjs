@@ -697,6 +697,36 @@ function auditInvariants(trace, profile = null) {
     }
   }
 
+  // ─── K-A1: intra-session-feedback rooli-leikkaus (AC-A1) ─────
+  // R-kierros 1 / mittari-infra. STAATTINEN detektio (audit-puolinen, read-only):
+  // jos sessio sisältää secondary-roolisen slot:n jolla on targetVx-tavoite ja
+  // sets > 1, UI:n intra-session-filter (index.html:12882
+  // `isPrimary = role === "primary" || "backoff"`) jättää sen ulkopuolelle.
+  // Rooli-leikkaus on rakenteellinen, ei tilannekohtainen — joten staattinen
+  // konfiguraatiotarkistus riittää detektoimaan ilmiön. EI muutosta engineen.
+  const slotsForA1 = trace.output?.slots || [];
+  for (const slot of slotsForA1) {
+    if (slot.role !== "secondary") continue;
+    if (typeof slot.targetVx !== "number") continue;
+    const setCount = typeof slot.sets === "number" ? slot.sets : 1;
+    if (setCount < 2) continue;
+    flags.push(
+      flag(
+        "INVARIANT_VIOLATION_K_A1",
+        "🐛 ERROR",
+        `K-A1 intra-session rooli-leikkaus: secondary-rooli "${slot.movementName || "?"}" (targetVx=${slot.targetVx}, sets=${setCount}) jää intra-session-säädön ulkopuolelle (UI primary/backoff -only filter, index.html:12882).`,
+        {
+          channel: "k_a1",
+          ac: "A1",
+          role: slot.role,
+          movementName: slot.movementName,
+          targetVx: slot.targetVx,
+          sets: setCount,
+        },
+      ),
+    );
+  }
+
   return flags;
 }
 
