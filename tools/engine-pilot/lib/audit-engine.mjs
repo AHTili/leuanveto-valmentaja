@@ -777,6 +777,37 @@ function auditInvariants(trace, profile = null) {
     );
   }
 
+  // ─── K-A6D: velocity-stop ↔ Vx-tavoite -ristiriita (AC-A6-DET) ─
+  // R-kierros 1 / mittari-infra. STAATINEN konfiguraatiotarkistus: jos slot:lla
+  // on velocityStop määritelty (UI laukaisee "harkitse kuorman laskua tai
+  // sarjan lopettamista" -varoituksen index.html:12925-12939 kun
+  // velocity < velocityStop) JA samalla targetVx >= 2 (atletilla yhä reilu
+  // vara Vx-mittarin mukaan), signaalit voivat olla ristiriidassa: velocity
+  // → "lopeta", Vx → "jatka". Legitiimit konfiguraatiot (peaking-rangea,
+  // targetVx ≤ 1) jäävät pois — tällöin sekä velocity- että Vx-signaali
+  // sopivat near-failure-tilaan. EI muutosta engineen.
+  const slotsForA6D = trace.output?.slots || [];
+  for (const slot of slotsForA6D) {
+    if (typeof slot.velocityStop !== "number" || slot.velocityStop <= 0) continue;
+    if (typeof slot.targetVx !== "number") continue;
+    if (slot.targetVx < 2) continue;
+    flags.push(
+      flag(
+        "INVARIANT_VIOLATION_K_A6D",
+        "🐛 ERROR",
+        `K-A6D velocity-stop ↔ Vx -ristiriita: slot "${slot.movementName || "?"}" velocityStop=${slot.velocityStop} m/s + targetVx=${slot.targetVx} (≥2 vara). UI-varoitus "harkitse kuorman laskua tai sarjan lopettamista" voi laueta vaikka atletilla on Vx-mittarin mukaan vielä reilu vara — signaalit ristiriidassa ilman VELOCITY_VX_RECONCILE-yhteensovitusta.`,
+        {
+          channel: "k_a6d",
+          ac: "A6_DET",
+          role: slot.role,
+          movementName: slot.movementName,
+          velocityStop: slot.velocityStop,
+          targetVx: slot.targetVx,
+        },
+      ),
+    );
+  }
+
   return flags;
 }
 
