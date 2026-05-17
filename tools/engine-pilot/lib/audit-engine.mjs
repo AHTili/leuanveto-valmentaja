@@ -697,6 +697,56 @@ function auditInvariants(trace, profile = null) {
     }
   }
 
+  // ─── K-A2: SAFE↔target e1RM-monotonia (AC-A2) ────────────────
+  // R-kierros 1 / mittari-infra. STAATINEN detektio: jos sessio palauttaa
+  // SAFE- ja TARGET-suggestiot, Epley e1RM = kg × (1 + (reps+Vx)/30) on
+  // monotoninen internal-load-mitta. SAFE on määritelmällisesti
+  // konservatiivisempi vaihtoehto — sen e1RM EI saa olla suurempi kuin
+  // TARGET:n e1RM. Jos näin on (esim. target 69×5 V3 → safe 68×5 V4:
+  // target e1RM=87,40 vs safe e1RM=88,40), label "varovainen" ja todellinen
+  // internal load erkanevat. EI muutosta engineen.
+  const suggestionsForA2 = Array.isArray(trace.output?.suggestions)
+    ? trace.output.suggestions
+    : [];
+  const targetSugg = suggestionsForA2.find((s) => s.id === "target");
+  const safeSugg = suggestionsForA2.find((s) => s.id === "safe");
+  if (
+    targetSugg && safeSugg &&
+    typeof targetSugg.targetExternalLoad === "number" &&
+    typeof targetSugg.targetReps === "number" &&
+    typeof targetSugg.targetVx === "number" &&
+    typeof safeSugg.targetExternalLoad === "number" &&
+    typeof safeSugg.targetReps === "number" &&
+    typeof safeSugg.targetVx === "number"
+  ) {
+    const targetE1RM =
+      targetSugg.targetExternalLoad * (1 + (targetSugg.targetReps + targetSugg.targetVx) / 30);
+    const safeE1RM =
+      safeSugg.targetExternalLoad * (1 + (safeSugg.targetReps + safeSugg.targetVx) / 30);
+    if (safeE1RM > targetE1RM) {
+      flags.push(
+        flag(
+          "INVARIANT_VIOLATION_K_A2",
+          "🐛 ERROR",
+          `K-A2 SAFE↔target e1RM-monotonia: safe ${safeSugg.targetExternalLoad}×${safeSugg.targetReps} V${safeSugg.targetVx} (e1RM=${safeE1RM.toFixed(2)}) vaatii korkeamman 1RM:n kuin target ${targetSugg.targetExternalLoad}×${targetSugg.targetReps} V${targetSugg.targetVx} (e1RM=${targetE1RM.toFixed(2)}). Label "varovainen" ja internal load erkanevat (engine.js:3131-3164).`,
+          {
+            channel: "k_a2",
+            ac: "A2",
+            targetLoad: targetSugg.targetExternalLoad,
+            targetReps: targetSugg.targetReps,
+            targetVx: targetSugg.targetVx,
+            targetE1RM,
+            safeLoad: safeSugg.targetExternalLoad,
+            safeReps: safeSugg.targetReps,
+            safeVx: safeSugg.targetVx,
+            safeE1RM,
+            delta: safeE1RM - targetE1RM,
+          },
+        ),
+      );
+    }
+  }
+
   // ─── K-A1: intra-session-feedback rooli-leikkaus (AC-A1) ─────
   // R-kierros 1 / mittari-infra. STAATTINEN detektio (audit-puolinen, read-only):
   // jos sessio sisältää secondary-roolisen slot:n jolla on targetVx-tavoite ja
