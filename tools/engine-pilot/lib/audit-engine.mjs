@@ -575,29 +575,49 @@ function auditInvariants(trace, profile = null) {
   const traces = Array.isArray(trace.traces) ? trace.traces : [];
 
   // ─── A: VL-cap per phase ────────────────────────────────────
-  const vlCapTrace = traces.find((t) => t.ruleId === "VL_CAP_RESOLVED");
-  if (vlCapTrace && typeof vlCapTrace.after?.cap === "number") {
-    const phase = vlCapTrace.after.phase || deriveBlockPhase(trace);
-    const baseline = VL_CAP_BASELINES[phase];
-    if (baseline) {
-      const cap = vlCapTrace.after.cap;
-      if (cap < baseline.min || cap > baseline.max) {
-        flags.push(
-          flag(
-            "INVARIANT_VIOLATION",
-            "🐛 ERROR",
-            `Invariantti A (VL-cap): phase=${phase}, ehdotettu cap=${cap}% on ulkona rajasta [${baseline.min}%, ${baseline.max}%]. Ylitys: ${cap < baseline.min ? (baseline.min - cap).toFixed(1) + "% alle min:n" : (cap - baseline.max).toFixed(1) + "% yli max:n"}.`,
-            {
-              channel: "vl_cap",
-              invariant: "A",
-              phase,
-              proposedValue: cap,
-              boundMin: baseline.min,
-              boundMax: baseline.max,
-              source: baseline.source,
-            },
-          ),
-        );
+  // ENG-16 Round B / hypoteesi (b) opt-out (Akselin valinta 2026-05-18):
+  // default-mesotyypin VL-cap-tarkistus ohitetaan tunnettuna aukkona.
+  // Default-meso on hybridi (Ma=heavy + Ke=volume + Pe=speed,
+  // data.js:2888), joka ei seuraa puhtaita Pareja-Blanco-rangeja.
+  // Pareja-Blanco-rangeihin nojaava A-kanava ei sovellu sellaisenaan.
+  //
+  // TÄRKEÄÄ — opt-out EI väitä enginen oikeaksi. Oikeellisuus on AVOIN
+  // ja LYKÄTTY: jos default-meso nostetaan eliittitason tavoitelistaan,
+  // VL-cap-oikeellisuus on avattava omana syvätutkimuksena (=(c) ankku-
+  // roituna omiin DEFAULT_MESO_VL_CAP_BASELINES-rangeihin TAI tietoinen
+  // harjoitusteoreettinen määritys). Liputettu tunnettuna aukkona
+  // ledgeriin (L9, ks. korjauskierroksen raportti).
+  //
+  // SCOPE: opt-out rajattu vain default-mesotyyppiin. C (Deload), D
+  // (Tier-mult), G (Slot-Vx) säilyvät tarkistettuina default-mesolle.
+  // Muut mesotyypit (streetlifting_16w, hypertrofia, wendler531,
+  // ...) säilyvät A-kanavan tarkistuksen alla.
+  const isDefaultMeso = trace.input?.mesocycleType === "default";
+  if (!isDefaultMeso) {
+    const vlCapTrace = traces.find((t) => t.ruleId === "VL_CAP_RESOLVED");
+    if (vlCapTrace && typeof vlCapTrace.after?.cap === "number") {
+      const phase = vlCapTrace.after.phase || deriveBlockPhase(trace);
+      const baseline = VL_CAP_BASELINES[phase];
+      if (baseline) {
+        const cap = vlCapTrace.after.cap;
+        if (cap < baseline.min || cap > baseline.max) {
+          flags.push(
+            flag(
+              "INVARIANT_VIOLATION",
+              "🐛 ERROR",
+              `Invariantti A (VL-cap): phase=${phase}, ehdotettu cap=${cap}% on ulkona rajasta [${baseline.min}%, ${baseline.max}%]. Ylitys: ${cap < baseline.min ? (baseline.min - cap).toFixed(1) + "% alle min:n" : (cap - baseline.max).toFixed(1) + "% yli max:n"}.`,
+              {
+                channel: "vl_cap",
+                invariant: "A",
+                phase,
+                proposedValue: cap,
+                boundMin: baseline.min,
+                boundMax: baseline.max,
+                source: baseline.source,
+              },
+            ),
+          );
+        }
       }
     }
   }
