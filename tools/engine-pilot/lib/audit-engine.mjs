@@ -596,7 +596,39 @@ function auditInvariants(trace, profile = null) {
   if (!isDefaultMeso) {
     const vlCapTrace = traces.find((t) => t.ruleId === "VL_CAP_RESOLVED");
     if (vlCapTrace && typeof vlCapTrace.after?.cap === "number") {
-      const phase = vlCapTrace.after.phase || deriveBlockPhase(trace);
+      // L8 / Round B Commit 2 — (ii)-vertailu, ei (i)-romahdus.
+      // Engine.js:2992 emittoi tracen kentällä `effectivePhase` mutta tämä
+      // koodi luki aiemmin kenttää `phase` (rivi: `vlCapTrace.after.phase ||
+      // deriveBlockPhase(trace)`). Kenttä-mismatch → after.phase oli AINA
+      // undefined → audit fallbackasi aina deriveBlockPhase-luokitukseen,
+      // näkemättä enginen omaa phase-arviota. (i)-romahdusratkaisu olisi
+      // vaihtanut nimen ja antanut auditin korvata oman arvionsa enginen
+      // arviolla; sen sijaan tehdään (ii)-vertailu:
+      //   1. Audit LUKEE enginen effectivePhase-arvon (näkee sen)
+      //   2. Audit SÄILYTTÄÄ itsenäisen deriveBlockPhase-arvionsa
+      //   3. Audit FLAGAA PHASE_MISMATCH eksplisiittisesti kun arviot eroavat
+      // VL-cap-vertailu pysyy auditPhase:n pohjalla — itsenäinen vastapaine
+      // säilyy. Mismatch on diagnostinen signaali, ei rikkomus → INFO-taso.
+      const enginePhase = vlCapTrace.after?.effectivePhase;
+      const auditPhase = deriveBlockPhase(trace);
+
+      if (enginePhase && enginePhase !== auditPhase) {
+        flags.push(
+          flag(
+            "PHASE_MISMATCH",
+            "📋 INFO",
+            `L8 phase-mismatch: engine sanoo "${enginePhase}", audit sanoo "${auditPhase}". Itsenäinen vastapaine — engine luokittelee dayType+blockPhase+targetVx-yhdistelmällä, audit weekLabel-tekstistä. Aito erimielisyys tai weekLabel-heuristiikan rajaus; ei automaattinen rikkomus.`,
+            {
+              channel: "phase_mismatch",
+              enginePhase,
+              auditPhase,
+              vlCap: vlCapTrace.after.cap,
+            },
+          ),
+        );
+      }
+
+      const phase = auditPhase;
       const baseline = VL_CAP_BASELINES[phase];
       if (baseline) {
         const cap = vlCapTrace.after.cap;
