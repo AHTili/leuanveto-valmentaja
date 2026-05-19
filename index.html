@@ -12843,7 +12843,7 @@ function bindWorkoutEvents() {
       // kuorman nostoa seuraaviin sarjoihin. Käyttäjäpalaute 2026-05-07: "haluan
       // oikean ärsykkeen jos ekan sarjan V5 fresh osoittaa kuorman alikuorman".
       // Konservatiivinen +2.5-5 % bump, freshness-suoja sisäänrakennettu.
-      const isPrimary = exercise.role === "primary";
+      const isPrimary = exercise.role === "primary" || exercise.role === "secondary";
       const isFirstWorkSet = exercise.sets.filter((s, i) => !s.isWarmup && s.completed && i <= w.currentSetIdx).length === 1;
       const dayType = state.workout?.dayType || state.recommendation?.dayType;
       if (isPrimary && isFirstWorkSet) {
@@ -12879,7 +12879,7 @@ function bindWorkoutEvents() {
       // luokkaa tavoitetta alempi (esim. tavoite V3 → todellinen V1),
       // kuorma on liian raskas. Kysy käyttäjältä: laskenko 5 % seuraavalle?
       const deltaVx = currentSet.targetVx - selectedVara;
-      const isPrimary = exercise.role === "primary" || exercise.role === "backoff";
+      const isPrimary = exercise.role === "primary" || exercise.role === "backoff" || exercise.role === "secondary";
       // Vain primary/backoff skaalautuu — accessory-liikkeet eivät ole niin
       // kriittisiä ja saattavat olla tarkoituksella "lähellä failurea"
       if (isPrimary) {
