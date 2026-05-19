@@ -26,6 +26,7 @@ import CUT from "./profiles/cut-aggressive-700kcal.mjs";
 import SHO from "./profiles/shoulder-limit-no-ohp.mjs";
 import UNC from "./profiles/uncalibrated-intermediate.mjs";
 import SL_NOV from "./profiles/streetlifter-novice-male-70.mjs";
+import SL_MAS from "./profiles/streetlifter-master-female-58.mjs";
 
 import FULL_16W from "./scenarios/full-16w.mjs";
 import FOUNDATION from "./scenarios/foundation-block.mjs";
@@ -49,6 +50,7 @@ const PROFILES = {
   "shoulder-limit-no-ohp": SHO,
   "uncalibrated-intermediate": UNC,
   "streetlifter-novice-male-70": SL_NOV,
+  "streetlifter-master-female-58": SL_MAS,
 };
 
 const SCENARIOS = {
