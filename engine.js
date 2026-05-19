@@ -3151,7 +3151,7 @@ function generateSuggestions(ctx) {
   let safeSuggestion = null;
   if (loadIsNumeric) {
     const safeLoad = roundToHalf(targetExternalLoad * (1 - SAFE_SPACING));
-    const safeVx = typeof targetVx === "number" ? targetVx + VX_OFFSET : null;
+    const safeVx = typeof targetVx === "number" ? targetVx : null;
     safeSuggestion = {
       id: "safe",
       label: "Varovainen",
