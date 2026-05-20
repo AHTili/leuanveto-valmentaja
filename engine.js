@@ -4090,11 +4090,13 @@ async function recommend(options = {}) {
   if (primarySlotMeta?.loadPct !== undefined && primarySlotMeta?.loadPct !== null) {
     const pct = primarySlotMeta.loadPct;
     if (currentE1RMExternal !== null && currentE1RMExternal > 0) {
-      // Lisäpainoliikkeet: kuorma = extE1RM × pct suoraan
-      // Tankoliikkeet (isBarbell): kuorma = extE1RM × pct suoraan
-      targetExternalLoad = roundToHalf(Math.max(0, currentE1RMExternal * pct));
-      trace("LOAD_PCT_RESOLVED", {}, { pct, currentE1RMExternal, targetExternalLoad },
-        `${(pct*100).toFixed(0)}% × current e1RM (${currentE1RMExternal} kg) = ${targetExternalLoad} kg`);
+      // Lisäpainoliikkeet (BW-ank): kuorma = pct × (BW + extE1RM) − BW (system-pohjainen)
+      // Tankoliikkeet (isBarbell): kuorma = pct × extE1RM (external == system, BW ei nouse tangon mukana)
+      targetExternalLoad = roundToHalf(Math.max(0, isBarbell
+        ? currentE1RMSystem * pct
+        : currentE1RMSystem * pct - bodyweightKg));
+      trace("LOAD_PCT_RESOLVED", {}, { pct, currentE1RMSystem, currentE1RMExternal, isBarbell, targetExternalLoad },
+        `${(pct*100).toFixed(0)}% × ${isBarbell ? "ext" : "sys"} e1RM (${(isBarbell ? currentE1RMExternal : currentE1RMSystem).toFixed(1)} kg)${isBarbell ? "" : " − BW"} = ${targetExternalLoad} kg`);
 
       // v4.35.0 — Eliittitason progressio: yksi funktio päättää kuorman.
       //
@@ -4242,8 +4244,13 @@ async function recommend(options = {}) {
     const primaryHasLoadPct = primarySlotMeta?.loadPct !== undefined &&
                               primarySlotMeta?.loadPct !== null &&
                               primarySlotMeta.loadPct > 0;
+    // v4.51.x loadpct-fix: sessionEffectiveE1RM on systeemi-pohjainen jotta
+    // primary-rate-limit säteilee oikein backoff/secondary-sloteille post-fix-
+    // loadPct-resolverissa (pct × system − BW non-barbellille, pct × system barbellille).
     const sessionEffectiveE1RM = (primaryHasLoadPct && targetExternalLoad !== null)
-      ? targetExternalLoad / primarySlotMeta.loadPct
+      ? (isBarbell
+          ? targetExternalLoad / primarySlotMeta.loadPct
+          : (targetExternalLoad + bodyweightKg) / primarySlotMeta.loadPct)
       : null;
     const primaryMovementName = primarySlotMeta?.defaultMovementName || null;
 
@@ -4282,7 +4289,12 @@ async function recommend(options = {}) {
           calBaseE1RM = initialPR;
         }
         if (calBaseE1RM !== null) {
-          let calLoad = calBaseE1RM * slot.loadPct;
+          // v4.51.x loadpct-fix: cal-load lasketaan system-pohjaisesti non-barbellille
+          // (pct × (BW + cal-1RM) − BW); barbell-sloteilla (Takakyykky) ennallaan.
+          const slotIsBarbell = slot.isBarbell === true;
+          let calLoad = slotIsBarbell
+            ? calBaseE1RM * slot.loadPct
+            : (calBaseE1RM + bodyweightKg) * slot.loadPct - bodyweightKg;
           // PR-cap: cal-load ei koskaan yli PR × 1.025 (max +2.5 kg uutta ennätystä testissä)
           let prCapped = false;
           if (initialPR && calLoad > initialPR * 1.025) {
@@ -4293,7 +4305,7 @@ async function recommend(options = {}) {
           trace("SLOT_LOAD_RESOLVED_CAL",
             { slotRole: slot.role, slotMovement: calMovName },
             { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct,
-              baseE1RM: calBaseE1RM.toFixed(1), PR: initialPR, prCapped },
+              baseE1RM: calBaseE1RM.toFixed(1), PR: initialPR, prCapped, isBarbell: slotIsBarbell },
             `${calMovName} cal: ${(slot.loadPct*100).toFixed(0)}% × ${calBaseE1RM.toFixed(1)} kg = ${slot.resolvedLoadKg} kg${prCapped ? ` (PR-cap = ${initialPR}×1.025)` : ""}`);
           continue;
         }
@@ -4304,11 +4316,15 @@ async function recommend(options = {}) {
           sessionEffectiveE1RM !== null &&
           primaryMovementName &&
           slot.defaultMovementName === primaryMovementName) {
-        slot.resolvedLoadKg = roundToHalf(Math.max(0, sessionEffectiveE1RM * slot.loadPct));
+        // v4.51.x loadpct-fix: sessionEffectiveE1RM on system-pohjainen → pct × system − BW non-barbell.
+        const slotIsBarbellA = slot.isBarbell === true;
+        slot.resolvedLoadKg = roundToHalf(Math.max(0, slotIsBarbellA
+          ? sessionEffectiveE1RM * slot.loadPct
+          : sessionEffectiveE1RM * slot.loadPct - bodyweightKg));
         trace("SLOT_LOAD_RESOLVED",
           { slotRole: slot.role, slotMovement: slot.defaultMovementName },
-          { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct, sessionE1RM: sessionEffectiveE1RM.toFixed(1) },
-          `${slot.role} ${slot.defaultMovementName}: ${(slot.loadPct*100).toFixed(0)}% × ${sessionEffectiveE1RM.toFixed(1)} kg = ${slot.resolvedLoadKg} kg (primary-rate-limit säteilee)`);
+          { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct, sessionE1RM: sessionEffectiveE1RM.toFixed(1), isBarbell: slotIsBarbellA },
+          `${slot.role} ${slot.defaultMovementName}: ${(slot.loadPct*100).toFixed(0)}% × ${slotIsBarbellA ? "ext" : "sys"} e1RM (${sessionEffectiveE1RM.toFixed(1)} kg)${slotIsBarbellA ? "" : " − BW"} = ${slot.resolvedLoadKg} kg (primary-rate-limit säteilee)`);
         continue;
       }
 
@@ -4352,7 +4368,11 @@ async function recommend(options = {}) {
               referenceMovement: slot.loadPctReferenceMovementName },
             `Cfg-floor: ${slot.loadPctReferenceMovementName} cfg ${refCfgInfo.value} > historia ${refE1RM.toFixed(1)} → käytetään cfg-arvoa baselinena`);
         }
-        let baseLoad = roundToHalf(Math.max(0, effectiveBaseE1RM * slot.loadPct));
+        // v4.51.x loadpct-fix (BW-ank cross-ref): pct × (BW + ref-1RM) − BW non-barbellille.
+        // refIsBarbell=true (esim. Paused squat→Takakyykky) ennallaan (system == external).
+        let baseLoad = roundToHalf(Math.max(0, refIsBarbell
+          ? effectiveBaseE1RM * slot.loadPct
+          : (effectiveBaseE1RM + bodyweightKg) * slot.loadPct - bodyweightKg));
 
         // Rate-limit slotin oman liikkeen historiasta
         // v4.27.14: käyttää computeRateLimitAnchor-helperiä (viim. 3 session
@@ -5916,18 +5936,24 @@ function computeStreetliftingOpenerStrategy(e1rmsByMovementName) {
  * Compute attempt loads for competition day.
  * Returns { warmupLoads: [...], opener, second, third } in external kg.
  */
-function computeAttemptLoads(e1rmExternal, bw, peakingConfig) {
+function computeAttemptLoads(e1rmExternal, bw, peakingConfig, isBarbell = false) {
   if (!e1rmExternal || !peakingConfig) return null;
 
+  // v4.51.x loadpct-fix: pct × (BW + e1rmExternal) − BW non-barbellille; pct × e1rmExternal barbell.
+  // Sign-flip pct > 1.0 -arvoilla on odotettu (3rd attempt 1.02 → palauttaa aiotun yli-1RM-yrityksen).
+  const applyPct = (pct) => isBarbell
+    ? e1rmExternal * pct
+    : (e1rmExternal + bw) * pct - bw;
+
   const warmupLoads = (peakingConfig.warmupPcts || [0.40, 0.60, 0.75, 0.85]).map(pct =>
-    roundToHalf(Math.max(0, e1rmExternal * pct))
+    roundToHalf(Math.max(0, applyPct(pct)))
   );
 
   return {
     warmupLoads,
-    opener: roundToHalf(e1rmExternal * (peakingConfig.openerPct || 0.92)),
-    second: roundToHalf(e1rmExternal * (peakingConfig.secondPct || 0.97)),
-    third: roundToHalf(e1rmExternal * (peakingConfig.thirdPct || 1.02)),
+    opener: roundToHalf(Math.max(0, applyPct(peakingConfig.openerPct || 0.92))),
+    second: roundToHalf(Math.max(0, applyPct(peakingConfig.secondPct || 0.97))),
+    third: roundToHalf(Math.max(0, applyPct(peakingConfig.thirdPct || 1.02))),
     e1rmExternal,
   };
 }
@@ -6048,7 +6074,7 @@ async function recommendPeaking(options = {}) {
   // Competition day: compute attempt loads
   let attemptLoads = null;
   if (dayType === "competition") {
-    attemptLoads = computeAttemptLoads(useE1RM, bodyweightKg, mesocycle.peakingConfig);
+    attemptLoads = computeAttemptLoads(useE1RM, bodyweightKg, mesocycle.peakingConfig, isBarbellPeaking);
     trace("COMPETITION_LOADS", {}, attemptLoads, "Kilpailukuormat laskettu");
   }
 

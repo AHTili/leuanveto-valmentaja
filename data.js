@@ -5675,8 +5675,8 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
   // seedLoad: tuottaa kuorma-seed käyttäjän alkuperäisestä 1RM-arviosta
   // jotta ensimmäinen sessio ennen e1RM-dataa saa järkeviä painoja.
   // Pyöristys 0.25 kg (lisäpaino) / 2.5 kg (tanko) tarkkuuteen.
-  const seedL = pct => Math.round(L * pct * 4) / 4;
-  const seedD = pct => Math.round(D * pct * 4) / 4;
+  const seedL = pct => Math.round(Math.max(0, pct * (BW + L) - BW) * 4) / 4;
+  const seedD = pct => Math.round(Math.max(0, pct * (BW + D) - BW) * 4) / 4;
   const seedK = pct => Math.round(K * pct / 2.5) * 2.5;
 
   // ─── Slot-driven accessory arrays (v4.11) ───
@@ -5982,8 +5982,8 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     if (withDipTertiary === true) {
       // Dippi-tertiary-primer: 3×5 Lisäpainodippi @ ~50 % 1RM @ V5, kevyt neural-
       // stimulus 72 h ennen TO-primarya. KUORMITETTU dippaaja: BW olisi V8–V10
-      // (liian kevyt primer-rooliksi). loadPct 0.50 → seedD(0.50) ~= 37 kg
-      // lisäpainoa kalibroinnista. Engine resolvoi loadPct dynaamisesti per-session
+      // (liian kevyt primer-rooliksi). loadPct 0.50 → seedD(0.50) ~= 3 kg lisäpainoa
+      // (pct × (BW + D) − BW). Engine resolvoi loadPct dynaamisesti per-session
       // oikeaan e1RM:ään (käyttäjän edistyessä paino skaalautuu).
       accessories = [
         ...accessories,
