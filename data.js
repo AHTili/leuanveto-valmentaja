@@ -25,7 +25,7 @@ const TIMEZONE = "Europe/Helsinki";
 // ACCESSORY_SLOT_CATALOG / DayN-funktiot eivät muutu, joten
 // streetlifting_16w-mesocyclen auto-rebuild EI saa laueta. Sw.js APP_VERSION
 // bumppataan erikseen 4.39.0:ksi PWA-päivitysbannerin triggeröimiseksi.
-const PROGRAM_BUILD_VERSION = "4.38.9";
+const PROGRAM_BUILD_VERSION = "4.52.0";
 
 // ── Store names ──
 const STORES = {
