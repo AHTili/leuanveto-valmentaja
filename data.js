@@ -25,7 +25,7 @@ const TIMEZONE = "Europe/Helsinki";
 // ACCESSORY_SLOT_CATALOG / DayN-funktiot eivät muutu, joten
 // streetlifting_16w-mesocyclen auto-rebuild EI saa laueta. Sw.js APP_VERSION
 // bumppataan erikseen 4.39.0:ksi PWA-päivitysbannerin triggeröimiseksi.
-const PROGRAM_BUILD_VERSION = "4.52.0";
+const PROGRAM_BUILD_VERSION = "4.52.1";
 
 // ── Store names ──
 const STORES = {
@@ -5937,7 +5937,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     const primaryMovementName = pullMeVariant || "Lisäpainoleuanveto";
     // v4.32.9 M13: variantScale fallback-kg-seed-laskentaan
     const variantScale = pullMeVariant && PULL_VARIANT_SCALE[pullMeVariant] ? PULL_VARIANT_SCALE[pullMeVariant] : 1.00;
-    const seedLVariant = pct => Math.round(L * variantScale * pct * 4) / 4;
+    const seedLVariant = pct => Math.round(Math.max(0, pct * (BW + L * variantScale) - BW) * 4) / 4;
     const slots = [
       { role:"primary", category:"vertikaaliveto", defaultMovementName: primaryMovementName,
         sets, reps, targetVx:vx, loadPct:primaryPct, suggestedLoadKg:seedLVariant(primaryPct),
