@@ -253,6 +253,64 @@ function e1rmAccessory(weightKg, reps, vara = null) {
 }
 
 /**
+ * β Round B-α-1 — Lähde 1: V/reps → odotettu %1RM.
+ *
+ * L46 "A puhtaana" -päätös: Epley-Vara identtisesti e1rmSystem-funktion
+ * Epley-Vara-osan kanssa. EI tier-parametria — sama kaava kaikilla tier-
+ * tasoilla (Taso 1/2/3). Brzycki ja conservative-cross-check rajattu pois
+ * eksplisiittisesti (L46). Sisäinen konsistenssi e1RM-toteutuksen kanssa.
+ *
+ * Käänteinen suunta e1rmSystem:istä: jos sys-1RM = weight × (1 + maxReps/30),
+ * niin weight = sys-1RM / (1 + maxReps/30) = sys-1RM × expectedPct,
+ * missä expectedPct = 1 / (1 + maxReps/30).
+ *
+ * @param {number} maxReps — reps + Vx (todellinen max-yritys täydellä failureen asti)
+ * @returns {number|null} expectedPct ∈ (0, 1] tai null jos invalid input
+ */
+function vRepsToExpectedPct(maxReps) {
+  if (!Number.isFinite(maxReps) || maxReps < 1) return null;
+  return 1 / (1 + maxReps / 30);
+}
+
+/**
+ * β Round B-α-1 — Tier-resolveri.
+ *
+ * L48 B.i + C.iii — 3 polkua movement.tier-kentän tulkintaan:
+ *   - number (1/2/3): vakio useimmille liikkeille
+ *   - function: mesocycle-konteksti (esim. Muscle-up Taso 1 streetlifting_16w:ssä,
+ *     Taso 3 muualla)
+ *   - string "special": in-session-kuormaratkaisu (Heavy negative leuka,
+ *     Board dippi) — säilyy nykyisellä loadPct-kaavalla
+ *
+ * @param {object} movement — PRESET_MOVEMENTS-record (vaadittu name + tier)
+ * @param {object|null} mesocycle — aktiivinen mesosykli (vain function-tier:lle)
+ * @returns {number|string} resolved tier (1/2/3 tai "special")
+ */
+function resolveTier(movement, mesocycle) {
+  if (!movement) throw new Error("resolveTier: movement is required");
+  const tier = movement.tier;
+  if (typeof tier === "number") return tier;
+  if (typeof tier === "function") return tier(mesocycle);
+  if (typeof tier === "string" && tier === "special") return "special";
+  throw new Error(
+    `resolveTier: invalid tier for movement ${movement.name || "?"}: ${tier}`
+  );
+}
+
+/**
+ * β Round B-α-1 — Tier-pikkupredikaatti Lähde 2:n primer-routingille.
+ * Käytetään myöhemmin α-2:n primer-mekaniikan aktivaation valitsemiseen.
+ *
+ * @param {object} movement
+ * @param {object|null} mesocycle
+ * @returns {boolean} true jos tier on 1 tai 2 (= primer aktiivinen Lähde 2:lle)
+ */
+function tier1Or2(movement, mesocycle) {
+  const t = resolveTier(movement, mesocycle);
+  return t === 1 || t === 2;
+}
+
+/**
  * v4.34.34: Movement-load-style resolver — keskitetty totuudenlähde "lisätäänkö
  * BW e1RM-laskuun?" -kysymykseen. Aiemmin koodi käytti kolmea eri proxyä
  * (mov.isPrimary, slot.role === "primary", primarySlotMeta.isBarbell), mikä
@@ -3457,6 +3515,22 @@ async function recommend(options = {}) {
   const isBarbell = primarySlotMeta?.isBarbell === true;
   const inferredBlockPhase = deriveBlockPhaseFromMesocycle(mesocycle.type, weekNum, weekDef?.label);
 
+  // β Round B-α-1: movement-objekti + tier-resolvointi primary-liikkeelle.
+  // Ladataan allMovements jos ei vielä options:eissa (tarvitaan tier-resolveriin
+  // primary + SLOT_LOAD_RESOLVED haara A:lle). Tier päättää onko Lähde 1 -reitti
+  // käytössä (number 1/2/3) vai säilyy nykyinen loadPct-kaava ("special").
+  const allMovementsForTier = options.allMovements || (await getAllMovements());
+  const primaryMovement = primarySlotMeta?.defaultMovementName
+    ? allMovementsForTier.find(m => m.name === primarySlotMeta.defaultMovementName)
+    : null;
+  // Jos movement löytyy ja sillä on tier, resolvoi se. Muuten null (graceful
+  // degradation — käytetään nykyistä loadPct-kaavaa fallback-tilanteessa).
+  let primaryTier = null;
+  if (primaryMovement && primaryMovement.tier !== undefined) {
+    try { primaryTier = resolveTier(primaryMovement, mesocycle); }
+    catch (e) { primaryTier = null; /* virheellinen tier-määrittely → fallback */ }
+  }
+
   // Filter to primary movement top sets, sorted by date
   // v4.27.15: calibration-setit (AMRAP-testit deload-viikoilla) lasketaan mukaan
   // e1RM-laskentaan. Niillä actualVx === 0 (tekninen failure), jolloin Epley+Vara
@@ -4090,13 +4164,30 @@ async function recommend(options = {}) {
   if (primarySlotMeta?.loadPct !== undefined && primarySlotMeta?.loadPct !== null) {
     const pct = primarySlotMeta.loadPct;
     if (currentE1RMExternal !== null && currentE1RMExternal > 0) {
+      // β Round B-α-1 — Lähde 1 -reitti tier 1/2/3:lle (L46 "A puhtaana"):
+      //   maxReps = targetReps + targetVx
+      //   expectedPct = 1 / (1 + maxReps/30)  (vRepsToExpectedPct)
+      //   kuorma = isBarbell ? sys × expectedPct : sys × expectedPct − BW
+      // Tier "special" (Heavy negative leuka, Board dippi) → säilyy nykyinen
+      // loadPct-kaava (in-session-kuorma). Fallback (primaryTier null) → vanha kaava.
+      // Brzycki/conservative rajattu pois eksplisiittisesti (L46).
+      let pctForResolve = pct;
+      let resolveSource = "loadPct";
+      if (typeof primaryTier === "number" && (primaryTier === 1 || primaryTier === 2 || primaryTier === 3)) {
+        const maxReps = targetReps + targetVx;
+        const expectedPct = vRepsToExpectedPct(maxReps);
+        if (expectedPct !== null) {
+          pctForResolve = expectedPct;
+          resolveSource = "vRepsToExpectedPct";
+        }
+      }
       // Lisäpainoliikkeet (BW-ank): kuorma = pct × (BW + extE1RM) − BW (system-pohjainen)
       // Tankoliikkeet (isBarbell): kuorma = pct × extE1RM (external == system, BW ei nouse tangon mukana)
       targetExternalLoad = roundToHalf(Math.max(0, isBarbell
-        ? currentE1RMSystem * pct
-        : currentE1RMSystem * pct - bodyweightKg));
-      trace("LOAD_PCT_RESOLVED", {}, { pct, currentE1RMSystem, currentE1RMExternal, isBarbell, targetExternalLoad },
-        `${(pct*100).toFixed(0)}% × ${isBarbell ? "ext" : "sys"} e1RM (${(isBarbell ? currentE1RMExternal : currentE1RMSystem).toFixed(1)} kg)${isBarbell ? "" : " − BW"} = ${targetExternalLoad} kg`);
+        ? currentE1RMSystem * pctForResolve
+        : currentE1RMSystem * pctForResolve - bodyweightKg));
+      trace("LOAD_PCT_RESOLVED", {}, { pct, pctForResolve, resolveSource, primaryTier, targetReps, targetVx, currentE1RMSystem, currentE1RMExternal, isBarbell, targetExternalLoad },
+        `${(pctForResolve*100).toFixed(0)}% × ${isBarbell ? "ext" : "sys"} e1RM (${(isBarbell ? currentE1RMExternal : currentE1RMSystem).toFixed(1)} kg)${isBarbell ? "" : " − BW"} = ${targetExternalLoad} kg [src: ${resolveSource}, tier: ${primaryTier ?? "fallback"}]`);
 
       // v4.35.0 — Eliittitason progressio: yksi funktio päättää kuorman.
       //
@@ -4317,14 +4408,34 @@ async function recommend(options = {}) {
           primaryMovementName &&
           slot.defaultMovementName === primaryMovementName) {
         // v4.51.x loadpct-fix: sessionEffectiveE1RM on system-pohjainen → pct × system − BW non-barbell.
+        // β Round B-α-1: tier 1/2/3 → Lähde 1 -reitti (vRepsToExpectedPct(reps+Vx)).
+        // Tier "special" tai fallback → vanha loadPct-kaava.
         const slotIsBarbellA = slot.isBarbell === true;
+        const slotMovementA = primarySlotMeta?.defaultMovementName === slot.defaultMovementName
+          ? primaryMovement
+          : (slot.defaultMovementName ? allMovementsForTier.find(m => m.name === slot.defaultMovementName) : null);
+        let slotTierA = null;
+        if (slotMovementA && slotMovementA.tier !== undefined) {
+          try { slotTierA = resolveTier(slotMovementA, mesocycle); }
+          catch (e) { slotTierA = null; }
+        }
+        let slotPctForResolveA = slot.loadPct;
+        let slotResolveSourceA = "loadPct";
+        if (typeof slotTierA === "number" && (slotTierA === 1 || slotTierA === 2 || slotTierA === 3)) {
+          const slotMaxReps = (slot.reps ?? 0) + (slot.targetVx ?? 0);
+          const slotExpectedPct = vRepsToExpectedPct(slotMaxReps);
+          if (slotExpectedPct !== null) {
+            slotPctForResolveA = slotExpectedPct;
+            slotResolveSourceA = "vRepsToExpectedPct";
+          }
+        }
         slot.resolvedLoadKg = roundToHalf(Math.max(0, slotIsBarbellA
-          ? sessionEffectiveE1RM * slot.loadPct
-          : sessionEffectiveE1RM * slot.loadPct - bodyweightKg));
+          ? sessionEffectiveE1RM * slotPctForResolveA
+          : sessionEffectiveE1RM * slotPctForResolveA - bodyweightKg));
         trace("SLOT_LOAD_RESOLVED",
           { slotRole: slot.role, slotMovement: slot.defaultMovementName },
-          { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct, sessionE1RM: sessionEffectiveE1RM.toFixed(1), isBarbell: slotIsBarbellA },
-          `${slot.role} ${slot.defaultMovementName}: ${(slot.loadPct*100).toFixed(0)}% × ${slotIsBarbellA ? "ext" : "sys"} e1RM (${sessionEffectiveE1RM.toFixed(1)} kg)${slotIsBarbellA ? "" : " − BW"} = ${slot.resolvedLoadKg} kg (primary-rate-limit säteilee)`);
+          { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct, pctForResolve: slotPctForResolveA, resolveSource: slotResolveSourceA, tier: slotTierA, sessionE1RM: sessionEffectiveE1RM.toFixed(1), isBarbell: slotIsBarbellA },
+          `${slot.role} ${slot.defaultMovementName}: ${(slotPctForResolveA*100).toFixed(0)}% × ${slotIsBarbellA ? "ext" : "sys"} e1RM (${sessionEffectiveE1RM.toFixed(1)} kg)${slotIsBarbellA ? "" : " − BW"} = ${slot.resolvedLoadKg} kg [src: ${slotResolveSourceA}, tier: ${slotTierA ?? "fallback"}, primary-rate-limit säteilee]`);
         continue;
       }
 
@@ -7263,6 +7374,9 @@ export {
   e1rmExternal,
   e1rmAccessory,
   targetLoadFromE1RM,
+  vRepsToExpectedPct,
+  resolveTier,
+  tier1Or2,
   // Baseline
   computeBaseline,
   classifyReadinessZ,

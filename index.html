@@ -4730,7 +4730,26 @@ function recordVk14Decision(choice, rationale = "") {
 // not-eligible = piilossa (ei näytetä mitään, ei häiritse normaalia UI:ta)
 function renderVBTStatusChip() {
   const vbt = state.recommendation?.vbtStatus;
-  if (!vbt || vbt.status === "not-eligible") return "";
+  // β Round B-α-1: tarkista myös onko Lähde 1 -reitti aktiivinen
+  // (LOAD_PCT_RESOLVED.resolveSource === "vRepsToExpectedPct"). Jos VBT
+  // ei ole eligible mutta Lähde 1 on aktiivinen, näytä β-laskettu-chip
+  // (R1 viestintä: Lähde 1:n tarkkuusrajoitus elite-1-3 rep -alueella).
+  const traces = state.recommendation?.traces || [];
+  const loadPctTrace = traces.find(t => t.ruleId === "LOAD_PCT_RESOLVED");
+  const isBetaSource1 = loadPctTrace?.after?.resolveSource === "vRepsToExpectedPct";
+
+  if (!vbt || vbt.status === "not-eligible") {
+    if (isBetaSource1) {
+      const tier = loadPctTrace.after.primaryTier;
+      const maxReps = (loadPctTrace.after.targetReps ?? 0) + (loadPctTrace.after.targetVx ?? 0);
+      const pctNum = loadPctTrace.after.pctForResolve;
+      const pctStr = typeof pctNum === "number" ? `${(pctNum * 100).toFixed(1)}%` : "n/a";
+      const tooltip = `Lähde 1 -reitti: V/reps → odotettu %1RM (Epley-Vara). Tier ${tier}, max-reps ${maxReps} → ${pctStr} sys-1RM. ` +
+        `Tarkkuus ±15% elite-1-3 rep -alueella; tarkkuus paranee Lähde 2:n primer-aktivaatiossa (Round B-α-2:n jälkeen).`;
+      return `<span class="chip chip-acc" title="${tooltip}" style="font-size:10px;padding:3px 8px">📐 β-laskettu</span>`;
+    }
+    return "";
+  }
   // v4.34.33 BUG-FIX 5.4: deferred-tila näkyy "VBT viivästetty" -chipinä — käyttäjä tietää
   // että VBT-data on ok mutta plan-based on aktivoitu (suunnitelma-uskollisuus voittaa).
   const isPromoted = vbt.status === "promoted";

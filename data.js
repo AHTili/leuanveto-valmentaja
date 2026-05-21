@@ -147,213 +147,222 @@ function isIsolationMovement(movementCategory) {
 }
 
 // ── Preset movements (40+ across all categories) ──
+// β Round B-α-1: tier-kenttä per movement-record (L48 ratifiointi).
+// number (1/2/3) | function(mesocycle) | "special".
+// MU-kontekstuaalinen funktio: Taso 1 streetlifting_16w-mesossa, Taso 3 muualla.
 const PRESET_MOVEMENTS = [
   // ─── Primary ───
-  { name: "Lisäpainoleuanveto", category: "vertikaaliveto", isPrimary: true, isPreset: true, isCompetitionLift: true, loadType: "system" },
+  { name: "Lisäpainoleuanveto", category: "vertikaaliveto", isPrimary: true, isPreset: true, isCompetitionLift: true, loadType: "system", tier: 1 },
   // ─── Vertical pull ───
-  { name: "Ylätalja", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "Lat pulldown", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "Pullover kone", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "Leuanveto (kehonpaino)", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "Ylätalja neutraaliote", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "Single-arm lat pulldown", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Ylätalja", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Lat pulldown", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Pullover kone", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Leuanveto (kehonpaino)", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Ylätalja neutraaliote", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Single-arm lat pulldown", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
   // ─── Horizontal pull ───
-  { name: "Penkkiveto", category: "horisontaaliveto", isPrimary: false, isPreset: true },
-  { name: "Alatalja", category: "horisontaaliveto", isPrimary: false, isPreset: true },
-  { name: "Seated row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
-  { name: "Cable row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
-  { name: "T-bar row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
-  { name: "Chest-supported row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
-  { name: "Kulmasoutu käsipainot", category: "horisontaaliveto", isPrimary: false, isPreset: true },
-  { name: "Seal row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
-  { name: "Face pull", category: "horisontaaliveto", isPrimary: false, isPreset: true },
+  { name: "Penkkiveto", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Alatalja", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Seated row", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Cable row", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "T-bar row", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Chest-supported row", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Kulmasoutu käsipainot", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Seal row", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Face pull", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 3 },
   // ─── Bicep flexion ───
-  { name: "Hauiskääntö tanko", category: "hauisfleksio", isPrimary: false, isPreset: true },
-  { name: "Hauiskääntö käsipainot", category: "hauisfleksio", isPrimary: false, isPreset: true },
-  { name: "Hammer curl", category: "hauisfleksio", isPrimary: false, isPreset: true },
-  { name: "Preacher curl", category: "hauisfleksio", isPrimary: false, isPreset: true },
-  { name: "Incline curl", category: "hauisfleksio", isPrimary: false, isPreset: true },
-  { name: "Spider curl", category: "hauisfleksio", isPrimary: false, isPreset: true },
-  { name: "Cable curl", category: "hauisfleksio", isPrimary: false, isPreset: true },
-  { name: "Bayesian curl", category: "hauisfleksio", isPrimary: false, isPreset: true },
+  { name: "Hauiskääntö tanko", category: "hauisfleksio", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Hauiskääntö käsipainot", category: "hauisfleksio", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Hammer curl", category: "hauisfleksio", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Preacher curl", category: "hauisfleksio", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Incline curl", category: "hauisfleksio", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Spider curl", category: "hauisfleksio", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Cable curl", category: "hauisfleksio", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Bayesian curl", category: "hauisfleksio", isPrimary: false, isPreset: true, tier: 3 },
   // ─── Vertical push ───
-  { name: "Pystypunnerrus", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Shoulder press laite", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Pystypunnerrus käsipainot", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Sivunosto", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Lateral raise kone", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Pystypunnerrus", category: "vertikaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Shoulder press laite", category: "vertikaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Pystypunnerrus käsipainot", category: "vertikaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Sivunosto", category: "vertikaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Lateral raise kone", category: "vertikaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   // v4.34.3: Anterior-stabilizer-accessoryt dippi-spesifin oirekuvan ratkaisuun (Andersen 2014, Kim 2025).
   // Half-kneeling KB Bottoms-Up Press = subscap + SA + RC sequencing pakottaa anterior-stabilizers-koordinaatioon
   // matalalla kuormalla. Sijoitettu vertikaalityöntöön koska kuorma menee yläspäin (vrt OHP).
-  { name: "Half-kneeling KB bottoms-up press", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Half-kneeling KB bottoms-up press", category: "vertikaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   // v4.34.14: Owen Gayle (winningstrength) cable-variantti shoulder stabilizers -työhön
   // streetlifting-spesifisti. Korvaa KB BUP:in atleeteille joilla ei ole kahvakuulaa.
-  { name: "Half-kneeling cable OHP", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Half-kneeling cable OHP", category: "vertikaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   // v4.34.14: Half Turkish Get-up — selältä kyljelle DB extended overhead. Owen Gayle:n
   // shoulder stabilizer + dippi-spesifi tukiliike. Olkapään asento-stabilointi kuormalla
   // koko liikeradan yli — täydentää horisontaalia push-volyymiä loaded scapular control:lla.
-  { name: "Half Turkish Get-up (DB)", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Half Turkish Get-up (DB)", category: "vertikaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   // v4.34.3: SA + LT priming. Push-up plus = SA 50-80% MVIC (Park & Hwang 2019).
-  { name: "Push-up plus", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Push-up plus", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   // v4.34.3: Loaded GH mobility — SA 37%, LT 21%, UT 18% MVIC (Caravan 2018, Tarpada 2014).
-  { name: "Half-kneeling KB armbar", category: "muu", isPrimary: false, isPreset: true },
+  { name: "Half-kneeling KB armbar", category: "muu", isPrimary: false, isPreset: true, tier: 3 },
   // v4.34.4: Owen Gayle (owen_winningstrength) streetlifting-spesifit shoulder-stabilizer-accessoryt.
   // Powell Raise = Owenin "top choice" — supraspinatus + posterior delt + lower trap + serratus.
   // Trap 3 Raise = Owenin structural balance test (8 reps × 12.5% × dip 1RM) + accessory.
   // Kohdistuvat scapular upward rotation + posterior tilt -koordinaatioon, jonka heikkous
   // = scapular depression dipissä → impingement + AB-IGHL stress → atleetin oirekuva.
-  { name: "Powell Raise (DB, side-lying)", category: "muu", isPrimary: false, isPreset: true },
-  { name: "Powell Raise (kaapeli, seisten)", category: "muu", isPrimary: false, isPreset: true },
-  { name: "Trap 3 Raise", category: "muu", isPrimary: false, isPreset: true },
+  { name: "Powell Raise (DB, side-lying)", category: "muu", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Powell Raise (kaapeli, seisten)", category: "muu", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Trap 3 Raise", category: "muu", isPrimary: false, isPreset: true, tier: 3 },
   // ─── Horizontal push ───
-  { name: "Penkkipunnerrus", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Chest press", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Pec deck", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Vinopenkkipunnerrus", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Cable fly", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Dippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Penkkipunnerrus", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 1 },
+  { name: "Chest press", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Pec deck", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Vinopenkkipunnerrus", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Cable fly", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Dippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   // v4.34.2: Dippilaite (plate-loaded) — vipuvarsidippilaite levypainoilla. Hyödyllinen
   // accessory-versio dipistä jossa kuorma asetellaan tarkasti, ROM on rajattu, ja
   // alkukulman riski (kylmä RC + pec extended) on pienempi kuin tankodipissä.
-  { name: "Dippilaite (plate-loaded)", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Dippilaite (plate-loaded)", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   // ─── Tricep extension ───
-  { name: "Tricep pushdown", category: "ojentajaekstensio", isPrimary: false, isPreset: true },
-  { name: "French press", category: "ojentajaekstensio", isPrimary: false, isPreset: true },
-  { name: "Overhead tricep ext", category: "ojentajaekstensio", isPrimary: false, isPreset: true },
-  { name: "Skull crusher", category: "ojentajaekstensio", isPrimary: false, isPreset: true },
-  { name: "Kickback", category: "ojentajaekstensio", isPrimary: false, isPreset: true },
+  { name: "Tricep pushdown", category: "ojentajaekstensio", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "French press", category: "ojentajaekstensio", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Overhead tricep ext", category: "ojentajaekstensio", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Skull crusher", category: "ojentajaekstensio", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Kickback", category: "ojentajaekstensio", isPrimary: false, isPreset: true, tier: 3 },
   // ─── Core ───
-  { name: "Ab crunch", category: "core", isPrimary: false, isPreset: true },
-  { name: "Cable crunch", category: "core", isPrimary: false, isPreset: true },
-  { name: "Hanging leg raise", category: "core", isPrimary: false, isPreset: true },
-  { name: "Ab wheel rollout", category: "core", isPrimary: false, isPreset: true },
-  { name: "Pallof press", category: "core", isPrimary: false, isPreset: true },
+  { name: "Ab crunch", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Cable crunch", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Hanging leg raise", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Ab wheel rollout", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Pallof press", category: "core", isPrimary: false, isPreset: true, tier: 3 },
   // v4.27.18: anti-rotation + grip-endurance + hollow variants
-  { name: "Pallof press hold", category: "core", isPrimary: false, isPreset: true },
-  { name: "Landmine anti-rotation", category: "core", isPrimary: false, isPreset: true },
-  { name: "Bird dog", category: "core", isPrimary: false, isPreset: true },
-  { name: "Hollow body hold", category: "core", isPrimary: false, isPreset: true },
-  { name: "L-sit hold", category: "core", isPrimary: false, isPreset: true },
-  { name: "Farmer carry", category: "core", isPrimary: false, isPreset: true },
-  { name: "Heavy farmer carry", category: "core", isPrimary: false, isPreset: true },
-  { name: "Heavy dead hang", category: "core", isPrimary: false, isPreset: true },
+  { name: "Pallof press hold", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Landmine anti-rotation", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Bird dog", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Hollow body hold", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "L-sit hold", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Farmer carry", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Heavy farmer carry", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Heavy dead hang", category: "core", isPrimary: false, isPreset: true, tier: 3 },
   // ─── Lower body ───
-  { name: "Jalkaprässi", category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Kyykky", category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Maastaveto", category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Leg curl", category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Leg extension", category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Bulgarian split squat", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Jalkaprässi", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Kyykky", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Maastaveto", category: "alaraaja", isPrimary: false, isPreset: true, tier: 1 },
+  { name: "Leg curl", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Leg extension", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Bulgarian split squat", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
   // v4.48.0: yhden jalan jalkaprässi unilateraalinen quad/glute-isolaatio
-  { name: "Yhden jalan jalkaprässi", category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Hip thrust", category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Pohjenosto", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Yhden jalan jalkaprässi", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Hip thrust", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Pohjenosto", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
   // v4.27.18: calf-isolation variants (Pohkeenkohotus = yleisempi suomenkielinen termi vs Pohjenosto)
-  { name: "Pohkeenkohotus", category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Standing calf raise", category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Seated calf raise", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Pohkeenkohotus", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Standing calf raise", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Seated calf raise", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
   // ─── Other / grip ───
-  { name: "Rannekoukistus", category: "muu", isPrimary: false, isPreset: true },
-  { name: "Wrist roller", category: "muu", isPrimary: false, isPreset: true },
-  { name: "Dead hang", category: "muu", isPrimary: false, isPreset: true },
-  { name: "Shrug", category: "muu", isPrimary: false, isPreset: true },
+  { name: "Rannekoukistus", category: "muu", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Wrist roller", category: "muu", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Dead hang", category: "muu", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Shrug", category: "muu", isPrimary: false, isPreset: true, tier: 3 },
   // ─── Streetlifting competition lifts ───
-  { name: "Muscle-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, isCompetitionLift: true, loadType: "system" },
-  { name: "Lisäpainodippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true, isCompetitionLift: true, loadType: "system" },
-  { name: "Takakyykky", category: "alaraaja", isPrimary: false, isPreset: true, isCompetitionLift: true, loadType: "external" },
+  // Muscle-up tier kontekstuaalinen: Taso 1 streetlifting_16w-mesossa, Taso 3 muualla (L48 B.i).
+  { name: "Muscle-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, isCompetitionLift: true, loadType: "system", tier: (meso) => meso && meso.type === "streetlifting_16w" ? 1 : 3 },
+  { name: "Lisäpainodippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true, isCompetitionLift: true, loadType: "system", tier: 2 },
+  { name: "Takakyykky", category: "alaraaja", isPrimary: false, isPreset: true, isCompetitionLift: true, loadType: "external", tier: 1 },
   // ─── Streetlifting-spesifiset tukiliikkeet (v4.11) ───
-  { name: "Leuanveto chest-to-bar", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "False grip pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "False grip row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
-  { name: "Archer pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "Scapular pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "Band-assisted muscle-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "Räjähtävä leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Leuanveto chest-to-bar", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "False grip pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "False grip row", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Archer pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Scapular pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Band-assisted muscle-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  // Räjähtävä leuka: tier 2 cross-reference Lisäpainoleuanveto-e1RM:iin + V4-stop-rule UI-erityislogiikka (L47 A.i).
+  { name: "Räjähtävä leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 2 },
   // v4.29.0 (P3): ME-rotaatio yläosalla — vaihtuvat pää-leuka-variantit foundation/strength-blokeille
-  { name: "Vastaote-leuanveto", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "Paused pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Vastaote-leuanveto", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Paused pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 2 },
   // v4.30.0: Tempo pull-up (ei grippi-spesifi) korvaa Fat-bar pull-upin ME-rotaation
   // viim. vaiheessa — käyttäjä on meritoitunut leuanvetäjä, grippi ei ole rajoittava.
-  { name: "Tempo pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "Fat-bar pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  // v4.29.0 (P4): Overload-liikkeet — eliitti­tason heikon kohdan ylikuormitus
-  { name: "Heavy negative leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  { name: "Board dippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Tempo pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Fat-bar pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  // v4.29.0 (P4): Overload-liikkeet — eliitti­tason heikon kohdan ylikuormitus.
+  // Heavy negative leuka + Board dippi: tier "special" — supramaksimi-overload, kuormat
+  // ratkaistaan in-session, ei e1RM/L-V-pohjalta (L48 ratifiointi C.iii).
+  { name: "Heavy negative leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: "special" },
+  { name: "Board dippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: "special" },
   // v4.31.0: BW dippi — käytetään lähinnä warmup/neural-primer-rooleissa.
   // HUOM: kuormitetulle dippaajalle (kuten käyttäjä, penkki 180 kg) BW on V8–V10,
   // ei sovellu varsinaisena tertiary-primer-roolina (V5). Tertiary käyttää
   // Lisäpainodippiä ~50 % 1RM @ V5.
-  { name: "BW dippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Pendlay row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
-  { name: "Weighted inverted row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
+  { name: "BW dippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Pendlay row", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Weighted inverted row", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 2 },
   // v4.28.2: Ring dip poistettu — kalustorajoite (atleetilla ei ole renkaita).
   // Korvattu Tempo pause dipillä mu-dip-support foundation-vaiheessa.
-  { name: "Close-grip dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Straight bar dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Russian dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Close-grip bench", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "L-sit hold", category: "core", isPrimary: false, isPreset: true },
-  { name: "Hollow body hold", category: "core", isPrimary: false, isPreset: true },
-  { name: "Front-foot elevated split squat", category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Paused squat", category: "alaraaja", isPrimary: false, isPreset: true },
-  // v4.27.20: Etukyykky (suomenkielinen) — laDay fsWeek default foundation/strength vaiheissa
-  { name: "Etukyykky", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Close-grip dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Straight bar dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Russian dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Close-grip bench", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "L-sit hold", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Hollow body hold", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Front-foot elevated split squat", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Paused squat", category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  // v4.27.20: Etukyykky (suomenkielinen) — laDay fsWeek default foundation/strength vaiheissa.
+  // Etukyykky = Front squat (sama liike, suomi/englanti-nimi). Itsenäinen Taso 2 omalla cal-arvolla
+  // (L47 vastaus 4): EI cross-reference Takakyykky-e1RM:iin koska painot eroavat liian paljon.
+  { name: "Etukyykky", category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
   // v4.34.14: EZ-tanko declined-penkkipunnerrus — käyttäjän gym-spesifi laite + tanko.
   // Klassinen dippi-tukiliike: sama kuormavektori kuin dipissä (alas + ulos rinnan tasolle),
   // EZ-tanko vähentää kyynärpään ulkokierto-stressiä vs suora tanko. Triceps-dominantti.
-  { name: "Decline penkkipunnerrus (EZ-tanko)", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Decline penkkipunnerrus (EZ-tanko)", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
   // ─── Alaraaja-variantit (v4.27.1) — maaveto/kyykky-spesifiset tukiliikkeet
   //     räätälöityyn ohjelmageneraattoriin. COMPLEMENT/SECONDARY-rooleihin alaraaja-primaryille.
-  { name: "Romanian DL",       category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Deficit DL",        category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Front squat",       category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Pin squat",         category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Walking lunge",     category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Romanian DL",       category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Deficit DL",        category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Front squat",       category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Pin squat",         category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Walking lunge",     category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
   // ─── Lift-spesifit variantit (v4.27.2) — primaryn nimen perusteella ohjautuvat
   //     tukiliikkeet. Maaveto-primaryille DL-spesifit; penkki-primaryille pause/CGBP;
   //     OHP-primaryille push press / Z-press / Seated.
-  // DL-spesifit
-  { name: "Block pull",        category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Paused DL",         category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Snatch-grip DL",    category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Good morning",      category: "alaraaja", isPrimary: false, isPreset: true },
-  // Kyykky-spesifit
-  { name: "Safety bar squat",  category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Box squat",         category: "alaraaja", isPrimary: false, isPreset: true },
-  // Penkki-spesifit
-  { name: "Paused bench press",    category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Spoto press",           category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Larsen press",          category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Board press",           category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  // OHP-spesifit
-  { name: "Push press",        category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  // DL-spesifit (tier 2 cross-reference Maastaveto-e1RM:iin)
+  { name: "Block pull",        category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Paused DL",         category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Snatch-grip DL",    category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Good morning",      category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  // Kyykky-spesifit (tier 2 cross-reference Takakyykky-e1RM:iin)
+  { name: "Safety bar squat",  category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Box squat",         category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  // Penkki-spesifit (tier 2 cross-reference Penkkipunnerrus-e1RM:iin)
+  { name: "Paused bench press",    category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Spoto press",           category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Larsen press",          category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Board press",           category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
+  // OHP-spesifit (tier 2 itsenäinen, L47 vastaus 11)
+  { name: "Push press",        category: "vertikaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
   // v4.49.0 (Track B Vaihe 2D-γ): Westside ME-Upper -liikkeet + GZCL T2 -variantit + Sheiko accessory
-  { name: "Floor press",       category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Pin press",         category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "JM press",          category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Wide-grip bench",   category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Long pause bench",  category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Rack pull",         category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Glute-Ham Raise",   category: "alaraaja", isPrimary: false, isPreset: true },
-  { name: "Hyperextensio",     category: "core",     isPrimary: false, isPreset: true },
-  { name: "Dumbbell fly",      category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Power shrug",       category: "muu",      isPrimary: false, isPreset: true },
-  { name: "Seated OHP",        category: "vertikaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Z-press",           category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Floor press",       category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Pin press",         category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "JM press",          category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Wide-grip bench",   category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Long pause bench",  category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Rack pull",         category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Glute-Ham Raise",   category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Hyperextensio",     category: "core",     isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Dumbbell fly",      category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Power shrug",       category: "muu",      isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Seated OHP",        category: "vertikaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Z-press",           category: "vertikaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
   // ─── Dippi-prehab-variantit (v4.27.4) — sternum/pec-insertion-kestävyys
   //     ROM-kapasiteetti + stretch-hypertrofia. Käytetään foundation-blokissa (vk 1–4)
   //     dippi-päivän pushAccPrehab-tukiliikepaketissa kuormituksen nosto ennen voima-blokkia.
-  { name: "Tempo pause dippi",      category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Incline dumbbell press", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Dumbbell pullover",      category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Incline deficit pushup", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Tempo pause dippi",      category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Incline dumbbell press", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Dumbbell pullover",      category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Incline deficit pushup", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   // v4.28.0: dip-eccentric-bw (LA skill-vaihe) ja Nordic curl (hamstring-isolation strength/intensity)
-  { name: "BW eksentrinen dippi",   category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  { name: "Nordic curl",            category: "alaraaja",           isPrimary: false, isPreset: true },
+  { name: "BW eksentrinen dippi",   category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Nordic curl",            category: "alaraaja",           isPrimary: false, isPreset: true, tier: 3 },
   // v4.28.0: MU skill-vaiheen strukturoidut slotit (laDay isSkill-haara)
-  { name: "Muscle-up eksentrinen",  category: "vertikaaliveto",     isPrimary: false, isPreset: true },
+  { name: "Muscle-up eksentrinen",  category: "vertikaaliveto",     isPrimary: false, isPreset: true, tier: 3 },
   // v4.28.0: Tempo squat + Kilpakyykky kevyt (tiDay backoff block-progression L1)
-  { name: "Tempo squat",            category: "alaraaja",           isPrimary: false, isPreset: true },
+  { name: "Tempo squat",            category: "alaraaja",           isPrimary: false, isPreset: true, tier: 2 },
 ];
 
 // ─── Movement descriptions (v4.12) ───────────────────────────────
