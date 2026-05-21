@@ -1481,21 +1481,71 @@ function dbPutBulk(storeName, items) {
 // (lisää vain puuttuvat nimet, ei muokkaa olemassa olevia rivejä).
 async function ensureNewPresetMovements() {
   const existingMovements = await dbGetAll(STORES.movements);
-  if (existingMovements.length === 0) return { added: 0 }; // seedPresets hoitaa first-install
+  if (existingMovements.length === 0) return { added: 0, migrated: 0 }; // seedPresets hoitaa first-install
+
+  // ── 1. Add missing preset movements (uudet liikkeet myöhemmistä versioista) ──
   const existingNames = new Set(existingMovements.map(m => m.name));
   const missing = PRESET_MOVEMENTS.filter(p => !existingNames.has(p.name));
-  if (missing.length === 0) return { added: 0 };
-  const toAdd = missing.map(m => ({
-    movementId: uid(),
-    name: m.name,
-    category: m.category,
-    isPrimary: m.isPrimary,
-    countsAsPullVolume: PULL_VOLUME_CATEGORIES.has(m.category),
-    isPreset: true,
-    tags: [],
-  }));
-  await dbPutBulk(STORES.movements, toAdd);
-  return { added: toAdd.length, names: toAdd.map(m => m.name) };
+  const toAdd = missing.map(m => {
+    const base = {
+      movementId: uid(),
+      name: m.name,
+      category: m.category,
+      isPrimary: m.isPrimary,
+      countsAsPullVolume: PULL_VOLUME_CATEGORIES.has(m.category),
+      isPreset: true,
+      tags: [],
+    };
+    // β Round B-α-1.11: kopioi metadata-kentät PRESET_MOVEMENTS:ista jotta engine
+    // tunnistaa kilpaliikkeet (isCompetitionLift), system-load (loadType) ja
+    // tier:n (Lähde 1 -reititys Tier 1/2/3:lle).
+    if (m.isCompetitionLift !== undefined) base.isCompetitionLift = m.isCompetitionLift;
+    if (m.loadType !== undefined) base.loadType = m.loadType;
+    // tier voi olla number, function tai "special". Funktioita ei voi sarjallistaa
+    // IndexedDB:hen (DataCloneError) → skipataan funktio-tieriä (Muscle-up).
+    // resolveTier:n try/catch kattaa fallbackin slot.loadPct:hen.
+    if (m.tier !== undefined && typeof m.tier !== "function") base.tier = m.tier;
+    return base;
+  });
+  if (toAdd.length > 0) {
+    await dbPutBulk(STORES.movements, toAdd);
+  }
+
+  // ── 2. β Round B-α-1.11: Migrate existing movement records — täytä puuttuvat
+  //       metadata-kentät PRESET_MOVEMENTS:in pohjalta. Idempotentti:
+  //       jos kenttä on jo asetettu, ei kosketa. Korjaa Round B-α-1:n DB-skeema-aukon
+  //       jossa tier-kenttä lisättiin PRESET_MOVEMENTS:iin mutta ei stored-recordeihin
+  //       → resolveTier throwasi → Lähde 1 (V/reps → expected %1RM) ei aktivoitunut.
+  const presetByName = new Map(PRESET_MOVEMENTS.map(p => [p.name, p]));
+  const toUpdate = [];
+  for (const existing of existingMovements) {
+    const preset = presetByName.get(existing.name);
+    if (!preset) continue;
+    let needsUpdate = false;
+    const updated = { ...existing };
+    if (updated.isCompetitionLift === undefined && preset.isCompetitionLift !== undefined) {
+      updated.isCompetitionLift = preset.isCompetitionLift;
+      needsUpdate = true;
+    }
+    if (updated.loadType === undefined && preset.loadType !== undefined) {
+      updated.loadType = preset.loadType;
+      needsUpdate = true;
+    }
+    if (updated.tier === undefined && preset.tier !== undefined && typeof preset.tier !== "function") {
+      updated.tier = preset.tier;
+      needsUpdate = true;
+    }
+    if (needsUpdate) toUpdate.push(updated);
+  }
+  if (toUpdate.length > 0) {
+    await dbPutBulk(STORES.movements, toUpdate);
+  }
+
+  return {
+    added: toAdd.length,
+    migrated: toUpdate.length,
+    names: toAdd.length > 0 ? toAdd.map(m => m.name) : undefined,
+  };
 }
 
 // ── Initialization: seed preset movements + variants ──
@@ -1503,15 +1553,23 @@ async function seedPresets() {
   const existingMovements = await dbGetAll(STORES.movements);
   if (existingMovements.length > 0) return; // Already seeded
 
-  const movements = PRESET_MOVEMENTS.map((m) => ({
-    movementId: uid(),
-    name: m.name,
-    category: m.category,
-    isPrimary: m.isPrimary,
-    countsAsPullVolume: PULL_VOLUME_CATEGORIES.has(m.category),
-    isPreset: true,
-    tags: [],
-  }));
+  const movements = PRESET_MOVEMENTS.map((m) => {
+    const base = {
+      movementId: uid(),
+      name: m.name,
+      category: m.category,
+      isPrimary: m.isPrimary,
+      countsAsPullVolume: PULL_VOLUME_CATEGORIES.has(m.category),
+      isPreset: true,
+      tags: [],
+    };
+    // β Round B-α-1.11: kopioi metadata PRESET_MOVEMENTS:ista (sama kuin
+    // ensureNewPresetMovements). Funktio-tieriä ei sarjallisteta IndexedDB:hen.
+    if (m.isCompetitionLift !== undefined) base.isCompetitionLift = m.isCompetitionLift;
+    if (m.loadType !== undefined) base.loadType = m.loadType;
+    if (m.tier !== undefined && typeof m.tier !== "function") base.tier = m.tier;
+    return base;
+  });
 
   await dbPutBulk(STORES.movements, movements);
 

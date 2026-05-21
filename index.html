@@ -1264,6 +1264,10 @@ async function init() {
     if (result.added > 0) {
       console.info(`[LeVe] ✓ Uudet preset-liikkeet lisätty: ${result.names.join(", ")}`);
     }
+    // β Round B-α-1.11: lokita metadata-migraatio (tier/loadType/isCompetitionLift)
+    if (result.migrated > 0) {
+      console.info(`[LeVe] ✓ Movement-metadata migraatio: ${result.migrated} liikettä päivitetty (tier/loadType/isCompetitionLift)`);
+    }
   } catch (e) {
     console.warn("[LeVe] ensureNewPresetMovements failed:", e);
   }
@@ -7640,7 +7644,7 @@ function renderMesocycle() {
   // β Round B-α-1.9: näkyvä versio-indikaattori + bullet-merkki fallback-seedissä
   // jotta voidaan visuaalisesti erottaa "vanha cached koodi" vs "uusi koodi + null
   // fallback" tilanteet. Sync MANUAALISESTI sw.js:n APP_VERSION:in kanssa.
-  const _syRenderAppVersion = "4.52.4";
+  const _syRenderAppVersion = "4.52.5";
   const _syRenderBW = state.settings?.bodyweightKg || 91;
   const _syRenderE1rmCache = new Map();
   const _syRenderComputeKg = (slot) => {
@@ -7649,15 +7653,19 @@ function renderMesocycle() {
     if (!slot.loadPct || slot.loadPct <= 0) return null;
     const movement = state.movements?.find(m => m.name === slot.defaultMovementName);
     if (!movement) return null;
+    // β Round B-α-1.10 bug-fix: tässä koodikannassa stored movements -recordit
+    // käyttävät kenttänimeä `movementId` (ei `id`). Aiempi virheellinen `movement.id`
+    // → undefined → cache-miss + tyhjä sets-filter → e1rmResult null → fallback
+    // seedI:in kaikilla sloteilla.
     let e1rmResult;
-    if (_syRenderE1rmCache.has(movement.id)) {
-      e1rmResult = _syRenderE1rmCache.get(movement.id);
+    if (_syRenderE1rmCache.has(movement.movementId)) {
+      e1rmResult = _syRenderE1rmCache.get(movement.movementId);
     } else {
-      const mSets = (state.allSets || []).filter(s => s.movementId === movement.id);
+      const mSets = (state.allSets || []).filter(s => s.movementId === movement.movementId);
       e1rmResult = mSets.length === 0
         ? null
         : computeMovementE1RMBest(mSets, state.sessions || [], meso, movement, _syRenderBW);
-      _syRenderE1rmCache.set(movement.id, e1rmResult);
+      _syRenderE1rmCache.set(movement.movementId, e1rmResult);
     }
     if (!e1rmResult || !e1rmResult.value || e1rmResult.value <= 0) return null;
     // Tier-pohjainen pct-resolve (Lähde 1 tier 1/2/3:lle, muuten slot.loadPct)
