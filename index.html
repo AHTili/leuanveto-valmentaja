@@ -7637,6 +7637,10 @@ function renderMesocycle() {
   // β Round B-α-1.8 Osa B: Sykli-näkymä runtime-laskenta future-päiville.
   // Korvaa "seed X kg" -näytön runtime-laskennalla nykyisestä e1RM:stä (L37-fix +
   // tier 1/2/3 → Lähde 1). Fallback seediin jos e1RM-historiaa ei ole.
+  // β Round B-α-1.9: näkyvä versio-indikaattori + bullet-merkki fallback-seedissä
+  // jotta voidaan visuaalisesti erottaa "vanha cached koodi" vs "uusi koodi + null
+  // fallback" tilanteet. Sync MANUAALISESTI sw.js:n APP_VERSION:in kanssa.
+  const _syRenderAppVersion = "4.52.4";
   const _syRenderBW = state.settings?.bodyweightKg || 91;
   const _syRenderE1rmCache = new Map();
   const _syRenderComputeKg = (slot) => {
@@ -7896,7 +7900,7 @@ function renderMesocycle() {
 
     <!-- 3. TULEVAT — seuraavat 14 pv (v4.30.4: klikattavissa auki) -->
     ${futureWorkouts.length > 0 ? `<div class="card">
-      <div class="card-title">📅 Seuraavat 14 päivää <span style="font-size:11px;font-weight:400;color:var(--muted)">— klikkaa avataksesi yksityiskohdat</span></div>
+      <div class="card-title">📅 Seuraavat 14 päivää <span style="font-size:9px;font-weight:400;opacity:0.4;letter-spacing:0.5px">v${_syRenderAppVersion}</span> <span style="font-size:11px;font-weight:400;color:var(--muted)">— klikkaa avataksesi yksityiskohdat</span></div>
       ${futureWorkouts.map(fw => {
         const primaryAndBackoff = fw.slots.filter(s => s.role === "primary" || s.role === "backoff" || ["warmup","opener","attempt2","attempt3"].includes(s.role));
         const accessories = fw.slots.filter(s => s.role === "accessory");
@@ -7908,7 +7912,7 @@ function renderMesocycle() {
           const _syKg = _syRenderComputeKg(s);
           const loadInfo = _syKg !== null
             ? (_syKg === 0 ? ` · BW` : ` · ~${_syKg} kg`)
-            : (s.suggestedLoadKg ? ` · seed ${s.suggestedLoadKg} kg` : (s.loadPct ? ` · ${Math.round(s.loadPct*100)} %` : ""));
+            : (s.suggestedLoadKg ? ` · seed• ${s.suggestedLoadKg} kg` : (s.loadPct ? ` · ${Math.round(s.loadPct*100)} %` : ""));
           return `<div class="flex-between" style="padding:2px 0;font-size:12px">
             <span class="muted">${icon} ${s.defaultMovementName}</span>
             <span class="muted">${s.sets}×${s.reps}${s.targetVx != null ? ` V${s.targetVx}` : ""}${loadInfo}</span>
@@ -7931,7 +7935,7 @@ function renderMesocycle() {
               const _syKg = _syRenderComputeKg(s);
               const loadInfo = _syKg !== null
                 ? (_syKg === 0 ? ` · BW` : ` · ~${_syKg} kg`)
-                : (s.suggestedLoadKg ? ` · seed ${s.suggestedLoadKg} kg` : (s.loadPct ? ` · ${Math.round(s.loadPct*100)} %` : ""));
+                : (s.suggestedLoadKg ? ` · seed• ${s.suggestedLoadKg} kg` : (s.loadPct ? ` · ${Math.round(s.loadPct*100)} %` : ""));
               return `<div class="flex-between" style="padding:3px 0;font-size:11px">
                 <span class="muted">• ${s.defaultMovementName}${s.note ? ` <span style="font-size:10px;opacity:0.7">(${s.note.slice(0, 50)}${s.note.length > 50 ? "..." : ""})</span>` : ""}</span>
                 <span class="muted">${s.sets}×${s.reps}${s.targetVx != null ? ` V${s.targetVx}` : ""}${loadInfo}</span>
@@ -14630,7 +14634,10 @@ if ("serviceWorker" in navigator) {
     _autoReloadTimer = setTimeout(() => applyUpdate(true), 1500);
   }
 
-  navigator.serviceWorker.register("sw.js").then(reg => {
+  // β Round B-α-1.9: updateViaCache: "none" ohittaa Chrome:n HTTP-cachen sw.js-pyynnöille.
+  // Korjaa Chrome-PWA:n sudenkuoppa, jossa cached sw.js esti uusien SW-versioiden löytymisen
+  // jopa 24 h ajaksi → reg.update() ei oikeasti tarkistanut palvelimelta.
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(reg => {
     // v4.34.37: tarkista päivitykset 30 s välein (oli 60 s) + heti rekisteröinnin jälkeen
     reg.update().catch(() => {});
     setInterval(() => reg.update().catch(() => {}), 30000);
