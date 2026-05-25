@@ -6946,6 +6946,8 @@ function generateGenericBlockTuningPackage(ctx) {
     ``,
     `## VASTAUKSESI MUOTO`,
     ``,
+    `LeVe AI tech stack: vanilla JavaScript (.js / .mjs), IndexedDB, PWA service worker — EI TypeScriptiä. Älä oleta src/-polkuja tai .ts/.tsx-tiedostoja \`claudeCodePromptHint\`-kentissä.`,
+    ``,
     `Anna 3 kategoriassa:`,
     `(A) **Sovellus-tason muutokset**: mitä atletti voi tehdä UI:ssa nyt`,
     `(B) **Rakenteelliset muutokset**: koodi-muutosehdotukset seuraavalle blokille`,
@@ -7120,6 +7122,8 @@ ${JSON.stringify(json, null, 2)}
 ═══════════════════════════════════════════════════════════════════
 TEHTÄVÄ:
 ═══════════════════════════════════════════════════════════════════
+
+LeVe AI tech stack: vanilla JavaScript (.js / .mjs), IndexedDB, PWA service worker — EI TypeScriptiä. Älä oleta src/-polkuja tai .ts/.tsx-tiedostoja \`claudeCodePromptHint\`-kentissä.
 
 Analysoi edellisen blokin (${block.prevBlock}, vk ${block.prevWeeks.join("-")}) suoritus
 ja ehdota seuraavan blokin (${block.nextBlock}, vk ${block.nextWeeks.join("-")})
@@ -7569,6 +7573,7 @@ ${JSON.stringify(json, null, 2)}
 \`\`\`
 
 ## Ohjeet
+- LeVe AI tech stack: vanilla JavaScript (.js / .mjs), IndexedDB, PWA service worker — EI TypeScriptiä. Älä oleta src/-polkuja tai .ts/.tsx-tiedostoja \`claudeCodePromptHint\`-kentissä.
 - Älä ehdota muutoksia jotka rikkovat käyttäjän nykyistä työkalua
 - Älä myöntäile — jos sykli oli puutteellinen, sano se
 - Erottele vakaa konsensus / aktiivinen debate / heuristiikka

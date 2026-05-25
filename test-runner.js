@@ -2466,6 +2466,91 @@ function testBlockTuningEmptyTrendsEncoding() {
     "B3-INT-T12 (neg-data): engineRuleFrequency on data-taulukko");
 }
 
+// β H-001 B4 (HANDOFF.md A5):
+// Tech-stack-rivi prompt-pohjissa. Verifioi että jokainen kolmesta AI Block
+// Tuning -prompt-pohjasta (buildAiPrompt streetlifting_16w, generic inline,
+// buildEndOfCyclePrompt) sisältää verbatim-tech-stack-tekstin.
+//
+// Mittari-ensin (docs/SELKARANKA.md kohta 6):
+//   tunnettu-positiivinen: prompt-pohja sisältää "vanilla JavaScript"
+//     + "EI TypeScriptiä" + "src/-polkuja" -merkkijonot (A5:n grep-ehto)
+//   tunnettu-negatiivinen: irrelevantti UI-string EI sisällä näitä
+//     (todistaa että assertio mittaa todellista esiintymää, ei vakio-trueta)
+function testTuningPromptTechStackLine() {
+  // A5 verbatim-vaadittu sanamuoto (HANDOFF.md A5 onnistumisen ehto):
+  const TECH_STACK_REQUIRED = "vanilla JavaScript (.js / .mjs), IndexedDB, PWA service worker — EI TypeScriptiä";
+  const NO_SRC_REQUIRED = "Älä oleta src/-polkuja tai .ts/.tsx-tiedostoja";
+
+  // ── Apu: rakenna minimal streetlifting_16w-mesocycle vk 4 -deload:lle ──
+  const mkSlMeso = () => ({
+    mesocycleId: "test-b4-sl-meso",
+    type: "streetlifting_16w",
+    startDateISO: "2026-01-05",
+    weekCount: 16,
+    weekDefs: Array.from({ length: 16 }, (_, i) => ({ week: i + 1, deltaPctBase: i === 3 ? -0.25 : 0.025 })),
+    weekPlans: Array.from({ length: 16 }, (_, i) => ({ week: i + 1, days: [] })),
+    streetliftingConfig: { calibration: { leukaExtKg: 85, dippiExtKg: 95, kyykkyExtKg: 185 }, competitionDate: "2026-08-22" },
+  });
+
+  // ── Tunnettu-pos 1: buildAiPrompt (streetlifting_16w) TEHTÄVÄ-osio ──
+  const slPkg = generateBlockTuningPackage({
+    mesocycle: mkSlMeso(), sessions: [], allSets: [], measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: [],
+  });
+  assert(!slPkg.error, "B4-T1 (sl pos): generateBlockTuningPackage onnistuu");
+  assert(slPkg.prompt.includes(TECH_STACK_REQUIRED),
+    `B4-T2 (sl pos): streetlifting_16w-prompt sisältää tech-stack-rivin '${TECH_STACK_REQUIRED}'`);
+  assert(slPkg.prompt.includes(NO_SRC_REQUIRED),
+    `B4-T3 (sl pos): streetlifting_16w-prompt sisältää src-ohjeen '${NO_SRC_REQUIRED}'`);
+  // Verifioi sijoittelu — tech-stack TEHTÄVÄ-osion sisällä
+  const slTehtavaIdx = slPkg.prompt.indexOf("TEHTÄVÄ:");
+  const slTechStackIdx = slPkg.prompt.indexOf(TECH_STACK_REQUIRED);
+  assert(slTehtavaIdx >= 0 && slTechStackIdx > slTehtavaIdx,
+    "B4-T4 (sl pos): tech-stack-rivi on TEHTÄVÄ-otsikon JÄLKEEN (sijoittelu oikein)");
+
+  // ── Tunnettu-pos 2: generic-funktio inline-prompt ──
+  // Käytä custom-mesotypeä jotta delegoituminen alkuperäiseen funktioon ei tapahdu
+  const customMeso = {
+    mesocycleId: "test-b4-custom",
+    type: "custom",
+    startDateISO: "2026-01-05",
+    weekCount: 4,
+    weekDefs: [{ week: 1, deltaPctBase: 0 }, { week: 2, deltaPctBase: 0.025 }, { week: 3, deltaPctBase: 0.05 }, { week: 4, deltaPctBase: -0.25 }],
+    weekPlans: Array.from({ length: 4 }, (_, i) => ({ week: i + 1, days: [{ dayOfWeek: 1, label: `Vk${i+1}`, dayType: "heavy",
+      slots: [{ role: "primary", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 4, reps: 6, targetVx: 3 }] }] })),
+    movementCfg: { "Penkkipunnerrus": { e1rmExternal: 130, dateISO: "2026-01-05", source: "manual-calibration" } },
+  };
+  const genericPkg = generateGenericBlockTuningPackage({
+    mesocycle: customMeso, sessions: [], allSets: [], measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 80 }, decisionTraces: [],
+  });
+  assert(!genericPkg.error, "B4-T5 (generic pos): generateGenericBlockTuningPackage onnistuu vk 4 deload:ssa");
+  assert(genericPkg.prompt.includes(TECH_STACK_REQUIRED),
+    "B4-T6 (generic pos): generic-prompt sisältää tech-stack-rivin");
+  assert(genericPkg.prompt.includes(NO_SRC_REQUIRED),
+    "B4-T7 (generic pos): generic-prompt sisältää src-ohjeen");
+  // Verifioi sijoittelu — tech-stack VASTAUKSESI MUOTO -otsikon sisällä
+  const genericVastausIdx = genericPkg.prompt.indexOf("## VASTAUKSESI MUOTO");
+  const genericTechStackIdx = genericPkg.prompt.indexOf(TECH_STACK_REQUIRED);
+  assert(genericVastausIdx >= 0 && genericTechStackIdx > genericVastausIdx,
+    "B4-T8 (generic pos): tech-stack-rivi VASTAUKSESI MUOTO -otsikon jälkeen");
+
+  // ── Tunnettu-neg: irrelevantti string EI sisällä tech-stack-tekstiä ──
+  // Todistaa että assertiot mittaavat aitoa esiintymää, ei vakio-trueta.
+  const irrelevant = "Tämä on satunnainen UI-string ilman tech-stack-mainintaa.";
+  assert(!irrelevant.includes(TECH_STACK_REQUIRED),
+    "B4-T9 (neg): irrelevantti string EI sisällä tech-stack-tekstiä (assertio mittaa aitoa esiintymää)");
+  assert(!irrelevant.includes("vanilla JavaScript"),
+    "B4-T10 (neg): irrelevantti string EI sisällä 'vanilla JavaScript' -tekstiä");
+
+  // ── Edge: prompt-pohjien rakenne ennallaan (vain LISÄYS, ei korvaus) ──
+  // Verifioi että alkuperäinen Analysoi/VASTAUKSESI-rakenne säilyy
+  assert(slPkg.prompt.includes("Analysoi edellisen blokin"),
+    "B4-T11 (edge sl): alkuperäinen 'Analysoi'-teksti säilyy buildAiPrompt:issa");
+  assert(genericPkg.prompt.includes("Anna 3 kategoriassa:"),
+    "B4-T12 (edge generic): alkuperäinen 'Anna 3 kategoriassa' säilyy generic-promptissa");
+}
+
 async function testBackupRoundtrip() {
   // This test requires IndexedDB — skip if not available
   try {
@@ -2618,6 +2703,8 @@ export async function runTests() {
   // β H-001 B3 (HANDOFF.md A4): tyhjien trendikenttien status-encoding
   testTrendEmptyStatusHelpers();
   testBlockTuningEmptyTrendsEncoding();
+  // β H-001 B4 (HANDOFF.md A5): tech-stack-rivi prompt-pohjissa
+  testTuningPromptTechStackLine();
   await testRecommendScenarios();
   await testBackupRoundtrip();
   // v4.34.45: mesosykli-historia + uudelleen-aktivointi
