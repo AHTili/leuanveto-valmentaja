@@ -6305,6 +6305,41 @@ const SUGGESTED_NEXT_TEMPLATE = {
 //   json     = strukturoitu data Claude AI:lle ristivertailuun
 //   prompt   = valmis copy-paste AI-prompt jossa kaikki konteksti
 
+// β H-001 B1 (HANDOFF.md §6 K1 ratifioitu 2026-05-25): yhtenäinen aggregaatti-
+// laskenta AI Block Tuning -syötteen totalSessions + completedSets -metriikoille.
+// Lukittu rajaus:
+//   - Viikkojoukko: kutsuja antaa blockSessions, joka on jo viikkofilteröity
+//     päättyneisiin blokkiviikkoihin (esim. Foundation = vk 1–3). Käynnissä
+//     oleva siirtymä-/deload-viikko vk N EI sisälly aggregaatteihin — se
+//     hoidetaan erikseen B5:n currentWeekCalibrationSets-kentällä.
+//   - Backfill: sisältyy. Sessio kuuluu joukkoon dateISO:n viikkonsidon kautta,
+//     ei kirjausajan. Backfill-kirjatut sessiot/setit ovat aitoa toteutunutta
+//     volyymiä ja kuuluvat aggregaatteihin (Israetel-MRV-vertailu vaatii
+//     todellisen volyymin).
+//   - totalSessions: blockSessions.length — session-tason metriikka, EI warmup-
+//     suodatusta.
+//   - completedSets: SET-tason suodatin completed === true && isWarmup !== true
+//     (= engine.js r. 5318:n kanoninen pattern, vrt. analyzeSessionAdaptation).
+// Käytössä generateBlockTuningPackage, generateGenericBlockTuningPackage ja
+// generateEndOfCycleTuningPackage -funktioissa varmistamaan sama rajaus
+// (HANDOFF.md A1).
+function _computeTuningCoreAggregates(blockSessions, allSets) {
+  const sessions = blockSessions || [];
+  const sets = allSets || [];
+  const totalSessions = sessions.length;
+  let completedSets = 0;
+  for (const sess of sessions) {
+    for (const set of sets) {
+      if (set.sessionId === sess.sessionId
+          && set.completed === true
+          && set.isWarmup !== true) {
+        completedSets++;
+      }
+    }
+  }
+  return { totalSessions, completedSets };
+}
+
 function generateBlockTuningPackage(ctx) {
   const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings, decisionTraces } = ctx;
 
@@ -6423,8 +6458,11 @@ function generateBlockTuningPackage(ctx) {
   }
 
   // ── Aggregaatit ──
-  const totalSessions = sessionAnalysis.length;
-  const completedSets = sessionAnalysis.reduce((sum, s) => sum + s.slots.length, 0);
+  // B1 K1 ratifioitu (HANDOFF.md §6 K1, 2026-05-25): totalSessions ja
+  // completedSets johdetaan yhdestä rajauksesta (päättyneet blokkiviikot
+  // prevBlockSessions, backfill mukana) jaetun _computeTuningCoreAggregates
+  // -apufunktion kautta. Sama rajaus generic- ja end-of-cycle-funktioissa.
+  const { totalSessions, completedSets } = _computeTuningCoreAggregates(prevBlockSessions, allSets);
   const vxHits = sessionAnalysis.reduce((acc, s) => {
     for (const slot of s.slots) {
       if (slot.prescribed.vx != null && slot.actual.actualVx != null) {
@@ -6657,8 +6695,10 @@ function generateGenericBlockTuningPackage(ctx) {
     }
   }
 
-  const totalSessions = sessionAnalysis.length;
-  const completedSets = sessionAnalysis.reduce((sum, s) => sum + s.slots.length, 0);
+  // B1 K1 ratifioitu (HANDOFF.md §6 K1, 2026-05-25): yhtenäinen rajaus
+  // jaetun _computeTuningCoreAggregates-apufunktion kautta. Generic-funktion
+  // prevBlockSessions on dynaamisesti laskettu prevWeeks-rajauksella (rivi 6598).
+  const { totalSessions, completedSets } = _computeTuningCoreAggregates(prevBlockSessions, allSets);
   const vxHits = sessionAnalysis.reduce((acc, s) => {
     for (const slot of s.slots) {
       if (slot.prescribed.vx != null && slot.actual.actualVx != null) {
@@ -7134,8 +7174,10 @@ function generateEndOfCycleTuningPackage(ctx) {
   }
 
   // ── Aggregaatit ──
-  const totalSessions = sessionAnalysis.length;
-  const completedSets = sessionAnalysis.reduce((sum, s) => sum + s.slots.length, 0);
+  // B1 K1 ratifioitu (HANDOFF.md §6 K1, 2026-05-25): koko-syklin tasolla rajaus
+  // on cycleSessions (vk 1..weekCount), backfill mukana. Sama jaettu apufunktio
+  // kuin block-funktioissa. End-of-cycle pitää vxMismatchCount-lisämetriikan.
+  const { totalSessions, completedSets } = _computeTuningCoreAggregates(cycleSessions, allSets);
   const vxHits = sessionAnalysis.reduce((acc, s) => {
     for (const slot of s.slots) {
       if (slot.prescribed.vx != null && slot.actual.actualVx != null) {
@@ -7390,6 +7432,8 @@ export {
   // v4.34.48 — yleinen versio, toimii kaikille ei-streetlifting-mesoille
   generateGenericBlockTuningPackage,
   generateEndOfCycleTuningPackage,
+  // β H-001 B1 — jaettu aggregaatti-apufunktio (export vain testikäyttöön)
+  _computeTuningCoreAggregates,
   combineReadiness,
   // Mesocycle
   getMesocycleWeek,

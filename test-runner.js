@@ -45,6 +45,8 @@ import {
   getCfgBaselineForMovement,
   // v4.34.48: generic AI-block-tuning kaikille ei-streetlifting-mesoille
   generateGenericBlockTuningPackage,
+  // β H-001 B1 — jaettu aggregaatti-apufunktio (A1-yksikkötesti)
+  _computeTuningCoreAggregates,
   // v4.35.0: eliittitason progressio-malli (Helms 2018, Cumming 2024, Issurin 2010)
   PROGRESSION_CONFIG,
   computeProgressionTarget,
@@ -2012,6 +2014,96 @@ function testGenericBlockTuningPackage() {
   assert(r4.prompt.includes("Maastaveto") || r4.prompt.includes("Penkkipunnerrus"), "T4: AI-prompt sisältää atletin 1RM-kalibroinnit");
 }
 
+// β H-001 B1 (HANDOFF.md §6 K1 ratifioitu 2026-05-25, A1):
+// Yhtenäisen aggregaattilaskennan _computeTuningCoreAggregates yksikkötesti.
+// Mittari-ensin (docs/SELKARANKA.md kohta 6): tunnettu-positiivinen +
+// tunnettu-negatiivinen + aritmetiikka käsin ennen luottamusta.
+function testBlockTuningAggregates() {
+  // ── Fixture: 3 sessiota Foundation-blokin viikoilta 1-3 ──
+  // Sisältää backfill-kirjatun session (m-s2: dateISO menneisyydessä,
+  // timestamp myöhempi → kirjattu jälkikäteen, mutta dateISO pätevä).
+  // Setit: kahdenlainen warmup ja eri completed-tilat → SET-tason suodatin testattavissa.
+  const fxBlockSessions = [
+    { sessionId: "s1", dateISO: "2026-01-05" },           // vk 1, normaali kirjaus
+    { sessionId: "s2", dateISO: "2026-01-08", _backfill: true }, // backfill (käsittely
+                                                                  //   identtinen: kuuluu joukkoon)
+    { sessionId: "s3", dateISO: "2026-01-12" },           // vk 2
+  ];
+  const fxAllSets = [
+    // s1: 4 settiä — 2 completed work, 1 warmup, 1 incomplete
+    { sessionId: "s1", completed: true,  isWarmup: false }, // ✓ counted
+    { sessionId: "s1", completed: true,  isWarmup: false }, // ✓ counted
+    { sessionId: "s1", completed: true,  isWarmup: true  }, // ✗ warmup
+    { sessionId: "s1", completed: false, isWarmup: false }, // ✗ incomplete
+    // s2 (backfill): 3 settiä — kaikki completed work (= aitoa volyymiä)
+    { sessionId: "s2", completed: true,  isWarmup: false }, // ✓ counted
+    { sessionId: "s2", completed: true,  isWarmup: false }, // ✓ counted
+    { sessionId: "s2", completed: true,  isWarmup: false }, // ✓ counted
+    // s3: 2 settiä — 1 completed work, 1 warmup
+    { sessionId: "s3", completed: true,  isWarmup: false }, // ✓ counted
+    { sessionId: "s3", completed: true,  isWarmup: true  }, // ✗ warmup
+    // s99 — sessio EI kuulu blockSessions:iin (esim. siirtymäviikon kalibrointi-sessio)
+    // → ei lasketa kumpaankaan metriikkaan
+    { sessionId: "s99", completed: true, isWarmup: false }, // ✗ out-of-block
+  ];
+
+  // Käsin laskettu odotusarvo (Selkäranka 6):
+  //   totalSessions  = 3                (s1, s2, s3 — backfill mukana, s99 pois)
+  //   completedSets  = 2 + 3 + 1 = 6    (vain completed===true && isWarmup!==true)
+
+  // ── Tunnettu-positiivinen ──
+  const r1 = _computeTuningCoreAggregates(fxBlockSessions, fxAllSets);
+  assertEqual(r1.totalSessions, 3,
+    "T1 (pos): totalSessions = 3 (3 sessiota blockSessions:issa, backfill mukana, out-of-block pois)");
+  assertEqual(r1.completedSets, 6,
+    "T1 (pos): completedSets = 6 (2 s1 + 3 s2 + 1 s3; warmup+incomplete+out-of-block excluded)");
+
+  // ── Yhtenäisyys: johdetaan SAMASTA joukosta — per-sessio-jakolasku mielekäs ──
+  // (A1 onnistumisen ehto (ii): completedSets/totalSessions on määritelmällisesti mielekäs)
+  const setsPerSession = r1.completedSets / r1.totalSessions;
+  assert(setsPerSession === 2,
+    `T1 (pos): per-sessio-jakolasku mielekäs — 6/3 = 2.0 (saatu ${setsPerSession})`);
+
+  // ── Tunnettu-negatiivinen 1: kaikki setit warmup → completedSets=0, totalSessions ennallaan ──
+  const negWarmup = fxAllSets.map(s => ({ ...s, isWarmup: true }));
+  const r2 = _computeTuningCoreAggregates(fxBlockSessions, negWarmup);
+  assertEqual(r2.totalSessions, 3,
+    "T2 (neg-warmup): totalSessions = 3 (sessio-tason metriikka, EI warmup-suodatusta)");
+  assertEqual(r2.completedSets, 0,
+    "T2 (neg-warmup): completedSets = 0 (kaikki setit warmup → kaikki suodatetaan)");
+
+  // ── Tunnettu-negatiivinen 2: kaikki setit completed=false → completedSets=0 ──
+  const negIncomplete = fxAllSets.map(s => ({ ...s, completed: false }));
+  const r3 = _computeTuningCoreAggregates(fxBlockSessions, negIncomplete);
+  assertEqual(r3.totalSessions, 3,
+    "T3 (neg-incomplete): totalSessions = 3 (session-tason, ei set-flageista riippuva)");
+  assertEqual(r3.completedSets, 0,
+    "T3 (neg-incomplete): completedSets = 0 (kaikki setit completed=false)");
+
+  // ── Edge: tyhjät syötteet ──
+  const r4 = _computeTuningCoreAggregates([], fxAllSets);
+  assertEqual(r4.totalSessions, 0, "T4 (edge-empty-sessions): totalSessions = 0");
+  assertEqual(r4.completedSets, 0, "T4 (edge-empty-sessions): completedSets = 0 (ei sessioita joukossa)");
+
+  const r5 = _computeTuningCoreAggregates(fxBlockSessions, []);
+  assertEqual(r5.totalSessions, 3, "T5 (edge-empty-sets): totalSessions = 3 (sessio-tason metriikka säilyy)");
+  assertEqual(r5.completedSets, 0, "T5 (edge-empty-sets): completedSets = 0 (ei settejä)");
+
+  const r6 = _computeTuningCoreAggregates(null, null);
+  assertEqual(r6.totalSessions, 0, "T6 (edge-null): null-syöte tuottaa totalSessions=0 (defensiivinen guard)");
+  assertEqual(r6.completedSets, 0, "T6 (edge-null): completedSets=0");
+
+  // ── Edge: backfill-sessio (dateISO menneisyydessä, timestamp myöhempi) ──
+  // Apufunktio ei lue dateISO/timestamp -kenttiä — viikkofilteröinti tehdään
+  // ennen apufunktion kutsua. Backfill-sessio kuuluu joukkoon koska sessionId
+  // on blockSessions:issa. Tämä testaa että apufunktio ei suodata sitä pois.
+  const fxBackfillOnly = [{ sessionId: "s2", dateISO: "2026-01-08" }];
+  const r7 = _computeTuningCoreAggregates(fxBackfillOnly,
+    fxAllSets.filter(s => s.sessionId === "s2"));
+  assertEqual(r7.totalSessions, 1, "T7 (backfill-only): totalSessions = 1 (backfill kuuluu joukkoon)");
+  assertEqual(r7.completedSets, 3, "T7 (backfill-only): completedSets = 3 (backfill-setit aitoa volyymiä)");
+}
+
 async function testBackupRoundtrip() {
   // This test requires IndexedDB — skip if not available
   try {
@@ -2156,6 +2248,8 @@ export async function runTests() {
   await testGetCfgBaselineForMovement();
   // v4.34.48: generic AI-block-tuning kaikille ei-streetlifting-mesoille (kaveri-fixture)
   testGenericBlockTuningPackage();
+  // β H-001 B1 (HANDOFF.md A1): AI Block Tuning -aggregaattien rajauksen yhtenäisyys
+  testBlockTuningAggregates();
   await testRecommendScenarios();
   await testBackupRoundtrip();
   // v4.34.45: mesosykli-historia + uudelleen-aktivointi
