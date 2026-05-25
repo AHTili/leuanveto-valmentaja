@@ -6360,6 +6360,42 @@ function _computeTuningCoreAggregates(blockSessions, allSets) {
 //
 // resolvedLoadKg EI sisälly normalisointiin — se on ajonaikainen resolvoitu
 // arvo, legitiimisti poikkeava loadPct × e1RM-arvosta (K2(2)-OK ratifiointi).
+// β H-001 B3 (HANDOFF.md §6 K3 ratifioitu 2026-05-25):
+// Tunnistaa onko trendikenttä { status, reason? }-objekti (= tyhjä-status-
+// encoding) vai aitoa dataa. Käytetään AI Block Tuning -syötteen markdown-
+// renderoinnissa varmistamaan että Object.keys/Object.entries -iteroinnit
+// eivät törmää status-objekteihin.
+//
+// Status-arvojoukko (lukittu HANDOFF.md §5 kohta 7):
+//   - "empty"           — mitattu, ei havaintoja tällä jaksolla
+//   - "unavailable"     — dataketju rikki — pipeline ei tuota arvoa
+//                         (skeemassa, mutta engine EI emittoi tällä hetkellä;
+//                          aktivoituu Enode/Oura-pipeline-jatkohandoffissa §6 K5)
+//   - "not-implemented" — kenttää ei ole vielä toteutettu / saatavilla
+//
+// Periaate: rehellinen status, ei fabrikointia (Akselin K3-ratifiointi
+// 2026-05-25). Engine emittoi vain statuksia jotka voi luotettavasti todeta.
+function _isTrendEmptyStatus(field) {
+  return field && typeof field === "object" && !Array.isArray(field)
+      && typeof field.status === "string"
+      && (field.status === "empty"
+          || field.status === "unavailable"
+          || field.status === "not-implemented");
+}
+
+// Käyttäjälle näytettävä suomenkielinen labeli markdown-renderoinnissa.
+// Reason näytetään suluissa jos olemassa.
+function _formatTrendStatusFi(field) {
+  if (!_isTrendEmptyStatus(field)) return "";
+  const labelByStatus = {
+    "empty": "ei havaintoja",
+    "unavailable": "dataketju rikki",
+    "not-implemented": "ei toteutettu",
+  };
+  const label = labelByStatus[field.status] || field.status;
+  return field.reason ? `${label} — ${field.reason}` : label;
+}
+
 function _normalizeSlotForTuningSerialization(slot) {
   if (!slot) return slot;
   if (typeof slot.loadPct !== "number" || slot.loadPct <= 0) return slot;
@@ -6447,8 +6483,11 @@ function generateBlockTuningPackage(ctx) {
   });
 
   // ── e1RM-trendit per kisaliike ──
+  // B3 K3 ratifioitu (HANDOFF.md §6 K3, 2026-05-25): tyhjä-status-encoding.
+  // Jos yhdelläkään kisaliikkeellä ei ole ≥2 datapointtia, kentän arvo on
+  // { status: "empty", reason } (data-tila pysyy ennallaan objektina).
   const compLifts = ["Lisäpainoleuanveto", "Muscle-up", "Lisäpainodippi", "Takakyykky"];
-  const e1rmTrends = {};
+  let e1rmTrends = {};
   for (const liftName of compLifts) {
     const liftSets = (allSets || []).filter(set => set.movementName === liftName && set.externalLoadKg > 0);
     if (liftSets.length === 0) continue;
@@ -6470,8 +6509,14 @@ function generateBlockTuningPackage(ctx) {
       };
     }
   }
+  if (Object.keys(e1rmTrends).length === 0) {
+    e1rmTrends = { status: "empty", reason: "ei kisaliike-settejä ≥ 2 datapointilla tällä blokilla" };
+  }
 
   // ── HRV / MPV / BW-trendit ──
+  // B3 K3: per-mittari tyhjä-status-encoding. unavailable EI emittoidu nyt
+  // (Akselin K3-periaate "rehellinen status, ei fabrikointia") — aktivoituu
+  // Enode/Oura-pipeline-jatkohandoffissa (§6 K5). data-tila pysyy taulukkona.
   const blockMeasurements = (measurements || []).filter(m => {
     const mw = getMesocycleWeek(mesocycle, m.dateISO);
     return block.prevWeeks.includes(mw) || mw === wk;
@@ -6482,8 +6527,15 @@ function generateBlockTuningPackage(ctx) {
     mpv: blockMeasurements.filter(m => m.mpv != null).map(m => ({ dateISO: m.dateISO, value: m.mpv })),
     bodyweight: blockMeasurements.filter(m => m.bodyweightKg != null).map(m => ({ dateISO: m.dateISO, value: m.bodyweightKg })),
   };
+  if (trends.hrv.length === 0) trends.hrv = { status: "empty", reason: "ei HRV-mittauksia tällä blokilla" };
+  if (trends.mpv.length === 0) trends.mpv = { status: "empty", reason: "ei MPV-mittauksia tällä blokilla" };
+  if (trends.bodyweight.length === 0) trends.bodyweight = { status: "empty", reason: "ei kehonpaino-mittauksia tällä blokilla" };
 
   // ── Anomaliat ──
+  // B3 K3: anomalies pysyy taulukkona aina (status-encoding ulkopuolella).
+  // Tapahtumalista, ei mittaus — tyhjä = positiivinen signaali (atletti
+  // suoritti puhtaasti). totalSessions erottaa "ei sessioita" -reunan:
+  // jos sessioita 0, anomalies on luonnollisesti tyhjä eikä vaadi statusta.
   const anomalies = [];
   for (const sess of sessionAnalysis) {
     for (const slot of sess.slots) {
@@ -6528,6 +6580,10 @@ function generateBlockTuningPackage(ctx) {
              heavyReps: wd?.heavyReps ?? null, heavyTargetVx: wd?.heavyTargetVx ?? null };
   });
   // Trace-frequency aggregointi (kerää rule-id-laskurit blokin sessioista)
+  // B3 K3: tyhjä-status-encoding. Jos decisionTraces puuttuu ctx:stä
+  // kokonaan → not-implemented (rehellisesti todettavissa); jos saatavilla
+  // mutta tyhjä → empty (decisionTrace:eja ei kirjattu). data-tila pysyy
+  // taulukkona.
   const blockSessionIds = new Set(prevBlockSessions.map(s => s.sessionId));
   const blockTraces = (decisionTraces || []).filter(t => {
     // recId-yhteys session:iin — käytä recId:n associated rec:in dateISO:ta jos saatavilla
@@ -6541,6 +6597,14 @@ function generateBlockTuningPackage(ctx) {
   const traceFrequencySorted = Object.entries(traceFrequency)
     .sort((a, b) => b[1] - a[1])
     .map(([ruleId, count]) => ({ ruleId, count }));
+  let engineRuleFrequency;
+  if (decisionTraces === undefined || decisionTraces === null) {
+    engineRuleFrequency = { status: "not-implemented", reason: "decisionTraces ei saatavilla ctx:ssä" };
+  } else if (traceFrequencySorted.length === 0) {
+    engineRuleFrequency = { status: "empty", reason: "ei kirjattuja decisionTrace:eja tällä blokilla" };
+  } else {
+    engineRuleFrequency = traceFrequencySorted;
+  }
 
   // ── Seuraavan blokin prescribed ──
   // β H-001 B2/A2: normalisoi slot.note loadPct:n pohjalla — AI Block Tuning
@@ -6582,8 +6646,10 @@ function generateBlockTuningPackage(ctx) {
       anomalies,
       aggregates,
       // v4.34.28: deltaPctBase per vk + engine-rule-frequency (cowork-audit kohta 1.1)
+      // B3 K3: engineRuleFrequency on joko taulukko (data) tai status-objekti
+      //        ({ status: "empty"|"not-implemented", reason }).
       deltaPctBase: blockDeltaPctBase,
-      engineRuleFrequency: traceFrequencySorted,
+      engineRuleFrequency,
     },
     upcomingBlock: {
       name: block.nextBlock,
@@ -6706,7 +6772,7 @@ function generateGenericBlockTuningPackage(ctx) {
   }
 
   // e1RM-trendit per primary-liike (käyttää e1rmAccessory:ia — generic, ei BW-laskua)
-  const e1rmTrends = {};
+  let e1rmTrends = {};
   for (const liftName of primaryMovements) {
     const liftSets = (allSets || []).filter(set => set.movementName === liftName && set.externalLoadKg > 0);
     if (liftSets.length === 0) continue;
@@ -6723,8 +6789,16 @@ function generateGenericBlockTuningPackage(ctx) {
       e1rmTrends[liftName] = { first, latest, deltaPct: Math.round(deltaPct * 10) / 10, dataPoints };
     }
   }
+  // B3 K3: tyhjä-status-encoding generic-funktiossa (sama logiikka kuin
+  // streetlifting_16w:ssä). Generic ei käytä measurements-trendejä eikä
+  // engineRuleFrequency-kenttää JSON-output:issa, joten vain e1rmTrends
+  // ja anomalies ovat scope:ssa.
+  if (Object.keys(e1rmTrends).length === 0) {
+    e1rmTrends = { status: "empty", reason: "ei primary-liike-settejä ≥ 2 datapointilla tällä blokilla" };
+  }
 
   // Anomaliat
+  // B3 K3: anomalies pysyy taulukkona aina (kts. streetlifting_16w-kommentti).
   const anomalies = [];
   for (const sess of sessionAnalysis) {
     for (const slot of sess.slots) {
@@ -6778,7 +6852,14 @@ function generateGenericBlockTuningPackage(ctx) {
   lines.push(`- Failure-tapauksia (V0 primary): **${aggregates.failureCount}**`);
   lines.push("");
 
-  if (Object.keys(e1rmTrends).length > 0) {
+  // B3 K3: tyhjä-status-encoding markdown:ssa (sama logiikka kuin
+  // buildMarkdownNarrative:ssa). Tarkista .status ennen Object.entries-iterointia.
+  if (_isTrendEmptyStatus(e1rmTrends)) {
+    lines.push("### e1RM-trendit per päälike");
+    lines.push("");
+    lines.push(`*${_formatTrendStatusFi(e1rmTrends)}*`);
+    lines.push("");
+  } else if (Object.keys(e1rmTrends).length > 0) {
     lines.push("### e1RM-trendit per päälike");
     lines.push("");
     lines.push("| Liike | Lähtö | Loppu | Δ% |");
@@ -6905,7 +6986,14 @@ function buildMarkdownNarrative({ profile, block, currentWeek, sessionAnalysis, 
   lines.push(`- Failure-tapauksia (V0 primary): **${aggregates.failureCount}**`);
   lines.push("");
 
-  if (Object.keys(e1rmTrends).length > 0) {
+  // B3 K3: tyhjä-status-encoding. Tarkista .status ENNEN Object.keys/entries-
+  // iterointia (e1rmTrends voi olla { status: "empty", reason } eikä { Liike: {...} }).
+  if (_isTrendEmptyStatus(e1rmTrends)) {
+    lines.push("### e1RM-trendit per kisaliike");
+    lines.push("");
+    lines.push(`*${_formatTrendStatusFi(e1rmTrends)}*`);
+    lines.push("");
+  } else if (Object.keys(e1rmTrends).length > 0) {
     lines.push("### e1RM-trendit per kisaliike");
     lines.push("");
     lines.push("| Liike | Lähtö | Loppu | Δ% |");
@@ -6932,23 +7020,38 @@ function buildMarkdownNarrative({ profile, block, currentWeek, sessionAnalysis, 
     lines.push("");
   }
 
-  if (trends.hrv.length > 0 || trends.mpv.length > 0 || trends.bodyweight.length > 0) {
+  // B3 K3: per-mittari tyhjä-status näytetään eksplisiittisesti (ei skipata
+  // hiljaa kuten ennen). data-tila pysyy taulukkona; tyhjä-tila on
+  // { status, reason } -objekti.
+  const hrvIsStatus = _isTrendEmptyStatus(trends.hrv);
+  const mpvIsStatus = _isTrendEmptyStatus(trends.mpv);
+  const bwIsStatus = _isTrendEmptyStatus(trends.bodyweight);
+  const hrvHasData = !hrvIsStatus && Array.isArray(trends.hrv) && trends.hrv.length > 0;
+  const mpvHasData = !mpvIsStatus && Array.isArray(trends.mpv) && trends.mpv.length > 0;
+  const bwHasData = !bwIsStatus && Array.isArray(trends.bodyweight) && trends.bodyweight.length > 0;
+  if (hrvHasData || mpvHasData || bwHasData || hrvIsStatus || mpvIsStatus || bwIsStatus) {
     lines.push("### Recovery-/mittari-trendit");
     lines.push("");
-    if (trends.hrv.length > 0) {
+    if (hrvHasData) {
       const hrvFirst = trends.hrv[0].value, hrvLast = trends.hrv[trends.hrv.length - 1].value;
       const hrvDelta = hrvFirst > 0 ? Math.round(((hrvLast - hrvFirst) / hrvFirst) * 1000) / 10 : 0;
       lines.push(`- **HRV**: ${trends.hrv.length} mittausta, ${hrvFirst.toFixed(1)} → ${hrvLast.toFixed(1)} (${hrvDelta >= 0 ? "+" : ""}${hrvDelta}%)`);
+    } else if (hrvIsStatus) {
+      lines.push(`- **HRV**: *${_formatTrendStatusFi(trends.hrv)}*`);
     }
-    if (trends.mpv.length > 0) {
+    if (mpvHasData) {
       const mpvFirst = trends.mpv[0].value, mpvLast = trends.mpv[trends.mpv.length - 1].value;
       const mpvDelta = mpvFirst > 0 ? Math.round(((mpvLast - mpvFirst) / mpvFirst) * 1000) / 10 : 0;
       lines.push(`- **MPV** (yläraaja-readiness): ${trends.mpv.length} mittausta, ${mpvFirst.toFixed(2)} → ${mpvLast.toFixed(2)} m/s (${mpvDelta >= 0 ? "+" : ""}${mpvDelta}%)`);
+    } else if (mpvIsStatus) {
+      lines.push(`- **MPV** (yläraaja-readiness): *${_formatTrendStatusFi(trends.mpv)}*`);
     }
-    if (trends.bodyweight.length > 0) {
+    if (bwHasData) {
       const bwFirst = trends.bodyweight[0].value, bwLast = trends.bodyweight[trends.bodyweight.length - 1].value;
       const bwDelta = Math.round((bwLast - bwFirst) * 10) / 10;
       lines.push(`- **Bodyweight**: ${bwFirst} → ${bwLast} kg (${bwDelta >= 0 ? "+" : ""}${bwDelta} kg)`);
+    } else if (bwIsStatus) {
+      lines.push(`- **Bodyweight**: *${_formatTrendStatusFi(trends.bodyweight)}*`);
     }
     lines.push("");
   }
@@ -7168,7 +7271,7 @@ function generateEndOfCycleTuningPackage(ctx) {
         })
         .slice(0, 6); // max 6 liikettä jotta data ei räjähdä
 
-  const e1rmTrends = {};
+  let e1rmTrends = {};
   for (const liftName of compLifts) {
     const liftSets = (allSets || []).filter(set => set.movementName === liftName && set.externalLoadKg > 0);
     if (liftSets.length === 0) continue;
@@ -7189,8 +7292,13 @@ function generateEndOfCycleTuningPackage(ctx) {
       e1rmTrends[liftName] = { first, latest, deltaPct: Math.round(deltaPct * 10) / 10, dataPoints };
     }
   }
+  // B3 K3: tyhjä-status-encoding end-of-cycle-funktiossa.
+  if (Object.keys(e1rmTrends).length === 0) {
+    e1rmTrends = { status: "empty", reason: "ei primary-liike-settejä ≥ 2 datapointilla koko syklillä" };
+  }
 
   // ── Koko syklin recovery-/mittari-trendit ──
+  // B3 K3: per-mittari tyhjä-status-encoding (sama logiikka kuin block-funktiossa).
   const cycleMeasurements = (measurements || []).filter(m => {
     const mw = getMesocycleWeek(mesocycle, m.dateISO);
     return mw !== null && mw >= 1 && mw <= weekCount;
@@ -7201,8 +7309,12 @@ function generateEndOfCycleTuningPackage(ctx) {
     mpv: cycleMeasurements.filter(m => m.mpv != null).map(m => ({ dateISO: m.dateISO, value: m.mpv })),
     bodyweight: cycleMeasurements.filter(m => m.bodyweightKg != null).map(m => ({ dateISO: m.dateISO, value: m.bodyweightKg })),
   };
+  if (trends.hrv.length === 0) trends.hrv = { status: "empty", reason: "ei HRV-mittauksia tällä syklillä" };
+  if (trends.mpv.length === 0) trends.mpv = { status: "empty", reason: "ei MPV-mittauksia tällä syklillä" };
+  if (trends.bodyweight.length === 0) trends.bodyweight = { status: "empty", reason: "ei kehonpaino-mittauksia tällä syklillä" };
 
   // ── Anomaliat (V0 primaryjen failure, Vx-mismatch ±2+) ──
+  // B3 K3: anomalies pysyy taulukkona aina (kts. streetlifting_16w-kommentti).
   const anomalies = [];
   for (const sess of sessionAnalysis) {
     for (const slot of sess.slots) {
@@ -7242,6 +7354,9 @@ function generateEndOfCycleTuningPackage(ctx) {
     week: wd.week, deltaPctBase: wd.deltaPctBase ?? null, label: wd.label || null,
     heavyReps: wd.heavyReps ?? null, heavyTargetVx: wd.heavyTargetVx ?? null,
   }));
+  // B3 K3: tyhjä-status-encoding (sama logiikka kuin block-funktiossa):
+  // not-implemented jos decisionTraces puuttuu ctx:stä; empty jos saatavilla
+  // mutta tyhjä; muuten data (taulukko).
   const cycleTraceFreq = {};
   for (const t of (decisionTraces || [])) {
     if (!t.ruleId) continue;
@@ -7250,6 +7365,14 @@ function generateEndOfCycleTuningPackage(ctx) {
   const cycleTraceFreqSorted = Object.entries(cycleTraceFreq)
     .sort((a, b) => b[1] - a[1])
     .map(([ruleId, count]) => ({ ruleId, count }));
+  let engineRuleFrequency;
+  if (decisionTraces === undefined || decisionTraces === null) {
+    engineRuleFrequency = { status: "not-implemented", reason: "decisionTraces ei saatavilla ctx:ssä" };
+  } else if (cycleTraceFreqSorted.length === 0) {
+    engineRuleFrequency = { status: "empty", reason: "ei kirjattuja decisionTrace:eja koko syklillä" };
+  } else {
+    engineRuleFrequency = cycleTraceFreqSorted;
+  }
 
   // ── Markdown-narratiivi ──
   const markdown = buildEndOfCycleMarkdown({
@@ -7273,8 +7396,9 @@ function generateEndOfCycleTuningPackage(ctx) {
       sessions: sessionAnalysis,
       e1rmTrends, trends, anomalies, aggregates,
       // v4.34.28: deltaPctBase + engineRuleFrequency
+      // B3 K3: engineRuleFrequency on joko taulukko (data) tai status-objekti.
       deltaPctBase: cycleDeltaPctBase,
-      engineRuleFrequency: cycleTraceFreqSorted,
+      engineRuleFrequency,
     },
   };
 
@@ -7318,7 +7442,13 @@ function buildEndOfCycleMarkdown({ profile, currentWeek, weekCount, sessionAnaly
   lines.push(`- Vx-mismatch (±2+): **${aggregates.vxMismatchCount}**`);
   lines.push("");
 
-  if (Object.keys(e1rmTrends).length > 0) {
+  // B3 K3: tyhjä-status-encoding (sama logiikka kuin buildMarkdownNarrative:ssa).
+  if (_isTrendEmptyStatus(e1rmTrends)) {
+    lines.push("### e1RM-trendit");
+    lines.push("");
+    lines.push(`*${_formatTrendStatusFi(e1rmTrends)}*`);
+    lines.push("");
+  } else if (Object.keys(e1rmTrends).length > 0) {
     lines.push("### e1RM-trendit");
     lines.push("");
     lines.push("| Liike | Lähtö | Loppu | Δ% |");
@@ -7330,23 +7460,36 @@ function buildEndOfCycleMarkdown({ profile, currentWeek, weekCount, sessionAnaly
     lines.push("");
   }
 
-  if (trends.hrv.length > 0 || trends.mpv.length > 0 || trends.bodyweight.length > 0) {
+  // B3 K3: per-mittari tyhjä-status näytetään eksplisiittisesti.
+  const hrvIsStatusEC = _isTrendEmptyStatus(trends.hrv);
+  const mpvIsStatusEC = _isTrendEmptyStatus(trends.mpv);
+  const bwIsStatusEC = _isTrendEmptyStatus(trends.bodyweight);
+  const hrvHasDataEC = !hrvIsStatusEC && Array.isArray(trends.hrv) && trends.hrv.length > 0;
+  const mpvHasDataEC = !mpvIsStatusEC && Array.isArray(trends.mpv) && trends.mpv.length > 0;
+  const bwHasDataEC = !bwIsStatusEC && Array.isArray(trends.bodyweight) && trends.bodyweight.length > 0;
+  if (hrvHasDataEC || mpvHasDataEC || bwHasDataEC || hrvIsStatusEC || mpvIsStatusEC || bwIsStatusEC) {
     lines.push("### Recovery-/mittari-trendit");
     lines.push("");
-    if (trends.hrv.length > 0) {
+    if (hrvHasDataEC) {
       const first = trends.hrv[0].value, last = trends.hrv[trends.hrv.length - 1].value;
       const delta = first > 0 ? Math.round(((last - first) / first) * 1000) / 10 : 0;
       lines.push(`- **HRV**: ${trends.hrv.length} mittausta, ${first.toFixed(1)} → ${last.toFixed(1)} (${delta >= 0 ? "+" : ""}${delta}%)`);
+    } else if (hrvIsStatusEC) {
+      lines.push(`- **HRV**: *${_formatTrendStatusFi(trends.hrv)}*`);
     }
-    if (trends.mpv.length > 0) {
+    if (mpvHasDataEC) {
       const first = trends.mpv[0].value, last = trends.mpv[trends.mpv.length - 1].value;
       const delta = first > 0 ? Math.round(((last - first) / first) * 1000) / 10 : 0;
       lines.push(`- **MPV**: ${trends.mpv.length} mittausta, ${first.toFixed(2)} → ${last.toFixed(2)} m/s (${delta >= 0 ? "+" : ""}${delta}%)`);
+    } else if (mpvIsStatusEC) {
+      lines.push(`- **MPV**: *${_formatTrendStatusFi(trends.mpv)}*`);
     }
-    if (trends.bodyweight.length > 0) {
+    if (bwHasDataEC) {
       const first = trends.bodyweight[0].value, last = trends.bodyweight[trends.bodyweight.length - 1].value;
       const delta = Math.round((last - first) * 10) / 10;
       lines.push(`- **Kehonpaino**: ${trends.bodyweight.length} mittausta, ${first.toFixed(1)} → ${last.toFixed(1)} kg (${delta >= 0 ? "+" : ""}${delta} kg)`);
+    } else if (bwIsStatusEC) {
+      lines.push(`- **Kehonpaino**: *${_formatTrendStatusFi(trends.bodyweight)}*`);
     }
     lines.push("");
   }
@@ -7478,6 +7621,9 @@ export {
   _computeTuningCoreAggregates,
   // β H-001 B2/A2 — slot-note-normalisointi (export vain testikäyttöön)
   _normalizeSlotForTuningSerialization,
+  // β H-001 B3 — tyhjien trendikenttien status-encoding-apurit (testikäyttöön)
+  _isTrendEmptyStatus,
+  _formatTrendStatusFi,
   combineReadiness,
   // Mesocycle
   getMesocycleWeek,

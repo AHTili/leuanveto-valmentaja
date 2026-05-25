@@ -49,6 +49,10 @@ import {
   _computeTuningCoreAggregates,
   // β H-001 B2/A2 — slot-note-normalisointi (A2-yksikkötesti)
   _normalizeSlotForTuningSerialization,
+  // β H-001 B3 — tyhjien trendikenttien status-encoding (A4-yksikkötesti)
+  _isTrendEmptyStatus,
+  _formatTrendStatusFi,
+  generateBlockTuningPackage,
   // v4.35.0: eliittitason progressio-malli (Helms 2018, Cumming 2024, Issurin 2010)
   PROGRESSION_CONFIG,
   computeProgressionTarget,
@@ -2314,6 +2318,154 @@ async function testSlotMismatchDetection() {
   assertEqual(mismatchFlags6.length, 0, "A3-T6 (edge-empty): ei flageja kun slots=[]");
 }
 
+// β H-001 B3 (HANDOFF.md §6 K3 ratifioitu 2026-05-25, A4):
+// _isTrendEmptyStatus + _formatTrendStatusFi -apurien yksikkötestit.
+// Mittari-ensin (docs/SELKARANKA.md kohta 6): tunnettu-pos + tunnettu-neg.
+function testTrendEmptyStatusHelpers() {
+  // ── _isTrendEmptyStatus: tunnettu-positiiviset (status-objektit) ──
+  assert(_isTrendEmptyStatus({ status: "empty" }),
+    "B3-T1: { status: 'empty' } tunnistetaan status-objektiksi");
+  assert(_isTrendEmptyStatus({ status: "empty", reason: "selitys" }),
+    "B3-T2: { status: 'empty', reason } tunnistetaan");
+  assert(_isTrendEmptyStatus({ status: "unavailable" }),
+    "B3-T3: { status: 'unavailable' } tunnistetaan (skeema sisältää, vaikka engine ei nyt emit:tää)");
+  assert(_isTrendEmptyStatus({ status: "not-implemented" }),
+    "B3-T4: { status: 'not-implemented' } tunnistetaan");
+
+  // ── _isTrendEmptyStatus: tunnettu-negatiiviset (eivät status-objekteja) ──
+  assert(!_isTrendEmptyStatus([]),
+    "B3-T5: [] (tyhjä taulukko) EI ole status-objekti");
+  assert(!_isTrendEmptyStatus([{ dateISO: "2026-01-05", value: 70 }]),
+    "B3-T6: data-taulukko (HRV) EI ole status-objekti");
+  assert(!_isTrendEmptyStatus({}),
+    "B3-T7: {} (tyhjä objekti) EI ole status-objekti");
+  assert(!_isTrendEmptyStatus({ Lisäpainoleuanveto: { first: 90, latest: 92, deltaPct: 2.2 } }),
+    "B3-T8: e1rmTrends-data-objekti (liike-avaimet) EI ole status-objekti");
+  assert(!_isTrendEmptyStatus(null), "B3-T9: null EI ole status-objekti");
+  assert(!_isTrendEmptyStatus(undefined), "B3-T10: undefined EI ole status-objekti");
+  assert(!_isTrendEmptyStatus("empty"), "B3-T11: string 'empty' EI ole status-objekti (vaatii objekti-wrapperin)");
+
+  // ── _isTrendEmptyStatus: ei-skeeman status-arvot HYLÄTÄÄN ──
+  assert(!_isTrendEmptyStatus({ status: "unknown" }),
+    "B3-T12: tuntematon status-arvo ('unknown') EI tunnisteta (skeema lukittu)");
+  assert(!_isTrendEmptyStatus({ status: "data" }),
+    "B3-T13: 'data'-status EI tunnisteta tyhjäksi (data on aitoa dataa, ei status-objekti)");
+
+  // ── _formatTrendStatusFi: suomi-labelit ──
+  assertEqual(_formatTrendStatusFi({ status: "empty" }), "ei havaintoja",
+    "B3-T14: empty → 'ei havaintoja' (ei reason → ei kaksoispistettä)");
+  assertEqual(_formatTrendStatusFi({ status: "empty", reason: "ei HRV-mittauksia" }),
+    "ei havaintoja — ei HRV-mittauksia",
+    "B3-T15: empty + reason → 'ei havaintoja — <reason>'");
+  assertEqual(_formatTrendStatusFi({ status: "unavailable", reason: "Oura ei sync" }),
+    "dataketju rikki — Oura ei sync",
+    "B3-T16: unavailable + reason → 'dataketju rikki — <reason>'");
+  assertEqual(_formatTrendStatusFi({ status: "not-implemented", reason: "ei saatavilla" }),
+    "ei toteutettu — ei saatavilla",
+    "B3-T17: not-implemented + reason → 'ei toteutettu — <reason>'");
+
+  // ── _formatTrendStatusFi: data-objekteille tyhjä string ──
+  assertEqual(_formatTrendStatusFi([{ value: 70 }]), "",
+    "B3-T18: data-taulukko → tyhjä string (ei status-formatointia)");
+  assertEqual(_formatTrendStatusFi(null), "", "B3-T19: null → tyhjä string");
+}
+
+// β H-001 B3 (HANDOFF.md A4): integraatiotesti generateBlockTuningPackage
+// tyhjillä syötteillä → status-objektit + status-rivit markdown:ssa.
+// Tunnettu-pos: tyhjä mesocycle (ei sets, ei measurements, ei decisionTraces)
+// → kaikki trendikentät status-objekteja, anomalies pysyy [].
+// Tunnettu-neg: täynnä mesocycle (sets + measurements + decisionTraces)
+// → trendikentät ennallaan (data-tila, ei status-objekti).
+function testBlockTuningEmptyTrendsEncoding() {
+  // Apuri: rakenna minimal streetlifting_16w-mesocycle vk 4 -deload:lle
+  const mkMeso = () => ({
+    mesocycleId: "test-b3-meso",
+    type: "streetlifting_16w",
+    startDateISO: "2026-01-05",
+    weekCount: 16,
+    weekDefs: Array.from({ length: 16 }, (_, i) => ({ week: i + 1, deltaPctBase: i === 3 ? -0.25 : 0.025 })),
+    weekPlans: Array.from({ length: 16 }, (_, i) => ({ week: i + 1, days: [] })),
+    streetliftingConfig: { calibration: { leukaExtKg: 85, dippiExtKg: 95, kyykkyExtKg: 185 }, competitionDate: "2026-08-22" },
+  });
+
+  // ── Tunnettu-positiivinen: täysin tyhjä data ──
+  // - sessions=[], allSets=[], measurements=[] → e1rmTrends, trends.hrv/mpv/bw EMPTY
+  // - decisionTraces=[] (ctx:ssä mutta tyhjä) → engineRuleFrequency.status="empty"
+  // - prs=[] → ok, ei vaikuta trendeihin
+  const meso = mkMeso();
+  const pkgEmpty = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [], allSets: [], measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: [],
+  });
+  assert(!pkgEmpty.error, "B3-INT-T1 (pos-empty): generateBlockTuningPackage onnistuu (ei error)");
+  const cbEmpty = pkgEmpty.json.completedBlock;
+  // e1rmTrends → status
+  assert(_isTrendEmptyStatus(cbEmpty.e1rmTrends),
+    "B3-INT-T2: tyhjä e1rmTrends → status-objekti");
+  assertEqual(cbEmpty.e1rmTrends.status, "empty", "B3-INT-T2a: status='empty'");
+  assert(typeof cbEmpty.e1rmTrends.reason === "string" && cbEmpty.e1rmTrends.reason.length > 0,
+    "B3-INT-T2b: reason on ei-tyhjä string");
+  // trends.hrv/mpv/bodyweight → status
+  assert(_isTrendEmptyStatus(cbEmpty.trends.hrv), "B3-INT-T3 (pos-empty): trends.hrv on status-objekti");
+  assert(_isTrendEmptyStatus(cbEmpty.trends.mpv), "B3-INT-T4 (pos-empty): trends.mpv on status-objekti");
+  assert(_isTrendEmptyStatus(cbEmpty.trends.bodyweight), "B3-INT-T5 (pos-empty): trends.bodyweight on status-objekti");
+  // engineRuleFrequency → empty (decisionTraces=[] saatavilla mutta tyhjä, EI not-implemented)
+  assert(_isTrendEmptyStatus(cbEmpty.engineRuleFrequency),
+    "B3-INT-T6 (pos-empty): engineRuleFrequency on status-objekti");
+  assertEqual(cbEmpty.engineRuleFrequency.status, "empty",
+    "B3-INT-T6a: decisionTraces=[] (saatavilla, tyhjä) → status='empty'");
+  // anomalies → [] taulukkona (ei statusta — Akselin K3-erikoissääntö)
+  assert(Array.isArray(cbEmpty.anomalies), "B3-INT-T7 (pos-empty): anomalies on taulukko");
+  assertEqual(cbEmpty.anomalies.length, 0, "B3-INT-T7a: anomalies on tyhjä taulukko (ei sessioita)");
+  // Markdown sisältää status-rivit
+  assert(pkgEmpty.markdown.includes("ei havaintoja"),
+    "B3-INT-T8 (pos-empty): markdown sisältää 'ei havaintoja' -tekstin (status-formatointi laukesi)");
+
+  // ── Tunnettu-pos 2: decisionTraces puuttuu kokonaan ctx:stä (undefined) ──
+  // → engineRuleFrequency.status="not-implemented" (rehellinen status)
+  const pkgNoTraces = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [], allSets: [], measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 },
+    // decisionTraces eksplisiittisesti puuttuu
+  });
+  assertEqual(pkgNoTraces.json.completedBlock.engineRuleFrequency.status, "not-implemented",
+    "B3-INT-T9: decisionTraces puuttuu ctx:stä → engineRuleFrequency.status='not-implemented'");
+
+  // ── Tunnettu-negatiivinen: täysi data ──
+  // - allSets: ≥ 2 datapointtia per kisaliike → e1rmTrends data-objekti
+  // - measurements: HRV-mittauksia → trends.hrv taulukko
+  // - decisionTraces: olemassa → engineRuleFrequency taulukko
+  const fullSets = [
+    { sessionId: "s1", movementName: "Lisäpainoleuanveto", externalLoadKg: 65, reps: 6, actualVx: 3, targetVx: 3, dateISO: "2026-01-12", timestamp: "2026-01-12T10:00:00" },
+    { sessionId: "s2", movementName: "Lisäpainoleuanveto", externalLoadKg: 70, reps: 5, actualVx: 3, targetVx: 3, dateISO: "2026-01-19", timestamp: "2026-01-19T10:00:00" },
+    { sessionId: "s3", movementName: "Lisäpainoleuanveto", externalLoadKg: 72, reps: 5, actualVx: 2, targetVx: 3, dateISO: "2026-01-26", timestamp: "2026-01-26T10:00:00" },
+  ];
+  const fullMeasurements = [
+    { dateISO: "2026-01-12", hrv: 70 },
+    { dateISO: "2026-01-19", hrv: 72 },
+  ];
+  const fullTraces = [
+    { ruleId: "VL_CAP_RESOLVED", recId: "r1" },
+    { ruleId: "VL_CAP_RESOLVED", recId: "r2" },
+  ];
+  const pkgFull = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [], allSets: fullSets, measurements: fullMeasurements, prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: fullTraces,
+  });
+  const cbFull = pkgFull.json.completedBlock;
+  // e1rmTrends data-objekti (ei status)
+  assert(!_isTrendEmptyStatus(cbFull.e1rmTrends),
+    "B3-INT-T10 (neg-data): e1rmTrends data-tilassa EI ole status-objekti");
+  assert(cbFull.e1rmTrends.Lisäpainoleuanveto && cbFull.e1rmTrends.Lisäpainoleuanveto.dataPoints,
+    "B3-INT-T10a: e1rmTrends sisältää Lisäpainoleuanveto-avaimen datapoint:eilla");
+  // trends.hrv taulukko
+  assert(Array.isArray(cbFull.trends.hrv) && cbFull.trends.hrv.length === 2,
+    "B3-INT-T11 (neg-data): trends.hrv on data-taulukko 2 mittauksella");
+  // engineRuleFrequency taulukko
+  assert(Array.isArray(cbFull.engineRuleFrequency) && cbFull.engineRuleFrequency.length > 0,
+    "B3-INT-T12 (neg-data): engineRuleFrequency on data-taulukko");
+}
+
 async function testBackupRoundtrip() {
   // This test requires IndexedDB — skip if not available
   try {
@@ -2463,6 +2615,9 @@ export async function runTests() {
   // β H-001 B2 (HANDOFF.md A2 + A3): slot-note-normalisointi + slot-mismatch-detektor
   testBlockTuningSlotNormalization();
   await testSlotMismatchDetection();
+  // β H-001 B3 (HANDOFF.md A4): tyhjien trendikenttien status-encoding
+  testTrendEmptyStatusHelpers();
+  testBlockTuningEmptyTrendsEncoding();
   await testRecommendScenarios();
   await testBackupRoundtrip();
   // v4.34.45: mesosykli-historia + uudelleen-aktivointi
