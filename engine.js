@@ -6340,6 +6340,45 @@ function _computeTuningCoreAggregates(blockSessions, allSets) {
   return { totalSessions, completedSets };
 }
 
+// β H-001 B2/A2 (HANDOFF.md §5 kohta 6 + §6 K2(1)-A ratifioitu 2026-05-25):
+// Normalisoi slotin note-kentässä esiintyvä "@XX%"-merkkijono vastaamaan
+// slot.loadPct:tä AI Block Tuning -syötteen serialisoinnissa.
+//
+// loadPct on kanoninen kuorma-intentti-kenttä (HANDOFF.md §5 kohta 6) — se on
+// dimensioton ja toimii sekä barbell- että BW-skaalatuilla liikkeillä. note
+// on kuvailevaa tekstiä; jos sen "@XX%" eroaa loadPct:stä, korvataan loadPct-
+// pohjaisella prosentilla.
+//
+// SCOPE: tämä helper toimii engine.js:n AI Block Tuning -funktioissa
+// (generate*TuningPackage). EI muuta data.js-mesosyklitemplaattia eikä
+// atletti-UI:n näkymiä — note-merkkijonon LÄHDE on data.js:ssä, B2 korjaa
+// VAIN AI-syötteen serialisoinnin (HANDOFF.md §3 scope-aita).
+//
+// Toleranssi 0,5 prosenttiyksikköä (= ≈ roundToHalf-rasteri 100 kg
+// e1RM:llä). Pause/pin/tempo-variantti-spesifikaatiosta riippumatta
+// (Akselin K2(1)-A "tiukka" ratifiointi 2026-05-25).
+//
+// resolvedLoadKg EI sisälly normalisointiin — se on ajonaikainen resolvoitu
+// arvo, legitiimisti poikkeava loadPct × e1RM-arvosta (K2(2)-OK ratifiointi).
+function _normalizeSlotForTuningSerialization(slot) {
+  if (!slot) return slot;
+  if (typeof slot.loadPct !== "number" || slot.loadPct <= 0) return slot;
+  if (typeof slot.note !== "string") return slot;
+  const m = slot.note.match(/@\s*(\d+(?:[.,]\d+)?)\s*%/);
+  if (!m) return slot;
+  const notePct = parseFloat(m[1].replace(",", ".")) / 100;
+  if (!Number.isFinite(notePct)) return slot;
+  const deltaPp = Math.abs(notePct - slot.loadPct) * 100;
+  if (deltaPp <= 0.5) return slot; // toleranssi 0,5 pp
+  // Korvaa "@XX%"-merkkijono loadPct-pohjalla. Pyöristys 1 desimaaliin →
+  // "@59,5 %" tai "@93 %" (kokonaisluku jos .0).
+  const pctNum = slot.loadPct * 100;
+  const pctStr = Math.abs(pctNum - Math.round(pctNum)) < 0.05
+    ? `${Math.round(pctNum)} %`
+    : `${pctNum.toFixed(1).replace(".", ",")} %`;
+  return { ...slot, note: slot.note.replace(/@\s*\d+(?:[.,]\d+)?\s*%/, `@${pctStr}`) };
+}
+
 function generateBlockTuningPackage(ctx) {
   const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings, decisionTraces } = ctx;
 
@@ -6504,6 +6543,9 @@ function generateBlockTuningPackage(ctx) {
     .map(([ruleId, count]) => ({ ruleId, count }));
 
   // ── Seuraavan blokin prescribed ──
+  // β H-001 B2/A2: normalisoi slot.note loadPct:n pohjalla — AI Block Tuning
+  // -syötteen JSON + markdown + prompt -puolelle. data.js-templaatti pysyy
+  // ennallaan (HANDOFF.md §3 scope-aita).
   const wp = mesocycle.weekPlans || [];
   const nextBlockPrescribed = block.nextWeeks.map(nw => {
     const wkPlan = wp[nw - 1];
@@ -6512,9 +6554,9 @@ function generateBlockTuningPackage(ctx) {
       week: nw,
       days: wkPlan.days.map(d => ({
         label: d.label,
-        primary: (d.slots || []).find(s => s.role === "primary"),
-        backoff: (d.slots || []).find(s => s.role === "backoff"),
-        topSet: (d.slots || []).find(s => s.role === "secondary" || s.role === "calibration"),
+        primary: _normalizeSlotForTuningSerialization((d.slots || []).find(s => s.role === "primary")),
+        backoff: _normalizeSlotForTuningSerialization((d.slots || []).find(s => s.role === "backoff")),
+        topSet: _normalizeSlotForTuningSerialization((d.slots || []).find(s => s.role === "secondary" || s.role === "calibration")),
       })),
     };
   }).filter(Boolean);
@@ -7434,6 +7476,8 @@ export {
   generateEndOfCycleTuningPackage,
   // β H-001 B1 — jaettu aggregaatti-apufunktio (export vain testikäyttöön)
   _computeTuningCoreAggregates,
+  // β H-001 B2/A2 — slot-note-normalisointi (export vain testikäyttöön)
+  _normalizeSlotForTuningSerialization,
   combineReadiness,
   // Mesocycle
   getMesocycleWeek,

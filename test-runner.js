@@ -47,6 +47,8 @@ import {
   generateGenericBlockTuningPackage,
   // β H-001 B1 — jaettu aggregaatti-apufunktio (A1-yksikkötesti)
   _computeTuningCoreAggregates,
+  // β H-001 B2/A2 — slot-note-normalisointi (A2-yksikkötesti)
+  _normalizeSlotForTuningSerialization,
   // v4.35.0: eliittitason progressio-malli (Helms 2018, Cumming 2024, Issurin 2010)
   PROGRESSION_CONFIG,
   computeProgressionTarget,
@@ -2104,6 +2106,214 @@ function testBlockTuningAggregates() {
   assertEqual(r7.completedSets, 3, "T7 (backfill-only): completedSets = 3 (backfill-setit aitoa volyymiä)");
 }
 
+// β H-001 B2/A2 (HANDOFF.md §5 kohta 6 + §6 K2(1)-A "tiukka" ratifiointi 2026-05-25):
+// _normalizeSlotForTuningSerialization yksikkötesti.
+// Mittari-ensin (docs/SELKARANKA.md kohta 6): tunnettu-positiivinen + tunnettu-
+// negatiivinen + roundToHalf-toleranssi käsin tarkistettuna.
+function testBlockTuningSlotNormalization() {
+  // ── Tunnettu-positiivinen 1: Vk 7 LA paused squat (HANDOFF.md §2 A2 repro) ──
+  // Käsin laskettu: note "@70 % Takakyykky" → notePct = 0,70. loadPct = 0,595.
+  // Δ = (0,70 − 0,595) × 100 = 10,5 pp > 0,5 pp -toleranssi → normalisoidaan.
+  // Korjattu pct = 59,5 % → "@59,5 % Takakyykky".
+  const slotPos1 = {
+    role: "secondary",
+    defaultMovementName: "Paused squat",
+    loadPct: 0.595,
+    suggestedLoadKg: 110,
+    note: "Paused squat @70 % Takakyykky — Paused squat 2 s",
+  };
+  const r1 = _normalizeSlotForTuningSerialization(slotPos1);
+  assertEqual(r1.note, "Paused squat @59,5 % Takakyykky — Paused squat 2 s",
+    "A2-T1 (pos vk7 LA): note normalisoituu 70 % → 59,5 % loadPct:n pohjalla");
+  assertEqual(r1.loadPct, 0.595, "A2-T1: loadPct ennallaan (canonical)");
+  assertEqual(r1.suggestedLoadKg, 110, "A2-T1: suggestedLoadKg ennallaan (B2:n scope: note vain)");
+
+  // ── Tunnettu-positiivinen 2: vk14 TI Takakyykky peaking (rajatapaus, Δ ~ 2 pp) ──
+  // note "@95%" → notePct = 0,95. loadPct = 0,93. Δ = 2,0 pp > 0,5 → normalisoidaan.
+  // Korjattu pct = 93 % (kokonaisluku, .0 jätetään pois).
+  const slotPos2 = {
+    role: "primary",
+    defaultMovementName: "Takakyykky",
+    loadPct: 0.93,
+    note: "🎯 PEAKING: @95% mökkilepo-decision-tree",
+  };
+  const r2 = _normalizeSlotForTuningSerialization(slotPos2);
+  assertEqual(r2.note, "🎯 PEAKING: @93 % mökkilepo-decision-tree",
+    "A2-T2 (pos vk14): note normalisoituu 95 % → 93 % (kokonaisluku, ei desimaalia)");
+
+  // ── Tunnettu-negatiivinen 1: konsistentti slot — Δ < toleranssi ──
+  // note "@75 %" → notePct = 0,75. loadPct = 0,75. Δ = 0 pp ≤ 0,5 → ei muutosta.
+  const slotNeg1 = {
+    role: "primary",
+    defaultMovementName: "Lisäpainoleuanveto",
+    loadPct: 0.75,
+    note: "Ma — Lisäpainoleuanveto 4×4 @75 %",
+  };
+  const r3 = _normalizeSlotForTuningSerialization(slotNeg1);
+  assertEqual(r3.note, slotNeg1.note, "A2-T3 (neg-konsistentti): note säilyy ennallaan kun Δ = 0");
+
+  // ── Tunnettu-negatiivinen 2: toleranssin sisällä Δ = 0,2 pp ──
+  // note "@75 %" → 0,75. loadPct = 0,752. Δ = 0,2 pp ≤ 0,5 → ei muutosta.
+  const slotNeg2 = {
+    role: "primary",
+    loadPct: 0.752,
+    note: "Ma — Lisäpainoleuanveto 4×4 @75 %",
+  };
+  const r4 = _normalizeSlotForTuningSerialization(slotNeg2);
+  assertEqual(r4.note, slotNeg2.note,
+    "A2-T4 (neg-toleranssi 0,2 pp): note säilyy kun Δ = 0,2 pp ≤ 0,5 pp -toleranssi");
+
+  // ── Tunnettu-positiivinen 3: toleranssin yli Δ = 0,6 pp ──
+  // note "@75 %" → 0,75. loadPct = 0,756. Δ = 0,6 pp > 0,5 → normalisoidaan.
+  const slotPos3 = {
+    role: "primary",
+    loadPct: 0.756,
+    note: "Ma — primary 4×4 @75 %",
+  };
+  const r5 = _normalizeSlotForTuningSerialization(slotPos3);
+  assertEqual(r5.note, "Ma — primary 4×4 @75,6 %",
+    "A2-T5 (pos toleranssi 0,6 pp): note päivittyy kun Δ > 0,5 pp -toleranssi");
+
+  // ── Edge: undefined / null slot → palautetaan sellaisenaan ──
+  assertEqual(_normalizeSlotForTuningSerialization(null), null, "A2-T6 (edge-null): null in → null out");
+  assertEqual(_normalizeSlotForTuningSerialization(undefined), undefined, "A2-T6 (edge-undef): undef in → undef out");
+
+  // ── Edge: slot ilman note:a → palautetaan sellaisenaan ──
+  const slotNoNote = { role: "primary", loadPct: 0.75 };
+  const r6 = _normalizeSlotForTuningSerialization(slotNoNote);
+  assertEqual(r6.note, undefined, "A2-T7 (edge-no-note): note säilyy undefined:na");
+  assertEqual(r6.loadPct, 0.75, "A2-T7: loadPct ennallaan");
+
+  // ── Edge: note ilman "@XX%" -pattern:ia → palautetaan sellaisenaan ──
+  const slotNoAt = { role: "primary", loadPct: 0.75, note: "Vapaa kommentti ilman pct:tä" };
+  const r7 = _normalizeSlotForTuningSerialization(slotNoAt);
+  assertEqual(r7.note, slotNoAt.note, "A2-T8 (edge-no-pattern): note säilyy kun ei @XX% -merkkijonoa");
+
+  // ── Edge: loadPct null tai 0 → ei muutosta ──
+  const slotNoPct = { role: "primary", loadPct: null, note: "Slot @70 % testi" };
+  const r8 = _normalizeSlotForTuningSerialization(slotNoPct);
+  assertEqual(r8.note, slotNoPct.note, "A2-T9 (edge-no-loadpct): note säilyy kun loadPct=null");
+
+  // ── Variant: pilkku-desimaalisepari note:ssa (suomalainen formaatti) ──
+  // note "@59,5 %" → notePct = 0,595. loadPct = 0,595. Δ = 0 → ei muutosta.
+  const slotComma = { role: "secondary", loadPct: 0.595, note: "Paused squat @59,5 % Takakyykky" };
+  const rC = _normalizeSlotForTuningSerialization(slotComma);
+  assertEqual(rC.note, slotComma.note, "A2-T10 (variant-pilkku): @59,5 % parsii oikein ja matchaa loadPct:n");
+}
+
+// β H-001 B2/A3 (HANDOFF.md §6 K2(1)-A "tiukka" ratifiointi 2026-05-25):
+// auditInvariants:in INVARIANT_VIOLATION_SLOT_MISMATCH-emissio yksikkötesti.
+// Mittari-ensin: tunnettu-positiivinen Vk 7 LA paused squat → flagi laukeaa;
+// tunnettu-negatiivinen konsistentti slot → ei laukea.
+//
+// Async koska tools/engine-pilot/lib/audit-engine.mjs on dynamic import
+// (selain ei välttämättä cache:a polkua sw.js:n CORE_ASSETS:issa; ?test=1
+// ajetaan online ja github pages servoi tools/-kansion). Jos importti
+// epäonnistuu offline-tilassa, testi raportoi sen Akselille mutta ei kaada.
+async function testSlotMismatchDetection() {
+  let auditInvariants;
+  try {
+    const mod = await import("./tools/engine-pilot/lib/audit-engine.mjs");
+    auditInvariants = mod.auditInvariants;
+  } catch (e) {
+    // Pilot-harness ei selain-saatavilla offline-tilassa (tools/ ei ole
+    // sw.js:n CORE_ASSETS:issa). Skipataan testi raportoidulla syyllä.
+    assert(true, `A3 (offline): auditInvariants ei ole selain-saatavilla — testi skipattu (importti epäonnistui: ${e.message?.slice(0, 60)})`);
+    return;
+  }
+
+  // Apuri: rakenna synteettinen trace.output.slots-array auditInvariants:lle.
+  // auditInvariants tarvitsee myös trace.traces (VL-cap-haaroille), mutta
+  // antamalla isDefaultMeso=true → A-kanava opt-out → ei vaadi VL_CAP_RESOLVED-tracea.
+  function makeTrace(slots) {
+    return {
+      input: { mesocycleType: "default" }, // opt-out A-kanavasta (default-meso)
+      output: { slots, deltaPct: 0, weekLabel: "" },
+      traces: [],
+    };
+  }
+
+  // ── Tunnettu-positiivinen 1: Vk 7 LA paused squat (HANDOFF.md §2 A3 repro) ──
+  // note "@70 % Takakyykky" → 0,70. loadPct = 0,595. Δ = 10,5 pp > 0,5 → flagi laukeaa.
+  const slotPos1 = {
+    role: "secondary",
+    movementName: "Paused squat",
+    loadPct: 0.595,
+    note: "Paused squat @70 % Takakyykky — Paused squat 2 s",
+    // pakolliset kentät ettei A6D / A1 -detektorit emit:tää muita flageja
+    sets: 3,
+    targetVx: 2,
+    velocityStop: null,
+  };
+  const flags1 = auditInvariants(makeTrace([slotPos1]));
+  const mismatchFlags1 = flags1.filter(f => f.code === "INVARIANT_VIOLATION_SLOT_MISMATCH");
+  assertEqual(mismatchFlags1.length, 1,
+    "A3-T1 (pos vk7 LA paused squat): INVARIANT_VIOLATION_SLOT_MISMATCH laukeaa (1 flagi)");
+  if (mismatchFlags1.length > 0) {
+    const meta = mismatchFlags1[0].meta;
+    assert(Math.abs(meta.deltaPp - 10.5) < 0.1,
+      `A3-T1: deltaPp = 10,5 ± 0,1 (saatu ${meta.deltaPp?.toFixed(2)})`);
+    assertEqual(meta.ac, "A3", "A3-T1: acceptance criterion = A3");
+    assertEqual(meta.channel, "slot_mismatch", "A3-T1: channel = slot_mismatch");
+  }
+
+  // ── Tunnettu-negatiivinen 1: konsistentti slot — note matchaa loadPct ──
+  // note "@75 %" → 0,75. loadPct = 0,75. Δ = 0 pp ≤ 0,5 → ei flagia.
+  const slotNeg1 = {
+    role: "primary",
+    movementName: "Lisäpainoleuanveto",
+    loadPct: 0.75,
+    note: "Ma — Lisäpainoleuanveto 4×4 @75 %",
+    sets: 4,
+    targetVx: 2,
+  };
+  const flags2 = auditInvariants(makeTrace([slotNeg1]));
+  const mismatchFlags2 = flags2.filter(f => f.code === "INVARIANT_VIOLATION_SLOT_MISMATCH");
+  assertEqual(mismatchFlags2.length, 0,
+    "A3-T2 (neg-konsistentti): ei flagia kun note @75 % vastaa loadPct 0,75");
+
+  // ── Tunnettu-positiivinen 2: vk14 TI peaking (rajatapaus Δ 2 pp) ──
+  const slotPos2 = {
+    role: "primary",
+    movementName: "Takakyykky",
+    loadPct: 0.93,
+    note: "🎯 PEAKING: @95% mökkilepo-decision-tree",
+    sets: 1,
+    targetVx: 1,
+  };
+  const flags3 = auditInvariants(makeTrace([slotPos2]));
+  const mismatchFlags3 = flags3.filter(f => f.code === "INVARIANT_VIOLATION_SLOT_MISMATCH");
+  assertEqual(mismatchFlags3.length, 1,
+    "A3-T3 (pos vk14 peaking): flagi laukeaa Δ 2 pp > 0,5 pp -toleranssi");
+
+  // ── Tunnettu-negatiivinen 2: toleranssin sisällä Δ = 0,2 pp ──
+  const slotNeg2 = {
+    role: "primary",
+    movementName: "Lisäpainoleuanveto",
+    loadPct: 0.752,
+    note: "Ma — primary @75 %",
+    sets: 4,
+    targetVx: 2,
+  };
+  const flags4 = auditInvariants(makeTrace([slotNeg2]));
+  const mismatchFlags4 = flags4.filter(f => f.code === "INVARIANT_VIOLATION_SLOT_MISMATCH");
+  assertEqual(mismatchFlags4.length, 0,
+    "A3-T4 (neg-toleranssi 0,2 pp): ei flagia kun Δ ≤ 0,5 pp");
+
+  // ── Tunnettu-positiivinen 3: monisloti-array (3 slottia, joista 2 ristiriidassa) ──
+  // Verifioi että flagi laukeaa per slot, ei vain ensimmäisessä.
+  const slotsMulti = [slotPos1, slotNeg1, slotPos2];
+  const flags5 = auditInvariants(makeTrace(slotsMulti));
+  const mismatchFlags5 = flags5.filter(f => f.code === "INVARIANT_VIOLATION_SLOT_MISMATCH");
+  assertEqual(mismatchFlags5.length, 2,
+    "A3-T5 (multi 3 slot): 2 flagi-osumaa (2 ristiriidassa, 1 konsistentti)");
+
+  // ── Edge: tyhjä slots-array → ei flageja ──
+  const flags6 = auditInvariants(makeTrace([]));
+  const mismatchFlags6 = flags6.filter(f => f.code === "INVARIANT_VIOLATION_SLOT_MISMATCH");
+  assertEqual(mismatchFlags6.length, 0, "A3-T6 (edge-empty): ei flageja kun slots=[]");
+}
+
 async function testBackupRoundtrip() {
   // This test requires IndexedDB — skip if not available
   try {
@@ -2250,6 +2460,9 @@ export async function runTests() {
   testGenericBlockTuningPackage();
   // β H-001 B1 (HANDOFF.md A1): AI Block Tuning -aggregaattien rajauksen yhtenäisyys
   testBlockTuningAggregates();
+  // β H-001 B2 (HANDOFF.md A2 + A3): slot-note-normalisointi + slot-mismatch-detektor
+  testBlockTuningSlotNormalization();
+  await testSlotMismatchDetection();
   await testRecommendScenarios();
   await testBackupRoundtrip();
   // v4.34.45: mesosykli-historia + uudelleen-aktivointi

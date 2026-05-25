@@ -570,7 +570,7 @@ export function auditTrace(trace, sessionIndex = 0, allTracesForProfile = [], pr
 // INVARIANT_VIOLATION-flagin sisältö: kanava, ehdotettu arvo, invariantti,
 // rikkonut raja (min tai max), ylityksen suuruus.
 // ──────────────────────────────────────────────────────────────
-function auditInvariants(trace, profile = null) {
+export function auditInvariants(trace, profile = null) {
   const flags = [];
   const traces = Array.isArray(trace.traces) ? trace.traces : [];
 
@@ -855,6 +855,52 @@ function auditInvariants(trace, profile = null) {
           movementName: slot.movementName,
           velocityStop: slot.velocityStop,
           targetVx: slot.targetVx,
+        },
+      ),
+    );
+  }
+
+  // ─── B2/A3: slot-mismatch — kuorma-intentti-kenttien ristiriita (AC-A3) ─
+  // H-001 B2/A3 (HANDOFF.md §6 K2(1)-A "tiukka" ratifiointi 2026-05-25):
+  // detektoi slotin note "@XX%" ristiriidan slot.loadPct:n kanssa. loadPct
+  // on kanoninen kuorma-intentti-kenttä (HANDOFF.md §5 kohta 6) — note
+  // tulisi johtaa siitä. Toleranssi 0,5 prosenttiyksikköä.
+  //
+  // resolvedLoadKg ei sisälly tähän detektoriin (K2(2)-OK ratifiointi) —
+  // se on ajonaikainen resolvoitu arvo, legitiimisti poikkeava
+  // loadPct × e1RM-arvosta (esim. Lähde 1 V/reps-pohjainen pct, cross-ref
+  // cfgFloor, rate-limit + progressio-laskelma).
+  //
+  // Detektori on TIUKKA (Akselin K2(1)-A): pause/pin/tempo-variantti-
+  // spesifikaatiosta riippumatta, kaikki note-pct ≠ loadPct -ristiriidat
+  // laukeavat. B2/A2 normalisoi AI Block Tuning -syötteen sloteille
+  // (upcomingBlock.prescribed); tämä detektori toimii varakeinona
+  // runtime-trace-sloteille (rec.dayPlan.slots) joiden lähde on
+  // data.js-mesosyklitemplaatti (B2:n scope-rajaus ulkopuolella).
+  const slotsForSlotMismatch = trace.output?.slots || [];
+  for (const slot of slotsForSlotMismatch) {
+    if (typeof slot.loadPct !== "number" || slot.loadPct <= 0) continue;
+    if (typeof slot.note !== "string") continue;
+    const m = slot.note.match(/@\s*(\d+(?:[.,]\d+)?)\s*%/);
+    if (!m) continue;
+    const notePct = parseFloat(m[1].replace(",", ".")) / 100;
+    if (!Number.isFinite(notePct)) continue;
+    const deltaPp = Math.abs(notePct - slot.loadPct) * 100;
+    if (deltaPp <= 0.5) continue; // toleranssi 0,5 pp
+    flags.push(
+      flag(
+        "INVARIANT_VIOLATION_SLOT_MISMATCH",
+        "🐛 ERROR",
+        `B2/A3 slot-mismatch: slot "${slot.movementName || "?"}" (role=${slot.role}) note "${(slot.note || "").slice(0, 80)}" sisältää @${(notePct * 100).toFixed(1)}% mutta slot.loadPct=${(slot.loadPct * 100).toFixed(1)}% (Δ ${deltaPp.toFixed(1)} pp, toleranssi 0,5 pp). loadPct on kanoninen kuorma-intentti-kenttä (HANDOFF.md §5 kohta 6) — note tulisi johtaa loadPct:stä. B2/A2 normalisoi AI Block Tuning -syötteen serialisoinnissa; tämä flag laukeaa runtime-sloteille joiden lähde on data.js-mesosyklitemplaatti.`,
+        {
+          channel: "slot_mismatch",
+          ac: "A3",
+          role: slot.role,
+          movementName: slot.movementName,
+          note: slot.note,
+          notePct,
+          loadPct: slot.loadPct,
+          deltaPp,
         },
       ),
     );
