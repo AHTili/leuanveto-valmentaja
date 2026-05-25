@@ -149,4 +149,4 @@ Tämä osio korvaa aiemman staattisen "Vaiheiden 1–8 tila" -taulukon. **Ajanta
 **Session LOPUSSA (ennen kuin pinnaat työn valmiiksi):**
 
 1. Täytä `HANDOFF.md`:n osio 7 "Session-tulos": muuttuneet tiedostot, tehdyt päätökset, mikä jäi auki, seuraava askel.
-2. Jos tehtävä on valmis → arkistoi `HANDOFF.md` polkuun `docs/handoffs/HANDOFF_<id>.md` ja nollaa repo-juuren `HANDOFF.md` tyhjäksi pohjaksi. Jos koko `ROADMAP.md`-vaihe sulkeutui → siirrä NYT-merkki seuraavaan va
+2. Jos tehtävä on valmis → arkistoi `HANDOFF.md` polkuun `docs/handoffs/HANDOFF_<id>.md` ja nollaa repo-juuren `HANDOFF.md` tyhjäksi pohjaksi. Jos koko `ROADMAP.md`-vaihe sulkeutui → siirrä NYT-merkki seuraavaan vaiheeseen.
