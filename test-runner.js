@@ -2551,6 +2551,112 @@ function testTuningPromptTechStackLine() {
     "B4-T12 (edge generic): alkuperäinen 'Anna 3 kategoriassa' säilyy generic-promptissa");
 }
 
+// β H-001 B5 (HANDOFF.md §6 K4(a) ratifioitu 2026-05-25, A6):
+// currentWeekCalibrationSets-kenttä AI Block Tuning -syötteen juuressa.
+// Mittari-ensin (docs/SELKARANKA.md kohta 6): tunnettu-pos (cal-sessio vk N)
+// + tunnettu-neg (ei cal-sessiota) + edge-tapaukset.
+function testCurrentWeekCalibrationSets() {
+  // Apuri: streetlifting_16w meso, vk 4 deload-kontekstiin.
+  // startDateISO 2026-01-05 (Ma) → vk 1: 2026-01-05..11, vk 2: 12..18,
+  // vk 3: 19..25, vk 4: 26..2026-02-01. Cal-sessio LA = 2026-01-31.
+  const mkMeso = () => ({
+    mesocycleId: "test-b5-meso",
+    type: "streetlifting_16w",
+    startDateISO: "2026-01-05",
+    weekCount: 16,
+    weekDefs: Array.from({ length: 16 }, (_, i) => ({ week: i + 1, deltaPctBase: i === 3 ? -0.25 : 0.025 })),
+    weekPlans: Array.from({ length: 16 }, (_, i) => ({ week: i + 1, days: [] })),
+    streetliftingConfig: { calibration: { leukaExtKg: 85, dippiExtKg: 95, kyykkyExtKg: 185 }, competitionDate: "2026-08-22" },
+  });
+
+  // ── Tunnettu-positiivinen: vk 4 LA cal-sessio (3 cal-settiä) ──
+  // Käsin laskettu: 3 settiä, kaikki setRole === "calibration", dateISO 2026-01-31
+  // → getMesocycleWeek(meso, "2026-01-31") palauttaa 4 → suodatin tunnistaa.
+  // Lopputulos: currentWeekCalibrationSets on taulukko 3 alkiolla.
+  const meso = mkMeso();
+  const calSession = { sessionId: "vk4-cal-s1", dateISO: "2026-01-31", label: "LA — Kalibrointi AMRAP (Vk 4)", dayType: "heavy" };
+  const calSets = [
+    { sessionId: "vk4-cal-s1", movementName: "Lisäpainoleuanveto", setRole: "calibration", externalLoadKg: 70, reps: 3, actualVx: 1, targetVx: 1, dateISO: "2026-01-31", timestamp: "2026-01-31T10:05:00" },
+    { sessionId: "vk4-cal-s1", movementName: "Lisäpainodippi", setRole: "calibration", externalLoadKg: 80, reps: 3, actualVx: 1, targetVx: 1, dateISO: "2026-01-31", timestamp: "2026-01-31T10:15:00" },
+    { sessionId: "vk4-cal-s1", movementName: "Takakyykky", setRole: "calibration", externalLoadKg: 170, reps: 3, actualVx: 1, targetVx: 1, dateISO: "2026-01-31", timestamp: "2026-01-31T10:25:00" },
+  ];
+  const pkgPos = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [calSession], allSets: calSets, measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: [],
+  });
+  assert(!pkgPos.error, "B5-T1 (pos vk4-cal): generateBlockTuningPackage onnistuu");
+  assert(Array.isArray(pkgPos.json.currentWeekCalibrationSets),
+    "B5-T2 (pos vk4-cal): currentWeekCalibrationSets on taulukko (data-tila)");
+  assertEqual(pkgPos.json.currentWeekCalibrationSets.length, 3,
+    "B5-T2a: kerätty 3 cal-settiä (kaikki vk 4 LA -sessiosta)");
+  // Sortattu dateISO/timestamp:n mukaan — leuka ennen dippiä ennen kyykkyä
+  assertEqual(pkgPos.json.currentWeekCalibrationSets[0].movementName, "Lisäpainoleuanveto",
+    "B5-T2b: sortattu timestamp:n mukaan — leuka (10:05) ensimmäisenä");
+  assertEqual(pkgPos.json.currentWeekCalibrationSets[2].movementName, "Takakyykky",
+    "B5-T2c: takakyykky (10:25) viimeisenä");
+  // Markdown sisältää otsikon + taulukon
+  assert(pkgPos.markdown.includes("Käynnissä oleva viikko (vk 4) — kalibrointitreenit"),
+    "B5-T3 (pos vk4-cal): markdown sisältää otsikon");
+  assert(pkgPos.markdown.includes("Lisäpainoleuanveto") && pkgPos.markdown.includes("170 kg"),
+    "B5-T3a: markdown sisältää cal-set-rivit (taulukko)");
+  // Prompt sisältää ohjerivin currentWeekCalibrationSets-kentästä (B4-pattern)
+  assert(pkgPos.prompt.includes("currentWeekCalibrationSets"),
+    "B5-T4 (pos): prompt mainitsee currentWeekCalibrationSets-kentän AI:lle");
+  assert(pkgPos.prompt.includes("kalibrointi-evidenssinä"),
+    "B5-T4a: prompt ohjeistaa AI:ta käyttämään kenttää kalibrointi-evidenssinä");
+
+  // ── Tunnettu-negatiivinen: ei cal-sessiota vk 4:llä ──
+  // Käsin laskettu: 0 cal-settiä → currentWeekCalibrationSets on status-objekti.
+  const pkgNeg = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [], allSets: [], measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: [],
+  });
+  assert(!Array.isArray(pkgNeg.json.currentWeekCalibrationSets),
+    "B5-T5 (neg empty): currentWeekCalibrationSets EI ole taulukko (status-objekti)");
+  assertEqual(pkgNeg.json.currentWeekCalibrationSets.status, "empty",
+    "B5-T5a: status='empty'");
+  assert(typeof pkgNeg.json.currentWeekCalibrationSets.reason === "string"
+    && pkgNeg.json.currentWeekCalibrationSets.reason.includes("vk 4"),
+    "B5-T5b: reason mainitsee vk 4");
+  // Markdown sisältää status-rivin
+  assert(pkgNeg.markdown.includes("Käynnissä oleva viikko (vk 4)"),
+    "B5-T6 (neg empty): markdown sisältää otsikon vaikka status='empty'");
+  assert(pkgNeg.markdown.includes("ei havaintoja"),
+    "B5-T6a: markdown näyttää suomenkielisen status-labelin");
+
+  // ── Edge: cal-sessio EI kuluvalla viikolla (esim. vk 3 → suodatetaan pois) ──
+  // Käsin laskettu: dateISO 2026-01-25 = vk 3 SU; vk N = 4 → ei matchaa.
+  const calSessionWrongWeek = { sessionId: "vk3-cal-s1", dateISO: "2026-01-25", label: "vk3 LA", dayType: "heavy" };
+  const calSetsWrongWeek = [
+    { sessionId: "vk3-cal-s1", movementName: "Lisäpainoleuanveto", setRole: "calibration", externalLoadKg: 65, reps: 3, actualVx: 1, dateISO: "2026-01-25", timestamp: "2026-01-25T10:00:00" },
+  ];
+  const pkgWrongWeek = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [calSessionWrongWeek], allSets: calSetsWrongWeek, measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: [],
+  });
+  assertEqual(pkgWrongWeek.json.currentWeekCalibrationSets.status, "empty",
+    "B5-T7 (edge wrong-week): vk 3 cal-sessio suodatetaan pois vk 4:n kontekstissa (status='empty')");
+
+  // ── Edge: set EI ole cal-set (setRole !== "calibration") ──
+  // Käsin laskettu: setRole "top" → ei tunnisteta cal-setiksi → suodatetaan pois.
+  const topSession = { sessionId: "vk4-top-s1", dateISO: "2026-01-28", label: "vk4 KE top", dayType: "heavy" };
+  const topSets = [
+    { sessionId: "vk4-top-s1", movementName: "Lisäpainoleuanveto", setRole: "top", externalLoadKg: 60, reps: 5, actualVx: 3, dateISO: "2026-01-28", timestamp: "2026-01-28T10:00:00" },
+  ];
+  const pkgWrongRole = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [topSession], allSets: topSets, measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: [],
+  });
+  assertEqual(pkgWrongRole.json.currentWeekCalibrationSets.status, "empty",
+    "B5-T8 (edge wrong-role): top-rooliset setit eivät tunnisteta cal-seteiksi (status='empty')");
+
+  // ── Edge: completedBlock.weeks pysyy [1,2,3] kun cal-setit kerätty ──
+  // §5 kohta 3 vaihtoehto (b): additiivinen — completedBlock-semantiikka ei
+  // muutu (vk 4 ei missään vaiheessa luiskahda completedBlock-osioon).
+  assertEqual(pkgPos.json.completedBlock.weeks.join(","), "1,2,3",
+    "B5-T9 (additiivisuus): completedBlock.weeks pysyy [1,2,3] vaikka vk 4 cal-data näkyy currentWeekCalibrationSets-kentässä");
+}
+
 async function testBackupRoundtrip() {
   // This test requires IndexedDB — skip if not available
   try {
@@ -2705,6 +2811,8 @@ export async function runTests() {
   testBlockTuningEmptyTrendsEncoding();
   // β H-001 B4 (HANDOFF.md A5): tech-stack-rivi prompt-pohjissa
   testTuningPromptTechStackLine();
+  // β H-001 B5 (HANDOFF.md A6): currentWeekCalibrationSets kentässä
+  testCurrentWeekCalibrationSets();
   await testRecommendScenarios();
   await testBackupRoundtrip();
   // v4.34.45: mesosykli-historia + uudelleen-aktivointi

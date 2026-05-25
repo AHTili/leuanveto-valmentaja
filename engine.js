@@ -6625,8 +6625,30 @@ function generateBlockTuningPackage(ctx) {
     };
   }).filter(Boolean);
 
+  // ── Kuluvan (deload-) viikon kalibrointitreenit ──
+  // β H-001 B5/A6 (HANDOFF.md §6 K4(a) ratifioitu 2026-05-25): kerää
+  // käynnissä olevan vk N (deload) cal-setit ai-syötteen omaan kenttään.
+  // Filtteri: session vk N (via getMesocycleWeek + dateISO) JA
+  // setRole === "calibration" (kanoninen pattern engine.js:n 16
+  // esiintymässä; asetetaan workout-save:ssa index.html:14042-14044).
+  // Sortattu dateISO:n + timestamp:n mukaan. EI data.js-skeematarvetta
+  // (K4-skannaus 2026-05-25 todisti). completedBlock.weeks pysyy [1,2,3]
+  // (§5 kohta 3 vaihtoehto b: additiivinen kenttä syötteen JUUREEN).
+  const currentWeekSessionIds = new Set(
+    (sessions || []).filter(s => getMesocycleWeek(mesocycle, s.dateISO) === wk).map(s => s.sessionId)
+  );
+  const currentWeekCalibrationSetsArr = (allSets || [])
+    .filter(s => s.setRole === "calibration" && currentWeekSessionIds.has(s.sessionId))
+    .sort((a, b) => (a.timestamp || a.dateISO || "").localeCompare(b.timestamp || b.dateISO || ""));
+  // B5 tyhjä-tapaus: B3-tyylinen status-encoding. Tyhjä on legitiimi
+  // (atletti ei vielä tehnyt cal-sessiota deload-viikolla → kysyy AI:lta
+  // ohjelmointia ennen cal-sessiota), ei rikkinäinen pipeline.
+  const currentWeekCalibrationSets = currentWeekCalibrationSetsArr.length > 0
+    ? currentWeekCalibrationSetsArr
+    : { status: "empty", reason: `ei kalibrointitreenejä kuluvalla vk ${wk}:lla` };
+
   // ── Markdown-narratiivi (atleetille) ──
-  const markdown = buildMarkdownNarrative({ profile, block, currentWeek: wk, sessionAnalysis, e1rmTrends, trends, anomalies, aggregates, nextBlockPrescribed });
+  const markdown = buildMarkdownNarrative({ profile, block, currentWeek: wk, sessionAnalysis, e1rmTrends, trends, anomalies, aggregates, nextBlockPrescribed, currentWeekCalibrationSets });
 
   // ── JSON-data (AI:lle) ──
   const json = {
@@ -6656,6 +6678,11 @@ function generateBlockTuningPackage(ctx) {
       weeks: block.nextWeeks,
       prescribed: nextBlockPrescribed,
     },
+    // β H-001 B5/A6 (HANDOFF.md §5 kohta 3 vaihtoehto b): käynnissä olevan
+    // vk N (deload) kalibrointitreenit omassa kentässään syötteen JUURESSA.
+    // Additiivinen — completedBlock.weeks säilyy [1,2,3], ei sekoita
+    // "completed" vs "current"-semantiikkaa.
+    currentWeekCalibrationSets,
   };
 
   // ── AI-prompt (valmis copy-paste) ──
@@ -6894,6 +6921,37 @@ function generateGenericBlockTuningPackage(ctx) {
     lines.push("");
   }
 
+  // ── Kuluvan (deload-) viikon kalibrointitreenit ──
+  // β H-001 B5/A6 (HANDOFF.md §6 K4(a) ratifioitu 2026-05-25): kerää
+  // käynnissä olevan vk N (deload) cal-setit. Sama logiikka kuin
+  // streetlifting_16w-funktiossa.
+  const genCurrentWeekSessionIds = new Set(
+    (sessions || []).filter(s => getMesocycleWeek(mesocycle, s.dateISO) === wk).map(s => s.sessionId)
+  );
+  const genCurrentWeekCalibrationSetsArr = (allSets || [])
+    .filter(s => s.setRole === "calibration" && genCurrentWeekSessionIds.has(s.sessionId))
+    .sort((a, b) => (a.timestamp || a.dateISO || "").localeCompare(b.timestamp || b.dateISO || ""));
+  const currentWeekCalibrationSets = genCurrentWeekCalibrationSetsArr.length > 0
+    ? genCurrentWeekCalibrationSetsArr
+    : { status: "empty", reason: `ei kalibrointitreenejä kuluvalla vk ${wk}:lla` };
+
+  // Markdown: kuluvan vk:n cal-setit (B3-pattern)
+  if (_isTrendEmptyStatus(currentWeekCalibrationSets)) {
+    lines.push("### Käynnissä oleva viikko — kalibrointitreenit");
+    lines.push("");
+    lines.push(`*${_formatTrendStatusFi(currentWeekCalibrationSets)}*`);
+    lines.push("");
+  } else if (Array.isArray(currentWeekCalibrationSets) && currentWeekCalibrationSets.length > 0) {
+    lines.push("### Käynnissä oleva viikko — kalibrointitreenit");
+    lines.push("");
+    lines.push("| Päivä | Liike | Kuorma | Reps | Vx |");
+    lines.push("|---|---|---|---|---|");
+    for (const s of currentWeekCalibrationSets) {
+      lines.push(`| ${s.dateISO || "?"} | ${s.movementName || "?"} | ${s.externalLoadKg ?? "?"} kg | ${s.reps ?? "?"} | V${s.actualVx ?? "?"} |`);
+    }
+    lines.push("");
+  }
+
   lines.push(`## Tuleva blokki (${nextBlockLabel})`);
   lines.push("");
   lines.push(nextWeeks.length > 0
@@ -6919,6 +6977,8 @@ function generateGenericBlockTuningPackage(ctx) {
       sessions: sessionAnalysis, e1rmTrends, anomalies, aggregates,
     },
     upcomingBlock: { label: nextBlockLabel, weeks: nextWeeks },
+    // β H-001 B5/A6: käynnissä olevan vk N cal-setit syötteen JUURESSA.
+    currentWeekCalibrationSets,
   };
 
   // AI-prompt (yleinen versio, ei streetlifting-spesifi)
@@ -6948,6 +7008,8 @@ function generateGenericBlockTuningPackage(ctx) {
     ``,
     `LeVe AI tech stack: vanilla JavaScript (.js / .mjs), IndexedDB, PWA service worker — EI TypeScriptiä. Älä oleta src/-polkuja tai .ts/.tsx-tiedostoja \`claudeCodePromptHint\`-kentissä.`,
     ``,
+    `Käytä \`currentWeekCalibrationSets\`-kenttää (syötteen juuressa) kalibrointi-evidenssinä jos saatavilla — atletti on suorittanut käynnissä olevan deload-viikon kalibrointitreenit. Jos status="empty", kalibrointi on vielä tekemättä → baseline tulee \`completedBlock.e1rmTrends\`:istä.`,
+    ``,
     `Anna 3 kategoriassa:`,
     `(A) **Sovellus-tason muutokset**: mitä atletti voi tehdä UI:ssa nyt`,
     `(B) **Rakenteelliset muutokset**: koodi-muutosehdotukset seuraavalle blokille`,
@@ -6969,7 +7031,7 @@ function generateGenericBlockTuningPackage(ctx) {
   };
 }
 
-function buildMarkdownNarrative({ profile, block, currentWeek, sessionAnalysis, e1rmTrends, trends, anomalies, aggregates, nextBlockPrescribed }) {
+function buildMarkdownNarrative({ profile, block, currentWeek, sessionAnalysis, e1rmTrends, trends, anomalies, aggregates, nextBlockPrescribed, currentWeekCalibrationSets }) {
   const lines = [];
   lines.push(`# AI-Block-Tuning -analyysi — ${block.prevBlock} → ${block.nextBlock} (vk ${currentWeek})`);
   lines.push("");
@@ -7072,6 +7134,24 @@ function buildMarkdownNarrative({ profile, block, currentWeek, sessionAnalysis, 
     lines.push("");
   }
 
+  // B5/A6: kuluvan (deload-) viikon kalibrointitreenit — AI:lle
+  // kalibrointi-evidenssinä. data-tila taulukkona, tyhjä-tila status-objekti (B3-pattern).
+  if (_isTrendEmptyStatus(currentWeekCalibrationSets)) {
+    lines.push(`## Käynnissä oleva viikko (vk ${currentWeek}) — kalibrointitreenit`);
+    lines.push("");
+    lines.push(`*${_formatTrendStatusFi(currentWeekCalibrationSets)}*`);
+    lines.push("");
+  } else if (Array.isArray(currentWeekCalibrationSets) && currentWeekCalibrationSets.length > 0) {
+    lines.push(`## Käynnissä oleva viikko (vk ${currentWeek}) — kalibrointitreenit`);
+    lines.push("");
+    lines.push("| Päivä | Liike | Kuorma | Reps | Vx |");
+    lines.push("|---|---|---|---|---|");
+    for (const s of currentWeekCalibrationSets) {
+      lines.push(`| ${s.dateISO || "?"} | ${s.movementName || "?"} | ${s.externalLoadKg ?? "?"} kg | ${s.reps ?? "?"} | V${s.actualVx ?? "?"} |`);
+    }
+    lines.push("");
+  }
+
   lines.push(`## Seuraava blokki (${block.nextBlock}, vk ${block.nextWeeks.join("-")})`);
   lines.push("");
   lines.push("Suunniteltu rakenne (prescribed):");
@@ -7124,6 +7204,8 @@ TEHTÄVÄ:
 ═══════════════════════════════════════════════════════════════════
 
 LeVe AI tech stack: vanilla JavaScript (.js / .mjs), IndexedDB, PWA service worker — EI TypeScriptiä. Älä oleta src/-polkuja tai .ts/.tsx-tiedostoja \`claudeCodePromptHint\`-kentissä.
+
+Käytä \`currentWeekCalibrationSets\`-kenttää (syötteen juuressa) kalibrointi-evidenssinä jos saatavilla — atletti on suorittanut käynnissä olevan deload-viikon kalibrointitreenit (esim. 92 % × 3 V1 per kisaliike). Nämä antavat tarkimman e1RM-päivityksen seuraavan blokin ohjelmointiin (DiStasio 2014 ±2,7 kg low-rep-alueella). Jos \`currentWeekCalibrationSets.status === "empty"\`, kalibrointi on vielä tekemättä — ohjelmoinnin baseline tulee silloin edellisestä blokista (\`completedBlock.e1rmTrends\`).
 
 Analysoi edellisen blokin (${block.prevBlock}, vk ${block.prevWeeks.join("-")}) suoritus
 ja ehdota seuraavan blokin (${block.nextBlock}, vk ${block.nextWeeks.join("-")})
