@@ -141,10 +141,11 @@ Tämä osio korvaa aiemman staattisen "Vaiheiden 1–8 tila" -taulukon. **Ajanta
 **Session ALUSSA (ennen mitään muutosta):**
 
 1. Lue tämä CLAUDE.md kokonaan.
-2. Lue `ROADMAP.md` — strateginen 20-vaiheinen R-sekvenssi, NYT-merkki (aktiivinen vaihe), reunaehdot (a)/(b)/(c) ja aikataulu.
-3. Lue repo-juuren `HANDOFF.md` — aktiivisen tehtävän tavoite, acceptance criteriat ja edellisen session tulos.
-4. Aja `git log --oneline -10` ja `git status`. Varmista että `HANDOFF.md`:n "Session-tulos" vastaa repon todellista tilaa. Ristiriidassa → repo voittaa (§7), kerro erosta.
-5. Jos `HANDOFF.md`:ssä on avoimia kysymyksiä (osio 6) → kysy ne ennen toteutusta, älä arvaa.
+2. Lue [docs/SELKARANKA.md](docs/SELKARANKA.md) — Selkäranka 1–9, jokaisen muutoskierroksen pakollinen kurilista (PRE-FLIGHT, peruutusankkuri, scope-lukko, STOP-ehdot, …).
+3. Lue `ROADMAP.md` — strateginen 20-vaiheinen R-sekvenssi, NYT-merkki (aktiivinen vaihe), reunaehdot (a)/(b)/(c) ja aikataulu.
+4. Lue repo-juuren `HANDOFF.md` — aktiivisen tehtävän tavoite, acceptance criteriat ja edellisen session tulos.
+5. Aja `git log --oneline -10` ja `git status`. Varmista että `HANDOFF.md`:n "Session-tulos" vastaa repon todellista tilaa. Ristiriidassa → repo voittaa (§7), kerro erosta.
+6. Jos `HANDOFF.md`:ssä on avoimia kysymyksiä (osio 6) → kysy ne ennen toteutusta, älä arvaa.
 
 **Session LOPUSSA (ennen kuin pinnaat työn valmiiksi):**
 
