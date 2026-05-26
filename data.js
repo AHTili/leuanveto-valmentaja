@@ -7255,7 +7255,7 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       tiDay("TI — Peaking kyykky 2×1 @93% + 1×3 motor-pattern + kevyt", 2,1,1, 0.93, null, finisherMinimal("kevyt"),
         { style: "regular", pct: 0.60, sets: 1, reps: 3, targetVx: 4, note: "Motor-pattern-säilytys 1×3 @60% — kevyt, EI grindiä, pidetään bar-feel kisaa varten" },
         "peaking",
-        "🎯 PEAKING DECISION-TREE: vk 13 oli MÖKKILEPO (ei realizationia). Mökiltä-paluu = kevyt mutta intensiivinen aktivointi. Jos vk 12 cal antoi >+5% e1RM-nousun ja palautuminen tuntuu täydelliseltä → harkitse 1 ekstra-sarja @95% V1 LA-päivän opener-rehearsalissa. Päätös atleetilla, ei automaattinen. Pritchard 2016: peak-intensity 90-95% 1.9±0.8 vk ennen kisaa = vk 14-15."),
+        "🎯 PEAKING DECISION-TREE: vk 13 oli MÖKKILEPO (ei realizationia). Mökiltä-paluu = kevyt mutta intensiivinen aktivointi. Jos vk 12 cal antoi >+5% e1RM-nousun ja palautuminen tuntuu täydelliseltä → harkitse 1 ekstra-sarja 95 % V1 LA-päivän opener-rehearsalissa. Päätös atleetilla, ei automaattinen. Pritchard 2016: peak-intensity 90-95% 1.9±0.8 vk ennen kisaa = vk 14-15."),
       toDay("TO — Peaking 2×1 @93% + kevyt (paluu mökiltä)",       2,1,1, 0.93, null, null, finisherMinimal("kevyt"), undefined, "peaking"),
       laDay("LA — MU opener rehearsal + kisakyykky kevyt", 15, 3, "Opener harjoitus +15 kg (V2 — tekniikka edellä)", 2, FS.w14),
     ]},
