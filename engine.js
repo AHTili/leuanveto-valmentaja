@@ -6425,6 +6425,27 @@ function _normalizeSlotForTuningSerialization(slot) {
   return { ...slot, note: slot.note.replace(/@\s*\d+(?:[.,]\d+)?\s*%/, `@${pctStr}`) };
 }
 
+// v4.52.6 H-005 B1 — AI Block Tuning aktivointi-ikkuna
+// Deload-viikon (vk 4, 8, 12) lisäksi sallitaan seuraavan blokin
+// 1-2 ensimmäistä viikkoa, jolloin edellisen blokin analyysi on
+// luonteva tehdä (data tuoreessa muistissa, uusi blokki ei vielä
+// syvällä asetuksissaan). Sama prevBlock/nextBlock-mappaus toimii
+// kaikille saman ikkunan viikoille — esim. wk=4 ja wk=5 → prevBlock
+// = "Foundation" (vk 1-3), nextBlock = "Strength" (vk 5-7).
+export const BLOCK_TUNING_WINDOWS = [
+  { name: "Foundation→Strength", weeks: [4, 5, 6],    prevBlock: "Foundation", prevWeeks: [1,2,3],   nextBlock: "Strength",  nextWeeks: [5,6,7]   },
+  { name: "Strength→Intensity",  weeks: [8, 9, 10],   prevBlock: "Strength",   prevWeeks: [5,6,7],   nextBlock: "Intensity", nextWeeks: [9,10,11] },
+  { name: "Intensity→Peaking",   weeks: [12, 13, 14], prevBlock: "Intensity",  prevWeeks: [9,10,11], nextBlock: "Peaking",   nextWeeks: [13,14]   },
+];
+
+export function findBlockTuningWindow(wk) {
+  return BLOCK_TUNING_WINDOWS.find(w => w.weeks.includes(wk)) || null;
+}
+
+export function isBlockTuningActive(wk) {
+  return findBlockTuningWindow(wk) !== null;
+}
+
 function generateBlockTuningPackage(ctx) {
   const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings, decisionTraces } = ctx;
 
@@ -6433,21 +6454,16 @@ function generateBlockTuningPackage(ctx) {
   }
 
   const wk = currentWeekNum;
-  // Deload-tunnistus: vk 4, 8, 12. Vk 16 (kisaviikko) ei generoi.
-  const deloadWeeks = [4, 8, 12];
-  if (!deloadWeeks.includes(wk)) {
+  // H-005 B1: aktivointi-ikkuna deload + seuraavan blokin alku
+  // (ks. BLOCK_TUNING_WINDOWS-vakio yllä). Sama prevBlock/nextBlock-
+  // mappaus toimii kaikille saman ikkunan viikoille.
+  const block = findBlockTuningWindow(wk);
+  if (!block) {
+    const sallitut = BLOCK_TUNING_WINDOWS.flatMap(w => w.weeks).sort((a,b) => a-b);
     return {
-      error: `AI-Block-Tuning aktivoituu vain deload-viikoilla (vk 4, 8, 12). Olet vk ${wk}. Seuraava deload: vk ${deloadWeeks.find(d => d > wk) || "16 (kisaviikko)"}.`
+      error: `AI-Block-Tuning aktivoituu deload-viikolla (vk 4, 8, 12) tai seuraavan blokin 1-2 ensimmäisellä viikolla (vk 5-6, 9-10, 13-14). Olet vk ${wk}. Seuraava aktiivinen vk: ${sallitut.find(d => d > wk) || "16 (kisaviikko)"}.`
     };
   }
-
-  // Blokki-rakenne
-  const blockMap = {
-    4:  { prevBlock: "Foundation",   prevWeeks: [1,2,3], nextBlock: "Strength",  nextWeeks: [5,6,7] },
-    8:  { prevBlock: "Strength",     prevWeeks: [5,6,7], nextBlock: "Intensity", nextWeeks: [9,10,11] },
-    12: { prevBlock: "Intensity",    prevWeeks: [9,10,11], nextBlock: "Peaking",   nextWeeks: [13,14] },
-  };
-  const block = blockMap[wk];
 
   // ── Atleettiprofile ──
   const cal = mesocycle.streetliftingConfig?.calibration || {};
