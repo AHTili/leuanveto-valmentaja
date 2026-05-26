@@ -6516,6 +6516,13 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         // sisäänrakennettu fsLoadScaled:iin). Engine hakee Takakyykky-liikkeen
         // e1RM:n ja kertoo loadPct:llä → liike saa oikean suhteellisen kuorman.
         loadPctReferenceMovementName: "Takakyykky",
+        // H-002 B1: cross-ref-slot-metadata AI Block Tuning -syötteelle ja
+        // INVARIANT_VIOLATION_SLOT_MISMATCH-detektorille. refScale = liikkeen
+        // RM-suhde Takakyykky-1RM:ään; nominalLoadPct = note's @-pct
+        // (viiteliikkeen nimellisessä). loadPct (= nominalLoadPct × refScale)
+        // pysyy tehollisena loading-arvona. Additiivinen — ei vaikuta laskentaan.
+        refScale: refScale,
+        nominalLoadPct: fsLoadPct,
         suggestedLoadKg: Math.round(K * fsLoadScaled / 2.5) * 2.5,
         isBarbell: true,
         note: `${movement} ${fsWeek.note || "— tekninen 2. frekvenssi"}`,
