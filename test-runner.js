@@ -2205,6 +2205,73 @@ function testBlockTuningSlotNormalization() {
   assertEqual(rC.note, slotComma.note, "A2-T10 (variant-pilkku): @59,5 % parsii oikein ja matchaa loadPct:n");
 }
 
+// H-002 B4 (HANDOFF.md §6 K2 ratifioitu 2026-05-26, A2):
+// _normalizeSlotForTuningSerialization cross-ref-haaran yksikkötestit.
+// Mittari-ensin (HANDOFF.md §3.5 kohta 6): vk7 LA paused squat -repro.
+// Aritmetiikka käsin: refScale 0,85 × nominalLoadPct 0,70 = loadPct 0,595;
+// note "@70 %" matchaa nominaalia (|notePct − nominalLoadPct| = 0 pp ≤ 0,5)
+// → cross-ref-haara legitiimi → ei normalisointia.
+function testCrossRefSlotNormalization() {
+  // ── Tunnettu-positiivinen 1: cross-ref-pos vk7 LA paused squat ──
+  // refScale 0,85, nominalLoadPct 0,70, note "@70 %", loadPct 0,595.
+  // |notePct − nominalLoadPct| = |0,70 − 0,70| × 100 = 0 pp ≤ 0,5
+  // → cross-ref legitiimi → note ennallaan.
+  const slotCrossRefPos = {
+    role: "secondary",
+    defaultMovementName: "Paused squat",
+    loadPct: 0.595,
+    refScale: 0.85,
+    nominalLoadPct: 0.70,
+    note: "Paused squat @70 % Takakyykky — Paused squat 2 s",
+  };
+  const r1 = _normalizeSlotForTuningSerialization(slotCrossRefPos);
+  assertEqual(r1.note, slotCrossRefPos.note,
+    "H-002 A2-T1 (cross-ref-pos vk7 LA paused): note ennallaan kun cross-ref-metadata + notePct matchaa nominaalia");
+  assertEqual(r1.loadPct, 0.595, "H-002 A2-T1: loadPct ennallaan");
+
+  // ── Tunnettu-negatiivinen 1: cross-ref-neg (nominal-mismatch) ──
+  // Sama slot, mutta note "@65 %" → notePct = 0,65 ≠ nominalLoadPct 0,70.
+  // |0,65 − 0,70| × 100 = 5 pp > 0,5 → cross-ref-haara EI legit
+  // → putoaa nykyiseen normalisointiin loadPct-pohjalla → "@59,5 %".
+  const slotCrossRefNeg = {
+    role: "secondary",
+    defaultMovementName: "Paused squat",
+    loadPct: 0.595,
+    refScale: 0.85,
+    nominalLoadPct: 0.70,
+    note: "Paused squat @65 % Takakyykky — Paused squat 2 s",
+  };
+  const r2 = _normalizeSlotForTuningSerialization(slotCrossRefNeg);
+  assertEqual(r2.note, "Paused squat @59,5 % Takakyykky — Paused squat 2 s",
+    "H-002 A2-T2 (cross-ref-neg nominal-mismatch): note normalisoituu loadPct-pohjalla kun notePct ≠ nominaali");
+
+  // ── Tunnettu-positiivinen 2: puhdas slot mismatched (ei cross-ref-metadataa) ──
+  // refScale + nominalLoadPct PUUTTUVAT. note "@70 %", loadPct 0,595, Δ = 10,5 pp > 0,5.
+  // Cross-ref-haara ei aktivoidu → nykyinen H-001-normalisointi → "@59,5 %".
+  const slotPureMismatch = {
+    role: "secondary",
+    defaultMovementName: "Paused squat",
+    loadPct: 0.595,
+    note: "Paused squat @70 % Takakyykky — Paused squat 2 s",
+  };
+  const r3 = _normalizeSlotForTuningSerialization(slotPureMismatch);
+  assertEqual(r3.note, "Paused squat @59,5 % Takakyykky — Paused squat 2 s",
+    "H-002 A2-T3 (puhdas mismatched): H-001-normalisointi aktivoituu kun ei cross-ref-metadataa");
+
+  // ── Tunnettu-negatiivinen 2: puhdas slot konsistentti (ei cross-ref-metadataa) ──
+  // refScale + nominalLoadPct PUUTTUVAT. note "@70 %", loadPct 0,70, Δ = 0 pp.
+  // Cross-ref-haara ei aktivoidu → puhdas check passaa → ei muutosta.
+  const slotPureConsistent = {
+    role: "primary",
+    defaultMovementName: "Takakyykky",
+    loadPct: 0.70,
+    note: "Takakyykky @70 %",
+  };
+  const r4 = _normalizeSlotForTuningSerialization(slotPureConsistent);
+  assertEqual(r4.note, slotPureConsistent.note,
+    "H-002 A2-T4 (puhdas konsistentti): note säilyy kun ei cross-ref-metadataa ja notePct = loadPct");
+}
+
 // β H-001 B2/A3 (HANDOFF.md §6 K2(1)-A "tiukka" ratifiointi 2026-05-25):
 // auditInvariants:in INVARIANT_VIOLATION_SLOT_MISMATCH-emissio yksikkötesti.
 // Mittari-ensin: tunnettu-positiivinen Vk 7 LA paused squat → flagi laukeaa;
@@ -2320,6 +2387,115 @@ async function testSlotMismatchDetection() {
   const flags6 = auditInvariants(makeTrace([]));
   const mismatchFlags6 = flags6.filter(f => f.code === "INVARIANT_VIOLATION_SLOT_MISMATCH");
   assertEqual(mismatchFlags6.length, 0, "A3-T6 (edge-empty): ei flageja kun slots=[]");
+}
+
+// H-002 B4 (HANDOFF.md §6 K2 ratifioitu 2026-05-26, A3):
+// INVARIANT_VIOLATION_SLOT_MISMATCH-detektorin cross-ref-haaran yksikkötesti.
+// Mittari-ensin (HANDOFF.md §3.5 kohta 6): vk7 LA paused squat -repro.
+// Aritmetiikka käsin: nominalLoadPct 0,70 × refScale 0,85 = scaledPct 0,595
+// ≈ loadPct 0,595 → (a) check |loadPct − scaledPct| × 100 = 0 pp ≤ 0,5 ✓;
+// note "@70 %" → notePct 0,70 → (b) check |notePct − nominal| = 0 pp ≤ 0,5 ✓
+// → cross-ref legitiimi → ei flagia. Cross-ref-mismatch (loadPct 0,62 vs
+// scaled 0,595, Δ 2,5 pp > 0,5) → flagi laukea.
+async function testCrossRefSlotMismatchDetection() {
+  let auditInvariants;
+  try {
+    const mod = await import("./tools/engine-pilot/lib/audit-engine.mjs");
+    auditInvariants = mod.auditInvariants;
+  } catch (e) {
+    assert(true, `H-002 A3 (offline): auditInvariants ei selain-saatavilla — testi skipattu (importti epäonnistui: ${e.message?.slice(0, 60)})`);
+    return;
+  }
+
+  function makeTrace(slots) {
+    return {
+      input: { mesocycleType: "default" },
+      output: { slots, deltaPct: 0, weekLabel: "" },
+      traces: [],
+    };
+  }
+
+  // ── Tunnettu-positiivinen 1: cross-ref-pos vk7 LA paused squat ──
+  // refScale 0,85, nominalLoadPct 0,70, loadPct 0,595, note "@70 %".
+  // Molemmat checkit pitävät (Δ 0 pp ≤ 0,5) → legitiimi cross-ref → 0 flagia.
+  const slotCrossRefPos = {
+    role: "secondary",
+    movementName: "Paused squat",
+    loadPct: 0.595,
+    refScale: 0.85,
+    nominalLoadPct: 0.70,
+    note: "Paused squat @70 % Takakyykky — Paused squat 2 s",
+    sets: 4,
+    targetVx: 3,
+  };
+  const flags1 = auditInvariants(makeTrace([slotCrossRefPos]));
+  const mismatchFlags1 = flags1.filter(f => f.code === "INVARIANT_VIOLATION_SLOT_MISMATCH");
+  assertEqual(mismatchFlags1.length, 0,
+    "H-002 A3-T1 (cross-ref-pos vk7 LA paused): 0 flagia kun refScale-metadata legitiimi");
+
+  // ── Tunnettu-positiivinen 2: sama slot ilman refScale-metadataa ──
+  // Puhdas slot K2(1)=A: |notePct − loadPct| = |0,70 − 0,595| × 100 = 10,5 pp > 0,5 → flagi.
+  const slotWithoutMetadata = {
+    role: "secondary",
+    movementName: "Paused squat",
+    loadPct: 0.595,
+    note: "Paused squat @70 % Takakyykky — Paused squat 2 s",
+    sets: 4,
+    targetVx: 3,
+  };
+  const flags2 = auditInvariants(makeTrace([slotWithoutMetadata]));
+  const mismatchFlags2 = flags2.filter(f => f.code === "INVARIANT_VIOLATION_SLOT_MISMATCH");
+  assertEqual(mismatchFlags2.length, 1,
+    "H-002 A3-T2 (sama slot ilman refScale-metadataa): flagi laukea kun ei cross-ref-metadataa (puhdas K2(1)=A)");
+
+  // ── Tunnettu-positiivinen 3: cross-ref-mismatch — metadata mutta loadPct ≠ scaled ──
+  // refScale 0,85, nominalLoadPct 0,70 → scaledPct = 0,595. loadPct = 0,62 (poikkeama).
+  // (a) check: |0,62 − 0,595| × 100 = 2,5 pp > 0,5 → cross-ref-haara EI legit
+  // → putoaa tiukkaan |notePct − loadPct| -tarkistukseen: |0,70 − 0,62| × 100 = 8,0 pp → flagi.
+  const slotCrossRefMismatch = {
+    role: "secondary",
+    movementName: "Paused squat",
+    loadPct: 0.62,
+    refScale: 0.85,
+    nominalLoadPct: 0.70,
+    note: "Paused squat @70 % Takakyykky — Paused squat 2 s",
+    sets: 4,
+    targetVx: 3,
+  };
+  const flags3 = auditInvariants(makeTrace([slotCrossRefMismatch]));
+  const mismatchFlags3 = flags3.filter(f => f.code === "INVARIANT_VIOLATION_SLOT_MISMATCH");
+  assertEqual(mismatchFlags3.length, 1,
+    "H-002 A3-T3 (cross-ref-mismatch): flagi laukea kun refScale-metadata mutta loadPct ≠ nominalLoadPct × refScale");
+
+  // ── Tunnettu-negatiivinen 1: puhdas konsistentti slot (ei cross-ref-metadataa) ──
+  // note "@75 %" → 0,75. loadPct 0,75. Δ = 0 pp ≤ 0,5 → ei flagia.
+  const slotPureConsistent = {
+    role: "primary",
+    movementName: "Lisäpainoleuanveto",
+    loadPct: 0.75,
+    note: "Ma — Lisäpainoleuanveto 4×4 @75 %",
+    sets: 4,
+    targetVx: 2,
+  };
+  const flags4 = auditInvariants(makeTrace([slotPureConsistent]));
+  const mismatchFlags4 = flags4.filter(f => f.code === "INVARIANT_VIOLATION_SLOT_MISMATCH");
+  assertEqual(mismatchFlags4.length, 0,
+    "H-002 A3-T4 (puhdas konsistentti): 0 flagia kun ei cross-ref-metadataa ja notePct = loadPct");
+
+  // ── Tunnettu-positiivinen 4: puhdas mismatched slot (ei cross-ref-metadataa) ──
+  // note "@95 %" → 0,95. loadPct 0,93. Δ = 2,0 pp > 0,5 → flagi.
+  const slotPureMismatched = {
+    role: "primary",
+    movementName: "Takakyykky",
+    loadPct: 0.93,
+    note: "🎯 PEAKING: @95% mökkilepo-decision-tree",
+    sets: 1,
+    targetVx: 1,
+  };
+  const flags5 = auditInvariants(makeTrace([slotPureMismatched]));
+  const mismatchFlags5 = flags5.filter(f => f.code === "INVARIANT_VIOLATION_SLOT_MISMATCH");
+  assertEqual(mismatchFlags5.length, 1,
+    "H-002 A3-T5 (puhdas mismatched): flagi laukea kun ei cross-ref-metadataa ja Δ > 0,5 pp");
 }
 
 // β H-001 B3 (HANDOFF.md §6 K3 ratifioitu 2026-05-25, A4):
@@ -2810,6 +2986,9 @@ export async function runTests() {
   // β H-001 B2 (HANDOFF.md A2 + A3): slot-note-normalisointi + slot-mismatch-detektor
   testBlockTuningSlotNormalization();
   await testSlotMismatchDetection();
+  // H-002 B4 (HANDOFF.md A2 + A3): refScale-tietoinen cross-ref-haara
+  testCrossRefSlotNormalization();
+  await testCrossRefSlotMismatchDetection();
   // β H-001 B3 (HANDOFF.md A4): tyhjien trendikenttien status-encoding
   testTrendEmptyStatusHelpers();
   testBlockTuningEmptyTrendsEncoding();
