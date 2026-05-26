@@ -2254,11 +2254,15 @@ async function testSlotMismatchDetection() {
   assertEqual(mismatchFlags1.length, 1,
     "A3-T1 (pos vk7 LA paused squat): INVARIANT_VIOLATION_SLOT_MISMATCH laukeaa (1 flagi)");
   if (mismatchFlags1.length > 0) {
-    const meta = mismatchFlags1[0].meta;
-    assert(Math.abs(meta.deltaPp - 10.5) < 0.1,
-      `A3-T1: deltaPp = 10,5 ± 0,1 (saatu ${meta.deltaPp?.toFixed(2)})`);
-    assertEqual(meta.ac, "A3", "A3-T1: acceptance criterion = A3");
-    assertEqual(meta.channel, "slot_mismatch", "A3-T1: channel = slot_mismatch");
+    // flag() palauttaa { code, severity, msg, ...extra } — extra-kentät
+    // levitetään SUORAAN flag-objektiin, ei meta-aliobjektin sisään.
+    // Pre-existing pattern audit-engine.mjs:n INVARIANT_VIOLATION_K_A1/A2/A6D
+    // -emissioissa. Aiempi virheellinen "flag.meta.X" → undefined → TypeError.
+    const f = mismatchFlags1[0];
+    assert(Math.abs(f.deltaPp - 10.5) < 0.1,
+      `A3-T1: deltaPp = 10,5 ± 0,1 (saatu ${f.deltaPp?.toFixed(2)})`);
+    assertEqual(f.ac, "A3", "A3-T1: acceptance criterion = A3");
+    assertEqual(f.channel, "slot_mismatch", "A3-T1: channel = slot_mismatch");
   }
 
   // ── Tunnettu-negatiivinen 1: konsistentti slot — note matchaa loadPct ──
