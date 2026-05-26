@@ -52,7 +52,7 @@ AI Block Tuning -syöte tunnistaa cross-ref-loading-mekanismin: cross-ref-slotit
 
 **A3 — `audit-engine.mjs` `INVARIANT_VIOLATION_SLOT_MISMATCH`-detektori refScale-tietoinen**
 - *Ehto:* Jos `trace.output.slots[]`:n slot kantaa `refScale` + `nominalLoadPct` -kentät → validoi (a) `|loadPct − nominalLoadPct × refScale| ≤ 0,5 pp` JA (b) `|notePct − nominalLoadPct| ≤ 0,5 pp`; jos molemmat pitävät → ei laukea. Muuten (ei cross-ref-metadataa, tai jompikumpi check kaatuu): nykyinen tiukka `|notePct − loadPct| > 0,5 pp` -tarkistus.
-- *Mitattu miten:* yksikkötesti `test-runner.js`:ään (uusi `testCrossRefSlotMismatchDetection`-funktio): (i) cross-ref-pos: vk7 paused squat refScale-metadatan kanssa → 0 flagia; (ii) sama slot ilman refScale-metadataa → flagi laukea (puhdas slot, K2(1)=A pätee); (iii) cross-ref-mismatch: refScale-metadata mutta `loadPct ≠ nominalLoadPct × refScale` (esim. loadPct 0.60 vs scaled 0.595) → flagi; (iv) konsistentti puhdas slot → 0 flagia; (v) mismatched puhdas slot → flagi.
+- *Mitattu miten:* yksikkötesti `test-runner.js`:ään (uusi `testCrossRefSlotMismatchDetection`-funktio): (i) cross-ref-pos: vk7 paused squat refScale-metadatan kanssa → 0 flagia; (ii) sama slot ilman refScale-metadataa → flagi laukea (puhdas slot, K2(1)=A pätee); (iii) cross-ref-mismatch: refScale-metadata mutta `loadPct ≠ nominalLoadPct × refScale` (esim. loadPct 0.60 vs scaled 0.595) → flagi; (iv) konsistentti puhdas slot → 0 flagia; (v) mismatched puhdas slot → flagi. Note: trace-capture.mjs:n slot-kopio kuljettaa refScale + nominalLoadPct -kentät data → pilot-trace → audit-engine -ketjussa (ks. §5 kohta 7).
 - *Onnistumisen ehto:* kaikki viisi testitapausta vihreänä; aritmetiikka käsin.
 - *Lähde:* `tools/engine-pilot/lib/audit-engine.mjs` SLOT_MISMATCH-emissio n. r. 863–907 (HEAD c8c89f4).
 
@@ -105,6 +105,7 @@ AI Block Tuning -syöte tunnistaa cross-ref-loading-mekanismin: cross-ref-slotit
 - `data.js` — VAIN cross-ref-with-scaling slot producers (Cowork-recon: laDay r. ~6507–6524 + K1-PRE-FLIGHT-enumeroinnin paljastamat muut). VAIN additiiviset `refScale` + `nominalLoadPct` -kentät `slots.push({...})`:iin. **EI muita data.js-muutoksia, EI note-stringien muokkausta, EI mesosykli-rakenteen muutosta, EI refScale-arvojen säätöä.**
 - `engine.js` — `_normalizeSlotForTuningSerialization` (cross-ref-haaran lisäys), `buildAiPrompt` + generic inline + `buildEndOfCyclePrompt` (cross-ref-selitys promptiin, 3 paikkaa). `buildMarkdownNarrative` valinnainen (§6 K3 — todennäköisesti ei muutosta).
 - `tools/engine-pilot/lib/audit-engine.mjs` — SLOT_MISMATCH-detektori (cross-ref-haaran lisäys `auditInvariants`:iin).
+- `tools/engine-pilot/lib/trace-capture.mjs` — VAIN slot-kopion laajennus kahdella additiivisella kentällä (`refScale`, `nominalLoadPct`) r. ~23 jälkeen. Välivaihe joka kuljettaa slot-metadatan data → pilot-trace → audit-engine -ketjua myöten. Löydös B3:n toteutuksessa (2026-05-26): A3:n acceptance-mittari vaatii että slot-metadata päätyy auditiin, mutta alkuperäinen scope-aita ei enumeroinut trace-capture-vaihetta. Akselin scope-ratifiointi 2026-05-26.
 - `test-runner.js` — uudet test-funktiot refScale-tietoiselle haaralle (A2 + A3). Eivät muuta olemassa olevia testejä.
 - **EI** `recommend()`-polkua, **EI** e1RM-funktioita, **EI** mesosykli-generointia, **EI** slot-resolverin laskentaa, **EI** vk14 TI -case (H-003), **EI** self-ref-slotteja (r. 6066, 6090).
 
@@ -165,6 +166,8 @@ AI Block Tuning -syöte tunnistaa cross-ref-loading-mekanismin: cross-ref-slotit
 **5. `suggestedLoadKg` pysyy todellisena treenikuormana.** `loadPct × ref-e1RM` = 110 kg vk7 paused squatissa. refScale-tietoisuus koskee note-näkyvyyttä + AI-ymmärrystä, ei harjoituskuorman prescription:ta. Atletti näkee saman 110 kg:n kuin ennen H-002:ta.
 
 **6. Commit-rakenne: 4 erillistä committia (B1–B4).** Kukin oma muutoslähde (data.js / engine.js / audit-engine.mjs / test-runner.js); erillisinä `git bisect` -käyttökelpoisuus säilyy. Code voi sulauttaa B2+B3 jos diagnoosi todistaa saman juuren (esim. `_normalizeSlotForTuningSerialization` ja audit-detektori jakavat saman cross-ref-validointi-helperin).
+
+**7. Scope-aidan laajennus B3:n toteutuksessa: `trace-capture.mjs`.** Cowork-recon enumeroi data.js / engine.js / audit-engine.mjs / test-runner.js, mutta unohti pilot-harnessin välivaiheen `tools/engine-pilot/lib/trace-capture.mjs`:n. B3:n yhteydessä paljastui: audit-engine lukee `slot.refScale` + `slot.nominalLoadPct` -kentät trace-objektista, mutta trace-capture.mjs:n selektiivinen slot-kopio (r. 9–24) ei kuljeta näitä → cross-ref-haara ei aktivoidu, pilot pysyy 143:ssa. Akseli ratifioi 2026-05-26 trace-capture.mjs:n lisäyksen scope-aitaan (§3.5 kohta 3). Muutos: 2 additiivista riviä, A0 säilyy bittitarkka (trace-objektin kentät eivät vaikuta laskentaan). Vaihtoehdot B (heuristinen ohitus `loadPctReferenceMovementName`-kentällä) ja C (revert B3, sulje H-002 osittaisena) hylätty: B rikkoo Option X:n ydinperiaatteen (jättää validation-aukon skaalauksen tarkkuudelle), C jättää H-002:n alkuperäisen tavoitteen 143→137 saavuttamatta ja siirtää saman päätöksen myöhemmälle handoffille.
 
 ## 6. Avoimet kysymykset
 
