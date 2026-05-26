@@ -6404,6 +6404,16 @@ function _normalizeSlotForTuningSerialization(slot) {
   if (!m) return slot;
   const notePct = parseFloat(m[1].replace(",", ".")) / 100;
   if (!Number.isFinite(notePct)) return slot;
+  // H-002 B2: cross-ref-haara. Jos slot kantaa refScale + nominalLoadPct
+  // -metadatan (data.js laDay tuottaa cross-ref-with-scaling -sloteille,
+  // esim. paused/pin squat) ja note's @-pct vastaa nominaalia (≤ 0,5 pp),
+  // note on legitiimi cross-ref-merkintä viiteliikkeen 1RM-suhteessa
+  // (loadPctReferenceMovementName) → ei normalisointia. loadPct on jo
+  // skaalattu (= nominalLoadPct × refScale).
+  if (typeof slot.refScale === "number" && typeof slot.nominalLoadPct === "number") {
+    const nominalDeltaPp = Math.abs(notePct - slot.nominalLoadPct) * 100;
+    if (nominalDeltaPp <= 0.5) return slot;
+  }
   const deltaPp = Math.abs(notePct - slot.loadPct) * 100;
   if (deltaPp <= 0.5) return slot; // toleranssi 0,5 pp
   // Korvaa "@XX%"-merkkijono loadPct-pohjalla. Pyöristys 1 desimaaliin →
@@ -7008,6 +7018,8 @@ function generateGenericBlockTuningPackage(ctx) {
     ``,
     `LeVe AI tech stack: vanilla JavaScript (.js / .mjs), IndexedDB, PWA service worker — EI TypeScriptiä. Älä oleta src/-polkuja tai .ts/.tsx-tiedostoja \`claudeCodePromptHint\`-kentissä.`,
     ``,
+    `Cross-ref-slot voi kantaa \`refScale\` ja \`nominalLoadPct\` -kentät. Tällöin \`loadPct\` on jo skaalattu (\`= nominalLoadPct × refScale\`) ja note's \`@\`-pct viittaa nominaaliin viiteliikkeen 1RM-suhteessa (\`loadPctReferenceMovementName\`).`,
+    ``,
     `Käytä \`currentWeekCalibrationSets\`-kenttää (syötteen juuressa) kalibrointi-evidenssinä jos saatavilla — atletti on suorittanut käynnissä olevan deload-viikon kalibrointitreenit. Jos status="empty", kalibrointi on vielä tekemättä → baseline tulee \`completedBlock.e1rmTrends\`:istä.`,
     ``,
     `Anna 3 kategoriassa:`,
@@ -7204,6 +7216,8 @@ TEHTÄVÄ:
 ═══════════════════════════════════════════════════════════════════
 
 LeVe AI tech stack: vanilla JavaScript (.js / .mjs), IndexedDB, PWA service worker — EI TypeScriptiä. Älä oleta src/-polkuja tai .ts/.tsx-tiedostoja \`claudeCodePromptHint\`-kentissä.
+
+Cross-ref-slot voi kantaa \`refScale\` ja \`nominalLoadPct\` -kentät. Tällöin \`loadPct\` on jo skaalattu (\`= nominalLoadPct × refScale\`) ja note's \`@\`-pct viittaa nominaaliin viiteliikkeen 1RM-suhteessa (\`loadPctReferenceMovementName\`).
 
 Käytä \`currentWeekCalibrationSets\`-kenttää (syötteen juuressa) kalibrointi-evidenssinä jos saatavilla — atletti on suorittanut käynnissä olevan deload-viikon kalibrointitreenit (esim. 92 % × 3 V1 per kisaliike). Nämä antavat tarkimman e1RM-päivityksen seuraavan blokin ohjelmointiin (DiStasio 2014 ±2,7 kg low-rep-alueella). Jos \`currentWeekCalibrationSets.status === "empty"\`, kalibrointi on vielä tekemättä — ohjelmoinnin baseline tulee silloin edellisestä blokista (\`completedBlock.e1rmTrends\`).
 
@@ -7656,6 +7670,7 @@ ${JSON.stringify(json, null, 2)}
 
 ## Ohjeet
 - LeVe AI tech stack: vanilla JavaScript (.js / .mjs), IndexedDB, PWA service worker — EI TypeScriptiä. Älä oleta src/-polkuja tai .ts/.tsx-tiedostoja \`claudeCodePromptHint\`-kentissä.
+- Cross-ref-slot voi kantaa \`refScale\` ja \`nominalLoadPct\` -kentät. Tällöin \`loadPct\` on jo skaalattu (\`= nominalLoadPct × refScale\`) ja note's \`@\`-pct viittaa nominaaliin viiteliikkeen 1RM-suhteessa (\`loadPctReferenceMovementName\`).
 - Älä ehdota muutoksia jotka rikkovat käyttäjän nykyistä työkalua
 - Älä myöntäile — jos sykli oli puutteellinen, sano se
 - Erottele vakaa konsensus / aktiivinen debate / heuristiikka
