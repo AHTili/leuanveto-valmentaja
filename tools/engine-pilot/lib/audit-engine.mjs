@@ -885,6 +885,18 @@ export function auditInvariants(trace, profile = null) {
     if (!m) continue;
     const notePct = parseFloat(m[1].replace(",", ".")) / 100;
     if (!Number.isFinite(notePct)) continue;
+    // H-002 B3: cross-ref-haara. Jos slot kantaa refScale + nominalLoadPct
+    // -metadatan (data.js laDay tuottaa cross-ref-with-scaling -sloteille),
+    // validoi (a) loadPct ≈ nominalLoadPct × refScale JA (b) notePct ≈
+    // nominalLoadPct. Jos MOLEMMAT checkit pitävät (≤ 0,5 pp) → legitiimi
+    // cross-ref-slot, ei flagia. Muuten putoaa nykyiseen tiukkaan
+    // |notePct − loadPct| -tarkistukseen (HANDOFF.md §2 A3).
+    if (typeof slot.refScale === "number" && typeof slot.nominalLoadPct === "number") {
+      const scaledPct = slot.nominalLoadPct * slot.refScale;
+      const loadPctDeltaPp = Math.abs(slot.loadPct - scaledPct) * 100;
+      const noteDeltaPp = Math.abs(notePct - slot.nominalLoadPct) * 100;
+      if (loadPctDeltaPp <= 0.5 && noteDeltaPp <= 0.5) continue;
+    }
     const deltaPp = Math.abs(notePct - slot.loadPct) * 100;
     if (deltaPp <= 0.5) continue; // toleranssi 0,5 pp
     flags.push(

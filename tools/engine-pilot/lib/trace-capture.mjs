@@ -21,6 +21,12 @@ export function captureTrace({ profileId, scenarioId, weekNum, dayOfWeek, dateIS
     note: s.note ?? null,
     isCalibration: !!s.isCalibration,
     loadPctReferenceMovementName: s.loadPctReferenceMovementName ?? null,
+    // H-002 B3: cross-ref-slot-metadata audit-engine SLOT_MISMATCH-detektorin
+    // cross-ref-haaralle. data.js laDay tuottaa nämä cross-ref-with-scaling
+    // -sloteille (loadPct = nominalLoadPct × refScale). Akseli ratifioi
+    // scope-laajennuksen 2026-05-26 STOP-raportin jälkeen.
+    refScale: s.refScale ?? null,
+    nominalLoadPct: s.nominalLoadPct ?? null,
   }));
 
   // Reduce traces — säilytä ruleId + valitut kentät, ei kaikkea
