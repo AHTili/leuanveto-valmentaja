@@ -1942,11 +1942,11 @@ function testGenericBlockTuningPackage() {
   );
   const r1 = generateGenericBlockTuningPackage({
     mesocycle: slMeso, sessions: [], allSets: [], measurements: [], prs: [],
-    currentWeekNum: 5, settings: { bodyweightKg: 91 }, decisionTraces: [],
+    currentWeekNum: 7, settings: { bodyweightKg: 91 }, decisionTraces: [],
   });
-  // Streetlifting vk 5 ei ole deload (vain vk 4, 8, 12) → error vagosta alkuperäisestä funktiosta
-  assert(r1.error && r1.error.includes("deload-viikoilla"),
-    "T1: Streetlifting_16w delegoi alkuperäiseen funktioon (vk 5 → ei deload, error returned)");
+  // Streetlifting vk 7 ei ole aktivointi-ikkunassa (vk 4-6, 8-10, 12-14) → error alkuperäisestä funktiosta
+  assert(r1.error && r1.error.includes("aktivoituu deload-viikolla"),
+    "T1: Streetlifting_16w delegoi alkuperäiseen funktioon (vk 7 → ei aktiivinen, error returned)");
 
   // T2: Custom-meso, current vk 2, deload vk 4 → ei aktivoitu
   const customMeso = mkMeso("custom",
