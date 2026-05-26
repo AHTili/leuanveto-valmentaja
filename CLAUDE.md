@@ -17,7 +17,7 @@ LeVe AI on suomenkielinen voimaharjoittelusovellus (PWA, paikallinen IndexedDB, 
 - `index.html` — UI + CSS + workout-flow
 - `wizard/` — kysymys-vastaus → ohjelma-mappaus (32 kysymystä, 17 ohjelmointityyliä)
 - `tools/engine-pilot/` — regression-pilot-harness (8 profiilia × 148 sessiota)
-- `test-runner.js` — selain-yksikkötestit (473 testiä, ?test=1)
+- `test-runner.js` — selain-yksikkötestit (586 testitapausta, ?test=1)
 - `sw.js` — service worker (PWA auto-update)
 
 **Versio:** kts. `sw.js` APP_VERSION.
@@ -71,7 +71,7 @@ Esimerkki (8a, opittava parametri):
 
 Jos jompikumpi epäonnistuu (exit ≠ 0), hook palauttaa `exit 1` → Claude jatkaa työskentelyä eikä voi pinnata "valmis":ksi.
 
-Selain-tasoiset testit (`?test=1`, 473 testiä) ajetaan manuaalisesti tai osana laajempaa /goal-kierrosta — niitä ei voi ajaa CLI:stä ilman headless-selainta.
+Selain-tasoiset testit (`?test=1`, 586 testitapausta) ajetaan manuaalisesti tai osana laajempaa /goal-kierrosta — niitä ei voi ajaa CLI:stä ilman headless-selainta.
 
 ---
 
