@@ -1172,8 +1172,8 @@ import {
   computeStreetliftingOpenerStrategy,
   // v4.30.3: ennuste edistymis-näkymälle
   predictE1RMEndOfProgram, computeStreetliftingFinalProjection,
-  // v4.34.0 AI-Block-Tuning
-  generateBlockTuningPackage,
+  // v4.34.0 AI-Block-Tuning + v4.52.6 H-005 B2 aktivointi-ikkuna
+  generateBlockTuningPackage, BLOCK_TUNING_WINDOWS, findBlockTuningWindow,
   // v4.34.48 — yleinen versio (toimii kaikille ei-streetlifting-mesoille)
   generateGenericBlockTuningPackage,
   // v4.34.27 End-of-Cycle Tuning
@@ -10727,14 +10727,18 @@ function renderSettingsView() {
       let transition = null;
       let nextDeloadWk = null;
       let activationHint = "";
+      let tuningWindow = null; // v4.52.6 H-005 B2: streetlifting_16w-haaran aktivointi-ikkuna (engine.js BLOCK_TUNING_WINDOWS)
 
       if (meso.type === "streetlifting_16w") {
-        const deloadWeeks = [4, 8, 12];
-        isDeloadWeek = wk && deloadWeeks.includes(wk);
-        nextDeloadWk = wk ? deloadWeeks.find(d => d > wk) : 4;
-        const blockMap = { 4: "Foundation → Strength", 8: "Strength → Intensity", 12: "Intensity → Peaking" };
-        transition = isDeloadWeek ? blockMap[wk] : null;
-        activationHint = `aktivoituu vain deload-viikoilla (vk 4, 8, 12 — block-transitiot)`;
+        // v4.52.6 H-005 B2: aktivointi-ikkuna deload (vk 4/8/12) + seuraavan
+        // blokin 1-2 ensimmäistä viikkoa (vk 5-6, 9-10, 13-14). Logiikka
+        // sama kuin engine.js generateBlockTuningPackage (B1).
+        tuningWindow = wk ? findBlockTuningWindow(wk) : null;
+        isDeloadWeek = wk && (wk === 4 || wk === 8 || wk === 12);
+        const allActiveWeeks = BLOCK_TUNING_WINDOWS.flatMap(w => w.weeks).sort((a, b) => a - b);
+        nextDeloadWk = wk ? allActiveWeeks.find(d => d > wk) : 4;
+        transition = tuningWindow ? `${tuningWindow.prevBlock} → ${tuningWindow.nextBlock}` : null;
+        activationHint = `aktivoituu deload-viikolla (vk 4, 8, 12) tai seuraavan blokin 1-2 ensimmäisellä viikolla (vk 5-6, 9-10, 13-14)`;
       } else {
         // Yleinen mesotyyppi: deload = weekDef.deltaPctBase < 0
         const weekDefs = meso.weekDefs || [];
@@ -10757,15 +10761,15 @@ function renderSettingsView() {
         <div class="muted" style="font-size:12px;margin-bottom:10px;line-height:1.5">
           Generoi rikas analyysipaketti AI:lle (Claude / ChatGPT) deload-viikon kalibroinnin jälkeen. AI palauttaa block-tuning-suosituksia kolmessa kategoriassa: <b>(A)</b> sovellus-tason muutokset (UI), <b>(B)</b> rakenteelliset muutokset (Claude Code), <b>(C)</b> mentaalinen koutsaus.
         </div>
-        ${isDeloadWeek
+        ${(tuningWindow || isDeloadWeek)
           ? `<div style="padding:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.4);border-radius:6px;margin-bottom:10px">
-              <div style="font-size:13px;font-weight:600;color:var(--ok)">✓ Vk ${wk} deload — AI-Block-Tuning aktiivinen</div>
+              <div style="font-size:13px;font-weight:600;color:var(--ok)">✓ Vk ${wk} ${isDeloadWeek ? 'deload' : `(${tuningWindow.name})`} — AI-Block-Tuning aktiivinen</div>
               ${transition ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">Blokki-siirtymä: <b>${transition}</b></div>` : ""}
             </div>
             <button class="btn btn-primary btn-full" id="btn-generate-block-tuning">🤖 Generoi AI-analyysipaketti</button>`
           : `<div style="padding:10px;background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.3);border-radius:6px">
               <div style="font-size:12px;color:var(--muted)">AI-Block-Tuning ${activationHint}.</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px">Olet vk ${wk || "?"}/${meso.weekCount || "?"}. ${nextDeloadWk ? `Seuraava deload: <b>vk ${nextDeloadWk}</b>.` : "Ei tulevia deload-viikkoja tässä mesosyklissä."}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">Olet vk ${wk || "?"}/${meso.weekCount || "?"}. ${nextDeloadWk ? `Seuraava aktiivinen vk: <b>${nextDeloadWk}</b>.` : "Ei tulevia aktiivisia viikkoja tässä mesosyklissä."}</div>
             </div>`
         }
         <div id="block-tuning-history" style="margin-top:10px"></div>
