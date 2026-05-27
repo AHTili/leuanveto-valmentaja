@@ -25,11 +25,65 @@ Status-elinkaari: `AVOIN` → `PRIORISOITU (H-xxx)` → `KÄSITELTY (commit-hash
 
 ## Havainnot
 
-### OBS-001 · sparring-ledger · AVOIN · velocity-dataketju
+### OBS-001 · 2026-05-27 · repon empiirinen recon (H-006-prelim, korjattu) · PRIORISOITU (H-006a)
 
-[Sisältö täydennetään sparring-ledgeristä — Enode-dataketju, todennäköisesti
-osa H-006-velocity-handoffin scope:a. Akseli täydentää Windows-natiivisti
-kun on aikaa.]
+**Velocity-data tallentuu sets-storeen, mutta ei virtaa analyysi-tasolle erinomaisella tasolla**
+
+Vahvistukset:
+
+1. Velocity-data tallentuu **luotettavasti sets-storeen neljään kenttään**
+   (velocityMean, velocityPeak, velocityRep1, velocityLossPercent) + array
+   (mvReps[]) sekä RTF-testissä (index.html:2075–2078), primer-tallennuksessa
+   (index.html:13998–14001), set-editissä (index.html:9132), että normaaleissa
+   work-setteissä treenin tallennuksessa (index.html:14228–14253). Atletti
+   pystyy kirjaamaan Enode-mittausarvot luotettavasti.
+2. Engine.js velocity-funktiot lukevat dataa **neljästä eri kentästä**:
+   `velocityReadiness` (primer-readiness) → `velocityRep1`;
+   `computeLoadVelocityProfile` (LV-regressio) → `velocityMean`;
+   `computeRtfVelocityModel` (RTF-malli) → `mvReps[]`;
+   `predictVxFromVelocity` (Vx-ennuste) → `mvReps[]`;
+   **`generateBlockTuningPackage` (AI-Block-Tuning-syöte) → `velocityMs`.**
+3. **Kriittinen rakenteellinen aukko:** `velocityMs`-kenttää LUETAAN
+   engine.js:n kahdessa paikassa (6498 + 6809, molemmat
+   `generateBlockTuningPackage`-funktion variantteja), mutta sitä EI
+   KIRJOITETA missään saveSet-polussa. AI-Block-Tuning-syöte näkee
+   jokaisen setin `velocity: undefined`.
+4. Akselin kanoninen vahvistus 2026-05-27 Cowork-sessiossa: kirjaaminen
+   toimii, hyödyntäminen ei. "Ei primer-sarjoja, eikä sarjapainojen
+   aikaisia velocity-dataa" erinomaisella tasolla.
+5. `available/unavailable`-status määritelty engine.js:6371 mutta ei
+   emittoida (B3 K3 -kommentti engine.js:6543: "per-mittari
+   tyhjä-status-encoding. unavailable EI emittoidu nyt").
+6. RTF-malli (computeRtfVelocityModel, engine.js:2582) suodattaa
+   `setRole === 'rtf_test'`. **Verifioitu pilot-tracesta 2026-05-27:**
+   RTF_MODEL_STATUS Akselin profiililla = `no-data, n=0` kaikissa
+   esiintymissä → setRole-filtterin laajennus välttämätön
+   (`Array.isArray(s.mvReps) && s.mvReps.length >= RTF_MIN_REPS_PER_SET`
+   pelkkä mvReps[]-pohjainen).
+
+Päätelmä: Ongelma EI ole datan kirjaamisessa eikä ulkoisessa
+API-puutteessa. Ongelma on **sisäisessä datavirran katkoksessa** —
+kirjattu data on sets-storessa mutta ei kanavoidu kaikkiin
+engine-funktioihin (eritoten AI-Block-Tuning-syötteeseen, joka lukee
+kuollutta kenttää). Lisäksi available/unavailable-status, joka voisi
+tehdä rikkimenneisyyden läpinäkyväksi atletille, ei aktivoidu.
+
+Aukot jotka H-006a ratkaisee:
+- velocityMs-aukon korjaus engine.js:ssä (fallback-luku, kapea scope)
+- AI-Block-Tuning-syötteen täysrikastus (4 uutta kenttää actual-objektiin)
+- RTF-mallin setRole-filtterin laajennus (engine.js:2589)
+- available/unavailable-status aktivointi engineen + UI-indikaattori
+  Asetukset-välilehdellä
+
+Vaikutus: AI-Block-Tuning vk 4/8/12 deload-analyysi alkaa hyödyntää
+velocity-dataa kehityksen/taantumisen tunnistuksessa → H-006a:n
+mullistava taso saavutetaan. H-006b (primer-mekanismi +
+sys-1RM-päivitys) on erillinen jatkohandoff.
+
+Liittyy: HANDOFF_H-001.md Q7 (kanoninen atletti-vastaus, kirjaaminen
+toimii), ROADMAP §17 (H-006a on osa Lähde 2:n data-flow-aktivointia),
+H-006b (primer-mekanismi, erillinen). EI liity OBS-002…OBS-006:een
+(eri juurisyy: dataketju vs slot-resolveri).
 
 ### OBS-002 · 2026-05-26 · live-treeni + backfill + etusivu + sarjahistoria · AVOIN
 
