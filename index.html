@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.10" />
+  <meta name="app-version" content="4.52.11" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -10769,12 +10769,42 @@ function renderSettingsView() {
         }).join("");
 
         const appVer = document.querySelector('meta[name="app-version"]')?.content || "?";
+        // v4.52.11 H-006a-fix5: debug-rivi joka näyttää RAAT lukemat — Akseli näkee
+        // välittömästi onko state.allSets oikeasti ladattu, milloin viimeisin setti on
+        // ja kuinka monta täytetty velocity/hrv/vara -kentille.
+        const totalSets = allSetsForStatus.length;
+        const cutoffMs = Date.now() - 30 * 86400000;
+        const recentSets = allSetsForStatus.filter(s => {
+          if (!s || !s.dateISO) return false;
+          const ts = new Date(s.dateISO).getTime();
+          return Number.isFinite(ts) && ts >= cutoffMs;
+        });
+        const recentCount = recentSets.length;
+        const lastSet = totalSets > 0 ? allSetsForStatus[totalSets - 1] : null;
+        const lastDate = lastSet?.dateISO || "?";
+        const velFilled = recentSets.filter(s => {
+          const hasMv = Array.isArray(s.mvReps) && s.mvReps.length > 0;
+          const hasMean = typeof s.velocityMean === "number" && s.velocityMean > 0;
+          const hasRep1 = typeof s.velocityRep1 === "number" && s.velocityRep1 > 0;
+          return hasMv || hasMean || hasRep1;
+        }).length;
+        const vxFilled = recentSets.filter(s => s.actualVx != null).length;
+        const hrvCount = measurementsForStatus.filter(m => {
+          if (!m || !m.dateISO) return false;
+          const ts = new Date(m.dateISO).getTime();
+          return Number.isFinite(ts) && ts >= cutoffMs && m.hrv != null;
+        }).length;
         return `<div class="card" style="border:1px solid rgba(99, 102, 241, 0.25); background: linear-gradient(135deg, rgba(99,102,241,0.025), rgba(168,85,247,0.025))">
           <div class="card-title">📊 Datavirran tila <span style="font-size:10px;font-weight:400;color:var(--muted)">v${appVer}</span></div>
           <div class="muted" style="font-size:12px;margin-bottom:10px;line-height:1.5">
             Per-mittari pipeline-eheys viim. 30 päivän ikkunasta. 🟢 aktiivinen (≥3 mittausta), 🟡 käynnistymässä (1–2), ⚪ ei aktiivinen (0). Vie hiiri rivin päälle nähdäksesi tarkemman lukemamäärän.
           </div>
           ${rivit}
+          <div style="margin-top:10px;padding:8px 10px;background:rgba(255,255,255,0.03);border-radius:6px;font-size:11px;color:var(--muted);font-family:monospace;line-height:1.6">
+            <div><b>DEBUG:</b> allSets yhteensä = <b>${totalSets}</b>, viim. 30 pv = <b>${recentCount}</b></div>
+            <div>velocity-täynnä = <b>${velFilled}</b>, vara (actualVx≠null) = <b>${vxFilled}</b>, hrv = <b>${hrvCount}</b></div>
+            <div>viimeisin setti: <b>${lastDate}</b> · cutoff: <b>${new Date(cutoffMs).toISOString().slice(0,10)}</b></div>
+          </div>
         </div>`;
       } catch (e) {
         console.error("[Datavirran tila] render-virhe:", e);
