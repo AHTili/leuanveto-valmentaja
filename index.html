@@ -6,6 +6,8 @@
   <meta name="theme-color" content="#0b1220" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
+  <meta name="app-version" content="4.52.10" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -10766,8 +10768,9 @@ function renderSettingsView() {
           `;
         }).join("");
 
+        const appVer = document.querySelector('meta[name="app-version"]')?.content || "?";
         return `<div class="card" style="border:1px solid rgba(99, 102, 241, 0.25); background: linear-gradient(135deg, rgba(99,102,241,0.025), rgba(168,85,247,0.025))">
-          <div class="card-title">📊 Datavirran tila <span style="font-size:10px;font-weight:400;color:var(--muted)">v4.52.8</span></div>
+          <div class="card-title">📊 Datavirran tila <span style="font-size:10px;font-weight:400;color:var(--muted)">v${appVer}</span></div>
           <div class="muted" style="font-size:12px;margin-bottom:10px;line-height:1.5">
             Per-mittari pipeline-eheys viim. 30 päivän ikkunasta. 🟢 aktiivinen (≥3 mittausta), 🟡 käynnistymässä (1–2), ⚪ ei aktiivinen (0). Vie hiiri rivin päälle nähdäksesi tarkemman lukemamäärän.
           </div>
@@ -14714,19 +14717,34 @@ if ("serviceWorker" in navigator) {
   // β Round B-α-1.9: updateViaCache: "none" ohittaa Chrome:n HTTP-cachen sw.js-pyynnöille.
   // Korjaa Chrome-PWA:n sudenkuoppa, jossa cached sw.js esti uusien SW-versioiden löytymisen
   // jopa 24 h ajaksi → reg.update() ei oikeasti tarkistanut palvelimelta.
+  // v4.52.10 H-006a-fix4: diagnostinen console.log SW-tilasta + visibilitychange-listener
+  // joka pakottaa reg.update():n kun PWA tulee näkyviin (esim. taustalta paluu).
+  // Akseli raportoi 2026-05-27: päivitys ei luotettavasti triggeröidy puhelimella
+  // ilman selaushistorian poistoa. Visibilitychange + diagnostiikka helpottavat
+  // luotettavaa päivitystä ja näyttävät selaimen konsolissa mikä on todellinen
+  // SW-tila kun PWA avataan.
+  let _swRegHandle = null;
+  console.log("[SW-DIAG] Registering sw.js, current controller:", navigator.serviceWorker.controller?.scriptURL || "(none, ensiasennus)");
   navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(reg => {
+    _swRegHandle = reg;
+    console.log("[SW-DIAG] Registered. Active:", reg.active?.scriptURL || "(none)", "| Waiting:", reg.waiting?.scriptURL || "(none)", "| Installing:", reg.installing?.scriptURL || "(none)");
     // v4.34.37: tarkista päivitykset 30 s välein (oli 60 s) + heti rekisteröinnin jälkeen
-    reg.update().catch(() => {});
+    reg.update().then(() => {
+      console.log("[SW-DIAG] reg.update() done. Waiting now:", reg.waiting?.scriptURL || "(none)");
+    }).catch(e => console.warn("[SW-DIAG] reg.update() error:", e.message));
     setInterval(() => reg.update().catch(() => {}), 30000);
     // Jos rekisteröinnin yhteydessä on JO waiting-SW (esim. uusi tabi olemassa olevasta sessiosta)
     if (reg.waiting && navigator.serviceWorker.controller) {
+      console.log("[SW-DIAG] Waiting-SW löytyi rekisteröinnin yhteydessä → triggerään auto-päivitys");
       _waitingSW = reg.waiting;
       handleNewSWInstalled();
     }
     reg.addEventListener("updatefound", () => {
       const newSW = reg.installing;
+      console.log("[SW-DIAG] updatefound — uusi SW installing:", newSW?.scriptURL || "(none)");
       if (!newSW) return;
       newSW.addEventListener("statechange", () => {
+        console.log("[SW-DIAG] newSW state:", newSW.state, "| controller:", navigator.serviceWorker.controller?.scriptURL || "(none)");
         if (newSW.state === "installed" && navigator.serviceWorker.controller) {
           // Uusi SW asennettu, vanha kontrollerissa → trigger auto-päivitys
           _waitingSW = newSW;
@@ -14734,12 +14752,23 @@ if ("serviceWorker" in navigator) {
         }
       });
     });
-  }).catch(() => {});
+  }).catch(e => console.warn("[SW-DIAG] register() error:", e.message));
+  // v4.52.10 H-006a-fix4: visibilitychange-pakotettu update-tarkistus.
+  // PWA-standalone-tilassa Chrome/Safari voivat pysäyttää JS-suorituksen taustalla
+  // → setInterval(reg.update, 30000) ei välttämättä aja. Kun käyttäjä tuo PWA:n
+  // takaisin etualalle, reg.update() ajetaan välittömästi.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && _swRegHandle) {
+      console.log("[SW-DIAG] visibilitychange → näkyvä → reg.update() pakotetusti");
+      _swRegHandle.update().catch(() => {});
+    }
+  });
   // controllerchange = uusi SW otti hallinnan → reload jotta uusi koodi käytössä
   let _reloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (_reloading) return;
     _reloading = true;
+    console.log("[SW-DIAG] controllerchange → location.reload()");
     location.reload();
   });
 }
