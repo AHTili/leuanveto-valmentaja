@@ -6495,7 +6495,7 @@ function generateBlockTuningPackage(ctx) {
       movementName: set.movementName,
       role: set.setRole,
       prescribed: { reps: set.targetReps, vx: set.targetVx, loadKg: set.targetLoadKg, loadPct: set.targetLoadPct },
-      actual: { reps: set.reps, actualVx: set.actualVx, loadKg: set.externalLoadKg, velocity: set.velocityMs },
+      actual: { reps: set.reps, actualVx: set.actualVx, loadKg: set.externalLoadKg, velocity: set.velocityMs ?? set.velocityMean ?? null },
       vxDelta: (set.targetVx != null && set.actualVx != null) ? (set.targetVx - set.actualVx) : null,
     }));
     return {
@@ -6806,7 +6806,7 @@ function generateGenericBlockTuningPackage(ctx) {
       movementName: set.movementName,
       role: set.setRole,
       prescribed: { reps: set.targetReps, vx: set.targetVx, loadKg: set.targetLoadKg, loadPct: set.targetLoadPct },
-      actual: { reps: set.reps, actualVx: set.actualVx, loadKg: set.externalLoadKg, velocity: set.velocityMs },
+      actual: { reps: set.reps, actualVx: set.actualVx, loadKg: set.externalLoadKg, velocity: set.velocityMs ?? set.velocityMean ?? null },
       vxDelta: (set.targetVx != null && set.actualVx != null) ? (set.targetVx - set.actualVx) : null,
     }));
     return { week: sw, dateISO: sess.dateISO, label: sess.label, dayType: sess.dayType, slots };
@@ -7368,7 +7368,7 @@ function generateEndOfCycleTuningPackage(ctx) {
       movementName: set.movementName,
       role: set.setRole,
       prescribed: { reps: set.targetReps, vx: set.targetVx, loadKg: set.targetLoadKg, loadPct: set.targetLoadPct },
-      actual: { reps: set.reps, actualVx: set.actualVx, loadKg: set.externalLoadKg, velocity: set.velocityMs },
+      actual: { reps: set.reps, actualVx: set.actualVx, loadKg: set.externalLoadKg, velocity: set.velocityMs ?? set.velocityMean ?? null },
       vxDelta: (set.targetVx != null && set.actualVx != null) ? (set.targetVx - set.actualVx) : null,
     }));
     return {
