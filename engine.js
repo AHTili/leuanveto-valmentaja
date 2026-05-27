@@ -6460,17 +6460,18 @@ export function computeDataSourceStatus(allSets, measurements, refDateISO) {
   const today = refDateISO ? new Date(refDateISO).getTime() : Date.now();
   const cutoff = today - 30 * 86400000; // 30 päivää sitten
 
+  // H-006a-fix6 (2026-05-27): set-objektit eivät kanna dateISO-kenttää —
+  // setit tallentuvat sets-storeen vain "timestamp"-kentällä (save-aika ISO).
+  // Akselin debug-rivi paljasti: allSets yhteensä 332, viim. 30 pv = 0 →
+  // filtteri hylkäsi KAIKKI setit koska s.dateISO oli aina undefined.
+  // Fallback s.timestamp varmistaa että kaikki olemassa olevat setit lasketaan.
+  // Tulevat setit saavat lisäksi explicit dateISO-kentän saveSet-polussa.
+  const setDate = (s) => s.dateISO || s.timestamp || null;
   const recentVelocity = (allSets || []).filter(s => {
-    if (!s || !s.dateISO) return false;
-    const ts = new Date(s.dateISO).getTime();
+    const d = s && setDate(s);
+    if (!d) return false;
+    const ts = new Date(d).getTime();
     if (!Number.isFinite(ts) || ts < cutoff) return false;
-    // H-006a-fix3 (2026-05-27): laajenna kattamaan kaikki velocity-kentät jotka
-    // indikoivat mittausta. UI tallentaa per-toisto-arrayn (mvReps[]) vain kun
-    // rep-by-rep syöttö ≥2 arvolla (index.html:14123 hasMvArr = length >= 2).
-    // Yhden velocity-arvon syöttö (esim. set-edit r. 9134) tallentuu vain
-    // velocityMean-kenttään → mvReps[] = null. Akseli raportoi 2026-05-27:
-    // kortti näytti "Ei aktiivinen" vaikka velocity-kirjaaminen toimi → aiempi
-    // tiukka filtteri tuotti false-negativen.
     const hasMvReps = Array.isArray(s.mvReps) && s.mvReps.length > 0;
     const hasMean = typeof s.velocityMean === "number" && s.velocityMean > 0;
     const hasRep1 = typeof s.velocityRep1 === "number" && s.velocityRep1 > 0;
@@ -6483,8 +6484,9 @@ export function computeDataSourceStatus(allSets, measurements, refDateISO) {
     return m.hrv != null;
   });
   const recentVara = (allSets || []).filter(s => {
-    if (!s || !s.dateISO) return false;
-    const ts = new Date(s.dateISO).getTime();
+    const d = s && setDate(s);
+    if (!d) return false;
+    const ts = new Date(d).getTime();
     if (!Number.isFinite(ts) || ts < cutoff) return false;
     return s.actualVx != null;
   });

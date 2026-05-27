@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.11" />
+  <meta name="app-version" content="4.52.12" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -10774,14 +10774,17 @@ function renderSettingsView() {
         // ja kuinka monta täytetty velocity/hrv/vara -kentille.
         const totalSets = allSetsForStatus.length;
         const cutoffMs = Date.now() - 30 * 86400000;
+        // v4.52.12 H-006a-fix6: fallback s.timestamp jos s.dateISO puuttuu.
+        const setDate = (s) => s && (s.dateISO || s.timestamp || null);
         const recentSets = allSetsForStatus.filter(s => {
-          if (!s || !s.dateISO) return false;
-          const ts = new Date(s.dateISO).getTime();
+          const d = setDate(s);
+          if (!d) return false;
+          const ts = new Date(d).getTime();
           return Number.isFinite(ts) && ts >= cutoffMs;
         });
         const recentCount = recentSets.length;
         const lastSet = totalSets > 0 ? allSetsForStatus[totalSets - 1] : null;
-        const lastDate = lastSet?.dateISO || "?";
+        const lastDate = setDate(lastSet) || "?";
         const velFilled = recentSets.filter(s => {
           const hasMv = Array.isArray(s.mvReps) && s.mvReps.length > 0;
           const hasMean = typeof s.velocityMean === "number" && s.velocityMean > 0;
