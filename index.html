@@ -10718,56 +10718,65 @@ function renderSettingsView() {
 
     ${(() => {
       // v4.52.7 H-006a B4 — Datavirran tila -kortti (A7)
-      // Atletille läpinäkyvä pipeline-eheys: velocity / hrv / vara -statukset
-      // viim. 30 päivän ikkunasta. computeDataSourceStatus (engine.js) palauttaa
-      // { velocity, hrv, vara } -objektin, jokaisella { status, n, reason }.
-      const allSetsForStatus = state.allSets || [];
-      const measurementsForStatus = state.measurements || [];
-      const dsStatus = computeDataSourceStatus(allSetsForStatus, measurementsForStatus, null);
+      // v4.52.8 fix-2: defensiivinen try/catch koko kortin ympärille — jos
+      // computeDataSourceStatus tai state-luku heittää, palauta tyhjä string
+      // jotta koko Asetukset-välilehden renderöinti EI kaadu (Akseli raportoi
+      // 2026-05-27: sovellus tyhjä puhelimella post-4.52.7-push, root cause
+      // tuntematon mutta turvaverkko estää regression).
+      try {
+        if (!state || typeof computeDataSourceStatus !== "function") return "";
+        const allSetsForStatus = Array.isArray(state.allSets) ? state.allSets : [];
+        const measurementsForStatus = Array.isArray(state.measurements) ? state.measurements : [];
+        const dsStatus = computeDataSourceStatus(allSetsForStatus, measurementsForStatus, null);
+        if (!dsStatus || typeof dsStatus !== "object") return "";
 
-      function dsIcon(s) {
-        if (!s) return "⚪";
-        if (s.status === "available") return "🟢";
-        if (s.status === "loading") return "🟡";
-        return "⚪";
-      }
-      function dsLabel(s) {
-        if (!s) return "Tuntematon";
-        if (s.status === "available") return "Aktiivinen";
-        if (s.status === "loading") return "Käynnistymässä";
-        return "Ei aktiivinen";
-      }
+        function dsIcon(s) {
+          if (!s) return "⚪";
+          if (s.status === "available") return "🟢";
+          if (s.status === "loading") return "🟡";
+          return "⚪";
+        }
+        function dsLabel(s) {
+          if (!s) return "Tuntematon";
+          if (s.status === "available") return "Aktiivinen";
+          if (s.status === "loading") return "Käynnistymässä";
+          return "Ei aktiivinen";
+        }
 
-      const mittarit = [
-        { key: "velocity", title: "Velocity", desc: "Enode mvReps-data per sarja" },
-        { key: "hrv",      title: "HRV",      desc: "Oura-mittaukset per päivä" },
-        { key: "vara",     title: "Vara",     desc: "Vx-arvot per sarja" },
-      ];
+        const mittarit = [
+          { key: "velocity", title: "Velocity", desc: "Enode mvReps-data per sarja" },
+          { key: "hrv",      title: "HRV",      desc: "Oura-mittaukset per päivä" },
+          { key: "vara",     title: "Vara",     desc: "Vx-arvot per sarja" },
+        ];
 
-      const rivit = mittarit.map(m => {
-        const s = dsStatus[m.key];
-        const icon = dsIcon(s);
-        const label = dsLabel(s);
-        const reason = s?.reason || "";
-        return `
-          <div title="${reason.replace(/"/g, "&quot;")}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.06);cursor:help">
-            <span style="font-size:18px">${icon}</span>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:13px;font-weight:600">${m.title}</div>
-              <div style="font-size:11px;color:var(--muted)">${m.desc}</div>
+        const rivit = mittarit.map(m => {
+          const s = dsStatus[m.key];
+          const icon = dsIcon(s);
+          const label = dsLabel(s);
+          const reason = (s && s.reason) ? String(s.reason) : "";
+          return `
+            <div title="${reason.replace(/"/g, "&quot;")}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.06);cursor:help">
+              <span style="font-size:18px">${icon}</span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600">${m.title}</div>
+                <div style="font-size:11px;color:var(--muted)">${m.desc}</div>
+              </div>
+              <div style="font-size:11px;color:var(--muted);white-space:nowrap">${label}</div>
             </div>
-            <div style="font-size:11px;color:var(--muted);white-space:nowrap">${label}</div>
-          </div>
-        `;
-      }).join("");
+          `;
+        }).join("");
 
-      return `<div class="card" style="border:1px solid rgba(99, 102, 241, 0.25); background: linear-gradient(135deg, rgba(99,102,241,0.025), rgba(168,85,247,0.025))">
-        <div class="card-title">📊 Datavirran tila <span style="font-size:10px;font-weight:400;color:var(--muted)">v4.52.7</span></div>
-        <div class="muted" style="font-size:12px;margin-bottom:10px;line-height:1.5">
-          Per-mittari pipeline-eheys viim. 30 päivän ikkunasta. 🟢 aktiivinen (≥3 mittausta), 🟡 käynnistymässä (1–2), ⚪ ei aktiivinen (0). Vie hiiri rivin päälle nähdäksesi tarkemman lukemamäärän.
-        </div>
-        ${rivit}
-      </div>`;
+        return `<div class="card" style="border:1px solid rgba(99, 102, 241, 0.25); background: linear-gradient(135deg, rgba(99,102,241,0.025), rgba(168,85,247,0.025))">
+          <div class="card-title">📊 Datavirran tila <span style="font-size:10px;font-weight:400;color:var(--muted)">v4.52.8</span></div>
+          <div class="muted" style="font-size:12px;margin-bottom:10px;line-height:1.5">
+            Per-mittari pipeline-eheys viim. 30 päivän ikkunasta. 🟢 aktiivinen (≥3 mittausta), 🟡 käynnistymässä (1–2), ⚪ ei aktiivinen (0). Vie hiiri rivin päälle nähdäksesi tarkemman lukemamäärän.
+          </div>
+          ${rivit}
+        </div>`;
+      } catch (e) {
+        console.error("[Datavirran tila] render-virhe:", e);
+        return "";
+      }
     })()}
 
     ${(() => {
