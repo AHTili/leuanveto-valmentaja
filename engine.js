@@ -2583,9 +2583,14 @@ function computeRtfVelocityModel(allSets, movementId) {
   if (!movementId || !Array.isArray(allSets)) {
     return { status: "no-data", n: 0, sessionsCount: 0, slope: null, intercept: null, r2: null };
   }
+  // H-006a A3: setRole-rajoite poistettu. Aiemmin vaadittiin
+  // s.setRole === "rtf_test" jotta vain dedikoidut RTF-testit kvalifioituvat.
+  // Pilot-trace 2026-05-27 osoitti että Akselin profiililla RTF_MODEL_STATUS
+  // = no-data, n=0 kaikissa esiintymissä koska atletti ei aja erillisiä
+  // rtf_test-settejä. Pelkkä mvReps[]-täytetyn kriteerin riittävyys aktivoi
+  // RTF-mallin normaaleissa work-seteissä jos atletti syöttää velocity-arvot.
   const rtfSets = allSets.filter(s =>
     s.movementId === movementId &&
-    s.setRole === "rtf_test" &&
     Array.isArray(s.mvReps) &&
     s.mvReps.length >= RTF_MIN_REPS_PER_SET
   );
@@ -6446,6 +6451,26 @@ export function isBlockTuningActive(wk) {
   return findBlockTuningWindow(wk) !== null;
 }
 
+// H-006a A2: precompute RTF-model per uniikki movementId AI-Block-Tuning-
+// syötettä varten. Käytetään sekä generateBlockTuningPackage:ssa että
+// generateGenericBlockTuningPackage:ssa actual.rtfModelStatus-kentän
+// täyttämiseen. Palauttaa { [movementId]: { status, n, r2 } } -map:in.
+// Kompakti versio computeRtfVelocityModel-paluuarvosta (ei koko mallia,
+// vain status + n + r2 — AI-syötteen tarvitsema metadata).
+function _buildRtfModelMap(allSets) {
+  const map = {};
+  if (!Array.isArray(allSets) || allSets.length === 0) return map;
+  const movementIds = new Set();
+  for (const s of allSets) {
+    if (s && s.movementId) movementIds.add(s.movementId);
+  }
+  for (const mid of movementIds) {
+    const m = computeRtfVelocityModel(allSets, mid);
+    map[mid] = { status: m.status, n: m.n, r2: m.r2 };
+  }
+  return map;
+}
+
 function generateBlockTuningPackage(ctx) {
   const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings, decisionTraces } = ctx;
 
@@ -6488,6 +6513,8 @@ function generateBlockTuningPackage(ctx) {
     return block.prevWeeks.includes(sw);
   }).sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
 
+  // H-006a A2: precompute RTF-model per movementId AI-Block-Tuning-syötettä varten.
+  const rtfModelMap = _buildRtfModelMap(allSets || []);
   const sessionAnalysis = prevBlockSessions.map(sess => {
     const sessSets = (allSets || []).filter(set => set.sessionId === sess.sessionId);
     const sw = getMesocycleWeek(mesocycle, sess.dateISO);
@@ -6495,7 +6522,17 @@ function generateBlockTuningPackage(ctx) {
       movementName: set.movementName,
       role: set.setRole,
       prescribed: { reps: set.targetReps, vx: set.targetVx, loadKg: set.targetLoadKg, loadPct: set.targetLoadPct },
-      actual: { reps: set.reps, actualVx: set.actualVx, loadKg: set.externalLoadKg, velocity: set.velocityMs ?? set.velocityMean ?? null },
+      actual: {
+        reps: set.reps,
+        actualVx: set.actualVx,
+        loadKg: set.externalLoadKg,
+        velocity: set.velocityMs ?? set.velocityMean ?? null,
+        // H-006a A2: velocity-rikastus AI-Block-Tuning-syötteeseen.
+        velocityRep1: set.velocityRep1 ?? null,
+        velocityLossPercent: set.velocityLossPercent ?? null,
+        mvRepsCount: Array.isArray(set.mvReps) ? set.mvReps.length : 0,
+        rtfModelStatus: rtfModelMap[set.movementId] || { status: "no-data", n: 0, r2: null },
+      },
       vxDelta: (set.targetVx != null && set.actualVx != null) ? (set.targetVx - set.actualVx) : null,
     }));
     return {
@@ -6799,6 +6836,8 @@ function generateGenericBlockTuningPackage(ctx) {
     return prevWeeks.includes(sw);
   }).sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
 
+  // H-006a A2: precompute RTF-model per movementId AI-Block-Tuning-syötettä varten.
+  const rtfModelMap = _buildRtfModelMap(allSets || []);
   const sessionAnalysis = prevBlockSessions.map(sess => {
     const sessSets = (allSets || []).filter(set => set.sessionId === sess.sessionId);
     const sw = getMesocycleWeek(mesocycle, sess.dateISO);
@@ -6806,7 +6845,16 @@ function generateGenericBlockTuningPackage(ctx) {
       movementName: set.movementName,
       role: set.setRole,
       prescribed: { reps: set.targetReps, vx: set.targetVx, loadKg: set.targetLoadKg, loadPct: set.targetLoadPct },
-      actual: { reps: set.reps, actualVx: set.actualVx, loadKg: set.externalLoadKg, velocity: set.velocityMs ?? set.velocityMean ?? null },
+      actual: {
+        reps: set.reps,
+        actualVx: set.actualVx,
+        loadKg: set.externalLoadKg,
+        velocity: set.velocityMs ?? set.velocityMean ?? null,
+        velocityRep1: set.velocityRep1 ?? null,
+        velocityLossPercent: set.velocityLossPercent ?? null,
+        mvRepsCount: Array.isArray(set.mvReps) ? set.mvReps.length : 0,
+        rtfModelStatus: rtfModelMap[set.movementId] || { status: "no-data", n: 0, r2: null },
+      },
       vxDelta: (set.targetVx != null && set.actualVx != null) ? (set.targetVx - set.actualVx) : null,
     }));
     return { week: sw, dateISO: sess.dateISO, label: sess.label, dayType: sess.dayType, slots };
