@@ -6451,6 +6451,47 @@ export function isBlockTuningActive(wk) {
   return findBlockTuningWindow(wk) !== null;
 }
 
+// H-006a A4: per-mittari datavirran tila (velocity / hrv / vara).
+// Atletille läpinäkyvä pipeline-eheys: available = data virtaa, loading =
+// käynnistymässä (1-2 mittausta viim. 30 päivässä), unavailable = ei dataa.
+// Käytetään sekä AI-Block-Tuning-syötteessä (json.dataSourceStatus) että
+// UI-indikaattorissa Asetukset-välilehdellä (index.html B4).
+function _computeDataSourceStatus(allSets, measurements, refDateISO) {
+  const today = refDateISO ? new Date(refDateISO).getTime() : Date.now();
+  const cutoff = today - 30 * 86400000; // 30 päivää sitten
+
+  const recentVelocity = (allSets || []).filter(s => {
+    if (!s || !s.dateISO) return false;
+    const ts = new Date(s.dateISO).getTime();
+    if (!Number.isFinite(ts) || ts < cutoff) return false;
+    return Array.isArray(s.mvReps) && s.mvReps.length > 0;
+  });
+  const recentHrv = (measurements || []).filter(m => {
+    if (!m || !m.dateISO) return false;
+    const ts = new Date(m.dateISO).getTime();
+    if (!Number.isFinite(ts) || ts < cutoff) return false;
+    return m.hrv != null;
+  });
+  const recentVara = (allSets || []).filter(s => {
+    if (!s || !s.dateISO) return false;
+    const ts = new Date(s.dateISO).getTime();
+    if (!Number.isFinite(ts) || ts < cutoff) return false;
+    return s.actualVx != null;
+  });
+
+  function classify(n, label) {
+    if (n >= 3) return { status: "available", n, reason: `${label}-mittaus aktiivinen (${n} mittausta viim. 30 päivässä)` };
+    if (n >= 1) return { status: "loading", n, reason: `${label}-mittaus käynnistymässä (${n}/3 mittausta viim. 30 päivässä)` };
+    return { status: "unavailable", n: 0, reason: `${label}-mittausta ei ole viim. 30 päivänä` };
+  }
+
+  return {
+    velocity: classify(recentVelocity.length, "velocity"),
+    hrv: classify(recentHrv.length, "hrv"),
+    vara: classify(recentVara.length, "vara"),
+  };
+}
+
 // H-006a A2: precompute RTF-model per uniikki movementId AI-Block-Tuning-
 // syötettä varten. Käytetään sekä generateBlockTuningPackage:ssa että
 // generateGenericBlockTuningPackage:ssa actual.rtfModelStatus-kentän
@@ -6577,9 +6618,11 @@ function generateBlockTuningPackage(ctx) {
   }
 
   // ── HRV / MPV / BW-trendit ──
-  // B3 K3: per-mittari tyhjä-status-encoding. unavailable EI emittoidu nyt
-  // (Akselin K3-periaate "rehellinen status, ei fabrikointia") — aktivoituu
-  // Enode/Oura-pipeline-jatkohandoffissa (§6 K5). data-tila pysyy taulukkona.
+  // B3 K3: per-mittari tyhjä-status-encoding. Data-tila pysyy taulukkona;
+  // tyhjä lista korvataan { status: "empty", reason } -objektilla.
+  // H-006a (2026-05-27): lisätty dataSourceStatus-juurikenttä json:iin
+  // joka emittoi per-mittari available/loading/unavailable-statuksen
+  // (ks. _computeDataSourceStatus-helper + json.dataSourceStatus alempana).
   const blockMeasurements = (measurements || []).filter(m => {
     const mw = getMesocycleWeek(mesocycle, m.dateISO);
     return block.prevWeeks.includes(mw) || mw === wk;
@@ -6746,6 +6789,10 @@ function generateBlockTuningPackage(ctx) {
     // Additiivinen — completedBlock.weeks säilyy [1,2,3], ei sekoita
     // "completed" vs "current"-semantiikkaa.
     currentWeekCalibrationSets,
+    // H-006a A4: per-mittari datavirran tila (velocity / hrv / vara).
+    // available / loading / unavailable + n + reason — atletti näkee
+    // pipeline-eheyden AI-syötteessä ja UI:ssa (Asetukset-välilehti B4).
+    dataSourceStatus: _computeDataSourceStatus(allSets, measurements, null),
   };
 
   // ── AI-prompt (valmis copy-paste) ──
@@ -7053,6 +7100,8 @@ function generateGenericBlockTuningPackage(ctx) {
     upcomingBlock: { label: nextBlockLabel, weeks: nextWeeks },
     // β H-001 B5/A6: käynnissä olevan vk N cal-setit syötteen JUURESSA.
     currentWeekCalibrationSets,
+    // H-006a A4: per-mittari datavirran tila (velocity / hrv / vara).
+    dataSourceStatus: _computeDataSourceStatus(allSets, measurements, null),
   };
 
   // AI-prompt (yleinen versio, ei streetlifting-spesifi)
