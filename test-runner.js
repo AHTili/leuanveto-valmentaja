@@ -58,6 +58,8 @@ import {
   computeProgressionTarget,
   // v4.50.0+ (Track B 2D-δ): Adaptive multi-suggestion -tier-generaattori
   generateSuggestions,
+  // v4.52.7 H-006a B5: datavirran tila per-mittari (A4)
+  computeDataSourceStatus,
 } from "./engine.js";
 
 import {
@@ -1490,10 +1492,12 @@ function testRtfVelocityModel() {
   const r4 = computeRtfVelocityModel(oneSet, "mov-eri");
   assertEqual(r4.status, "no-data", "RTF: väärä movementId → no-data");
 
-  // Väärä setRole → no-data
-  const wrongRole = [{ ...oneSet[0], setRole: "top" }];
-  const r5 = computeRtfVelocityModel(wrongRole, "mov-leuka");
-  assertEqual(r5.status, "no-data", "RTF: väärä setRole → no-data");
+  // H-006a A3 (2026-05-27): setRole-rajoite poistettu computeRtfVelocityModel-
+  // filtterissä. Aiemmin setRole !== "rtf_test" → "no-data". Uusi käyttäytyminen:
+  // mvReps[]-pohja riittää, work-setit kvalifioituvat jos mvReps.length >= min.
+  const otherRole = [{ ...oneSet[0], setRole: "top" }];
+  const r5 = computeRtfVelocityModel(otherRole, "mov-leuka");
+  assertEqual(r5.status, "reliable", "RTF: H-006a A3 setRole='top' kvalifioituu mvReps[]-pohjalla");
 
   // vlCapFromRtfModel — yksilöllinen cap RIR-tavoitteesta
   // Käytä r1:n mallia: intercept 0.18, slope ~0.067
@@ -2837,6 +2841,181 @@ function testCurrentWeekCalibrationSets() {
     "B5-T9 (additiivisuus): completedBlock.weeks pysyy [1,2,3] vaikka vk 4 cal-data näkyy currentWeekCalibrationSets-kentässä");
 }
 
+// H-006a B5 — A1-A4 yksikkötestit (mittari-ensin, Selkäranka 6)
+// Apuri: minimal streetlifting_16w-mesocycle vk 4 -deload aktivointi-ikkunaa varten.
+function _mkMesoH006a() {
+  return {
+    mesocycleId: "test-h006a",
+    type: "streetlifting_16w",
+    startDateISO: "2026-01-05",
+    weekCount: 16,
+    weekDefs: Array.from({ length: 16 }, (_, i) => ({ week: i + 1, deltaPctBase: i === 3 ? -0.25 : 0.025 })),
+    weekPlans: Array.from({ length: 16 }, (_, i) => ({ week: i + 1, days: [] })),
+    streetliftingConfig: { calibration: { leukaExtKg: 85, dippiExtKg: 95, kyykkyExtKg: 185 }, competitionDate: "2026-08-22" },
+  };
+}
+
+// A1: velocityMs ?? velocityMean ?? null -fallback AI-Block-Tuning-syötteessä
+function testBlockTuningVelocityFallback() {
+  const meso = _mkMesoH006a();
+  const sess1 = { sessionId: "sess-h006a-1", dateISO: "2026-01-22", label: "vk3", dayType: "heavy" };
+
+  // Tunnettu-pos: velocityMs=undefined, velocityMean=0.65 → actual.velocity === 0.65
+  const set1 = {
+    sessionId: "sess-h006a-1", movementId: "mov-leuka", movementName: "Lisäpainoleuanveto",
+    setRole: "primary", dateISO: "2026-01-22",
+    externalLoadKg: 50, reps: 4, actualVx: 2, velocityMean: 0.65,
+  };
+  const pkg = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [sess1], allSets: [set1], measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: [],
+  });
+  assert(!pkg.error, "H-006a A1-T1: generateBlockTuningPackage onnistuu (ei error)");
+  const slot = pkg.json?.completedBlock?.sessions?.[0]?.slots?.[0];
+  assert(slot, "H-006a A1-T2: completedBlock.sessions[0].slots[0] olemassa");
+  assertEqual(slot.actual.velocity, 0.65,
+    "H-006a A1-T3: actual.velocity = velocityMean (fallback kun velocityMs puuttuu)");
+
+  // Tunnettu-neg: velocityMs=0.70, velocityMean=0.65 → velocityMs voittaa prioriteetissä
+  const set2 = { ...set1, velocityMs: 0.70 };
+  const pkg2 = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [sess1], allSets: [set2], measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: [],
+  });
+  const slot2 = pkg2.json?.completedBlock?.sessions?.[0]?.slots?.[0];
+  assertEqual(slot2.actual.velocity, 0.70,
+    "H-006a A1-T4: velocityMs prioriteetti yli velocityMean (0.70 > 0.65)");
+
+  // Edge: molemmat puuttuvat → null
+  const set3 = { sessionId: "sess-h006a-1", movementId: "mov-leuka", movementName: "Lisäpainoleuanveto",
+    setRole: "primary", dateISO: "2026-01-22", externalLoadKg: 50, reps: 4, actualVx: 2 };
+  const pkg3 = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [sess1], allSets: [set3], measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: [],
+  });
+  const slot3 = pkg3.json?.completedBlock?.sessions?.[0]?.slots?.[0];
+  assertEqual(slot3.actual.velocity, null,
+    "H-006a A1-T5: actual.velocity = null kun molemmat (velocityMs + velocityMean) puuttuvat");
+}
+
+// A2: actual-objektin neljä uutta kenttää (velocityRep1, velocityLossPercent, mvRepsCount, rtfModelStatus)
+function testBlockTuningActualEnrichment() {
+  const meso = _mkMesoH006a();
+  const sess1 = { sessionId: "sess-h006a-2", dateISO: "2026-01-22", label: "vk3", dayType: "heavy" };
+  const set1 = {
+    sessionId: "sess-h006a-2", movementId: "mov-leuka", movementName: "Lisäpainoleuanveto",
+    setRole: "primary", dateISO: "2026-01-22",
+    externalLoadKg: 50, reps: 4, actualVx: 2,
+    velocityMean: 0.65, velocityRep1: 0.72, velocityLossPercent: 12.5,
+    mvReps: [0.72, 0.68, 0.64, 0.60],
+  };
+  const pkg = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [sess1], allSets: [set1], measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: [],
+  });
+  const slot = pkg.json?.completedBlock?.sessions?.[0]?.slots?.[0];
+  assert(slot, "H-006a A2-T1: slot olemassa");
+  assertEqual(slot.actual.velocityRep1, 0.72, "H-006a A2-T2: velocityRep1 actual-objektissa");
+  assertEqual(slot.actual.velocityLossPercent, 12.5, "H-006a A2-T3: velocityLossPercent actual-objektissa");
+  assertEqual(slot.actual.mvRepsCount, 4, "H-006a A2-T4: mvRepsCount = mvReps.length");
+  assert(slot.actual.rtfModelStatus && typeof slot.actual.rtfModelStatus.status === "string",
+    "H-006a A2-T5: rtfModelStatus.status on string");
+
+  // Edge: mvReps puuttuu → mvRepsCount=0
+  const set2 = { ...set1 };
+  delete set2.mvReps;
+  const pkg2 = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [sess1], allSets: [set2], measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: [],
+  });
+  const slot2 = pkg2.json?.completedBlock?.sessions?.[0]?.slots?.[0];
+  assertEqual(slot2.actual.mvRepsCount, 0, "H-006a A2-T6: mvRepsCount=0 kun mvReps puuttuu");
+
+  // Edge: velocityRep1 + velocityLossPercent puuttuvat → null (fallback)
+  const set3 = { sessionId: "sess-h006a-2", movementId: "mov-leuka", movementName: "Lisäpainoleuanveto",
+    setRole: "primary", dateISO: "2026-01-22", externalLoadKg: 50, reps: 4, actualVx: 2 };
+  const pkg3 = generateBlockTuningPackage({
+    mesocycle: meso, sessions: [sess1], allSets: [set3], measurements: [], prs: [],
+    currentWeekNum: 4, settings: { bodyweightKg: 89 }, decisionTraces: [],
+  });
+  const slot3 = pkg3.json?.completedBlock?.sessions?.[0]?.slots?.[0];
+  assertEqual(slot3.actual.velocityRep1, null, "H-006a A2-T7: velocityRep1=null kun puuttuu");
+  assertEqual(slot3.actual.velocityLossPercent, null, "H-006a A2-T8: velocityLossPercent=null kun puuttuu");
+}
+
+// A3: RTF-mallin filtteri ei vaadi enää setRole === "rtf_test"
+function testRtfModelFilterExpansion() {
+  // Tunnettu-pos: 6 work-settia setRole='top', mvReps[≥3 arvoa] → RTF aktivoituu
+  const rtfSets = Array.from({ length: 6 }, (_, i) => ({
+    sessionId: `sess-rtf-${i}`,
+    movementId: "mov-A",
+    setRole: "top", // EI rtf_test — H-006a:n laajennettu filtteri
+    externalLoadKg: 80 + i * 2.5,
+    reps: 5,
+    actualVx: 2,
+    dateISO: `2026-01-${String(15 + i).padStart(2, "0")}`,
+    mvReps: [0.80 - i * 0.02, 0.75 - i * 0.02, 0.70 - i * 0.02, 0.65 - i * 0.02],
+  }));
+  const r = computeRtfVelocityModel(rtfSets, "mov-A");
+  assert(r.status !== "no-data",
+    `H-006a A3-T1: RTF-malli aktivoituu setRole='top' + mvReps[] (status=${r.status}, n=${r.n})`);
+  assert(r.n >= 6, `H-006a A3-T2: n>=6 kun 6 settiä (saatu ${r.n})`);
+
+  // Tunnettu-neg: mvReps liian lyhyt → ei aktivoidu
+  const tooShort = rtfSets.map(s => ({ ...s, mvReps: [0.80, 0.75] })); // alle RTF_MIN_REPS_PER_SET
+  const r2 = computeRtfVelocityModel(tooShort, "mov-A");
+  assertEqual(r2.status, "no-data", "H-006a A3-T3: status='no-data' kun mvReps-pituus alle minimin");
+
+  // Tunnettu-neg 2: mvReps puuttuu kokonaan → ei aktivoidu
+  const noMvReps = rtfSets.map(s => { const c = { ...s }; delete c.mvReps; return c; });
+  const r3 = computeRtfVelocityModel(noMvReps, "mov-A");
+  assertEqual(r3.status, "no-data", "H-006a A3-T4: status='no-data' kun mvReps puuttuu");
+}
+
+// A4: computeDataSourceStatus palauttaa { velocity, hrv, vara } per-mittari-statuksilla
+function testAvailabilityStatusEmission() {
+  const refDate = "2026-05-27";
+
+  // Tunnettu-pos: 3+ mittausta viim. 30 päivässä → available
+  const allSets = [
+    { dateISO: "2026-05-20", mvReps: [0.70, 0.68, 0.66], actualVx: 2 },
+    { dateISO: "2026-05-22", mvReps: [0.72, 0.70], actualVx: 1 },
+    { dateISO: "2026-05-25", mvReps: [0.75], actualVx: 2 },
+  ];
+  const measurements = [
+    { dateISO: "2026-05-20", hrv: 65 },
+    { dateISO: "2026-05-22", hrv: 70 },
+    { dateISO: "2026-05-25", hrv: 60 },
+  ];
+  const s = computeDataSourceStatus(allSets, measurements, refDate);
+  assertEqual(s.velocity.status, "available",
+    `H-006a A4-T1: velocity available (n=${s.velocity.n}, odotettu 3)`);
+  assertEqual(s.hrv.status, "available", "H-006a A4-T2: hrv available (3 HRV-mittausta)");
+  assertEqual(s.vara.status, "available", "H-006a A4-T3: vara available (3 Vx-täytettyä settiä)");
+
+  // Tunnettu-neg: tyhjä syöte → kaikki unavailable
+  const s2 = computeDataSourceStatus([], [], refDate);
+  assertEqual(s2.velocity.status, "unavailable", "H-006a A4-T4: velocity unavailable kun ei dataa");
+  assertEqual(s2.hrv.status, "unavailable", "H-006a A4-T5: hrv unavailable kun ei dataa");
+  assertEqual(s2.vara.status, "unavailable", "H-006a A4-T6: vara unavailable kun ei dataa");
+
+  // Tunnettu-loading: 1-2 mittausta → loading
+  const partial = [{ dateISO: "2026-05-20", mvReps: [0.70], actualVx: 2 }];
+  const s3 = computeDataSourceStatus(partial, [], refDate);
+  assertEqual(s3.velocity.status, "loading", "H-006a A4-T7: loading kun n=1 (1-2)");
+
+  // Edge: yli 30 päivän vanha data → ei lasketa
+  const oldData = [{ dateISO: "2026-04-01", mvReps: [0.70, 0.68, 0.66], actualVx: 2 }];
+  const s4 = computeDataSourceStatus(oldData, [], refDate);
+  assertEqual(s4.velocity.status, "unavailable",
+    "H-006a A4-T8: yli 30 päivän vanha data ei laske (cutoff toimii)");
+
+  // Status-objektin rakenne: { status, n, reason }
+  assert(typeof s.velocity.status === "string", "H-006a A4-T9: status on string");
+  assert(typeof s.velocity.n === "number", "H-006a A4-T10: n on number");
+  assert(typeof s.velocity.reason === "string", "H-006a A4-T11: reason on string");
+}
+
 async function testBackupRoundtrip() {
   // This test requires IndexedDB — skip if not available
   try {
@@ -2996,6 +3175,11 @@ export async function runTests() {
   testTuningPromptTechStackLine();
   // β H-001 B5 (HANDOFF.md A6): currentWeekCalibrationSets kentässä
   testCurrentWeekCalibrationSets();
+  // H-006a B5 (HANDOFF.md A1-A4): velocity-data-flow + actual-rikastus + RTF + status
+  testBlockTuningVelocityFallback();
+  testBlockTuningActualEnrichment();
+  testRtfModelFilterExpansion();
+  testAvailabilityStatusEmission();
   await testRecommendScenarios();
   await testBackupRoundtrip();
   // v4.34.45: mesosykli-historia + uudelleen-aktivointi
