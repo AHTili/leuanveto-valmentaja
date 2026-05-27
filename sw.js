@@ -728,8 +728,9 @@
 //           käyttää samaa värimaailmaa (#0b1220 / #e8eefc) kuin pää-app.
 //           Ei sekoita arjen käyttöä — esittely on omassa polussaan ja
 //           kortti on Asetukset-näkymän loppupuolella, Diagnostiikan EDELLÄ.
-const APP_VERSION = "4.52.12";
+const APP_VERSION = "4.52.13";
 
+// v4.52.12 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.11 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.10 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.9 oli aiempi APP_VERSION tässä kohdassa.
@@ -838,9 +839,17 @@ const CORE_ASSETS = [
 ];
 
 // Install: cache core assets
+// v4.52.13 H-006a-fix7: { cache: "reload" } pakottaa SW:n ohittamaan selaimen
+// HTTP-cachen install-vaiheessa. Aiemmin pelkkä cache.addAll(CORE_ASSETS) saattoi
+// käyttää selaimen HTTP-cachea (esim. GitHub Pages CDN 304 Not Modified), jolloin
+// uuteen leve-ai-v${APP_VERSION}-cacheen tallennettu engine.js OLI VANHA versio.
+// Tämä selittää Akselin oireen 2026-05-27: index.html (network-first) tuore,
+// mutta engine.js (stale-while-revalidate) vanha → kortti ⚪ vaikka data ok.
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(CORE_ASSETS.map((url) => new Request(url, { cache: "reload" })))
+    )
   );
   self.skipWaiting();
 });
