@@ -1174,6 +1174,8 @@ import {
   predictE1RMEndOfProgram, computeStreetliftingFinalProjection,
   // v4.34.0 AI-Block-Tuning + v4.52.6 H-005 B2 aktivointi-ikkuna
   generateBlockTuningPackage, BLOCK_TUNING_WINDOWS, findBlockTuningWindow,
+  // v4.52.7 H-006a B4: datavirran tila per-mittari (velocity / hrv / vara)
+  computeDataSourceStatus,
   // v4.34.48 — yleinen versio (toimii kaikille ei-streetlifting-mesoille)
   generateGenericBlockTuningPackage,
   // v4.34.27 End-of-Cycle Tuning
@@ -10713,6 +10715,60 @@ function renderSettingsView() {
         CSV: rivi per sarja (avaa Excelillä). Markdown-raportti vaatii "Yksittäinen ohjelma" -valinnan.
       </div>
     </div>
+
+    ${(() => {
+      // v4.52.7 H-006a B4 — Datavirran tila -kortti (A7)
+      // Atletille läpinäkyvä pipeline-eheys: velocity / hrv / vara -statukset
+      // viim. 30 päivän ikkunasta. computeDataSourceStatus (engine.js) palauttaa
+      // { velocity, hrv, vara } -objektin, jokaisella { status, n, reason }.
+      const allSetsForStatus = state.allSets || [];
+      const measurementsForStatus = state.measurements || [];
+      const dsStatus = computeDataSourceStatus(allSetsForStatus, measurementsForStatus, null);
+
+      function dsIcon(s) {
+        if (!s) return "⚪";
+        if (s.status === "available") return "🟢";
+        if (s.status === "loading") return "🟡";
+        return "⚪";
+      }
+      function dsLabel(s) {
+        if (!s) return "Tuntematon";
+        if (s.status === "available") return "Aktiivinen";
+        if (s.status === "loading") return "Käynnistymässä";
+        return "Ei aktiivinen";
+      }
+
+      const mittarit = [
+        { key: "velocity", title: "Velocity", desc: "Enode mvReps-data per sarja" },
+        { key: "hrv",      title: "HRV",      desc: "Oura-mittaukset per päivä" },
+        { key: "vara",     title: "Vara",     desc: "Vx-arvot per sarja" },
+      ];
+
+      const rivit = mittarit.map(m => {
+        const s = dsStatus[m.key];
+        const icon = dsIcon(s);
+        const label = dsLabel(s);
+        const reason = s?.reason || "";
+        return `
+          <div title="${reason.replace(/"/g, "&quot;")}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.06);cursor:help">
+            <span style="font-size:18px">${icon}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600">${m.title}</div>
+              <div style="font-size:11px;color:var(--muted)">${m.desc}</div>
+            </div>
+            <div style="font-size:11px;color:var(--muted);white-space:nowrap">${label}</div>
+          </div>
+        `;
+      }).join("");
+
+      return `<div class="card" style="border:1px solid rgba(99, 102, 241, 0.25); background: linear-gradient(135deg, rgba(99,102,241,0.025), rgba(168,85,247,0.025))">
+        <div class="card-title">📊 Datavirran tila <span style="font-size:10px;font-weight:400;color:var(--muted)">v4.52.7</span></div>
+        <div class="muted" style="font-size:12px;margin-bottom:10px;line-height:1.5">
+          Per-mittari pipeline-eheys viim. 30 päivän ikkunasta. 🟢 aktiivinen (≥3 mittausta), 🟡 käynnistymässä (1–2), ⚪ ei aktiivinen (0). Vie hiiri rivin päälle nähdäksesi tarkemman lukemamäärän.
+        </div>
+        ${rivit}
+      </div>`;
+    })()}
 
     ${(() => {
       // v4.34.0 AI-Block-Tuning -kortti

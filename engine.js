@@ -6456,7 +6456,7 @@ export function isBlockTuningActive(wk) {
 // käynnistymässä (1-2 mittausta viim. 30 päivässä), unavailable = ei dataa.
 // Käytetään sekä AI-Block-Tuning-syötteessä (json.dataSourceStatus) että
 // UI-indikaattorissa Asetukset-välilehdellä (index.html B4).
-function _computeDataSourceStatus(allSets, measurements, refDateISO) {
+export function computeDataSourceStatus(allSets, measurements, refDateISO) {
   const today = refDateISO ? new Date(refDateISO).getTime() : Date.now();
   const cutoff = today - 30 * 86400000; // 30 päivää sitten
 
@@ -6622,7 +6622,7 @@ function generateBlockTuningPackage(ctx) {
   // tyhjä lista korvataan { status: "empty", reason } -objektilla.
   // H-006a (2026-05-27): lisätty dataSourceStatus-juurikenttä json:iin
   // joka emittoi per-mittari available/loading/unavailable-statuksen
-  // (ks. _computeDataSourceStatus-helper + json.dataSourceStatus alempana).
+  // (ks. computeDataSourceStatus-helper + json.dataSourceStatus alempana).
   const blockMeasurements = (measurements || []).filter(m => {
     const mw = getMesocycleWeek(mesocycle, m.dateISO);
     return block.prevWeeks.includes(mw) || mw === wk;
@@ -6792,7 +6792,7 @@ function generateBlockTuningPackage(ctx) {
     // H-006a A4: per-mittari datavirran tila (velocity / hrv / vara).
     // available / loading / unavailable + n + reason — atletti näkee
     // pipeline-eheyden AI-syötteessä ja UI:ssa (Asetukset-välilehti B4).
-    dataSourceStatus: _computeDataSourceStatus(allSets, measurements, null),
+    dataSourceStatus: computeDataSourceStatus(allSets, measurements, null),
   };
 
   // ── AI-prompt (valmis copy-paste) ──
@@ -7101,7 +7101,7 @@ function generateGenericBlockTuningPackage(ctx) {
     // β H-001 B5/A6: käynnissä olevan vk N cal-setit syötteen JUURESSA.
     currentWeekCalibrationSets,
     // H-006a A4: per-mittari datavirran tila (velocity / hrv / vara).
-    dataSourceStatus: _computeDataSourceStatus(allSets, measurements, null),
+    dataSourceStatus: computeDataSourceStatus(allSets, measurements, null),
   };
 
   // AI-prompt (yleinen versio, ei streetlifting-spesifi)
