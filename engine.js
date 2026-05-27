@@ -6825,7 +6825,12 @@ function generateBlockTuningPackage(ctx) {
 // Streetlifting_16w säilyy alkuperäisessä funktiossa (delegoidaan jos type matchaa).
 
 function generateGenericBlockTuningPackage(ctx) {
-  const { mesocycle, sessions, allSets, prs, currentWeekNum, settings } = ctx;
+  // H-006a fix (2026-05-27): measurements lisätty destrukturointiin yhdenmukaistuksena
+  // generateBlockTuningPackage:n (r. 6429) kanssa. B3:n yhteydessä r. 7104 lisäsi
+  // computeDataSourceStatus(allSets, measurements, null)-kutsun joka viittasi
+  // destrukturoimattomaan muuttujaan → ReferenceError tukehdutti runTests:n
+  // selain-yksikkötesteissä (diagnostiikka E+B tunnisti 2026-05-27).
+  const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings } = ctx;
 
   if (!mesocycle) {
     return { error: "AI-Block-Tuning vaatii aktiivisen mesosyklin." };
