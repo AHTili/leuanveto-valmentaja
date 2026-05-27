@@ -6464,7 +6464,17 @@ export function computeDataSourceStatus(allSets, measurements, refDateISO) {
     if (!s || !s.dateISO) return false;
     const ts = new Date(s.dateISO).getTime();
     if (!Number.isFinite(ts) || ts < cutoff) return false;
-    return Array.isArray(s.mvReps) && s.mvReps.length > 0;
+    // H-006a-fix3 (2026-05-27): laajenna kattamaan kaikki velocity-kentät jotka
+    // indikoivat mittausta. UI tallentaa per-toisto-arrayn (mvReps[]) vain kun
+    // rep-by-rep syöttö ≥2 arvolla (index.html:14123 hasMvArr = length >= 2).
+    // Yhden velocity-arvon syöttö (esim. set-edit r. 9134) tallentuu vain
+    // velocityMean-kenttään → mvReps[] = null. Akseli raportoi 2026-05-27:
+    // kortti näytti "Ei aktiivinen" vaikka velocity-kirjaaminen toimi → aiempi
+    // tiukka filtteri tuotti false-negativen.
+    const hasMvReps = Array.isArray(s.mvReps) && s.mvReps.length > 0;
+    const hasMean = typeof s.velocityMean === "number" && s.velocityMean > 0;
+    const hasRep1 = typeof s.velocityRep1 === "number" && s.velocityRep1 > 0;
+    return hasMvReps || hasMean || hasRep1;
   });
   const recentHrv = (measurements || []).filter(m => {
     if (!m || !m.dateISO) return false;
@@ -6753,6 +6763,56 @@ function generateBlockTuningPackage(ctx) {
     ? currentWeekCalibrationSetsArr
     : { status: "empty", reason: `ei kalibrointitreenejä kuluvalla vk ${wk}:lla` };
 
+  // ── H-006a-fix3 (2026-05-27): laajennettu konteksti vk 5/6/9/10/13/14 ──
+  // Aktivointi-ikkuna (H-005 B1: vk 4-6, 8-10, 12-14) sisältää myös vk 5+
+  // -tilanteet, joissa block.prevWeeks = [1,2,3] ei riitä — atletti odottaa
+  // että vk 4 deload-kalibrointi ja vk 5+ tähän mennessä kerätty data ovat
+  // analyysissä mukana. Aiempi syöte jätti nämä pois (Akseli huomasi 2026-05-27).
+  //
+  // lastDeloadWeek: vk 4/8/12 sessiot + cal-setit (additiivinen, ei muuta
+  //                 completedBlock-osiota).
+  // currentBlockProgress: vk 5..wk sessiot (block.nextWeeks-alueelta tähän
+  //                       mennessä) — antaa AI:lle näkemän strength-blokin
+  //                       alkuun jo tehdyistä treeneistä.
+  const deloadWeekInWindow = block.weeks.find(w => w === 4 || w === 8 || w === 12);
+  let lastDeloadWeek = null;
+  if (deloadWeekInWindow) {
+    const dlSessions = (sessions || []).filter(s =>
+      getMesocycleWeek(mesocycle, s.dateISO) === deloadWeekInWindow
+    ).sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+    const dlSessionIds = new Set(dlSessions.map(s => s.sessionId));
+    const dlCalSets = (allSets || []).filter(s =>
+      s.setRole === "calibration" && dlSessionIds.has(s.sessionId)
+    );
+    lastDeloadWeek = {
+      week: deloadWeekInWindow,
+      sessions: dlSessions.map(s => ({
+        sessionId: s.sessionId, dateISO: s.dateISO, label: s.label || null, dayType: s.dayType || null,
+      })),
+      calibrationSets: dlCalSets.length > 0
+        ? dlCalSets
+        : { status: "empty", reason: `ei kalibrointitreenejä deload-vk ${deloadWeekInWindow}` },
+    };
+  }
+
+  const cbpSessionsArr = (sessions || []).filter(s => {
+    const sw = getMesocycleWeek(mesocycle, s.dateISO);
+    return block.nextWeeks.includes(sw) && sw <= wk;
+  }).sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+  const cbpFirstWeek = block.nextWeeks[0];
+  const currentBlockProgress = {
+    block: block.nextBlock,
+    weeks: block.nextWeeks,
+    currentWeek: wk,
+    sessionsSoFar: cbpSessionsArr.length > 0
+      ? cbpSessionsArr.map(s => ({
+          sessionId: s.sessionId, dateISO: s.dateISO, label: s.label || null,
+          dayType: s.dayType || null,
+          week: getMesocycleWeek(mesocycle, s.dateISO),
+        }))
+      : { status: "empty", reason: `ei vielä tallentuneita treenejä vk ${cbpFirstWeek}-${wk}` },
+  };
+
   // ── Markdown-narratiivi (atleetille) ──
   const markdown = buildMarkdownNarrative({ profile, block, currentWeek: wk, sessionAnalysis, e1rmTrends, trends, anomalies, aggregates, nextBlockPrescribed, currentWeekCalibrationSets });
 
@@ -6789,6 +6849,11 @@ function generateBlockTuningPackage(ctx) {
     // Additiivinen — completedBlock.weeks säilyy [1,2,3], ei sekoita
     // "completed" vs "current"-semantiikkaa.
     currentWeekCalibrationSets,
+    // H-006a-fix3 (2026-05-27): vk 4/8/12 deload-data (cal-setit + sessiot)
+    // ja vk 5+ tähän mennessä jo tehdyt treenit. Antaa AI:lle täyden kontekstin
+    // kun aktivointi-ikkuna laajennettu vk 5-6/9-10/13-14 -alueelle (H-005 B1).
+    lastDeloadWeek,
+    currentBlockProgress,
     // H-006a A4: per-mittari datavirran tila (velocity / hrv / vara).
     // available / loading / unavailable + n + reason — atletti näkee
     // pipeline-eheyden AI-syötteessä ja UI:ssa (Asetukset-välilehti B4).
@@ -7140,6 +7205,8 @@ function generateGenericBlockTuningPackage(ctx) {
     ``,
     `Käytä \`currentWeekCalibrationSets\`-kenttää (syötteen juuressa) kalibrointi-evidenssinä jos saatavilla — atletti on suorittanut käynnissä olevan deload-viikon kalibrointitreenit. Jos status="empty", kalibrointi on vielä tekemättä → baseline tulee \`completedBlock.e1rmTrends\`:istä.`,
     ``,
+    `Aktivointi-ikkuna (vk 4-6, 8-10, 12-14) tuottaa kolme tasoa: (1) \`completedBlock\` = juuri päättynyt blokki (esim. Foundation vk 1-3), (2) \`lastDeloadWeek\` = vk 4/8/12 sessiot + cal-setit (transition-viikon kalibrointi-evidenssi), (3) \`currentBlockProgress\` = uusi blokki tähän mennessä (esim. Strength vk 5..wk jos olet vk 5-6:lla). Käytä KAIKKIA kolmea tasoa: completedBlock kertoo MITÄ päättyi, lastDeloadWeek kertoo MITEN deload meni (palautuiko atletti, näkyikö velocity-trendi nousussa), currentBlockProgress kertoo MITÄ uudessa blokissa on jo nähty (sopeutuvatko Strength-painot, miten Vx-tavoitteita kannattaa muokata).`,
+    ``,
     `Anna 3 kategoriassa:`,
     `(A) **Sovellus-tason muutokset**: mitä atletti voi tehdä UI:ssa nyt`,
     `(B) **Rakenteelliset muutokset**: koodi-muutosehdotukset seuraavalle blokille`,
@@ -7338,6 +7405,8 @@ LeVe AI tech stack: vanilla JavaScript (.js / .mjs), IndexedDB, PWA service work
 Cross-ref-slot voi kantaa \`refScale\` ja \`nominalLoadPct\` -kentät. Tällöin \`loadPct\` on jo skaalattu (\`= nominalLoadPct × refScale\`) ja note's \`@\`-pct viittaa nominaaliin viiteliikkeen 1RM-suhteessa (\`loadPctReferenceMovementName\`).
 
 Käytä \`currentWeekCalibrationSets\`-kenttää (syötteen juuressa) kalibrointi-evidenssinä jos saatavilla — atletti on suorittanut käynnissä olevan deload-viikon kalibrointitreenit (esim. 92 % × 3 V1 per kisaliike). Nämä antavat tarkimman e1RM-päivityksen seuraavan blokin ohjelmointiin (DiStasio 2014 ±2,7 kg low-rep-alueella). Jos \`currentWeekCalibrationSets.status === "empty"\`, kalibrointi on vielä tekemättä — ohjelmoinnin baseline tulee silloin edellisestä blokista (\`completedBlock.e1rmTrends\`).
+
+Aktivointi-ikkuna (vk 4-6, 8-10, 12-14) tuottaa kolme tasoa: (1) \`completedBlock\` = juuri päättynyt blokki (esim. Foundation vk 1-3), (2) \`lastDeloadWeek\` = vk 4/8/12 sessiot + cal-setit (transition-viikon kalibrointi-evidenssi), (3) \`currentBlockProgress\` = uusi blokki tähän mennessä (esim. Strength vk 5..wk jos olet vk 5-6:lla). Käytä KAIKKIA kolmea tasoa: completedBlock kertoo MITÄ päättyi, lastDeloadWeek kertoo MITEN deload meni (palautuiko atletti, näkyikö velocity-trendi nousussa), currentBlockProgress kertoo MITÄ uudessa blokissa on jo nähty (sopeutuvatko Strength-painot, miten Vx-tavoitteita kannattaa muokata).
 
 Analysoi edellisen blokin (${block.prevBlock}, vk ${block.prevWeeks.join("-")}) suoritus
 ja ehdota seuraavan blokin (${block.nextBlock}, vk ${block.nextWeeks.join("-")})
