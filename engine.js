@@ -2539,11 +2539,13 @@ function computePeakingDecisionTreeCard(ctx) {
     : null;
 
   // 3. HRV-trendi viim. 7 pv vs baseline
+  // v4.52.16 H-007 B1 (A1): m.hrv → m.type === "HRV" && m.value (sama
+  // tallennusformaatin bug-korjaus kuin computeDataSourceStatus:ssa).
   const hrvRecent = (measurements || [])
-    .filter(m => m.hrv != null)
+    .filter(m => m && m.type === "HRV" && m.value != null)
     .slice(-7);
   const hrvAvg = hrvRecent.length > 0
-    ? Math.round((hrvRecent.reduce((a, m) => a + m.hrv, 0) / hrvRecent.length) * 10) / 10
+    ? Math.round((hrvRecent.reduce((a, m) => a + m.value, 0) / hrvRecent.length) * 10) / 10
     : null;
 
   // 4. MPV viim. mittaus
@@ -6751,11 +6753,16 @@ export function computeDataSourceStatus(allSets, measurements, refDateISO) {
     const hasRep1 = typeof s.velocityRep1 === "number" && s.velocityRep1 > 0;
     return hasMvReps || hasMean || hasRep1;
   });
+  // v4.52.16 H-007 B1 (A1): JUURISYY — measurements tallentaa { type: "HRV",
+  // value: ms, valueTransformed: lnRMSSD }, EI m.hrv-kenttää. Aiempi filtteri
+  // m.hrv != null tuotti aina false → HRV-kortti näytti aina ⚪ vaikka
+  // mittauksia oli tallessa (vrt. H-006a 'Sarjoja 0' -regressio: sets-storen
+  // completed-lipun puute, sama luokka virhe).
   const recentHrv = (measurements || []).filter(m => {
     if (!m || !m.dateISO) return false;
     const ts = new Date(m.dateISO).getTime();
     if (!Number.isFinite(ts) || ts < cutoff) return false;
-    return m.hrv != null;
+    return m.type === "HRV" && m.value != null;
   });
   const recentVara = (allSets || []).filter(s => {
     const d = s && setDate(s);
@@ -6915,7 +6922,8 @@ function generateBlockTuningPackage(ctx) {
   }).sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
 
   const trends = {
-    hrv: blockMeasurements.filter(m => m.hrv != null).map(m => ({ dateISO: m.dateISO, value: m.hrv })),
+    // v4.52.16 H-007 B1 (A1): m.hrv → m.type === "HRV" && m.value
+    hrv: blockMeasurements.filter(m => m && m.type === "HRV" && m.value != null).map(m => ({ dateISO: m.dateISO, value: m.value })),
     mpv: blockMeasurements.filter(m => m.mpv != null).map(m => ({ dateISO: m.dateISO, value: m.mpv })),
     bodyweight: blockMeasurements.filter(m => m.bodyweightKg != null).map(m => ({ dateISO: m.dateISO, value: m.bodyweightKg })),
   };
@@ -7868,7 +7876,8 @@ function generateEndOfCycleTuningPackage(ctx) {
   }).sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
 
   const trends = {
-    hrv: cycleMeasurements.filter(m => m.hrv != null).map(m => ({ dateISO: m.dateISO, value: m.hrv })),
+    // v4.52.16 H-007 B1 (A1): m.hrv → m.type === "HRV" && m.value
+    hrv: cycleMeasurements.filter(m => m && m.type === "HRV" && m.value != null).map(m => ({ dateISO: m.dateISO, value: m.value })),
     mpv: cycleMeasurements.filter(m => m.mpv != null).map(m => ({ dateISO: m.dateISO, value: m.mpv })),
     bodyweight: cycleMeasurements.filter(m => m.bodyweightKg != null).map(m => ({ dateISO: m.dateISO, value: m.bodyweightKg })),
   };
