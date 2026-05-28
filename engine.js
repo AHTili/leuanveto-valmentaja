@@ -2425,6 +2425,121 @@ function computePrimerBaselineDrift(measurements, movementId, currentDateISO) {
   return result;
 }
 
+// v4.52.16 H-007 B2 (A2): HRV-baseline rolling-7-päivän-pohjaisesti.
+//
+// Syöte:
+//   - measurements: array of { type, value, dateISO, ... } -objekteja
+//   - currentDateISO: nykypäivä (referenssi rolling-7-ikkunalle)
+//
+// Lopputulos: { median, n, status }
+//   - median: viim. 7 päivän HRV-mittausten mediaani (ms)
+//   - n: viim. 7 päivän mittausten lukumäärä (jaettu päivittäisistä syötteistä)
+//   - status: "ready" (n>=7), "building" (1<=n<7), "empty" (n=0)
+//
+// Plews 2013 -kynnys: n>=7 minimi rolling-baseline-luotettavuudelle, n>=14
+// ideaali (= 14 päivän rolling avg). Kapeampi kuin primer-baseline (n>=5)
+// koska HRV-arvot ovat kohinaisempia ja vaativat pidempää ikkunaa.
+//
+// EI liike-spesifinen (HRV on koko atletti-tason mittari, ei per-liike).
+function computeHrvBaseline(measurements, currentDateISO) {
+  const result = { median: null, n: 0, status: "empty" };
+  if (!Array.isArray(measurements)) return result;
+  const refTs = currentDateISO ? new Date(currentDateISO).getTime() : Date.now();
+  if (!Number.isFinite(refTs)) return result;
+
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const cutoffTs = refTs - SEVEN_DAYS_MS;
+
+  const recentHrv = measurements.filter(m =>
+    m && m.type === "HRV" && typeof m.value === "number" && m.value > 0 &&
+    m.dateISO && Number.isFinite(new Date(m.dateISO).getTime()) &&
+    new Date(m.dateISO).getTime() >= cutoffTs
+  );
+
+  result.n = recentHrv.length;
+  if (recentHrv.length === 0) {
+    result.status = "empty";
+    return result;
+  }
+
+  const sorted = recentHrv.map(m => m.value).sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  result.median = sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+
+  result.status = recentHrv.length >= 7 ? "ready" : "building";
+  return result;
+}
+
+// v4.52.16 H-007 B3 (A3): HRV-baseline-drift detection.
+//
+// Vertaa recent-7-päivän mediaania historical-7-päivän (= 8-14 päivää sitten)
+// mediaaniin. Jos siirtymä >10% → drift-warning + audit-flagi (K-β-HRV-4).
+//
+// Syöte:
+//   - measurements: array of { type, value, dateISO, ... }
+//   - currentDateISO: nykypäivä (referenssi-ikkunoille)
+//
+// Lopputulos: { recentMedian, historicalMedian, driftPct, status: "ok"|"warning",
+//               recentN, historicalN }
+//
+// Plews 2013 -taustalla: yli 10% drift 7 vs 7 päivän vertailussa = signaali
+// joko (a) tekninen kehitys/regressio, (b) palautumiskuorma-muutos, tai
+// (c) mittauslaite-virhe. Vaatii atletilta tarkistuksen.
+function computeHrvBaselineDrift(measurements, currentDateISO) {
+  const result = {
+    recentMedian: null, historicalMedian: null,
+    driftPct: null, status: "ok",
+    recentN: 0, historicalN: 0,
+  };
+  if (!Array.isArray(measurements) || !currentDateISO) return result;
+  const refTs = new Date(currentDateISO).getTime();
+  if (!Number.isFinite(refTs)) return result;
+
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
+  const recentCutoffTs = refTs - SEVEN_DAYS_MS;        // 0-7 päivää sitten
+  const historicalCutoffTs = refTs - FOURTEEN_DAYS_MS; // 8-14 päivää sitten
+
+  const hrvOnly = measurements.filter(m =>
+    m && m.type === "HRV" && typeof m.value === "number" && m.value > 0 &&
+    m.dateISO && Number.isFinite(new Date(m.dateISO).getTime())
+  );
+
+  const recent = hrvOnly.filter(m => new Date(m.dateISO).getTime() >= recentCutoffTs);
+  const historical = hrvOnly.filter(m => {
+    const ts = new Date(m.dateISO).getTime();
+    return ts >= historicalCutoffTs && ts < recentCutoffTs;
+  });
+
+  result.recentN = recent.length;
+  result.historicalN = historical.length;
+
+  const medianOf = arr => {
+    if (arr.length === 0) return null;
+    const sorted = arr.map(m => m.value).sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  };
+
+  result.recentMedian = medianOf(recent);
+  result.historicalMedian = medianOf(historical);
+
+  // Vaadi molemmat ikkunat n>=3 luotettavaan vertailuun (sama disipliini kuin
+  // computePrimerBaselineDrift; mediaani satunnaisuus dominoi n<3:lla).
+  if (result.recentN >= 3 && result.historicalN >= 3 &&
+      result.recentMedian !== null && result.historicalMedian !== null &&
+      result.historicalMedian > 0) {
+    const driftPct = (result.recentMedian - result.historicalMedian) / result.historicalMedian;
+    result.driftPct = driftPct;
+    if (Math.abs(driftPct) > 0.10) {
+      result.status = "warning";
+    }
+  }
+  return result;
+}
+
 // v4.38.0: Behrmann et al. 2025 (Sensors) -löydös EnodePro-validaatiosta:
 // MAPE 4-42%, yliarviointi systemaattinen erityisesti hitailla nopeuksilla
 // (<0.5 m/s) bench/squat-pohjadatassa. Streetlifting-V1RM-alueella (squat 0.30,
@@ -8280,6 +8395,9 @@ export {
   computeTodaySys1RM,
   // v4.52.15 H-006b B3 (A3 K-β-4): baseline-drift detection
   computePrimerBaselineDrift,
+  // v4.52.16 H-007 B2 (A2+A3): HRV-baseline + drift-detection
+  computeHrvBaseline,
+  computeHrvBaselineDrift,
   ENODE_LOW_VELOCITY_CAVEAT,
   computeVBTPromotionStatus,
   VBT_MIN_ANCHORS,
