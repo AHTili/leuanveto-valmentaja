@@ -1198,6 +1198,8 @@ import {
   vRepsToExpectedPct, resolveTier,
   // v4.52.15 H-006b B1 (A1): liike-spesifi primer-rajaus
   isPrimerEnabledForMovement,
+  // v4.52.15 H-006b B2 (A2): primer-pohjainen sys-1RM-päivitys
+  computePrimerBaseline, computeTodaySys1RM,
 } from "./engine.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -1533,6 +1535,22 @@ async function computeRecommendation(forDateISO = null) {
   if (state.mesocycle?.type === "streetlifting_16w") {
     primaryMov = getStreetliftingPrimaryMovement(state, dateISO) || primaryMov;
   }
+  // v4.52.15 H-006b B2 (A2): primer-pohjainen sys-1RM-override.
+  // Jos atletti on suorittanut primerin tänään ja state.todaySys1RM[movementId]
+  // on saatavilla samalle päivälle, välitä sys1RM recommend():lle. Muuten
+  // recommend() käyttää oman e1RM-laskennan tulosta (Epley+Vara / kalibrointi /
+  // PLAN_BASED). Eri-päivän todaySys1RM ei vuoda yli (dateISO-tarkistus).
+  const _primaryMovId = primaryMov?.movementId || null;
+  const _todaySys1RMEntry =
+    _primaryMovId && state.todaySys1RM && state.todaySys1RM[_primaryMovId]
+      ? state.todaySys1RM[_primaryMovId]
+      : null;
+  const _todaySys1RMValid =
+    _todaySys1RMEntry &&
+    _todaySys1RMEntry.dateISO === dateISO &&
+    typeof _todaySys1RMEntry.sys1RM === "number" &&
+    _todaySys1RMEntry.sys1RM > 0;
+
   state.recommendation = await recommend({
     settings,
     bodyweightKg: state.latestBodyweight || settings.bodyweightKg || 91,
@@ -1541,7 +1559,9 @@ async function computeRecommendation(forDateISO = null) {
     sessions: state.sessions,
     allSets: state.allSets,
     readiness: state.readiness,
-    primaryMovementId: primaryMov?.movementId || null,
+    primaryMovementId: _primaryMovId,
+    todaySys1RM: _todaySys1RMValid ? _todaySys1RMEntry.sys1RM : null,
+    todaySys1RMDeltaPct: _todaySys1RMValid ? _todaySys1RMEntry.deltaPct : null,
     dryRun: true,
   });
 
@@ -13739,6 +13759,56 @@ function bindWorkoutEvents() {
       timestamp: new Date().toISOString(),
     };
     state.todayVelocity = best;
+
+    // v4.52.15 H-006b B2 (A2): päivän mukautettu sys-1RM primer-pohjaisesti.
+    // Lue baseline measurements-storesta (B4 tallentaa type='primer'), laske
+    // today-sys1RM = computeTodaySys1RM(best, baseline, calibrationKg, movementId),
+    // tallenna state.todaySys1RM[movementId] override-arvona seuraavalle
+    // computeRecommendation()-kutsulle.
+    try {
+      const mid = exercise?.movementId || null;
+      const movName = exercise?.name || null;
+      if (mid && movName && isPrimerEnabledForMovement(movName)) {
+        // Baseline = measurements-storen type='primer' -mittausten mediaani per liike.
+        const baseline = computePrimerBaseline(mid, state.measurements || []);
+        // calibrationKg = rec.e1rmExternal jos saatavilla (Epley+Vara TAI cal-pohjainen),
+        // fallback streetliftingConfig.calibration-arvoihin tankoliikkeiden mukaan.
+        let calibrationKg = (typeof rec?.e1rmExternal === "number" && rec.e1rmExternal > 0)
+          ? rec.e1rmExternal
+          : null;
+        if (calibrationKg === null) {
+          const cal = state.mesocycle?.streetliftingConfig?.calibration;
+          const PULL_VARIANTS = ["Lisäpainoleuanveto", "Vastaote-leuanveto", "Paused pull-up", "Tempo pull-up", "Räjähtävä leuanveto", "Räjähtävä leuka", "Räjähtävä leuka (vyö)"];
+          const SQUAT_VARIANTS = ["Takakyykky", "Paused squat", "Etukyykky", "Box squat", "Tempo squat", "Pin squat"];
+          if (cal) {
+            if (PULL_VARIANTS.includes(movName)) calibrationKg = cal.leukaExtKg;
+            else if (SQUAT_VARIANTS.includes(movName)) calibrationKg = cal.kyykkyExtKg;
+          }
+        }
+        if (typeof calibrationKg === "number" && calibrationKg > 0) {
+          const today = computeTodaySys1RM(best, baseline, calibrationKg, mid);
+          if (today && typeof today.sys1RM === "number" && today.sys1RM > 0) {
+            if (!state.todaySys1RM) state.todaySys1RM = {};
+            state.todaySys1RM[mid] = {
+              sys1RM: today.sys1RM,
+              deltaPct: today.deltaPct,
+              reason: today.reason,
+              primerVelocity: best,
+              baselineMedian: baseline.median,
+              baselineN: baseline.n,
+              calibrationKg,
+              dateISO: todayISO(),
+              movementName: movName,
+            };
+            // Recompute recommendation jotta override aktivoituu kuorma-suosituksissa.
+            await computeRecommendation();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[H-006b B2] todaySys1RM-laskenta epäonnistui:", e);
+    }
+
     await computeReadiness();
     showToast(`Primer: parhain ${best.toFixed(2)} m/s`, "ok");
     render();

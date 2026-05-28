@@ -2249,6 +2249,105 @@ function isPrimerEnabledForMovement(movementName) {
   return MOVEMENT_PRIMER_ENABLED[movementName] === true;
 }
 
+// v4.52.15 H-006b B2 (A2): Primer-baseline-mediaani per liike.
+// Lukee measurements-store:ista type='primer' -mittaukset (B4) ja palauttaa
+// mediaanin + n. Käytetään computeTodaySys1RM:n vertailukohtana.
+//
+// Baseline rakentuu hitaasti: tarvitsee ≥5 primer-mittausta per liike ennen
+// kuin K-β-2 BASELINE_SIZE-tila vaihtuu "rakentumassa" → "valmis".
+function computePrimerBaseline(movementId, measurements) {
+  if (!Array.isArray(measurements) || !movementId) {
+    return { median: null, n: 0 };
+  }
+  const primerVals = measurements
+    .filter(m =>
+      m &&
+      m.type === "primer" &&
+      m.movementId === movementId &&
+      typeof m.value === "number" &&
+      m.value > 0
+    )
+    .map(m => m.value);
+  if (primerVals.length === 0) return { median: null, n: 0 };
+  const sorted = [...primerVals].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+  return { median, n: primerVals.length };
+}
+
+// v4.52.15 H-006b B2 (A2): Päivän mukautettu sys-1RM primer-velocityn pohjalta.
+//
+// Syöte:
+//   - primerVelocity: päivän primer-mittauksen velocity (m/s, MPV tai best-of-N)
+//   - baseline: { median, n } — primer-historian baseline (computePrimerBaseline)
+//   - calibrationKg: nimellinen e1RM-arvo Asetuksista (leukaExtKg/kyykkyExtKg/...)
+//   - movementId: liike-ID audit-tracen takia
+//
+// Lopputulos: { sys1RM, deltaPct, reason } — sys1RM on päivän mukautettu arvo
+// joka annetaan recommend(): in options.todaySys1RM-parametrina.
+//
+// Säännöt (HANDOFF.md H-006b §2 A2 + §5 Cowork-ratifiointi 2026-05-28):
+//   - Jos baseline.n < 5 → sys1RM = calibrationKg (rakentumassa)
+//   - Jos primerVelocity >= baseline.median * 1.05 →
+//       lineaarinen +2.5% (ratio 1.05) ... +5% (ratio 1.10), clamp +5%
+//   - Jos primerVelocity <= baseline.median * 0.95 →
+//       lineaarinen -2.5% (ratio 0.95) ... -5% (ratio 0.90), clamp -5%
+//   - Muuten sys1RM = calibrationKg (neutraali baseline-ikkuna)
+//   - K-β-5 MVT_GUARD: sys1RM clamp ±15% calibrationKg:sta (extreme-suoja,
+//     A3 audit-flagi). Normaalitilanteessa ei aktivoidu (kynnykset ±5%).
+//
+// Tutkimuspohja:
+//   - Sánchez-Moreno 2017: rep1 MPV-slope per RIR ~0,045 m/s → ±5% velocity-ero
+//     vastaa ~1-2 RIR siirtymää → ±2.5-5% kuormamukautus konservatiivinen.
+//   - Pareja-Blanco 2017: ±15% e1RM-extreme = neuromuskulaarinen fatiikka tai
+//     mittausvirhe — clamp estää sys-1RM:n karkaamisen yksittäisestä
+//     virheellisestä primer-mittauksesta.
+function computeTodaySys1RM(primerVelocity, baseline, calibrationKg, movementId) {
+  // Defensiiviset guardit
+  if (typeof calibrationKg !== "number" || calibrationKg <= 0) {
+    return { sys1RM: null, deltaPct: 0, reason: "calibration_invalid" };
+  }
+  if (typeof primerVelocity !== "number" || primerVelocity <= 0) {
+    // K-β-1 PRIMER_DATA_AVAILABILITY -tilanne (fallback nimelliseen)
+    return { sys1RM: calibrationKg, deltaPct: 0, reason: "primer_velocity_invalid" };
+  }
+  if (!baseline || typeof baseline.median !== "number" || baseline.median <= 0) {
+    return { sys1RM: calibrationKg, deltaPct: 0, reason: "baseline_missing" };
+  }
+  // K-β-2 BASELINE_SIZE: rakentumassa-tila
+  if ((baseline.n || 0) < 5) {
+    return { sys1RM: calibrationKg, deltaPct: 0, reason: "baseline_insufficient" };
+  }
+
+  const ratio = primerVelocity / baseline.median;
+  let deltaPct = 0;
+  let reason;
+
+  if (ratio >= 1.05) {
+    // Positiivinen: lineaarinen 1.05→+2.5%, 1.10→+5%, clamp +5%
+    const scale = Math.min(1, (ratio - 1.05) / 0.05);
+    deltaPct = 0.025 + scale * 0.025;
+    reason = "primer_above_baseline";
+  } else if (ratio <= 0.95) {
+    // Negatiivinen: lineaarinen 0.95→-2.5%, 0.90→-5%, clamp -5%
+    const scale = Math.min(1, (0.95 - ratio) / 0.05);
+    deltaPct = -(0.025 + scale * 0.025);
+    reason = "primer_below_baseline";
+  } else {
+    reason = "primer_in_neutral_band";
+  }
+
+  // K-β-5 MVT_GUARD: clamp ±15% (extreme-suoja, normaalitilanteessa ei aktivoidu)
+  const MVT_GUARD_LIMIT = 0.15;
+  if (deltaPct > MVT_GUARD_LIMIT) deltaPct = MVT_GUARD_LIMIT;
+  if (deltaPct < -MVT_GUARD_LIMIT) deltaPct = -MVT_GUARD_LIMIT;
+
+  const sys1RM = calibrationKg * (1 + deltaPct);
+  return { sys1RM, deltaPct, reason, movementId, primerVelocity, baselineMedian: baseline.median, baselineN: baseline.n };
+}
+
 // v4.38.0: Behrmann et al. 2025 (Sensors) -löydös EnodePro-validaatiosta:
 // MAPE 4-42%, yliarviointi systemaattinen erityisesti hitailla nopeuksilla
 // (<0.5 m/s) bench/squat-pohjadatassa. Streetlifting-V1RM-alueella (squat 0.30,
@@ -3673,6 +3772,28 @@ async function recommend(options = {}) {
   let currentE1RMExternal = currentE1RMSystem !== null
     ? (isBarbell ? currentE1RMSystem : Math.max(0, currentE1RMSystem - bodyweightKg))
     : null;
+
+  // v4.52.15 H-006b B2 (A2): primer-pohjainen sys-1RM-override.
+  // Jos kutsuja (UI / index.html) antaa options.todaySys1RM:n (primer-velocity
+  // vs baseline-vertailusta laskettu päivän mukautettu external e1RM, ks.
+  // computeTodaySys1RM), käytä sitä currentE1RMExternal:in sijaan. Tämä on
+  // SYÖTE recommend():iin (override-arvo), ei muutos laskennan sääntöihin
+  // (HANDOFF.md H-006b §3 scope-aita: recommend()-päälogiikka koskematon).
+  //
+  // PLAN_BASED-, ceiling-, floor-, VBT-promotion-säännöt soveltuvat tämän
+  // override-arvon päälle samoin kuin alkuperäiseen currentE1RMExternal:iin.
+  if (typeof options.todaySys1RM === "number" && options.todaySys1RM > 0) {
+    const before = currentE1RMExternal;
+    currentE1RMExternal = options.todaySys1RM;
+    trace("PRIMER_SYS1RM_OVERRIDE",
+      { e1rmExternal: typeof before === "number" ? before.toFixed(1) : null,
+        source: e1rmSource },
+      { e1rmExternal: currentE1RMExternal.toFixed(1),
+        source: "primer-baseline-comparison",
+        deltaPct: options.todaySys1RMDeltaPct ?? null },
+      `H-006b A2: päivän mukautettu sys-1RM primer-pohjaisesti (${typeof before === "number" ? before.toFixed(1) : "?"} → ${currentE1RMExternal.toFixed(1)} kg)`);
+    e1rmSource = "primer-override";
+  }
 
   // v4.34.35: tallenna PLAN_BASED:n e1RM-nousu rate-limit-blokille.
   // Kun PLAN_BASED aktivoituu, e1RM nousee perfect-execution-pohjalta. Rate-limit
@@ -8065,6 +8186,9 @@ export {
   // v4.52.15 H-006b B1 (A1): liike-spesifi primer-rajaus
   MOVEMENT_PRIMER_ENABLED,
   isPrimerEnabledForMovement,
+  // v4.52.15 H-006b B2 (A2): primer-pohjainen sys-1RM-päivitys
+  computePrimerBaseline,
+  computeTodaySys1RM,
   ENODE_LOW_VELOCITY_CAVEAT,
   computeVBTPromotionStatus,
   VBT_MIN_ANCHORS,
