@@ -918,6 +918,54 @@ export function auditInvariants(trace, profile = null) {
     );
   }
 
+  // ─── K-β-1/2/4/5: Primer-pohjainen sys-1RM-päivitys (H-006b A3) ──
+  // H-006b B3 (HANDOFF H-006b §2 A3): tunnista recommend()-traces:sta
+  // PRIMER_SYS1RM_OVERRIDE-rivit ja emittoi K-β-flagit kBetaFlags-arrayn pohjalta.
+  // Severity-aste:
+  //   - K-β-1 PRIMER_DATA_AVAILABILITY: WARN (primer-flow käynnistetty, velocity null)
+  //   - K-β-2 BASELINE_SIZE: INFO (baseline rakentumassa n<5)
+  //   - K-β-4 DRIFT_DETECTION: WARN (baseline-mediaani siirtynyt >10% / 4 vk)
+  //   - K-β-5 MVT_GUARD: WARN (sys-1RM clamp ±15% extreme-suoja aktivoitui)
+  const primerOverrideTraces = traces.filter(t => t.ruleId === "PRIMER_SYS1RM_OVERRIDE");
+  for (const pt of primerOverrideTraces) {
+    const kBetaFlags = Array.isArray(pt.after?.kBetaFlags) ? pt.after.kBetaFlags : [];
+    for (const kf of kBetaFlags) {
+      if (!kf || typeof kf.code !== "string") continue;
+      if (kf.code === "K-β-1") {
+        flags.push(flag(
+          "PRIMER_DATA_AVAILABILITY",
+          "⚠️ WARN",
+          `K-β-1 PRIMER_DATA_AVAILABILITY: primer-flow käynnistetty mutta velocityRep1 null (reason=${kf.reason}). Sys-1RM-päivitys ei aktivoitunut — fallback nimelliseen e1RM:ään. Tarkista Enode-mittaus / manuaalisyöttö.`,
+          { channel: "K-β", subFlag: "K-β-1", ac: "A3", reason: kf.reason },
+        ));
+      } else if (kf.code === "K-β-2") {
+        flags.push(flag(
+          "BASELINE_SIZE",
+          "💬 INFO",
+          `K-β-2 BASELINE_SIZE: primer-baseline rakentumassa (n=${kf.n || 0} / 5). Sys-1RM-päivitys ei vielä aktivoidu — tarvitaan vähintään 5 primer-mittausta per liike luotettavaa baseline-mediaania varten.`,
+          { channel: "K-β", subFlag: "K-β-2", ac: "A3", n: kf.n || 0, threshold: 5 },
+        ));
+      } else if (kf.code === "K-β-4") {
+        flags.push(flag(
+          "BASELINE_DRIFT_DETECTED",
+          "⚠️ WARN",
+          `K-β-4 BASELINE_DRIFT_DETECTED: primer-baseline-mediaani siirtynyt ${(kf.driftPct * 100).toFixed(1)}% 4 vk:n yli (recent=${kf.currentMedian?.toFixed(3)} m/s, n=${kf.recentN}; historical=${kf.historicalMedian?.toFixed(3)} m/s, n=${kf.historicalN}). Atletti voi olla teknisesti kehittynyt TAI mittauslaite kalibroitu väärin — harkitse retest-protokollaa.`,
+          { channel: "K-β", subFlag: "K-β-4", ac: "A3",
+            driftPct: kf.driftPct, currentMedian: kf.currentMedian, historicalMedian: kf.historicalMedian,
+            recentN: kf.recentN, historicalN: kf.historicalN },
+        ));
+      } else if (kf.code === "K-β-5") {
+        flags.push(flag(
+          "MVT_GUARD_CLAMPED",
+          "⚠️ WARN",
+          `K-β-5 MVT_GUARD_CLAMPED: sys-1RM-deltaPct clampattiin ±15% extreme-rajaan (preClamp=${(kf.preClampDelta * 100).toFixed(1)}% → clamped=${(kf.clampedDelta * 100).toFixed(1)}%, limit=±${(kf.limit * 100).toFixed(0)}%). Pareja-Blanco 2017: extreme = neuromuskulaarinen fatiikka tai mittausvirhe — tarkista primer-mittauksen luotettavuus.`,
+          { channel: "K-β", subFlag: "K-β-5", ac: "A3",
+            preClampDelta: kf.preClampDelta, clampedDelta: kf.clampedDelta, limit: kf.limit },
+        ));
+      }
+    }
+  }
+
   return flags;
 }
 

@@ -2305,20 +2305,25 @@ function computePrimerBaseline(movementId, measurements) {
 //     mittausvirhe — clamp estää sys-1RM:n karkaamisen yksittäisestä
 //     virheellisestä primer-mittauksesta.
 function computeTodaySys1RM(primerVelocity, baseline, calibrationKg, movementId) {
+  const kBetaFlags = []; // H-006b B3 (A3): aktivoidut K-β-flagit per kutsu
+
   // Defensiiviset guardit
   if (typeof calibrationKg !== "number" || calibrationKg <= 0) {
-    return { sys1RM: null, deltaPct: 0, reason: "calibration_invalid" };
+    return { sys1RM: null, deltaPct: 0, reason: "calibration_invalid", kBetaFlags };
   }
   if (typeof primerVelocity !== "number" || primerVelocity <= 0) {
     // K-β-1 PRIMER_DATA_AVAILABILITY -tilanne (fallback nimelliseen)
-    return { sys1RM: calibrationKg, deltaPct: 0, reason: "primer_velocity_invalid" };
+    kBetaFlags.push({ code: "K-β-1", reason: "primer_velocity_invalid" });
+    return { sys1RM: calibrationKg, deltaPct: 0, reason: "primer_velocity_invalid", kBetaFlags };
   }
   if (!baseline || typeof baseline.median !== "number" || baseline.median <= 0) {
-    return { sys1RM: calibrationKg, deltaPct: 0, reason: "baseline_missing" };
+    kBetaFlags.push({ code: "K-β-2", reason: "baseline_missing", n: 0 });
+    return { sys1RM: calibrationKg, deltaPct: 0, reason: "baseline_missing", kBetaFlags };
   }
-  // K-β-2 BASELINE_SIZE: rakentumassa-tila
+  // K-β-2 BASELINE_SIZE: rakentumassa-tila (n<5)
   if ((baseline.n || 0) < 5) {
-    return { sys1RM: calibrationKg, deltaPct: 0, reason: "baseline_insufficient" };
+    kBetaFlags.push({ code: "K-β-2", reason: "baseline_insufficient", n: baseline.n || 0 });
+    return { sys1RM: calibrationKg, deltaPct: 0, reason: "baseline_insufficient", kBetaFlags };
   }
 
   const ratio = primerVelocity / baseline.median;
@@ -2341,11 +2346,83 @@ function computeTodaySys1RM(primerVelocity, baseline, calibrationKg, movementId)
 
   // K-β-5 MVT_GUARD: clamp ±15% (extreme-suoja, normaalitilanteessa ei aktivoidu)
   const MVT_GUARD_LIMIT = 0.15;
+  const preClampDelta = deltaPct;
   if (deltaPct > MVT_GUARD_LIMIT) deltaPct = MVT_GUARD_LIMIT;
   if (deltaPct < -MVT_GUARD_LIMIT) deltaPct = -MVT_GUARD_LIMIT;
+  if (preClampDelta !== deltaPct) {
+    kBetaFlags.push({
+      code: "K-β-5",
+      reason: "mvt_guard_clamped",
+      preClampDelta,
+      clampedDelta: deltaPct,
+      limit: MVT_GUARD_LIMIT,
+    });
+  }
 
   const sys1RM = calibrationKg * (1 + deltaPct);
-  return { sys1RM, deltaPct, reason, movementId, primerVelocity, baselineMedian: baseline.median, baselineN: baseline.n };
+  return {
+    sys1RM, deltaPct, reason, movementId,
+    primerVelocity, baselineMedian: baseline.median, baselineN: baseline.n,
+    kBetaFlags,
+  };
+}
+
+// v4.52.15 H-006b B3 (A3 K-β-4): Baseline-drift detection.
+// Vertaa nykyistä mediaania historialliseen (>=4 viikkoa sitten) mediaaniin.
+// Jos siirtymä >10% → drift-flag + retest-suositus (atletti voi olla teknisesti
+// rakentanut velocity-tehoa, tai mittauslaite kalibroitu väärin).
+//
+// Syöte:
+//   - measurements: array of { type, value, movementId, dateISO } -objekteja
+//   - movementId: liike jolle drift lasketaan
+//   - currentDateISO: nykypäivä (referenssi)
+//
+// Lopputulos: { drifted, driftPct, currentMedian, historicalMedian, recentN, historicalN }
+//   - drifted=true jos |driftPct| > 10% JA molemmat ikkunat n>=3 (luotettava vertailu)
+function computePrimerBaselineDrift(measurements, movementId, currentDateISO) {
+  const result = {
+    drifted: false, driftPct: null,
+    currentMedian: null, historicalMedian: null,
+    recentN: 0, historicalN: 0,
+  };
+  if (!Array.isArray(measurements) || !movementId || !currentDateISO) return result;
+
+  const refTs = new Date(currentDateISO).getTime();
+  if (!Number.isFinite(refTs)) return result;
+  const FOUR_WEEKS_MS = 4 * 7 * 24 * 60 * 60 * 1000;
+  const cutoffTs = refTs - FOUR_WEEKS_MS;
+
+  const movPrimers = measurements.filter(m =>
+    m && m.type === "primer" && m.movementId === movementId &&
+    typeof m.value === "number" && m.value > 0 &&
+    m.dateISO && Number.isFinite(new Date(m.dateISO).getTime())
+  );
+
+  const recent = movPrimers.filter(m => new Date(m.dateISO).getTime() >= cutoffTs);
+  const historical = movPrimers.filter(m => new Date(m.dateISO).getTime() < cutoffTs);
+
+  result.recentN = recent.length;
+  result.historicalN = historical.length;
+
+  const medianOf = arr => {
+    if (arr.length === 0) return null;
+    const sorted = [...arr].map(m => m.value).sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  };
+  result.currentMedian = medianOf(recent);
+  result.historicalMedian = medianOf(historical);
+
+  if (result.recentN >= 3 && result.historicalN >= 3 &&
+      result.currentMedian !== null && result.historicalMedian !== null &&
+      result.historicalMedian > 0) {
+    const driftPct = (result.currentMedian - result.historicalMedian) / result.historicalMedian;
+    result.driftPct = driftPct;
+    if (Math.abs(driftPct) > 0.10) {
+      result.drifted = true;
+    }
+  }
+  return result;
 }
 
 // v4.38.0: Behrmann et al. 2025 (Sensors) -löydös EnodePro-validaatiosta:
@@ -3790,7 +3867,10 @@ async function recommend(options = {}) {
         source: e1rmSource },
       { e1rmExternal: currentE1RMExternal.toFixed(1),
         source: "primer-baseline-comparison",
-        deltaPct: options.todaySys1RMDeltaPct ?? null },
+        deltaPct: options.todaySys1RMDeltaPct ?? null,
+        // v4.52.15 H-006b B3 (A3): K-β-flagit per overide-tilanne, audit-engine.mjs
+        // tunnistaa nämä auditInvariants-puolella ja emittoi vastaavat audit-flagit.
+        kBetaFlags: Array.isArray(options.todaySys1RMKBetaFlags) ? options.todaySys1RMKBetaFlags : [] },
       `H-006b A2: päivän mukautettu sys-1RM primer-pohjaisesti (${typeof before === "number" ? before.toFixed(1) : "?"} → ${currentE1RMExternal.toFixed(1)} kg)`);
     e1rmSource = "primer-override";
   }
@@ -8189,6 +8269,8 @@ export {
   // v4.52.15 H-006b B2 (A2): primer-pohjainen sys-1RM-päivitys
   computePrimerBaseline,
   computeTodaySys1RM,
+  // v4.52.15 H-006b B3 (A3 K-β-4): baseline-drift detection
+  computePrimerBaselineDrift,
   ENODE_LOW_VELOCITY_CAVEAT,
   computeVBTPromotionStatus,
   VBT_MIN_ANCHORS,

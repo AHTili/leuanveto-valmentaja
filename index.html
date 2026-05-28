@@ -1200,6 +1200,8 @@ import {
   isPrimerEnabledForMovement,
   // v4.52.15 H-006b B2 (A2): primer-pohjainen sys-1RM-päivitys
   computePrimerBaseline, computeTodaySys1RM,
+  // v4.52.15 H-006b B3 (A3 K-β-4): baseline-drift detection
+  computePrimerBaselineDrift,
 } from "./engine.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -1562,6 +1564,9 @@ async function computeRecommendation(forDateISO = null) {
     primaryMovementId: _primaryMovId,
     todaySys1RM: _todaySys1RMValid ? _todaySys1RMEntry.sys1RM : null,
     todaySys1RMDeltaPct: _todaySys1RMValid ? _todaySys1RMEntry.deltaPct : null,
+    // v4.52.15 H-006b B3 (A3): K-β-flagit välitetään recommend()-traceen,
+    // audit-engine.mjs tunnistaa ne ja emittoi vastaavat audit-warningit.
+    todaySys1RMKBetaFlags: _todaySys1RMValid ? (_todaySys1RMEntry.kBetaFlags || []) : [],
     dryRun: true,
   });
 
@@ -13788,6 +13793,27 @@ function bindWorkoutEvents() {
         if (typeof calibrationKg === "number" && calibrationKg > 0) {
           const today = computeTodaySys1RM(best, baseline, calibrationKg, mid);
           if (today && typeof today.sys1RM === "number" && today.sys1RM > 0) {
+            // v4.52.15 H-006b B3 (A3 K-β-4): drift-detection — vertaa nykyistä
+            // baseline-mediaania historialliseen (>=4 vk takaperin). Jos siirtymä
+            // >10%, lisää K-β-4 kBetaFlags-listaan (audit-engine.mjs emittoi
+            // BASELINE_DRIFT_DETECTED-flagi + B5 UI näyttää drift-warning-rivin).
+            const drift = computePrimerBaselineDrift(
+              state.measurements || [],
+              mid,
+              todayISO()
+            );
+            const kBetaFlags = [...(today.kBetaFlags || [])];
+            if (drift.drifted) {
+              kBetaFlags.push({
+                code: "K-β-4",
+                reason: "baseline_drift_detected",
+                driftPct: drift.driftPct,
+                currentMedian: drift.currentMedian,
+                historicalMedian: drift.historicalMedian,
+                recentN: drift.recentN,
+                historicalN: drift.historicalN,
+              });
+            }
             if (!state.todaySys1RM) state.todaySys1RM = {};
             state.todaySys1RM[mid] = {
               sys1RM: today.sys1RM,
@@ -13799,6 +13825,8 @@ function bindWorkoutEvents() {
               calibrationKg,
               dateISO: todayISO(),
               movementName: movName,
+              kBetaFlags,
+              drift,
             };
             // Recompute recommendation jotta override aktivoituu kuorma-suosituksissa.
             await computeRecommendation();
