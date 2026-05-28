@@ -23,6 +23,14 @@ import {
   REP1_MPV_SLOPE_BASELINE,
 } from "./audit-baselines.mjs";
 
+// v4.52.16 H-007 B3 (A4): K-β-HRV-tarkistuksia varten — engine.js:stä
+// computeHrvBaseline + computeHrvBaselineDrift. Käytössä auditInvariants:in
+// K-β-HRV-haarassa kun trace.input.measurements on annettu.
+import {
+  computeHrvBaseline,
+  computeHrvBaselineDrift,
+} from "../../../engine.js";
+
 function flag(code, severity, msg, extra = {}) {
   return { code, severity, msg, ...extra };
 }
@@ -916,6 +924,56 @@ export function auditInvariants(trace, profile = null) {
         },
       ),
     );
+  }
+
+  // ─── K-β-HRV-1/2/4: HRV-baseline data-availability + drift (H-007 A4) ──
+  // H-007 B3 (HANDOFF H-007 §2 A4): tunnista HRV-tila trace.input.measurements
+  // -arrayn pohjalta computeHrvBaseline + computeHrvBaselineDrift -funktioilla.
+  // Pilot-skenaariot eivät yleensä syötä measurements:ia (HRV ei vaikuta
+  // recommend()-laskentaan H-007:ssa) → tämä haara skippaa hiljaisesti
+  // pilot-skenaarioissa ja säilyttää 136 audit-flagia baseline-tason.
+  // K-β-HRV-3 (bias-mekanismi) ja K-β-HRV-5 (MVT-guard) eivät kuulu H-007:n
+  // scopeen — bias-puoli lykätty H-007b:lle empiriaan rakentumisen jälkeen.
+  const measurements = trace.input?.measurements;
+  const currentDateISO = trace.input?.dateISO || trace.dateISO;
+  if (Array.isArray(measurements) && currentDateISO) {
+    // K-β-HRV-1: HRV_DATA_AVAILABILITY — n < 7 viim. 30 päivänä
+    const cutoff30Ts = new Date(currentDateISO).getTime() - 30 * 86400000;
+    const hrv30 = measurements.filter(m =>
+      m && m.type === "HRV" && typeof m.value === "number" && m.value > 0 &&
+      m.dateISO && new Date(m.dateISO).getTime() >= cutoff30Ts
+    );
+    if (hrv30.length > 0 && hrv30.length < 7) {
+      flags.push(flag(
+        "HRV_DATA_AVAILABILITY",
+        "⚠️ WARN",
+        `K-β-HRV-1 HRV_DATA_AVAILABILITY: HRV-syöttö epätasaista (n=${hrv30.length} / 30 päivänä, alle 7 kynnyksen). Plews 2013 -baseline-luotettavuus vaatii vähintään 7 mittausta — harkitse päivittäistä syöttöä.`,
+        { channel: "K-β-HRV", subFlag: "K-β-HRV-1", ac: "A4", n30: hrv30.length, threshold: 7 },
+      ));
+    }
+    // K-β-HRV-2: BASELINE_SIZE — rolling-7 baseline.n < 14 (ideaali)
+    const baseline = computeHrvBaseline(measurements, currentDateISO);
+    if (baseline && baseline.n > 0 && baseline.n < 14) {
+      flags.push(flag(
+        "HRV_BASELINE_SIZE",
+        "💬 INFO",
+        `K-β-HRV-2 HRV_BASELINE_SIZE: rolling-7-baseline rakentumassa (n=${baseline.n} / 14 ideaali, status="${baseline.status}"). Plews 2013: 7 minimi luotettavalle baselinelle, 14 ideaali HRV-ohjattuun treeniin.`,
+        { channel: "K-β-HRV", subFlag: "K-β-HRV-2", ac: "A4", n: baseline.n, status: baseline.status, idealN: 14 },
+      ));
+    }
+    // K-β-HRV-4: DRIFT_DETECTION — |driftPct| > 10% recent vs historical
+    const drift = computeHrvBaselineDrift(measurements, currentDateISO);
+    if (drift && drift.status === "warning") {
+      const sign = drift.driftPct > 0 ? "+" : "";
+      flags.push(flag(
+        "HRV_BASELINE_DRIFT",
+        "⚠️ WARN",
+        `K-β-HRV-4 HRV_BASELINE_DRIFT: HRV-mediaani siirtynyt ${sign}${(drift.driftPct * 100).toFixed(1)}% recent-7 vs historical-7 (recent=${drift.recentMedian?.toFixed(1)} ms, n=${drift.recentN}; historical=${drift.historicalMedian?.toFixed(1)} ms, n=${drift.historicalN}). Plews 2013: yli 10% drift = signaali joko teknisestä kehityksestä/regressiosta, palautumiskuorma-muutoksesta tai mittauslaite-virheestä — vaatii atletin tarkistuksen.`,
+        { channel: "K-β-HRV", subFlag: "K-β-HRV-4", ac: "A4",
+          driftPct: drift.driftPct, recentMedian: drift.recentMedian, historicalMedian: drift.historicalMedian,
+          recentN: drift.recentN, historicalN: drift.historicalN },
+      ));
+    }
   }
 
   // ─── K-β-1/2/4/5: Primer-pohjainen sys-1RM-päivitys (H-006b A3) ──
