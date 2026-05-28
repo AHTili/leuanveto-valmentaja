@@ -6,7 +6,7 @@
 >
 > **Päivitysprotokolla:** vaiheen tila ja NYT-merkki muuttuvat **vain committilla** kun vaihe sulkeutuu — ei muistinvaraisesti. ROADMAP = mikä vaihe; HANDOFF = mikä tehtävä vaiheen sisällä.
 >
-> **Tilannekuva:** 28.5.2026 · HEAD `ba63654` · APP_VERSION `4.52.15` · NYT-merkki vaihe 18 (Round B-β HRV-bias). Visuaalinen vastine: `prosessikartta-v4.html`.
+> **Tilannekuva:** 28.5.2026 · HEAD `8a3f55d` · APP_VERSION `4.52.16` · NYT-merkki vaihe 18 (Round B-β HRV-bias). Visuaalinen vastine: `prosessikartta-v4.html`.
 
 ---
 
