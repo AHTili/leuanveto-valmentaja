@@ -1856,6 +1856,13 @@ async function getMeasurementsByType(type) {
   return dbGetByIndex(STORES.measurements, "type", type);
 }
 
+// v4.52.15 H-006b B4 (A4): kaikki mittaukset typesta riippumatta. Käytössä
+// state.measurements-alustuksessa ja computePrimerBaseline-laskennassa, jossa
+// suodatetaan type='primer' -mittaukset per movementId.
+async function getAllMeasurements() {
+  return dbGetAll(STORES.measurements);
+}
+
 async function getMeasurementsByDate(dateISO) {
   return dbGetByIndex(STORES.measurements, "dateISO", dateISO);
 }
@@ -7708,6 +7715,8 @@ export {
   // Measurements
   getMeasurementsByType,
   getMeasurementsByDate,
+  // v4.52.15 H-006b B4 (A4): kaikki mittaukset typesta riippumatta
+  getAllMeasurements,
   saveMeasurement,
   getLatestBodyweight,
   saveBodyweightEntry,

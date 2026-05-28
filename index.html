@@ -1085,6 +1085,8 @@ import {
   // v4.30.2: auto-rebuild mesocycle when program version changes
   PROGRAM_BUILD_VERSION, rebuildStreetlifting16WMesocycle,
   saveMeasurement, getMeasurementsByType, getLatestBodyweight, saveBodyweightEntry,
+  // v4.52.15 H-006b B4 (A4): kaikki mittaukset state.measurements-alustukseen
+  getAllMeasurements,
   getAllPRs, savePR, deletePR, seedHistoricalPRsIfNeeded,
   MESOCYCLE_TEMPLATES,
   getActiveMesocycle, setActiveMesocycle, saveMesocycle, createDefaultMesocycle, createPeakingMesocycle, getAllMesocycles,
@@ -1325,6 +1327,10 @@ async function init() {
   state.allSets = await getAllSets();
   state.latestBodyweight = await getLatestBodyweight(state.settings);
   state.allBodyweights = await getMeasurementsByType("bodyweight");
+  // v4.52.15 H-006b B4 (A4): state.measurements alustetaan kaikilla
+  // mittauksilla — sisältää type='primer' -mittaukset baseline-laskentaa varten
+  // (computePrimerBaseline) JA muut mittaukset (bodyweight, HRV, PR, ...).
+  state.measurements = await getAllMeasurements();
   await seedHistoricalPRsIfNeeded();
   state.prs = await getAllPRs();
   state.allMesocycles = await getAllMesocycles();
@@ -1482,6 +1488,8 @@ async function refresh() {
   state.allSets = await getAllSets();
   state.latestBodyweight = await getLatestBodyweight(state.settings);
   state.allBodyweights = await getMeasurementsByType("bodyweight");
+  // v4.52.15 H-006b B4 (A4): myös refresh() lataa state.measurements
+  state.measurements = await getAllMeasurements();
   state.prs = await getAllPRs();
   state.allMesocycles = await getAllMesocycles();
   state.mesocycle = await getActiveMesocycle();
@@ -13764,6 +13772,31 @@ function bindWorkoutEvents() {
       timestamp: new Date().toISOString(),
     };
     state.todayVelocity = best;
+
+    // v4.52.15 H-006b B4 (A4): primer tallennetaan ADDITIIVISESTI measurements-
+    // storeen type='primer'. Sets-storeen primer tallentuu endWorkout()-funktion
+    // yhteydessä setRole='readiness_test' (rivi 14185+, säilyy ennallaan).
+    // Measurements-store antaa puhtaamman baseline-luvun (computePrimerBaseline)
+    // ilman sets-store-filterointi-riskeja (vrt. H-006a 'Sarjoja 0' -regressio).
+    try {
+      const mid4 = exercise?.movementId || null;
+      if (mid4 && isPrimerEnabledForMovement(exercise?.name)) {
+        await saveMeasurement({
+          type: "primer",
+          value: best, // velocity m/s (best-of-N, Sánchez-Moreno 2017 -metodologia)
+          valueTransformed: best,
+          movementId: mid4,
+          sessionId: w.sessionId || null,
+          dateISO: todayISO(),
+          source: "primer-flow",
+          velocities: vals, // kaikki kirjatut rep-arvot (audit-trace)
+        });
+        // Reload state.measurements jotta baseline-laskenta näkee uuden primerin.
+        state.measurements = await getAllMeasurements();
+      }
+    } catch (e) {
+      console.warn("[H-006b B4] primer measurements-tallennus epäonnistui:", e);
+    }
 
     // v4.52.15 H-006b B2 (A2): päivän mukautettu sys-1RM primer-pohjaisesti.
     // Lue baseline measurements-storesta (B4 tallentaa type='primer'), laske
