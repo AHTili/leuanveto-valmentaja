@@ -6,7 +6,7 @@
 >
 > **Päivitysprotokolla:** vaiheen tila ja NYT-merkki muuttuvat **vain committilla** kun vaihe sulkeutuu — ei muistinvaraisesti. ROADMAP = mikä vaihe; HANDOFF = mikä tehtävä vaiheen sisällä.
 >
-> **Tilannekuva:** 28.5.2026 · HEAD `3126b0f` · APP_VERSION `4.52.15`. Visuaalinen vastine: `prosessikartta-v4.html`.
+> **Tilannekuva:** 28.5.2026 · HEAD `ba63654` · APP_VERSION `4.52.15` · NYT-merkki vaihe 18 (Round B-β HRV-bias). Visuaalinen vastine: `prosessikartta-v4.html`.
 
 ---
 
@@ -46,7 +46,7 @@ Nämä eivät saa kadota missään vaiheessa.
 
 ## 4. R-sekvenssi v4 — 20 vaihetta
 
-**NYT-merkki: vaihe 17 (Round B-α-2).**
+**NYT-merkki: vaihe 18 (Round B-β HRV-bias).**
 
 | # | Vaihe | Tila | Huomio |
 | --- | --- | --- | --- |
@@ -67,12 +67,12 @@ Nämä eivät saa kadota missään vaiheessa.
 | 14b | DP-C-loppu — K-A1 redesign + K2 primer history | **AVOIN** | rinnakkaisrata; ei estä α-2:ta; sulku ennen vaihetta 19 |
 | 15 | β Round A scoping — K1–K8 ratifioitu | VALMIS | ledger L45–L51 |
 | 16 | Round B-α-1 + bug-fix-sarja α-1.6→1.11 | VALMIS | `f47ae1d` → `4252049`, APP_VERSION 4.52.5 |
-| 17 | Round B-α-2 — Lähde 2 primer + K-β-primer audit | **NYT** | scope ~165–250 riviä; mahd. jako α-2.1 + α-2.2 |
-| 18 | Round B-β — HRV-bias + shadow mode + K-β-HRV audit | SEURAAVA | ~135–225 riviä; alkaa kun α-2 stabiloitu ≥ 4 vk |
+| 17 | Round B-α-2 — Lähde 2 primer + K-β-primer audit | VALMIS | toteutettu H-006a (velocity-data-flow, ba63654^7..6676a86) + H-006b (primer + sys-1RM-päivitys + K-β-1/2/4/5-audit + measurements-store type='primer', 70cf681..ba63654). Atletti-realismi: 3-pisteen primer + primer-pohjainen LV-regressio torjuttiin (dippi-velocity epäluotettava); cal-pohjainen LV-regressio aktiivinen recommend():ssa. |
+| 18 | Round B-β — HRV-bias + shadow mode + K-β-HRV audit | **NYT** | ~135–225 riviä; H-006a+H-006b stabiloitu — empiirinen primer-baseline rakentuu ~2 vk arkitreeneissä, vaihe 18 LUONNOS voidaan aloittaa rinnakkain |
 | 19 | Pohja-puhtaus 8/8 -verifiointi | SEURAAVA | reunaehto (a) -gate; edellyttää vaiheen 14b sulkua |
 | 20 | Round B-γ — peaking | LYKÄTTY | VL-cap 20→15→10 %; aktivoidaan ~6 vk ennen kisaa |
 
-**Vaihe 17 (NYT) lyhyesti:** Lähde 2 primer-mekanismi cal-override-patternin generalisointina — lineaarinen L-V-regressio, 3-pisteen primeri (~50/70/85 % session-1RM:stä), 5-vaiheinen validointi, `measurements`-store `type="primer"`, K-β-1/2/4/5-flagit audit-engine.mjs:ään. Tarkka scope ja acceptance criteria laaditaan vaiheen 17 `HANDOFF.md`:ssä.
+**Vaihe 17 (VALMIS, 2026-05-28)** toteutettu kapeammin kuin alkuperäinen ROADMAP-spec: H-006b A1 liike-spesifi primer-rajaus (tankoliikkeet + Lisäpainoleuanveto primerEnabled=true; Dippi+MU false atletti-realismin pohjalta), A2 yksipisteinen primer @ ~60% + sys-1RM-päivitys baseline-vertailusta ±2.5/5% (EI 3-pisteen LV-regressio), A3 K-β-1/2/4/5 audit-engine.mjs, A4 measurements-store type='primer'. 5-vaiheinen validointi: 4 K-β-flagia + LV-r²-tarkistus computeLoadVelocityProfile:ssa (engine.js:2437) — kanoninen 5-vaiheinen. Cal-pohjainen LV-regressio aktiivinen recommend():ssa (engine.js:2735, 4224).
 
 ---
 
