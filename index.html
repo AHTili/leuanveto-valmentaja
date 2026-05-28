@@ -1204,6 +1204,8 @@ import {
   computePrimerBaseline, computeTodaySys1RM,
   // v4.52.15 H-006b B3 (A3 K-β-4): baseline-drift detection
   computePrimerBaselineDrift,
+  // v4.52.16 H-007 B2 (A2+A3): HRV-baseline + drift-detection
+  computeHrvBaseline, computeHrvBaselineDrift,
 } from "./engine.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -5278,6 +5280,36 @@ function renderReadiness() {
       <label>HRV (Oura, ms)</label>
       <input type="number" inputmode="decimal" id="input-hrv" value="${state.todayHRV || ""}" placeholder="esim. 45">
       <div class="muted mt">Yön keskiarvo-HRV RMSSD millisekunteina</div>
+      ${(() => {
+        // v4.52.16 H-007 B5 (A6): HRV-baseline-status + drift-warning Plews 2013
+        // -pohjalta. Atletti näkee välittömästi onko baseline rakentumassa
+        // (n<14) vai valmis (n>=14), ja jos K-β-HRV-4 drift-detection laukeaa
+        // (>10% recent vs historical), warning näkyy heti.
+        if (!Array.isArray(state.measurements)) return "";
+        try {
+          const baseline = computeHrvBaseline(state.measurements, todayISO());
+          const drift = computeHrvBaselineDrift(state.measurements, todayISO());
+          let baselineHTML;
+          if (baseline.n === 0) {
+            baselineHTML = `<div class="mt" style="font-size:11px;padding:6px 10px;background:rgba(99,102,241,0.06);border-radius:6px;color:var(--muted)">📊 HRV-baseline: <b>0/14</b> mittausta — Plews 2013: 7 minimi, 14 ideaali</div>`;
+          } else if (baseline.n < 7) {
+            baselineHTML = `<div class="mt" style="font-size:11px;padding:6px 10px;background:rgba(99,102,241,0.06);border-radius:6px;color:var(--muted)">📊 HRV-baseline: <b>${baseline.n}/14</b> mittausta, mediaani ${baseline.median.toFixed(1)} ms — alle 7 minimi</div>`;
+          } else if (baseline.n < 14) {
+            baselineHTML = `<div class="mt" style="font-size:11px;padding:6px 10px;background:rgba(99,102,241,0.06);border-radius:6px;color:var(--muted)">📊 HRV-baseline: <b>${baseline.n}/14</b> mittausta, mediaani ${baseline.median.toFixed(1)} ms — rakentumassa (Plews 2013)</div>`;
+          } else {
+            baselineHTML = `<div class="mt" style="font-size:11px;padding:6px 10px;background:rgba(34,197,94,0.08);border-radius:6px;color:var(--muted)">✅ HRV-baseline: <b>n=${baseline.n}</b>, mediaani <b>${baseline.median.toFixed(1)} ms</b></div>`;
+          }
+          let driftHTML = "";
+          if (drift.status === "warning") {
+            const sign = drift.driftPct > 0 ? "+" : "";
+            driftHTML = `<div class="mt" style="font-size:11px;padding:8px 10px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:6px;line-height:1.4">⚠️ <b>HRV-baseline-drift</b>: ${sign}${(drift.driftPct * 100).toFixed(1)}% recent-7 vs historical-7 (nyt ${drift.recentMedian.toFixed(1)} ms, ennen ${drift.historicalMedian.toFixed(1)} ms) — harkitse palautumis-fokusointia</div>`;
+          }
+          return baselineHTML + driftHTML;
+        } catch (e) {
+          console.warn("[H-007 B5] HRV-baseline render epäonnistui:", e);
+          return "";
+        }
+      })()}
     </div>
 
     <div class="card">
