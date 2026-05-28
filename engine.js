@@ -7183,6 +7183,14 @@ function generateBlockTuningPackage(ctx) {
     const dlCalSets = (allSets || []).filter(s =>
       s.setRole === "calibration" && dlSessionIds.has(s.sessionId)
     );
+    // v4.52.16 H-007 B4 (A5): HRV-baseline deload-vk:n referenssistä.
+    // Käytä deload-vk:n viimeistä sessio-päivää referenssinä (= deload-vk:n
+    // päättymispiste), jotta computeHrvBaseline:n rolling-7-ikkuna kattaa
+    // deload-vk:n aikaisemmat HRV-syötteet.
+    const dlReferenceDate = dlSessions.length > 0
+      ? dlSessions[dlSessions.length - 1].dateISO
+      : new Date().toISOString().slice(0, 10);
+    const dlHrvBaseline = computeHrvBaseline(measurements, dlReferenceDate);
     lastDeloadWeek = {
       week: deloadWeekInWindow,
       sessions: dlSessions.map(s => ({
@@ -7191,6 +7199,7 @@ function generateBlockTuningPackage(ctx) {
       calibrationSets: dlCalSets.length > 0
         ? dlCalSets
         : { status: "empty", reason: `ei kalibrointitreenejä deload-vk ${deloadWeekInWindow}` },
+      hrvBaseline: dlHrvBaseline,
     };
   }
 
@@ -7199,6 +7208,14 @@ function generateBlockTuningPackage(ctx) {
     return block.nextWeeks.includes(sw) && sw <= wk;
   }).sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
   const cbpFirstWeek = block.nextWeeks[0];
+  // v4.52.16 H-007 B4 (A5): HRV-trend recent-7 vs historical-7 currentBlock:n
+  // referenssistä. Käytä viimeistä cbpSession-päivää tai nyt-päivää
+  // referenssinä — annettavan kuvan käynnissä olevan blokin alkuun jo
+  // havaitusta HRV-trendistä.
+  const cbpReferenceDate = cbpSessionsArr.length > 0
+    ? cbpSessionsArr[cbpSessionsArr.length - 1].dateISO
+    : new Date().toISOString().slice(0, 10);
+  const cbpHrvTrend = computeHrvBaselineDrift(measurements, cbpReferenceDate);
   const currentBlockProgress = {
     block: block.nextBlock,
     weeks: block.nextWeeks,
@@ -7210,6 +7227,7 @@ function generateBlockTuningPackage(ctx) {
           week: getMesocycleWeek(mesocycle, s.dateISO),
         }))
       : { status: "empty", reason: `ei vielä tallentuneita treenejä vk ${cbpFirstWeek}-${wk}` },
+    hrvTrend: cbpHrvTrend,
   };
 
   // ── Markdown-narratiivi (atleetille) ──
