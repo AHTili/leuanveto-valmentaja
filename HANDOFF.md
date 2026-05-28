@@ -1,4 +1,4 @@
-﻿# HANDOFF.md — aktiivinen Cowork → Code -toimeksianto
+# HANDOFF.md — aktiivinen Cowork → Code -toimeksianto
 
 > Repon **ainoa aktiivinen handoff**. Cowork täyttää osiot 0–6, Claude Code täyttää osion 7.
 > Valmis handoff arkistoidaan → `docs/handoffs/HANDOFF_<id>.md`, ja tämä tiedosto nollataan tyhjäksi pohjaksi.
@@ -68,4 +68,4 @@
 | Tehdyt päätökset | `<lista>` |
 | Validointi | `<Stop hook pass/fail · selain-testit · regressio-pilot>` |
 | Jäi auki | `<lista tai "—">` |
-| Seuraava askel | `
+| Seuraava askel | `<seuraava handoff tai R-sekvenssin vaihe>` |
