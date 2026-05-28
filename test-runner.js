@@ -2057,22 +2057,24 @@ function testBlockTuningAggregates() {
     { sessionId: "s99", completed: true, isWarmup: false }, // ✗ out-of-block
   ];
 
-  // Käsin laskettu odotusarvo (Selkäranka 6):
+  // Käsin laskettu odotusarvo (Selkäranka 6) — H-006a-fix8 2026-05-28 jälkeen:
   //   totalSessions  = 3                (s1, s2, s3 — backfill mukana, s99 pois)
-  //   completedSets  = 2 + 3 + 1 = 6    (vain completed===true && isWarmup!==true)
+  //   completedSets  = 3 + 3 + 1 = 7    (vain isWarmup!==true; completed-lippua
+  //                                       EI suodateta, koska saveSet-polut eivät
+  //                                       tallenna sitä IndexedDB:hen)
 
   // ── Tunnettu-positiivinen ──
   const r1 = _computeTuningCoreAggregates(fxBlockSessions, fxAllSets);
   assertEqual(r1.totalSessions, 3,
     "T1 (pos): totalSessions = 3 (3 sessiota blockSessions:issa, backfill mukana, out-of-block pois)");
-  assertEqual(r1.completedSets, 6,
-    "T1 (pos): completedSets = 6 (2 s1 + 3 s2 + 1 s3; warmup+incomplete+out-of-block excluded)");
+  assertEqual(r1.completedSets, 7,
+    "T1 (pos): completedSets = 7 (3 s1 + 3 s2 + 1 s3; warmup+out-of-block excluded, completed-lippu ei vaikuta)");
 
   // ── Yhtenäisyys: johdetaan SAMASTA joukosta — per-sessio-jakolasku mielekäs ──
   // (A1 onnistumisen ehto (ii): completedSets/totalSessions on määritelmällisesti mielekäs)
   const setsPerSession = r1.completedSets / r1.totalSessions;
-  assert(setsPerSession === 2,
-    `T1 (pos): per-sessio-jakolasku mielekäs — 6/3 = 2.0 (saatu ${setsPerSession})`);
+  assert(Math.abs(setsPerSession - 7/3) < 1e-9,
+    `T1 (pos): per-sessio-jakolasku mielekäs — 7/3 ≈ 2.333 (saatu ${setsPerSession})`);
 
   // ── Tunnettu-negatiivinen 1: kaikki setit warmup → completedSets=0, totalSessions ennallaan ──
   const negWarmup = fxAllSets.map(s => ({ ...s, isWarmup: true }));
@@ -2082,13 +2084,18 @@ function testBlockTuningAggregates() {
   assertEqual(r2.completedSets, 0,
     "T2 (neg-warmup): completedSets = 0 (kaikki setit warmup → kaikki suodatetaan)");
 
-  // ── Tunnettu-negatiivinen 2: kaikki setit completed=false → completedSets=0 ──
+  // ── H-006a-fix8 2026-05-28: completed-lipulla EI ole vaikutusta ──
+  // Aiempi T3 (vanha pre-fix8 logiikka) odotti completed=false → 0. UUDESSA
+  // logiikassa filtteri on vain isWarmup-pohjainen koska saveSet (index.html:
+  // 14228 / 2064 / 13986 / 9132) ei tallenna runtime-tilan completed-lippua
+  // IndexedDB:hen → IndexedDB:stä luetut setit ovat AINA completed===undefined.
+  // T3 testaa nyt että completed=false EI vaikuta tulokseen (sama 7 kuin T1).
   const negIncomplete = fxAllSets.map(s => ({ ...s, completed: false }));
   const r3 = _computeTuningCoreAggregates(fxBlockSessions, negIncomplete);
   assertEqual(r3.totalSessions, 3,
     "T3 (neg-incomplete): totalSessions = 3 (session-tason, ei set-flageista riippuva)");
-  assertEqual(r3.completedSets, 0,
-    "T3 (neg-incomplete): completedSets = 0 (kaikki setit completed=false)");
+  assertEqual(r3.completedSets, 7,
+    "T3 (neg-incomplete): completedSets = 7 (completed=false ei vaikuta H-006a-fix8 jälkeen, vain isWarmup-suodatus)");
 
   // ── Edge: tyhjät syötteet ──
   const r4 = _computeTuningCoreAggregates([], fxAllSets);
@@ -2112,6 +2119,44 @@ function testBlockTuningAggregates() {
     fxAllSets.filter(s => s.sessionId === "s2"));
   assertEqual(r7.totalSessions, 1, "T7 (backfill-only): totalSessions = 1 (backfill kuuluu joukkoon)");
   assertEqual(r7.completedSets, 3, "T7 (backfill-only): completedSets = 3 (backfill-setit aitoa volyymiä)");
+}
+
+// H-006a-fix8 (2026-05-28): vahvistaa juurisyyn — IndexedDB:stä luetut setit ovat
+// AINA completed===undefined, koska saveSet-polut (index.html: 14228 normaali
+// work-set, 2064 RTF-modaali, 13986 primer, 9132 set-edit) eivät tallenna
+// runtime-tilan completed-lippua. Pre-fix8-filtteri "set.completed === true"
+// tuotti tästä syystä aina 0 → AI-Block-Tuning-paketin markdown-header sanoi
+// "Sarjoja yhteensä: 0" vaikka JSON sisälsi 260 slottia (vk 5 -paketti vs vk 4
+// -paketti vertailu Cowork 2026-05-28).
+//
+// Tämä testi varmistaa regressio-suojan: jos joku tulevaisuudessa lisää
+// completed-lipun filtteriin takaisin, tämä testi laukeaa.
+function testTuningCoreAggregatesNoCompletedFlag() {
+  const fxSessions = [{ sessionId: "s1", dateISO: "2026-05-26" }];
+  const fxSets = [
+    { sessionId: "s1", isWarmup: false, completed: undefined }, // ✓ counted
+    { sessionId: "s1", isWarmup: false, completed: undefined }, // ✓ counted
+    { sessionId: "s1", isWarmup: false, completed: undefined }, // ✓ counted
+  ];
+
+  const result = _computeTuningCoreAggregates(fxSessions, fxSets);
+
+  assertEqual(result.totalSessions, 1,
+    "fix8-T1: totalSessions = 1 (1 sessio joukossa)");
+  assertEqual(result.completedSets, 3,
+    "fix8-T1: completedSets = 3 (kaikki 3 settiä lasketaan vaikka completed=undefined; pre-fix8 olisi tuottanut 0)");
+
+  // ── Lisävahvistus: sekoitettu undefined + true + false → kaikki lasketaan
+  // (vain isWarmup suodattaa, completed-arvo ei vaikuta) ──
+  const fxMixed = [
+    { sessionId: "s1", isWarmup: false, completed: undefined },
+    { sessionId: "s1", isWarmup: false, completed: true },
+    { sessionId: "s1", isWarmup: false, completed: false },
+    { sessionId: "s1", isWarmup: true,  completed: true },  // ✗ warmup
+  ];
+  const r2 = _computeTuningCoreAggregates(fxSessions, fxMixed);
+  assertEqual(r2.completedSets, 3,
+    "fix8-T2: sekoitettu completed undefined/true/false → kaikki 3 ei-warmup lasketaan");
 }
 
 // β H-001 B2/A2 (HANDOFF.md §5 kohta 6 + §6 K2(1)-A "tiukka" ratifiointi 2026-05-25):
@@ -3162,6 +3207,8 @@ export async function runTests() {
   testGenericBlockTuningPackage();
   // β H-001 B1 (HANDOFF.md A1): AI Block Tuning -aggregaattien rajauksen yhtenäisyys
   testBlockTuningAggregates();
+  // H-006a-fix8 (2026-05-28): regressio-suoja completed-lipun filtteröintiä vastaan
+  testTuningCoreAggregatesNoCompletedFlag();
   // β H-001 B2 (HANDOFF.md A2 + A3): slot-note-normalisointi + slot-mismatch-detektor
   testBlockTuningSlotNormalization();
   await testSlotMismatchDetection();

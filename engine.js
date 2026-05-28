@@ -6323,8 +6323,14 @@ const SUGGESTED_NEXT_TEMPLATE = {
 //     todellisen volyymin).
 //   - totalSessions: blockSessions.length — session-tason metriikka, EI warmup-
 //     suodatusta.
-//   - completedSets: SET-tason suodatin completed === true && isWarmup !== true
-//     (= engine.js r. 5318:n kanoninen pattern, vrt. analyzeSessionAdaptation).
+//   - completedSets: SET-tason suodatin isWarmup !== true. HUOM: aiempi
+//     completed === true -filtteri (H-006a-fix8 2026-05-28) poistettu —
+//     runtime-tilan completed-lippu EI tallennu saveSet-polkujen kautta
+//     IndexedDB:hen (index.html:14228 / 2064 / 13986 / 9132), joten filtteri
+//     tuotti aina 0 ja AI-Block-Tuning -paketin markdown-yhteenveto raportoi
+//     "Sarjoja yhteensä: 0" vaikka JSON-osio sisälsi täydet 260 slottia.
+//     Kanoninen pattern on warmup-suodatus, kuten pre-H-001-aikainen
+//     aggregointi (vk 4 -paketti 23.5.2026 laski oikein 260).
 // Käytössä generateBlockTuningPackage, generateGenericBlockTuningPackage ja
 // generateEndOfCycleTuningPackage -funktioissa varmistamaan sama rajaus
 // (HANDOFF.md A1).
@@ -6336,7 +6342,6 @@ function _computeTuningCoreAggregates(blockSessions, allSets) {
   for (const sess of sessions) {
     for (const set of sets) {
       if (set.sessionId === sess.sessionId
-          && set.completed === true
           && set.isWarmup !== true) {
         completedSets++;
       }
