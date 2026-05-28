@@ -1196,6 +1196,8 @@ import {
   getEffectiveWeekCount, resolveMesocyclePosition,
   // β Round B-α-1.8 Osa B: Sykli-näkymä runtime-laskenta tier 1/2/3 → Lähde 1
   vRepsToExpectedPct, resolveTier,
+  // v4.52.15 H-006b B1 (A1): liike-spesifi primer-rajaus
+  isPrimerEnabledForMovement,
 } from "./engine.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -6252,11 +6254,15 @@ function renderActiveWorkout() {
     if (exercise.name === "Muscle-up") return null; // MU ei e1RM-pohjainen
     return null;
   })();
+  // v4.52.15 H-006b B1 (A1): liike-spesifi primer-rajaus. Akselin Cowork-päätös
+  // 2026-05-28: tankoliikkeet + Lisäpainoleuanveto saavat primer-card UI:n;
+  // Lisäpainodippi + Muscle-up EIVÄT (atletti-realismi — velocity epäluotettava).
   const needsPrimer = !isWarmupSet &&
     currentSetIdx === warmupCount &&     // juuri ennen ensimmäistä työsarjaa
     exercise.role === "primary" &&
     !w.primer &&                         // primer ei vielä tehty eikä ohitettu
     primerEnabled &&
+    isPrimerEnabledForMovement(exercise.name) && // H-006b B1: liike-spesifi A1
     typeof primerE1rm === "number" && primerE1rm > 0;
   if (needsPrimer) {
     // Välitä effektiivinen e1RM (joko historia-pohjainen tai seed) primer-näkymälle

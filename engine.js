@@ -2181,6 +2181,74 @@ const MOVEMENT_MVT = {
 // Default-MVT tuntemattomille liikkeille (konservatiivinen, kyykky-tasolla)
 const DEFAULT_MVT = 0.25;
 
+// v4.52.15 H-006b B1 (A1): Liike-spesifi primer-rajaus.
+//
+// Vain primerEnabled=true -liikkeet näyttävät primer-card UI:n (index.html:6255
+// needsPrimer-tarkistuksen kautta) + tallentavat primer-velocityn baseline-
+// historiaan (B4 measurements-store type='primer').
+//
+// primerEnabled=true:
+//   - Tankoliikkeet (lineaarinen bar-trajectory, Enode-clip-mittaus luotettava):
+//     Takakyykky + variantit, Penkkipunnerrus + variantit, Pystypunnerrus + variantit,
+//     Maastaveto + variantit.
+//   - BW+lisäpaino-leuanveto + variantit (Akselin empiria 2026-05-28: mitattu
+//     käytännössä luotettavaksi pull-trajectory).
+//
+// primerEnabled=false:
+//   - Lisäpainodippi (lyhyt amplitude → velocity-mittaus epäluotettava
+//     Akselin empiriassa)
+//   - Muscle-up (multi-plane skill → velocity ei translatoi LV-relaatioon
+//     standardimuodossa)
+//
+// Cowork-päätös 2026-05-28 (HANDOFF.md H-006b §5): atletti-empiria — dippi-
+// velocity epäluotettava, ei rakenneta LV-regressiota kaikille liikkeille.
+// Akselin ratifioima.
+const MOVEMENT_PRIMER_ENABLED = {
+  // Tankoliikkeet (kyykky) — primerEnabled=true
+  "Takakyykky":              true,
+  "Etukyykky":               true,
+  "Paused squat":            true,
+  "Box squat":               true,
+  "Tempo squat":             true,
+  "Pin squat":               true,
+  // Tankoliikkeet (bench) — primerEnabled=true
+  "Penkkipunnerrus":         true,
+  "Paused bench press":      true,
+  "Vinopenkkipunnerrus":     true,
+  "Close-grip bench":        true,
+  "Spoto press":             true,
+  // Tankoliikkeet (overhead) — primerEnabled=true
+  "Pystypunnerrus":          true,
+  "Push press":              true,
+  // Tankoliikkeet (deadlift) — primerEnabled=true
+  "Maastaveto":              true,
+  "Romanian DL":             true,
+  "Snatch-grip DL":          true,
+  "Block pull":              true,
+  "Paused DL":               true,
+  "Deficit DL":              true,
+  // BW+lisäpaino-leuanveto + variantit — primerEnabled=true (Akselin empiria)
+  "Lisäpainoleuanveto":      true,
+  "Vastaote-leuanveto":      true,
+  "Paused pull-up":          true,
+  "Tempo pull-up":           true,
+  "Räjähtävä leuanveto":     true,
+  "Räjähtävä leuka":         true,
+  "Räjähtävä leuka (vyö)":   true,
+  // primerEnabled=false (atletti-realismi 2026-05-28)
+  "Lisäpainodippi":          false,
+  "Dippi":                   false,
+  "Muscle-up":               false,
+};
+
+// v4.52.15 H-006b B1: getter — palauttaa true jos liike on primerEnabled.
+// Tuntemattomille liikkeille palauttaa false (konservatiivinen — ei näytetä
+// primer-card UI:ta ennen kuin liike on eksplisiittisesti lisätty taulukkoon).
+function isPrimerEnabledForMovement(movementName) {
+  if (!movementName || typeof movementName !== "string") return false;
+  return MOVEMENT_PRIMER_ENABLED[movementName] === true;
+}
+
 // v4.38.0: Behrmann et al. 2025 (Sensors) -löydös EnodePro-validaatiosta:
 // MAPE 4-42%, yliarviointi systemaattinen erityisesti hitailla nopeuksilla
 // (<0.5 m/s) bench/squat-pohjadatassa. Streetlifting-V1RM-alueella (squat 0.30,
@@ -7994,6 +8062,9 @@ export {
   computeLoadVelocityProfile,
   MOVEMENT_MVT,
   DEFAULT_MVT,
+  // v4.52.15 H-006b B1 (A1): liike-spesifi primer-rajaus
+  MOVEMENT_PRIMER_ENABLED,
+  isPrimerEnabledForMovement,
   ENODE_LOW_VELOCITY_CAVEAT,
   computeVBTPromotionStatus,
   VBT_MIN_ANCHORS,
