@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.18" />
+  <meta name="app-version" content="4.52.19" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -12351,6 +12351,9 @@ function bind() {
         currentWeekNum: wk,
         settings: state.settings,
         decisionTraces: state.decisionTraces || [],
+        // v4.52.19 H-011 P1b (JS1): movements-map movementId → nimi -resoluutioon
+        // (setit kantavat movementId:n, ei movementName-kenttää).
+        movements: state.movements || [],
       });
       if (pkg.error) {
         showToast(pkg.error, "warn", 5000);
@@ -12383,6 +12386,8 @@ function bind() {
         currentWeekNum: wk,
         settings: state.settings,
         decisionTraces: state.decisionTraces || [],
+        // v4.52.19 H-011 P1b (JS1): movements-map movementId → nimi -resoluutioon
+        movements: state.movements || [],
       });
       if (pkg.error) {
         showToast(pkg.error, "warn", 5000);

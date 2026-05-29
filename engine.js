@@ -2716,9 +2716,11 @@ function computePeakingDecisionTreeCard(ctx) {
   const mpvLast = mpvRecent.length > 0 ? mpvRecent[mpvRecent.length - 1].mpv : null;
 
   // 5. Bodyweight muutos vk 12 → vk 14
-  const bwMeasurements = (measurements || []).filter(m => m.bodyweightKg != null).slice(-14);
+  // v4.52.19 H-011 P1b (JS2): kanoninen bodyweight-kuvio m.type === "bodyweight"
+  // && m.value (sama kuin 7091/8063). Aiempi m.bodyweightKg luki olematonta kenttää.
+  const bwMeasurements = (measurements || []).filter(m => m && m.type === "bodyweight" && m.value != null).slice(-14);
   const bwDelta = bwMeasurements.length >= 2
-    ? Math.round((bwMeasurements[bwMeasurements.length - 1].bodyweightKg - bwMeasurements[0].bodyweightKg) * 10) / 10
+    ? Math.round((bwMeasurements[bwMeasurements.length - 1].value - bwMeasurements[0].value) * 10) / 10
     : null;
 
   // 6. Vk 12 cal-päivän actualVx-mediaani (kuinka helposti meni)
@@ -6969,11 +6971,20 @@ function _buildRtfModelMap(allSets) {
 }
 
 function generateBlockTuningPackage(ctx) {
-  const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings, decisionTraces } = ctx;
+  const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings, decisionTraces, movements } = ctx;
 
   if (!mesocycle || mesocycle.type !== "streetlifting_16w") {
     return { error: "AI-Block-Tuning vaatii streetlifting_16w-mesosyklin." };
   }
+
+  // v4.52.19 H-011 P1b (JS1): movementId → movementName -resoluutio. Setit kantavat
+  // movementId:n (UUID), EIVÄT movementName-kenttää (0/332 Akselin datassa) → e1RM-
+  // trend-filtteri (set.movementName === liftName) + slot-nimet tippuivat tyhjiksi
+  // (OBS-008 juuri: 107 kisaliike-settiä → "empty"). idToName resolvoi nimen
+  // movements-storesta. Graceful: jos movements puuttuu, fallback set.movementName.
+  const _idToName = {};
+  for (const m of (movements || [])) { if (m && m.movementId) _idToName[m.movementId] = m.name; }
+  const _movName = (set) => set.movementName ?? _idToName[set.movementId] ?? null;
 
   const wk = currentWeekNum;
   // H-005 B1: aktivointi-ikkuna deload + seuraavan blokin alku
@@ -7016,7 +7027,7 @@ function generateBlockTuningPackage(ctx) {
     const sessSets = (allSets || []).filter(set => set.sessionId === sess.sessionId);
     const sw = getMesocycleWeek(mesocycle, sess.dateISO);
     const slots = sessSets.map(set => ({
-      movementName: set.movementName,
+      movementName: _movName(set), // H-011 P1b (JS1): resolvoi movementId → nimi
       role: set.setRole,
       prescribed: { reps: set.targetReps, vx: set.targetVx, loadKg: set.targetLoadKg, loadPct: set.targetLoadPct },
       actual: {
@@ -7049,7 +7060,7 @@ function generateBlockTuningPackage(ctx) {
   const compLifts = ["Lisäpainoleuanveto", "Muscle-up", "Lisäpainodippi", "Takakyykky"];
   let e1rmTrends = {};
   for (const liftName of compLifts) {
-    const liftSets = (allSets || []).filter(set => set.movementName === liftName && set.externalLoadKg > 0);
+    const liftSets = (allSets || []).filter(set => _movName(set) === liftName && set.externalLoadKg > 0); // H-011 P1b (JS1)
     if (liftSets.length === 0) continue;
     const sortedSets = liftSets.sort((a, b) => (a.timestamp || a.dateISO || "").localeCompare(b.timestamp || b.dateISO || ""));
     const dataPoints = sortedSets.slice(-12).map(s => {
@@ -7088,7 +7099,11 @@ function generateBlockTuningPackage(ctx) {
     // v4.52.16 H-007 B1 (A1): m.hrv → m.type === "HRV" && m.value
     hrv: blockMeasurements.filter(m => m && m.type === "HRV" && m.value != null).map(m => ({ dateISO: m.dateISO, value: m.value })),
     mpv: blockMeasurements.filter(m => m.mpv != null).map(m => ({ dateISO: m.dateISO, value: m.mpv })),
-    bodyweight: blockMeasurements.filter(m => m.bodyweightKg != null).map(m => ({ dateISO: m.dateISO, value: m.bodyweightKg })),
+    // v4.52.19 H-011 P1b (JS2): kanoninen bodyweight-kuvio m.type === "bodyweight"
+    // && m.value (sama kuin H-007 m.hrv-korjaus). Aiempi m.bodyweightKg luki
+    // olematonta kenttää (saveBodyweightEntry tallentaa { type:"bodyweight",
+    // value }), → 44 foundation-mittausta tippui "empty":ksi (OBS-008 juuri).
+    bodyweight: blockMeasurements.filter(m => m && m.type === "bodyweight" && m.value != null).map(m => ({ dateISO: m.dateISO, value: m.value })),
   };
   if (trends.hrv.length === 0) trends.hrv = { status: "empty", reason: "ei HRV-mittauksia tällä blokilla" };
   if (trends.mpv.length === 0) trends.mpv = { status: "empty", reason: "ei MPV-mittauksia tällä blokilla" };
@@ -7360,7 +7375,12 @@ function generateGenericBlockTuningPackage(ctx) {
   // computeDataSourceStatus(allSets, measurements, null)-kutsun joka viittasi
   // destrukturoimattomaan muuttujaan → ReferenceError tukehdutti runTests:n
   // selain-yksikkötesteissä (diagnostiikka E+B tunnisti 2026-05-27).
-  const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings } = ctx;
+  const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings, movements } = ctx;
+  // v4.52.19 H-011 P1b (JS1): movementId → movementName -resoluutio (sama kuvio
+  // kuin generateBlockTuningPackage). Setit kantavat movementId:n, ei movementName.
+  const _idToName = {};
+  for (const m of (movements || [])) { if (m && m.movementId) _idToName[m.movementId] = m.name; }
+  const _movName = (set) => set.movementName ?? _idToName[set.movementId] ?? null;
 
   if (!mesocycle) {
     return { error: "AI-Block-Tuning vaatii aktiivisen mesosyklin." };
@@ -7424,7 +7444,7 @@ function generateGenericBlockTuningPackage(ctx) {
     const sessSets = (allSets || []).filter(set => set.sessionId === sess.sessionId);
     const sw = getMesocycleWeek(mesocycle, sess.dateISO);
     const slots = sessSets.map(set => ({
-      movementName: set.movementName,
+      movementName: _movName(set), // H-011 P1b (JS1): resolvoi movementId → nimi
       role: set.setRole,
       prescribed: { reps: set.targetReps, vx: set.targetVx, loadKg: set.targetLoadKg, loadPct: set.targetLoadPct },
       actual: {
@@ -7457,7 +7477,7 @@ function generateGenericBlockTuningPackage(ctx) {
   // e1RM-trendit per primary-liike (käyttää e1rmAccessory:ia — generic, ei BW-laskua)
   let e1rmTrends = {};
   for (const liftName of primaryMovements) {
-    const liftSets = (allSets || []).filter(set => set.movementName === liftName && set.externalLoadKg > 0);
+    const liftSets = (allSets || []).filter(set => _movName(set) === liftName && set.externalLoadKg > 0); // H-011 P1b (JS1)
     if (liftSets.length === 0) continue;
     const sortedSets = liftSets.sort((a, b) => (a.timestamp || a.dateISO || "").localeCompare(b.timestamp || b.dateISO || ""));
     const dataPoints = sortedSets.slice(-12).map(s => {
@@ -7962,7 +7982,11 @@ OUTPUT-VAATIMUKSET:
 //   - tai pos?.reason === "after-end" (jo päättynyt)
 
 function generateEndOfCycleTuningPackage(ctx) {
-  const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings, decisionTraces } = ctx;
+  const { mesocycle, sessions, allSets, measurements, prs, currentWeekNum, settings, decisionTraces, movements } = ctx;
+  // v4.52.19 H-011 P1b (JS1): movementId → movementName -resoluutio (sama kuvio).
+  const _idToName = {};
+  for (const m of (movements || [])) { if (m && m.movementId) _idToName[m.movementId] = m.name; }
+  const _movName = (set) => set.movementName ?? _idToName[set.movementId] ?? null;
 
   if (!mesocycle) {
     return { error: "End-of-Cycle Tuning vaatii aktiivisen mesosyklin." };
@@ -8001,7 +8025,7 @@ function generateEndOfCycleTuningPackage(ctx) {
     const sessSets = (allSets || []).filter(set => set.sessionId === sess.sessionId);
     const sw = getMesocycleWeek(mesocycle, sess.dateISO);
     const slots = sessSets.map(set => ({
-      movementName: set.movementName,
+      movementName: _movName(set), // H-011 P1b (JS1): resolvoi movementId → nimi
       role: set.setRole,
       prescribed: { reps: set.targetReps, vx: set.targetVx, loadKg: set.targetLoadKg, loadPct: set.targetLoadPct },
       actual: { reps: set.reps, actualVx: set.actualVx, loadKg: set.externalLoadKg, velocity: set.velocityMs ?? set.velocityMean ?? null },
@@ -8025,7 +8049,7 @@ function generateEndOfCycleTuningPackage(ctx) {
 
   let e1rmTrends = {};
   for (const liftName of compLifts) {
-    const liftSets = (allSets || []).filter(set => set.movementName === liftName && set.externalLoadKg > 0);
+    const liftSets = (allSets || []).filter(set => _movName(set) === liftName && set.externalLoadKg > 0); // H-011 P1b (JS1)
     if (liftSets.length === 0) continue;
     const sortedSets = liftSets.sort((a, b) => (a.timestamp || a.dateISO || "").localeCompare(b.timestamp || b.dateISO || ""));
     const dataPoints = sortedSets.slice(-12).map(s => {
@@ -8060,7 +8084,8 @@ function generateEndOfCycleTuningPackage(ctx) {
     // v4.52.16 H-007 B1 (A1): m.hrv → m.type === "HRV" && m.value
     hrv: cycleMeasurements.filter(m => m && m.type === "HRV" && m.value != null).map(m => ({ dateISO: m.dateISO, value: m.value })),
     mpv: cycleMeasurements.filter(m => m.mpv != null).map(m => ({ dateISO: m.dateISO, value: m.mpv })),
-    bodyweight: cycleMeasurements.filter(m => m.bodyweightKg != null).map(m => ({ dateISO: m.dateISO, value: m.bodyweightKg })),
+    // v4.52.19 H-011 P1b (JS2): kanoninen bodyweight-kuvio (sama korjaus kuin 7091).
+    bodyweight: cycleMeasurements.filter(m => m && m.type === "bodyweight" && m.value != null).map(m => ({ dateISO: m.dateISO, value: m.value })),
   };
   if (trends.hrv.length === 0) trends.hrv = { status: "empty", reason: "ei HRV-mittauksia tällä syklillä" };
   if (trends.mpv.length === 0) trends.mpv = { status: "empty", reason: "ei MPV-mittauksia tällä syklillä" };
