@@ -246,3 +246,46 @@ ankkuroidut suhteelliset rajat, EI absoluuttinen nanny-clamp). H-008
 korjasi A2-juuren; H-009 lisää koneellisen havaitsemisen joka olisi
 napannut tämän bugin automaattisesti (pilot-sanity-varoitus "Muscle-up:
 target 73.5 / seed 2.5 = 29.4×" oli jo signaali — formalisoi audit-flagiksi).
+
+---
+
+## OBS-004 — H-009/P1c: identity-gaten elävöinti + harness-uskollisuus (kirjattu 2026-05-29)
+
+**Lähde:** H-009/P1a (commit `a12e766`) toteutti identity-coherence-detektorin
+FUNKTIONA (`detectPrimaryMovementIdentityMismatch`, engine.js) + synteettisen
+test-lukon. Polku 1 (Akseli ratifioinut): EI audit-engine-gatea, koska
+ajonaikainen kvantifiointi paljasti A4-esteen. P1c elävöittää gaten.
+
+**P1c-työlista (3 kohtaa, ettei löydös katoa):**
+
+1. **scenario-runner buildCtx -fideliteettiaukko.** `tools/engine-pilot/lib/
+   scenario-runner.mjs` buildCtx (rivit ~99-123) EI välitä päiväkohtaista
+   primaryMovementId:tä — destrukturointi ohittaa parametrin, joten rivi ~120
+   käyttää AINA `movementCatalog[0]?.movementId` (= Lisäpainoleuanveto, vk1d1
+   ensimmäinen primary) koko 16 vk:n ajan. Tämä on SAMA eriparisuus-luokka kuin
+   H-008 tuotannossa (pmid ≠ päiväkohtainen primary), mutta harness-puolella.
+   Korjaus: buildCtx johtaa pmid:n dayPlanin primary-slotista (getTodayPlan-
+   pohjaisesti), kuten tuotanto H-008-korjauksen jälkeen.
+
+2. **Identity-funktion johdotus audit-engine-gateen.** Kun (1) on korjattu →
+   pilot heijastaa tuotannon pmid-resoluutiota → `detectPrimaryMovementIdentity-
+   Mismatch` voidaan johdottaa audit-engine.mjs:ään ERROR/gate-tasolla (Cowork-
+   alkuperäissuositus). Vaatii pmid:n + näytetyn slot-liikkeen samaan trace-
+   pisteeseen (trace-capture.mjs input EI nykyään kaappaa primaryMovementId:tä
+   → lisättävä).
+
+3. **Uusi pilot-baseline (72 solua muuttuu, TARKOITETTU).** Kohdan (1) korjaus
+   muuttaa 72 ei-leuanveto-primary-solun kuormat (e1RM lasketaan oikeasta
+   liikkeestä, ei kiinteästä Lisäpainoleuanvedosta): Takakyykky 15, Lisäpainodippi
+   28, MU-eksentrinen 10, MU 19. Tämä RIKKOO nykyisen "64/64 bittitarkka" -
+   baselinen → vaatii uuden baseline-ratifioinnin (kuormat + audit-flag-määrä).
+   Tämä on tarkoitettu (korjaa harness-bugin), ei regressio.
+
+**Riippuvuusjärjestys:** (1) → (3) → (2). Harness-fideliteetti ensin, sitten
+baseline-ratifiointi, sitten gate-elävöinti. P1c = "elävä gate + harness-
+uskollisuus".
+
+**A2 (magnitude-plausibility) — jätetty P1a:sta pois:** A1 identity kattaa
+H-008-luokan tuning-vapaasti. Jos myöhemmin halutaan magnitude-WARN (esim.
+target/seed-ratio), se on erillinen viritettävä lisä — arvioidaan P1c:n
+yhteydessä, ei pakollinen.
