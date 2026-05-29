@@ -6,7 +6,7 @@
 >
 > **Päivitysprotokolla:** vaiheen tila ja NYT-merkki muuttuvat **vain committilla** kun vaihe sulkeutuu — ei muistinvaraisesti. ROADMAP = mikä vaihe; HANDOFF = mikä tehtävä vaiheen sisällä.
 >
-> **Tilannekuva:** 29.5.2026 · HEAD `a12e766` · APP_VERSION `4.52.18` · NYT-merkki vaihe 18 (Round B-β HRV-bias). H-008 (MU +82 kg -korjaus) + H-009/P1a (identity-coherence-detektori, M1-pohja-puhtaus) suljettu — ei R-vaihe-siirtoa. Visuaalinen vastine: `prosessikartta-v4.html`.
+> **Tilannekuva:** 29.5.2026 · HEAD `3970fdf` · APP_VERSION `4.52.18` · NYT-merkki vaihe 18 (Round B-β HRV-bias). H-008 (MU +82 kg) + H-009/P1a (identity-detektori) + H-010/P1c (pilot-fideliteetti + elävä identity-gate, pilot-baseline 136→138, M1-pohja-puhtaus) suljettu — ei R-vaihe-siirtoa. APP_VERSION ennallaan (H-010 = harness, ei tuotantokoodi). Visuaalinen vastine: `prosessikartta-v4.html`.
 
 ---
 

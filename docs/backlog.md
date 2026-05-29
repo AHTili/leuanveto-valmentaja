@@ -289,3 +289,30 @@ uskollisuus".
 H-008-luokan tuning-vapaasti. Jos myöhemmin halutaan magnitude-WARN (esim.
 target/seed-ratio), se on erillinen viritettävä lisä — arvioidaan P1c:n
 yhteydessä, ei pakollinen.
+
+---
+
+## OBS-020 — Dippi-profiili-fideliteetti (kirjattu 2026-05-29, Akselin havainto H-010 A3:sta)
+
+**Lähde:** H-010 A3 -baseline-diff. Pilot-fideliteettikorjauksen (3970fdf)
+jälkeen pilot-dippi-työsarjat resolvoituvat **19.5–31 kg** (oman dippi-e1RM:n
+pohjalta), mutta Akselin reaalisovelluksessa dippi-työkuormat ovat **~62.5–71 kg**.
+Squat (110–128) ja MU (2.5–12) täsmäävät Akselin reaaliin — **dippi-spesifi
+poikkeama**.
+
+**Verifioitava (EI korjattu H-010:ssä — eri scope):**
+- Onko fixture-profiilin (akseli-elite-streetlifter.mjs) **dippi-cal/simuloitu
+  data tarkoituksella matala** (athlete-simulator tuottaa ohuemman dippi-e1RM:n
+  kuin Akselin todellinen) → fixture-simulaatio = OK, ei tuotantobugi.
+- VAI **ali-resolvoiko korjaus dipin oman e1RM:n** (esim. dippi-setit eivät
+  akkumuloidu oikein simulaattorissa, tai loadType-käsittely) → tuotantorelevantti.
+
+**Erottelu:** squat/MU täsmäävät tuotantoon → per-päivä-pmid-fideliteetti
+toimii. Dippi-poikkeama on joko (a) fixture-simulaation dippi-datan ohuus
+(harness-spesifi, ei korjattavaa) tai (b) dippi-spesifi resoluutio-aukko.
+Vaatii akseli-elite-fixturen dippi-cfgBaseline + athlete-simulator-dippi-tuoton
+tarkistuksen vs Akselin backup-dippi-historia (reaali ~62.5–71 kg työkuormat).
+
+**Prioriteetti:** P2-luokka (ei estä identity-gatea, joka on nyt elävä). Ei
+H-008-tyyppinen perityn-kuorman-bugi (dippi näyttää OMAN liikkeen e1RM:n, vain
+magnitude poikkeaa fixture vs reaali).
