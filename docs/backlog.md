@@ -213,3 +213,36 @@ yksikkö-/referenssi-yhtenäistys.
 3. Yksikkö-merkintä selvä eri näkymissä (asetukset, sarjahistoria,
    prescriptio): lisäpaino vs system load vs tangon kg erotettu
    käyttäjälle.
+
+---
+
+## OBS-003 — H-008-löydökset (kirjattu 2026-05-29, A2-suunta lukittu)
+
+**Lähde:** H-008 A1/A2 -diagnostiikka (MU +82 kg -bugi). A2-juurisyy
+(getStreetliftingPrimaryMovement ↔ engine getTodayPlan -eriparisuus)
+korjattu commitissa `110a63d`. Seuraavat jäävät erillisiin handoffeihin.
+
+**A1b — Paused squat +102 kg (P2 / H-009):**
+ERI juuri kuin MU +82. Paused squat (LA-secondary) resolvoituu cross-ref
+-reitillä: `loadPctReferenceMovementName="Takakyykky"`, suggestedLoadKg=102.5
+(= näytetty +102 = seed-arvo). Akselin Takakyykky-e1RM ~177 kg → cross-ref
+× loadPct (0.55–0.60) tuottaa ~102. EI primaryMovementId-mismatch (eri
+mekanismi kuin A2). Tarkista: onko +102 oikea (seed) vai pitäisikö
+cross-ref-laskenta tuottaa eri arvo. Vahvistettava Akselin atletti-
+realismilla (102 kg paused squat 3×5 V3 vk5 — uskottava vai liian raskas?).
+**EI korjattu H-008:ssa** (HANDOFF §3 scope-aita: eri juuri → P2/H-009).
+
+**Q3 — Muut päivä-resoluution mismatchit (KATETTU A2:ssa):**
+A1-dump paljasti että KAIKKI ei-eksakti-päivät kärsivät samasta
+eriparisuudesta (esim. ke vk5: getSL→Takakyykky, rec→Lisäpainodippi).
+A2-korjaus (getStreetliftingPrimaryMovement → getTodayPlan) kattaa kaikki
+ei-eksakti-päivät, ei vain MU-päiviä → Q3 ratkaistu samalla korjauksella.
+Ei jäljellä olevia päivä-resoluution mismatcheja.
+
+**H-009 / P1 — Load-coherence -auditkanava (erillinen handoff):**
+Koneellinen detektori bugiluokalle "ankkuroitu liike näyttää perittyä,
+fyysisesti epäuskottavaa kuormaa" (target/seed-ratio, liiketyyppi+cfg-
+ankkuroidut suhteelliset rajat, EI absoluuttinen nanny-clamp). H-008
+korjasi A2-juuren; H-009 lisää koneellisen havaitsemisen joka olisi
+napannut tämän bugin automaattisesti (pilot-sanity-varoitus "Muscle-up:
+target 73.5 / seed 2.5 = 29.4×" oli jo signaali — formalisoi audit-flagiksi).
