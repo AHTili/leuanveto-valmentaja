@@ -7,6 +7,8 @@ import {
   computeBaseline, classifyReadinessZ,
   velocityReadiness, hrvReadiness, varaReadiness, upperBodyMpvReadiness, combineReadiness,
   getMesocycleWeek, getWeekDef, deltaPctRaw,
+  // H-008 A2 (2026-05-29): getTodayPlan forward-first -resoluutio (eriparisuus-suoja)
+  getTodayPlan,
   calibrateMesocycle,
   varaFeedback, varaTrendCorrection,
   // v4.34.34
@@ -633,6 +635,50 @@ function testMesocycleWeek() {
   assertEqual(getMesocycleWeek(meso, "2026-02-15"), 3, "Meso week: day 15 → week 3");
   assertEqual(getMesocycleWeek(meso, "2026-02-22"), 4, "Meso week: day 22 → week 4");
   assertEqual(getMesocycleWeek(meso, "2026-03-01"), null, "Meso week: day 29 → null (past end)");
+}
+
+// H-008 A2 (2026-05-29): getTodayPlan forward-first -resoluution regressio-suoja.
+//
+// JUURISYY jota tämä testi suojaa: index.html getStreetliftingPrimaryMovement
+// käytti aiemmin days.reduce-"lähin kumpaan suuntaan tahansa" -resoluutiota, joka
+// eriparistui engine getTodayPlanin forward-first-logiikasta ei-eksakti-päivinä.
+// Akselin streetlifting_16w vk5 -päivät: MA/TI/TO/LA (ei KE/PE/SU). Perjantaina
+// (dow5) reduce valitsi tasapelissä TO=Lisäpainodippi, mutta getTodayPlan valitsi
+// LA=Muscle-up → primaryMovementId=dippi ≠ näytetty MU-slot → MU näytti dipin
+// e1RM:n → +82 kg fyysisesti absurdi kuorma (backup 2026-05-29 vahvistettu).
+// Korjaus: getStreetliftingPrimaryMovement käyttää nyt SAMAA getTodayPlania.
+// Tämä testi lukitsee getTodayPlanin forward-first-invariantin jota se seuraa.
+function testGetTodayPlanForwardFirst() {
+  // Synteettinen meso joka replikoi streetlifting_16w vk5 -rakenteen (dow-aukot).
+  const meso = {
+    weekPlans: [{
+      week: 5,
+      days: [
+        { dayOfWeek: 1, slots: [{ role: "primary", defaultMovementName: "Lisäpainoleuanveto" }] },
+        { dayOfWeek: 2, slots: [{ role: "primary", defaultMovementName: "Takakyykky" }] },
+        { dayOfWeek: 4, slots: [{ role: "primary", defaultMovementName: "Lisäpainodippi" }] },
+        { dayOfWeek: 6, slots: [{ role: "primary", defaultMovementName: "Muscle-up" }] },
+      ],
+    }],
+  };
+
+  // Eksaktit päivät → palauttaa oman päivän (ennallaan)
+  assertEqual(getTodayPlan(meso, 5, 1).dayOfWeek, 1, "getTodayPlan: MA(1) eksakti → MA");
+  assertEqual(getTodayPlan(meso, 5, 4).dayOfWeek, 4, "getTodayPlan: TO(4) eksakti → TO (dippi)");
+  assertEqual(getTodayPlan(meso, 5, 6).dayOfWeek, 6, "getTodayPlan: LA(6) eksakti → LA (MU)");
+
+  // KRIITTINEN H-008 A2 -regressio: PE(5) ei-eksakti → forward-first → LA(6, MU),
+  // EI lähin-edellinen TO(4, dippi). Tämä on se solu joka tuotti +82 kg.
+  const pe = getTodayPlan(meso, 5, 5);
+  assertEqual(pe.dayOfWeek, 6, "H-008 A2: PE(5) ei-eksakti → forward-first LA(6), EI lähin-edellinen TO(4)");
+  assertEqual(pe.slots[0].defaultMovementName, "Muscle-up",
+    "H-008 A2: PE → Muscle-up-päivä (ei Lisäpainodippi) — eriparisuus poistettu, +82 kg ei toistu");
+
+  // KE(3) ei-eksakti → forward-first → TO(4, dippi)
+  assertEqual(getTodayPlan(meso, 5, 3).dayOfWeek, 4, "getTodayPlan: KE(3) ei-eksakti → forward-first TO(4)");
+
+  // SU(7) ei-eksakti → forward-first wrap → MA(1, fwd=1)
+  assertEqual(getTodayPlan(meso, 5, 7).dayOfWeek, 1, "getTodayPlan: SU(7) ei-eksakti → forward-first wrap MA(1)");
 }
 
 function testCalibration() {
@@ -3639,6 +3685,8 @@ export async function runTests() {
   testParseNumeric();
   testTypoDetection();
   testMesocycleWeek();
+  // H-008 A2: getTodayPlan forward-first -resoluution regressio-suoja (+82 kg -bugi)
+  testGetTodayPlanForwardFirst();
   testCalibration();
   testBackupReminderLogic();
   testMaintenanceStatus();

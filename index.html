@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.16" />
+  <meta name="app-version" content="4.52.17" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -3161,16 +3161,18 @@ function getStreetliftingPrimaryMovement(state, forDateISO = null) {
   const now = forDateISO ? new Date(forDateISO) : new Date();
   const weekNum = Math.floor((now - start) / (7 * 24 * 3600 * 1000)) + 1;
   if (weekNum < 1 || weekNum > 16) return null;
-  const weekPlan = state.mesocycle.weekPlans.find(wp => wp.week === weekNum);
-  if (!weekPlan) return null;
   const dow = now.getDay() || 7;
-  const days = weekPlan.days || [];
-  const dayPlan = days.find(d => d.dayOfWeek === dow) ||
-    days.reduce((best, d) => {
-      const dist = Math.min(Math.abs(d.dayOfWeek - dow), 7 - Math.abs(d.dayOfWeek - dow));
-      const bestDist = best ? Math.min(Math.abs(best.dayOfWeek - dow), 7 - Math.abs(best.dayOfWeek - dow)) : Infinity;
-      return dist < bestDist ? d : best;
-    }, null);
+  // v4.52.17 H-008 A2: käytä engine getTodayPlan -resoluutiota (forward-first)
+  // jotta primaryMovementId resolvoituu SAMAAN dayPlaniin jonka recommend()
+  // tosiasiassa renderöi. Aiempi days.reduce-"lähin kumpaan suuntaan tahansa"
+  // -resoluutio eriparistui engine getTodayPlanin forward-first-logiikasta
+  // ei-eksakti-päivinä: esim. PE vk5 (jolla ei omaa dayPlania) → reduce valitsi
+  // tasapelissä TO=Lisäpainodippi, mutta getTodayPlan forward-first valitsi
+  // LA=Muscle-up. Tällöin primaryMovementId=Lisäpainodippi ≠ näytetty MU-slot
+  // → MU-slot näytti Lisäpainodipin e1RM:n → +82 kg fyysisesti absurdi kuorma
+  // (H-008 A2, vahvistettu Akselin backupista 2026-05-29: pe → MU target 86.5 kg,
+  // la → MU target 2.5 kg oikein). Yksi totuuslähde molemmille = getTodayPlan.
+  const dayPlan = getTodayPlan(state.mesocycle, weekNum, dow);
   if (!dayPlan) return null;
   const primarySlot = dayPlan.slots?.find(s => s.role === "primary");
   if (!primarySlot?.defaultMovementName) return null;
