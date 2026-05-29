@@ -9,6 +9,8 @@ import {
   getMesocycleWeek, getWeekDef, deltaPctRaw,
   // H-008 A2 (2026-05-29): getTodayPlan forward-first -resoluutio (eriparisuus-suoja)
   getTodayPlan,
+  // H-009 P1a (2026-05-29): identity-coherence-detektori
+  detectPrimaryMovementIdentityMismatch,
   calibrateMesocycle,
   varaFeedback, varaTrendCorrection,
   // v4.34.34
@@ -679,6 +681,44 @@ function testGetTodayPlanForwardFirst() {
 
   // SU(7) ei-eksakti → forward-first wrap → MA(1, fwd=1)
   assertEqual(getTodayPlan(meso, 5, 7).dayOfWeek, 1, "getTodayPlan: SU(7) ei-eksakti → forward-first wrap MA(1)");
+}
+
+// H-009 P1a (2026-05-29): identity-coherence-detektorin mittari-ensin-lukko (A3).
+//
+// Suojaa H-008-bugiluokkaa: ankkuroitu liike näyttää toisen liikkeen e1RM:stä
+// johdettua kuormaa (e1RM-source ≠ näytetty primary). Funktio on tuning-vapaa
+// binäärinen identity-vertailu — tämä testi lukitsee known-positive (laukeaa) +
+// known-negative (ei laukea) -käytöksen (Selkäranka 6: aritmetiikka käsin).
+function testPrimaryMovementIdentityMismatch() {
+  // ── Known-POSITIVE: H-008:n pre-fix-mekanismi ──
+  // pmid=Lisäpainoleuanveto (e1RM-lähde, ~93 kg external), näytetty=Muscle-up
+  // (oma seed ~2.5 kg) → identity-mismatch → laukeaa.
+  const pos = detectPrimaryMovementIdentityMismatch("Lisäpainoleuanveto", "Muscle-up");
+  assert(pos.mismatch === true,
+    "P1a-T1 (known-pos): pmid=Lisäpainoleuanveto ≠ näytetty=Muscle-up → mismatch=true (H-008-luokka)");
+  assertEqual(pos.reason, "identity-mismatch", "P1a-T1: reason=identity-mismatch");
+  assertEqual(pos.e1rmSource, "Lisäpainoleuanveto", "P1a-T1: e1rmSource kirjattu");
+  assertEqual(pos.shown, "Muscle-up", "P1a-T1: shown kirjattu");
+
+  // ── Known-NEGATIVE: normaali MU-päivä pmid=MU=näytetty ──
+  const neg = detectPrimaryMovementIdentityMismatch("Muscle-up", "Muscle-up");
+  assert(neg.mismatch === false,
+    "P1a-T2 (known-neg): pmid=Muscle-up = näytetty=Muscle-up → mismatch=false (normaali)");
+  assertEqual(neg.reason, "identity-match", "P1a-T2: reason=identity-match");
+
+  // ── Tunning-vapaus: toinen liikepari, sama binäärinen logiikka ──
+  assert(detectPrimaryMovementIdentityMismatch("Takakyykky", "Lisäpainodippi").mismatch === true,
+    "P1a-T3: Takakyykky ≠ Lisäpainodippi → mismatch (ei liike-spesifiä viritystä)");
+  assert(detectPrimaryMovementIdentityMismatch("Takakyykky", "Takakyykky").mismatch === false,
+    "P1a-T3: Takakyykky = Takakyykky → ei mismatch");
+
+  // ── Graceful: puuttuva id → ei false-positive ──
+  assert(detectPrimaryMovementIdentityMismatch(null, "Muscle-up").mismatch === false,
+    "P1a-T4 (edge): e1rmSource null → mismatch=false (insufficient-data, ei false-positive)");
+  assert(detectPrimaryMovementIdentityMismatch("Muscle-up", null).mismatch === false,
+    "P1a-T4 (edge): shown null → mismatch=false");
+  assertEqual(detectPrimaryMovementIdentityMismatch(null, null).reason, "insufficient-data",
+    "P1a-T4 (edge): molemmat null → reason=insufficient-data");
 }
 
 function testCalibration() {
@@ -3687,6 +3727,8 @@ export async function runTests() {
   testMesocycleWeek();
   // H-008 A2: getTodayPlan forward-first -resoluution regressio-suoja (+82 kg -bugi)
   testGetTodayPlanForwardFirst();
+  // H-009 P1a: identity-coherence-detektori (known-pos/neg, tuning-vapaa)
+  testPrimaryMovementIdentityMismatch();
   testCalibration();
   testBackupReminderLogic();
   testMaintenanceStatus();

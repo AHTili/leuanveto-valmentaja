@@ -1015,6 +1015,54 @@ function getTodayPlan(mesocycle, weekNum, dayOfWeek) {
   return best;
 }
 
+// v4.52.18 H-009 P1a (A1): Identity-coherence-detektori.
+//
+// JUURISYY-LUOKKA jota tämä havaitsee (H-008): ankkuroitu liike näyttää TOISEN
+// liikkeen e1RM:stä johdettua kuormaa. H-008-ilmentymä: perjantai-resoluution
+// eriparisuus → primaryMovementId=Lisäpainoleuanveto (e1RM-lähde) mutta näytetty
+// primary-slot=Muscle-up → MU näytti +82 kg (leuanveto-e1RM). H-008-juuri on jo
+// korjattu (110a63d); tämä funktio institutionalisoi luokan KONEELLISESTI
+// havaittavaksi riippumatta mekanismista (slot-keying / päivä-resoluutio / cfg).
+//
+// TUNING-VAPAA: binäärinen identity-vertailu, EI kynnystä eikä magnitude-rajaa
+// (ei nanny-cap, CLAUDE.md §6). Mismatch = e1RM-source-liike ≠ näytetty-primary.
+//
+// Graceful: jos kumpi tahansa id puuttuu → ei voida tarkistaa → mismatch=false
+// (ei false-positivea). Tämä pitää assertion turvallisena myös vajaalla datalla.
+//
+// SCOPE (H-009 P1a Polku 1, Akseli ratifioinut 2026-05-29): tämä on additiivinen
+// FUNKTIO + synteettinen test-lukko. EI johdoteta audit-engine-gateen tässä —
+// pilot-harness (scenario-runner buildCtx) syöttää kiinteän catalog[0]-pmid:n
+// joka tuottaa 72 identity-mismatchia (harness-artefakti, ei tuotanto-bugi) →
+// gate laukeaisi A4-false-positiveja. Gate + harness-uskollisuus = P1c
+// (ks. docs/backlog.md OBS-004).
+function detectPrimaryMovementIdentityMismatch(e1rmSourceMovementId, shownPrimaryMovementId) {
+  // Graceful: ilman molempia id:itä ei voida tehdä identity-tarkistusta.
+  if (!e1rmSourceMovementId || !shownPrimaryMovementId) {
+    return {
+      mismatch: false,
+      e1rmSource: e1rmSourceMovementId ?? null,
+      shown: shownPrimaryMovementId ?? null,
+      reason: "insufficient-data",
+    };
+  }
+  if (e1rmSourceMovementId === shownPrimaryMovementId) {
+    return {
+      mismatch: false,
+      e1rmSource: e1rmSourceMovementId,
+      shown: shownPrimaryMovementId,
+      reason: "identity-match",
+    };
+  }
+  // X ≠ Y → näytetty liike johdettu eri liikkeen datasta (H-008-bugiluokka).
+  return {
+    mismatch: true,
+    e1rmSource: e1rmSourceMovementId,
+    shown: shownPrimaryMovementId,
+    reason: "identity-mismatch",
+  };
+}
+
 /**
  * deltaPct_raw calculation: mesocycle week coefficient × day type multiplier
  */
@@ -8336,6 +8384,8 @@ export {
   getMesocycleWeek,
   getWeekDef,
   getTodayPlan,
+  // v4.52.18 H-009 P1a (A1): identity-coherence-detektori (tuning-vapaa)
+  detectPrimaryMovementIdentityMismatch,
   deltaPctRaw,
   calibrateMesocycle,
   // Vara
