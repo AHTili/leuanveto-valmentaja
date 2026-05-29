@@ -34,6 +34,8 @@ export const {
   upperBodyMpvReadiness,
   classifyReadinessZ,
   computeBaseline,
+  // H-010 P1c (A1): per-päivä-primary-resoluutio pilot-buildCtx:lle (sama kuin recommend)
+  getTodayPlan,
   PROGRESSION_CONFIG,
   DAY_TYPE_MULTIPLIERS,
   DAY_TYPE_SET_RECIPES,

@@ -93,6 +93,10 @@ export function captureTrace({ profileId, scenarioId, weekNum, dayOfWeek, dateIS
         : null,
       allSetsCount: Array.isArray(ctx?.allSets) ? ctx.allSets.length : 0,
       sessionsCount: Array.isArray(ctx?.sessions) ? ctx.sessions.length : 0,
+      // H-010 P1c (A2): e1RM-source-movementId (recommend()-syöte) identity-gatea
+      // varten. audit-engine vertaa tätä näytettyyn primary-slot-liikkeeseen
+      // (output.slots primary) → PRIMARY_MOVEMENT_IDENTITY_MISMATCH jos eroavat.
+      primaryMovementId: ctx?.primaryMovementId ?? null,
     },
     output: {
       error: rec?.error ?? null,

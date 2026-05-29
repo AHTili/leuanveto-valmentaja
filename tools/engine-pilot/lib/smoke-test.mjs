@@ -7,6 +7,8 @@ import {
   recommend,
   createDefaultMesocycle,
 } from "./engine-bridge.mjs";
+// H-010 P1c (A4): elävä identity-gate -polun regressio-lukko
+import { auditInvariants } from "./audit-engine.mjs";
 
 const PRIMARY_MOV_ID = "test-primary-leuka";
 const MOCK_MOVEMENTS = [
@@ -162,6 +164,28 @@ async function main() {
     throw new Error("T7 FAIL: SUGGESTIONS_GENERATED-trace puuttuu");
   }
   console.log("\n[T7] SUGGESTIONS_GENERATED-trace: ✅");
+
+  // Test 8 (H-010 P1c A4): elävä identity-gate -polun regressio-lukko.
+  // Known-positive: trace jossa e1RM-source ≠ näytetty primary → gate laukeaa.
+  const idPosTrace = {
+    input: { primaryMovementId: "Lisäpainoleuanveto" },
+    output: { slots: [{ role: "primary", movementName: "Muscle-up" }] },
+    traces: [],
+  };
+  const idPosFlags = auditInvariants(idPosTrace);
+  if (!idPosFlags.some((f) => f.code === "PRIMARY_MOVEMENT_IDENTITY_MISMATCH")) {
+    throw new Error("T8 FAIL: identity-gate ei laukea known-positivessa (pmid=Lisäpainoleuanveto ≠ näytetty=Muscle-up)");
+  }
+  // Known-negative: pmid === näytetty → gate EI laukea.
+  const idNegTrace = {
+    input: { primaryMovementId: "Muscle-up" },
+    output: { slots: [{ role: "primary", movementName: "Muscle-up" }] },
+    traces: [],
+  };
+  if (auditInvariants(idNegTrace).some((f) => f.code === "PRIMARY_MOVEMENT_IDENTITY_MISMATCH")) {
+    throw new Error("T8 FAIL: identity-gate laukesi known-negativessa (pmid===näytetty, ei saisi)");
+  }
+  console.log("\n[T8] identity-gate (PRIMARY_MOVEMENT_IDENTITY_MISMATCH) known-pos/neg: ✅");
 
   console.log("\n=== SMOKE TEST PASSED ===");
 }

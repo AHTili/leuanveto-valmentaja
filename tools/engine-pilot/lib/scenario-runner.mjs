@@ -11,7 +11,7 @@
 // Pidä kaikki state harness-puolella — engine.js + data.js eivät persistoi mitään
 // koska _db === null Node-puolella.
 
-import { recommend } from "./engine-bridge.mjs";
+import { recommend, getTodayPlan } from "./engine-bridge.mjs";
 import { captureTrace } from "./trace-capture.mjs";
 import { simulateSet, rngForDay } from "./athlete-simulator.mjs";
 import { gaussianFromRng, mulberry32 } from "./seeded-rng.mjs";
@@ -99,12 +99,32 @@ function synthesizeSession({ profile, weekNum, dayOfWeek, dateISO, rec, simulate
 function buildCtx({
   profile,
   mesocycle,
+  weekNum,
+  dayOfWeek,
   dateISO,
   accumulatedSets,
   accumulatedSessions,
   readiness,
   movementCatalog,
 }) {
+  // H-010 P1c (A1): resolvoi PÄIVÄKOHTAINEN primary-liike SAMALLA getTodayPlan-
+  // logiikalla jonka recommend() käyttää (engine.js:3802) → primaryMovementId ===
+  // näytetty primary-slot kaikkina päivinä (myös ei-eksaktit, forward-first).
+  //
+  // Aiempi kiinteä movementCatalog[0] (= ensimmäinen primary = Lisäpainoleuanveto)
+  // eriparistui 72 solussa (kyykky/dippi/MU-päivät): e1RM laskettiin väärän liikkeen
+  // seteistä → harness-artefakti joka esti identity-gaten (H-009 A4-este). Tämä
+  // korjaa pilotin uskolliseksi tuotannolle (H-008-korjaus teki saman tuotannossa).
+  //
+  // movementId === liikkeen nimi (deriveMovementCatalog-strategia, rivi ~137).
+  let primaryMovementId = movementCatalog[0]?.movementId; // fallback (graceful)
+  const dayPlan = getTodayPlan(mesocycle, weekNum, dayOfWeek);
+  const primarySlot = dayPlan?.slots?.find((s) => s.role === "primary");
+  const primaryName = primarySlot
+    ? (primarySlot.movementName || primarySlot.defaultMovementName)
+    : null;
+  if (primaryName) primaryMovementId = primaryName;
+
   return {
     settings: {
       bodyweightKg: profile.meta.bodyweightKg,
@@ -117,7 +137,7 @@ function buildCtx({
     allSets: accumulatedSets,
     sessions: accumulatedSessions,
     readiness,
-    primaryMovementId: movementCatalog[0]?.movementId,
+    primaryMovementId,
     dryRun: true,
   };
 }
@@ -171,12 +191,13 @@ export async function runScenario({ profile, scenario, mesocycle }) {
     const ctx = buildCtx({
       profile,
       mesocycle,
+      weekNum,
+      dayOfWeek,
       dateISO,
       accumulatedSets,
       accumulatedSessions,
       readiness,
       movementCatalog,
-      primaryMovementId,
     });
 
     let rec;

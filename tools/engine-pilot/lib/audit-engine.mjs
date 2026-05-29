@@ -29,6 +29,8 @@ import {
 import {
   computeHrvBaseline,
   computeHrvBaselineDrift,
+  // H-010 P1c (A2): elävä identity-gate
+  detectPrimaryMovementIdentityMismatch,
 } from "../../../engine.js";
 
 function flag(code, severity, msg, extra = {}) {
@@ -1022,6 +1024,30 @@ export function auditInvariants(trace, profile = null) {
         ));
       }
     }
+  }
+
+  // ─── H-010 P1c (A2): Elävä identity-coherence-gate ──────────────
+  // Vertaa e1RM-source-movementId (recommend()-syöte, trace.input.primaryMovementId)
+  // näytettyyn primary-slot-liikkeeseen (trace.output.slots primary). Mismatch =
+  // H-008-bugiluokka: ankkuroitu liike näyttää TOISEN liikkeen e1RM:stä johdettua
+  // kuormaa (esim. MU +82 leuanveto-e1RM:stä). Tuning-vapaa identity-invariantti
+  // (detectPrimaryMovementIdentityMismatch, H-009 P1a a12e766). ERROR-gate.
+  //
+  // Edellytys puhtaalle ajolle: pilot-harnessin per-päivä-pmid-fideliteetti
+  // (H-010 A1) — ilman sitä kiinteä catalog[0]-pmid tuottaisi 72 false-positivea.
+  const idE1rmSource = trace.input?.primaryMovementId ?? null;
+  const idShownSlot = (trace.output?.slots || []).find((s) => s.role === "primary");
+  const idShown = idShownSlot ? (idShownSlot.movementName || null) : null;
+  const idResult = detectPrimaryMovementIdentityMismatch(idE1rmSource, idShown);
+  if (idResult.mismatch) {
+    flags.push(
+      flag(
+        "PRIMARY_MOVEMENT_IDENTITY_MISMATCH",
+        "🐛 ERROR",
+        `Identity-mismatch (H-008-luokka): näytetty primary-liike "${idShown}" mutta e1RM/target johdettu liikkeestä "${idE1rmSource}" (X≠Y). Ankkuroitu liike näyttää toisen liikkeen e1RM:stä johdettua kuormaa — fyysisesti epäuskottava (vrt. H-008 MU +82 kg leuanveto-e1RM:stä). Tuning-vapaa identity-invariantti.`,
+        { channel: "identity", e1rmSource: idE1rmSource, shown: idShown, reason: idResult.reason },
+      ),
+    );
   }
 
   return flags;
