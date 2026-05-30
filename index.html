@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.19" />
+  <meta name="app-version" content="4.52.20" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -1669,6 +1669,33 @@ async function persistCfgDriftIfApplicable(rec) {
 function stripRedundantDayPrefix(label) {
   if (!label || typeof label !== "string") return label;
   return label.replace(/^(MA|TI|KE|TO|PE|LA|SU)\s*[—–-]\s*/, "");
+}
+
+// v4.52.20 H-013 (OBS-007, suunta C): day-label-otsikon @X% rehellistys.
+// Kisaliikkeet ovat tier 1/2/3 → kuorma lasketaan vRepsToExpectedPct(reps+vx):llä
+// (Lähde 1), EI slot.loadPct:llä. Day-label kantaa staattisen @X%:n (esim. "Kyykky
+// 4×4 @78%") joka EI ohjaa kuormaa → otsikko väittää %-progressiota jota ei ole
+// (vk6 @78% = vk7 @82% = sama kuorma, koska sama rep-scheme → sama vReps%).
+// Korjaus: korvaa label-@X% todellisella vReps-%:lla (@~83%) jota kuorma seuraa
+// → @X% ≡ kuorma/e1RM. VAIN label rehellistyy — kuorma-laskenta muuttumaton.
+// Progressio-redesign (B, rep-scheme/vx viikoittain) on erillinen OBS-022/M2.
+function honestifyLoadLabel(label, slots, meso) {
+  if (!label || typeof label !== "string" || !/@\s*\d/.test(label)) return label;
+  const primary = (slots || []).find(s => s.role === "primary");
+  if (!primary || primary.reps == null || primary.targetVx == null) return label;
+  const movement = state.movements?.find(m => m.name === primary.defaultMovementName);
+  if (!movement) return label;
+  try {
+    const tier = resolveTier(movement, meso);
+    if ((tier === 1 || tier === 2 || tier === 3)) {
+      const vpct = vRepsToExpectedPct(primary.reps + primary.targetVx);
+      if (vpct && vpct > 0) {
+        // Korvaa ensimmäinen @NN% (primary-liikkeen %) todellisella vReps-%:lla.
+        return label.replace(/@\s*\d+(?:[.,]\d+)?\s*%/, `@~${Math.round(vpct * 100)} %`);
+      }
+    }
+  } catch { /* tier-kenttä puuttuu → jätä label ennalleen */ }
+  return label;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -7945,7 +7972,7 @@ function renderMesocycle() {
       else if (dayISO === today) { statusCls = "now"; statusIcon = "●"; }
       else if (dayISO < today) { statusCls = "skip"; statusIcon = "✕"; }
       const primary = (d.slots || []).find(s => s.role === "primary");
-      const focus = stripRedundantDayPrefix(d.label) || dayTypeLabel(d.dayType) || "?";
+      const focus = stripRedundantDayPrefix(honestifyLoadLabel(d.label, d.slots, meso)) || dayTypeLabel(d.dayType) || "?";
       const load = primary ? `${primary.sets}×${primary.reps}${primary.targetVx != null ? ` V${primary.targetVx}` : ""}` : "";
       const isSkipped = statusCls === "skip";
       return `<div class="cv-day ${statusCls === "now" ? "now" : ""}${isSkipped ? " skipped" : ""}">
@@ -8076,7 +8103,7 @@ function renderMesocycle() {
             <span class="muted">${s.sets}×${s.reps}${s.targetVx != null ? ` V${s.targetVx}` : ""}${loadInfo}</span>
           </div>`;
         }).join("");
-        const dayLabel = stripRedundantDayPrefix(fw.label) || dayTypeLabel(fw.dayType);
+        const dayLabel = stripRedundantDayPrefix(honestifyLoadLabel(fw.label, fw.slots, meso)) || dayTypeLabel(fw.dayType);
         // Detail: warmup + kaikki slotit (myös accessoryt) + suggested kuormat
         const warmupHTML = (fw.warmup && fw.warmup.length > 0) ? `
           <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">
@@ -8214,7 +8241,7 @@ function renderWeekPlanDays(meso, weekNum, dayNames) {
   return `<div style="margin-top:8px">
     ${weekPlan.days.map(d => `<div style="padding:6px 0;border-top:1px solid var(--border)">
       <div class="flex-between">
-        <span style="font-size:13px;font-weight:600">${dayNames[d.dayOfWeek]} — ${stripRedundantDayPrefix(d.label) || dayTypeLabel(d.dayType)}</span>
+        <span style="font-size:13px;font-weight:600">${dayNames[d.dayOfWeek]} — ${stripRedundantDayPrefix(honestifyLoadLabel(d.label, d.slots, meso)) || dayTypeLabel(d.dayType)}</span>
         <button class="btn btn-sm btn-outline" data-edit-day="${weekNum}-${d.dayOfWeek}" style="font-size:11px;padding:4px 8px;min-height:28px">✏️</button>
       </div>
       <div class="muted" style="font-size:12px">${d.slots.map(s => {
