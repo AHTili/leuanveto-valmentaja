@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.22" />
+  <meta name="app-version" content="4.52.23" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -7974,7 +7974,12 @@ function renderMesocycle() {
       const sess = _cvSessionByDate.get(dayISO);
       let statusCls = "next";
       let statusIcon = "○";
-      if (sess && sess.completed) { statusCls = "done"; statusIcon = "✓"; }
+      // OBS-026-FIX: valmius = sessio PÄÄTETTY (endedAt asetettu). `completed`-flag on
+      // vain workout-flow:n sisäinen transient-tila, EI persistoitu sessioihin (0/19
+      // tallennetussa sessiossa) → sillä mikään logattu treeni ei koskaan saavuttanut
+      // "done"-tilaa (putosi now/skip-tilaan pelkän päivän mukaan). endedAt on luotettava
+      // valmius-signaali. VAIN lukupää — save-polku koskematon.
+      if (sess && sess.endedAt) { statusCls = "done"; statusIcon = "✓"; }
       else if (dayISO === today) { statusCls = "now"; statusIcon = "●"; }
       else if (dayISO < today) { statusCls = "skip"; statusIcon = "✕"; }
       const primary = (d.slots || []).find(s => s.role === "primary");
