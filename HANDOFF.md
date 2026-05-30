@@ -37,6 +37,7 @@ Sykli-näkymän "Tämä viikko" -kortti näyttää **suoritetun treenin tehtynä
   - **Known-pos:** päivä jolla on sessio jolla `endedAt` asetettu → `statusCls="done"`.
   - **Known-neg:** päivä ilman sessiota TAI kesken jäänyt (ei `endedAt`) → EI "done" → putoaa "now" (= today) / "skip" (< today) / "next" (> today) kuten ennen.
 - **A4 — Regressio + päiväavain-verifiointi.** Pilot **bittitarkka** (138 audit-flagia, identity-gate 0 — engine koskematon). Selain-/UI-testit eivät regressoi. **Verifioi että thisWeekHTML:n UTC-pohjainen `dayISO` (toISOString-aritmetiikka, rivit ~7969–7973) täsmää tallennetun `session.dateISO`:n kanssa** — jos eriparisuus (H-008-perhe), `_cvSessionByDate.get(dayISO)` ei löydä sessiota ja korjaus jää tehottomaksi → raportoi (ei hiljainen ohitus).
+- **A5 — OBS-028: liike-pohjainen viikkotäsmäys (laajennus, Akseli 2026-05-30 "toteuta täsmällisesti").** Oire: atletti tekee plan-liikkeen eri viikonpäivänä kuin slot on suunniteltu (esim. dippi To-slot tehtynä **Ke 27.5**) → To näkyi "skip ✕" vaikka dippi tehty (näkyi Historiassa). Korjaus (lukupää): "Tämä viikko" -slot "done" jos slotin **pääliike** on tehty (`endedAt`-päätetty `setRole==="top"`) **tällä meso-viikolla millä tahansa päivällä**, ei pelkästään plan-päivän tarkalla päivämäärällä. Mekanismi: kerää viikon (`weekStartISO`…`weekEndISO`) endedAt-sessioiden top-set-`movementId`:t → slot-done jos slotin liike on joukossa; OBS-026-fallback (exact-day endedAt) jää jos liikettä ei resolvoida. **Known-pos:** dippi tehty Ke → To-dippi-slot "done ✓". **Known-neg:** liike jota ei tehty viikolla → ei "done". (Verifioitu 29.5-backupilla vk5: Ti-kyykky ✓, **To-dippi ✓ Ke 27.5:n kautta**, Ma-leuka skip, La-MU now.)
 
 ## 3. Reunaehdot ja scope-aita
 
@@ -59,10 +60,12 @@ Ei sovellu (`debug`).
 **Tehdyt päätökset (Akseli 2026-05-30; älä re-litigoi):**
 - **Valmius-signaali = `sess.endedAt`-olemassaolo** (treeni päätetty), EI `completed`-flag. Peruste: `endedAt` persistoidaan jo (kaikilla backup-sessioilla), `completed` ei (0/19) — se on workout-flow:n transient-tila.
 - **Korjaus lukupäässä** (render), ei save-polkuun. Minimaalinen, ei regressoi tallennusta.
+- **OBS-028 (liike-pohjainen viikkotäsmäys) = KYLLÄ** (Akseli "toteuta täsmällisesti" 2026-05-30): slot-done täsmätään slotin **pääliikkeeseen viikon sisällä**, ei tarkkaan plan-päivään. Peruste: atletti treenaa joustavasti (siirtää liikkeitä päivien välillä, tekee extra-sessioita). OBS-026-endedAt-exact-day jää fallbackiksi.
 
 **Hylätty:**
 - **`completed`-flagin persistointi save-polkuun** — laajempi save-polku-muutos + schema-vaikutus; tarpeeton kun `endedAt` jo olemassa ja luotettava.
 - **Pelkkä `if (sess)` (session-olemassaolo)** — heikompi kuin `endedAt`: keskeneräinen/aloitettu-mutta-ei-päätetty sessio voisi näkyä "done". `endedAt` vaatii että treeni on aidosti päätetty.
+- **Pelkkä exact-day-täsmäys (OBS-026 yksin)** — jättää eri päivänä tehdyt plan-liikkeet "skip"-tilaan (dippi-Ke-ongelma). OBS-028 täsmää liikkeen viikon sisällä.
 
 ## 6. Avoimet kysymykset
 

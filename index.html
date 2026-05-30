@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.23" />
+  <meta name="app-version" content="4.52.24" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -7968,21 +7968,43 @@ function renderMesocycle() {
     const start = new Date(meso.startDateISO);
     const weekStart = new Date(start.getTime() + (currentWeek - 1) * 7 * 86400000);
     const days = (wp.days || []).filter(d => d.dayOfWeek <= 6).sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+    // OBS-028: liike-pohjainen viikkotäsmäys. Atletti voi tehdä plan-liikkeen eri
+    // viikonpäivänä kuin slot on suunniteltu (esim. dippi To-slot tehtynä Ke 27.5).
+    // Kerää tällä meso-viikolla PÄÄTETYISSÄ (endedAt) sessioissa tehdyt PÄÄLIIKKEET
+    // (top-set movementId) → slot "done" jos sen liike on joukossa, riippumatta tarkasta
+    // päivästä. VAIN lukupää (state.sessions/allSets/movements luku) — save-polku koskematon.
+    const weekStartISO = weekStart.toISOString().slice(0, 10);
+    const weekEndISO = new Date(weekStart.getTime() + 6 * 86400000).toISOString().slice(0, 10);
+    const _weekSessIds = new Set(
+      (state.sessions || [])
+        .filter(s => s.endedAt && s.dateISO && s.dateISO >= weekStartISO && s.dateISO <= weekEndISO)
+        .map(s => s.sessionId)
+    );
+    const _completedMovIdsThisWeek = new Set();
+    if (_weekSessIds.size) {
+      for (const set of (state.allSets || [])) {
+        if (set.setRole === "top" && set.movementId && _weekSessIds.has(set.sessionId)) {
+          _completedMovIdsThisWeek.add(set.movementId);
+        }
+      }
+    }
     const rowsHTML = days.map(d => {
       const dayDate = new Date(weekStart.getTime() + (d.dayOfWeek - 1) * 86400000);
       const dayISO = dayDate.toISOString().slice(0, 10);
       const sess = _cvSessionByDate.get(dayISO);
+      const primary = (d.slots || []).find(s => s.role === "primary");
+      // OBS-028: onko slotin pääliike PÄÄTETTY (endedAt) tällä viikolla — millä tahansa päivällä?
+      const slotMov = primary ? state.movements?.find(m => m.name === primary.defaultMovementName) : null;
+      const movDoneThisWeek = !!(slotMov && _completedMovIdsThisWeek.has(slotMov.movementId));
       let statusCls = "next";
       let statusIcon = "○";
-      // OBS-026-FIX: valmius = sessio PÄÄTETTY (endedAt asetettu). `completed`-flag on
-      // vain workout-flow:n sisäinen transient-tila, EI persistoitu sessioihin (0/19
-      // tallennetussa sessiossa) → sillä mikään logattu treeni ei koskaan saavuttanut
-      // "done"-tilaa (putosi now/skip-tilaan pelkän päivän mukaan). endedAt on luotettava
-      // valmius-signaali. VAIN lukupää — save-polku koskematon.
-      if (sess && sess.endedAt) { statusCls = "done"; statusIcon = "✓"; }
+      // OBS-026 + OBS-028 (lukupää, save-polku koskematon): valmius = slotin pääliike
+      // PÄÄTETTY tällä viikolla (OBS-028, mikä tahansa päivä) TAI sessio päätetty tasan
+      // tällä plan-päivällä (OBS-026-fallback jos liikettä ei resolvoida). `completed`-flag
+      // EI käytössä (ei persistoitu, 0/19 sessiossa).
+      if (movDoneThisWeek || (sess && sess.endedAt)) { statusCls = "done"; statusIcon = "✓"; }
       else if (dayISO === today) { statusCls = "now"; statusIcon = "●"; }
       else if (dayISO < today) { statusCls = "skip"; statusIcon = "✕"; }
-      const primary = (d.slots || []).find(s => s.role === "primary");
       const focus = stripRedundantDayPrefix(honestifyLoadLabel(d.label, d.slots, meso)) || dayTypeLabel(d.dayType) || "?";
       const load = primary ? `${primary.sets}×${primary.reps}${primary.targetVx != null ? ` V${primary.targetVx}` : ""}` : "";
       const isSkipped = statusCls === "skip";
