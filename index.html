@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.20" />
+  <meta name="app-version" content="4.52.21" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -1671,14 +1671,21 @@ function stripRedundantDayPrefix(label) {
   return label.replace(/^(MA|TI|KE|TO|PE|LA|SU)\s*[—–-]\s*/, "");
 }
 
-// v4.52.20 H-013 (OBS-007, suunta C): day-label-otsikon @X% rehellistys.
+// v4.52.21 H-014 (A0, cobra-korjaus): day-label-otsikon SUUNNITELTU-vs-TOTEUTUNUT.
 // Kisaliikkeet ovat tier 1/2/3 → kuorma lasketaan vRepsToExpectedPct(reps+vx):llä
-// (Lähde 1), EI slot.loadPct:llä. Day-label kantaa staattisen @X%:n (esim. "Kyykky
-// 4×4 @78%") joka EI ohjaa kuormaa → otsikko väittää %-progressiota jota ei ole
-// (vk6 @78% = vk7 @82% = sama kuorma, koska sama rep-scheme → sama vReps%).
-// Korjaus: korvaa label-@X% todellisella vReps-%:lla (@~83%) jota kuorma seuraa
-// → @X% ≡ kuorma/e1RM. VAIN label rehellistyy — kuorma-laskenta muuttumaton.
-// Progressio-redesign (B, rep-scheme/vx viikoittain) on erillinen OBS-022/M2.
+// (Lähde 1), EI slot.loadPct:llä. Day-label kantaa staattisen suunnitellun @X%:n
+// (esim. "Kyykky 4×4 @78%") joka EI ohjaa kuormaa.
+//
+// H-013 (suunta C) KORVASI suunnitellun @78% → @~83% (toteutunut). Code:n
+// itsekritiikki 2026-05-30: tämä oli COBRA — johdonmukainen @~83% PIILOTTI
+// progressio-bugin (ennen @78%+151kg-ristiriita oli näkyvä signaali; @~83%+151kg
+// näyttää terveeltä vaikka progressio on flat). Pelkkä revert @78%:iin taas
+// palauttaisi ERI valheen (implikoi toteutumatonta progressiota).
+//
+// A0-KORJAUS: näytä MOLEMMAT kun suunniteltu ≠ toteutunut (≥1 pp):
+//   "@78 % suunn · ~83 % tod" → gap NÄKYVÄ JA selitetty (ei piilotettu, ei valhe).
+// Bugi-signaali säilyy kunnes B (sisä-blokki-progressio, A2) tuo todellisen
+// progression jolloin suunniteltu ≈ toteutunut → otsikko luonnostaan yhtenäistyy.
 function honestifyLoadLabel(label, slots, meso) {
   if (!label || typeof label !== "string" || !/@\s*\d/.test(label)) return label;
   const primary = (slots || []).find(s => s.role === "primary");
@@ -1690,8 +1697,15 @@ function honestifyLoadLabel(label, slots, meso) {
     if ((tier === 1 || tier === 2 || tier === 3)) {
       const vpct = vRepsToExpectedPct(primary.reps + primary.targetVx);
       if (vpct && vpct > 0) {
-        // Korvaa ensimmäinen @NN% (primary-liikkeen %) todellisella vReps-%:lla.
-        return label.replace(/@\s*\d+(?:[.,]\d+)?\s*%/, `@~${Math.round(vpct * 100)} %`);
+        const todPct = Math.round(vpct * 100);
+        return label.replace(/@\s*(\d+(?:[.,]\d+)?)\s*%/, (_m, suunn) => {
+          const suunnNum = Math.round(parseFloat(String(suunn).replace(",", ".")));
+          // Gap ≥1 pp → näytä suunniteltu + toteutunut (gap näkyvä JA selitetty).
+          // Samat (B-progressio toteutuu) → yksi rehellinen %.
+          return Math.abs(suunnNum - todPct) >= 1
+            ? `@${suunnNum} % suunn · ~${todPct} % tod`
+            : `@~${todPct} %`;
+        });
       }
     }
   } catch { /* tier-kenttä puuttuu → jätä label ennalleen */ }
