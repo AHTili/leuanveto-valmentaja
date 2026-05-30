@@ -6,7 +6,7 @@
 >
 > **Päivitysprotokolla:** vaiheen tila ja NYT-merkki muuttuvat **vain committilla** kun vaihe sulkeutuu — ei muistinvaraisesti. ROADMAP = mikä vaihe; HANDOFF = mikä tehtävä vaiheen sisällä.
 >
-> **Tilannekuva:** 29.5.2026 · HEAD `e151863` · APP_VERSION `4.52.19` · NYT-merkki vaihe 18 (Round B-β HRV-bias). M1-pohja-puhtaus-arc: H-008 (MU +82 kg) + H-009/P1a (identity-detektori) + H-010/P1c (pilot-fideliteetti + elävä identity-gate, baseline 136→138) + H-011/P1b (AI-paketin datavirta: movementName-resoluutio + bodyweight-kenttä, ontto→rikastettu) suljettu — ei R-vaihe-siirtoa. Visuaalinen vastine: `prosessikartta-v4.html`.
+> **Tilannekuva:** 30.5.2026 · HEAD `8edb426` · APP_VERSION `4.52.20` · NYT-merkki vaihe 18 (Round B-β HRV-bias). M1-pohja-puhtaus-arc: H-008 (MU +82 kg) + H-009/P1a (identity-detektori) + H-010/P1c (pilot-fideliteetti + elävä identity-gate, baseline 136→138) + H-011/P1b (AI-paketin datavirta) + H-013/OBS-007 (day-label @X% rehellistys, suunta C — otsikko ≡ kuorma/e1RM) suljettu — ei R-vaihe-siirtoa. Avoin: OBS-021 (paketti-%), OBS-022/M2 (todellinen %-progressio). Visuaalinen vastine: `prosessikartta-v4.html`.
 
 ---
 
