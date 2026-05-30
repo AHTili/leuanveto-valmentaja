@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.21" />
+  <meta name="app-version" content="4.52.22" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -1671,21 +1671,15 @@ function stripRedundantDayPrefix(label) {
   return label.replace(/^(MA|TI|KE|TO|PE|LA|SU)\s*[—–-]\s*/, "");
 }
 
-// v4.52.21 H-014 (A0, cobra-korjaus): day-label-otsikon SUUNNITELTU-vs-TOTEUTUNUT.
-// Kisaliikkeet ovat tier 1/2/3 → kuorma lasketaan vRepsToExpectedPct(reps+vx):llä
-// (Lähde 1), EI slot.loadPct:llä. Day-label kantaa staattisen suunnitellun @X%:n
-// (esim. "Kyykky 4×4 @78%") joka EI ohjaa kuormaa.
-//
-// H-013 (suunta C) KORVASI suunnitellun @78% → @~83% (toteutunut). Code:n
-// itsekritiikki 2026-05-30: tämä oli COBRA — johdonmukainen @~83% PIILOTTI
-// progressio-bugin (ennen @78%+151kg-ristiriita oli näkyvä signaali; @~83%+151kg
-// näyttää terveeltä vaikka progressio on flat). Pelkkä revert @78%:iin taas
-// palauttaisi ERI valheen (implikoi toteutumatonta progressiota).
-//
-// A0-KORJAUS: näytä MOLEMMAT kun suunniteltu ≠ toteutunut (≥1 pp):
-//   "@78 % suunn · ~83 % tod" → gap NÄKYVÄ JA selitetty (ei piilotettu, ei valhe).
-// Bugi-signaali säilyy kunnes B (sisä-blokki-progressio, A2) tuo todellisen
-// progression jolloin suunniteltu ≈ toteutunut → otsikko luonnostaan yhtenäistyy.
+// v4.52.22 H-014 B2 (A0-sovitus): day-label-otsikon "@X%" -strippaus tier 1/2/3:lle.
+// Taustaa: kisaliikkeet (tier 1/2/3) saavat kuorman recommend()-progressio-enginestä,
+// EI staattisesta loadPct:stä. Day-label-otsikko kantoi "@78%":n joka ei ohjaa kuormaa.
+//   - A0 (H-014) näytti väliaikaisesti "@78 % suunn · ~83 % tod" (bugi-signaali näkyväksi).
+//   - B1 (H-014) korjasi Sykli-previewn näyttämään per liike TODELLISEN etenevän kuorman
+//     (recommend()-totuus + regain-projektio) per-slot-rivillä.
+// → Nyt per-slot-rivi kantaa rehellisen kuorman; otsikon "@X%" on tarpeeton JA
+//   harhaanjohtava (kuorma ei ole 78% vaan ~87% e1RM:stä). Kaksi rehellistys-kerrosta
+//   ei tarvita → STRIPATAAN "@X%" otsikosta tier 1/2/3:lle. Muut otsikot ennallaan.
 function honestifyLoadLabel(label, slots, meso) {
   if (!label || typeof label !== "string" || !/@\s*\d/.test(label)) return label;
   const primary = (slots || []).find(s => s.role === "primary");
@@ -1695,18 +1689,8 @@ function honestifyLoadLabel(label, slots, meso) {
   try {
     const tier = resolveTier(movement, meso);
     if ((tier === 1 || tier === 2 || tier === 3)) {
-      const vpct = vRepsToExpectedPct(primary.reps + primary.targetVx);
-      if (vpct && vpct > 0) {
-        const todPct = Math.round(vpct * 100);
-        return label.replace(/@\s*(\d+(?:[.,]\d+)?)\s*%/, (_m, suunn) => {
-          const suunnNum = Math.round(parseFloat(String(suunn).replace(",", ".")));
-          // Gap ≥1 pp → näytä suunniteltu + toteutunut (gap näkyvä JA selitetty).
-          // Samat (B-progressio toteutuu) → yksi rehellinen %.
-          return Math.abs(suunnNum - todPct) >= 1
-            ? `@${suunnNum} % suunn · ~${todPct} % tod`
-            : `@~${todPct} %`;
-        });
-      }
+      // Poista "@X%" (+ ympäröivä väli) — per-slot-rivi (B1) kantaa todellisen kuorman.
+      return label.replace(/\s*@\s*\d+(?:[.,]\d+)?\s*%/, "").trim();
     }
   } catch { /* tier-kenttä puuttuu → jätä label ennalleen */ }
   return label;
@@ -3284,6 +3268,9 @@ function render() {
               // Re-render jos käyttäjä on edelleen mesocycle-näkymässä — solut
               // päivittyvät DOMissa suoraan applyProgramTargetsToDOM:n kautta,
               // mutta tämä varmistaa että renderöinti on persistent (esim. nav-vaihdon jälkeen).
+              // H-014 B1: täydennä myös Sykli 14pv -previewn primary-kuormat
+              // recommend()-totuudella + projektiolla (cache nyt populoitu).
+              applySykliHybridToDOM(state.mesocycle);
             }).catch(err => console.warn("[populateProgramOverviewTargets] failed:", err?.message || err));
           }, 0);
         }
@@ -7835,7 +7822,7 @@ function renderMesocycle() {
   // β Round B-α-1.9: näkyvä versio-indikaattori + bullet-merkki fallback-seedissä
   // jotta voidaan visuaalisesti erottaa "vanha cached koodi" vs "uusi koodi + null
   // fallback" tilanteet. Sync MANUAALISESTI sw.js:n APP_VERSION:in kanssa.
-  const _syRenderAppVersion = "4.52.5";
+  const _syRenderAppVersion = "4.52.22";
   const _syRenderBW = state.settings?.bodyweightKg || 91;
   const _syRenderE1rmCache = new Map();
   const _syRenderComputeKg = (slot) => {
@@ -7875,6 +7862,11 @@ function renderMesocycle() {
       : pctForResolve * e1rmResult.value;
     return roundToHalf(target);
   };
+
+  // H-014 B1: C-hybridi preview-kuormat (recommend()-totuus + regain-projektio)
+  // programTargetsCachesta. null 1. renderillä (ennen async-populatea) → primary-slot
+  // fallbackaa _syRenderComputeKg-estimaattiin, jonka applySykliHybridToDOM korvaa.
+  const _syHybrid = sykliHybridPreviewLoads(meso);
 
   // v4.37.0 — Cycle View Variant helpers
   const _cvBlockInfo = (w) => {
@@ -8100,6 +8092,7 @@ function renderMesocycle() {
     <!-- 3. TULEVAT — seuraavat 14 pv (v4.30.4: klikattavissa auki) -->
     ${futureWorkouts.length > 0 ? `<div class="card">
       <div class="card-title">📅 Seuraavat 14 päivää <span style="font-size:9px;font-weight:400;opacity:0.4;letter-spacing:0.5px">v${_syRenderAppVersion}</span> <span style="font-size:11px;font-weight:400;color:var(--muted)">— klikkaa avataksesi yksityiskohdat</span></div>
+      <div style="font-size:10px;color:var(--muted);opacity:0.75;margin:-6px 0 8px;line-height:1.4">Pääliikkeen kuorma = päivitetty suositus viime treenin pohjalta · <b>~</b> = arvio jos osut tavoitteeseen</div>
       ${futureWorkouts.map(fw => {
         const primaryAndBackoff = fw.slots.filter(s => s.role === "primary" || s.role === "backoff" || ["warmup","opener","attempt2","attempt3"].includes(s.role));
         const accessories = fw.slots.filter(s => s.role === "accessory");
@@ -8109,12 +8102,26 @@ function renderMesocycle() {
         const summary = primaryAndBackoff.map(s => {
           const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "🏆";
           const _syKg = _syRenderComputeKg(s);
-          const loadInfo = _syKg !== null
+          const fallbackInfo = _syKg !== null
             ? (_syKg === 0 ? ` · BW` : ` · ~${_syKg} kg`)
             : (s.suggestedLoadKg ? ` · seed• ${s.suggestedLoadKg} kg` : (s.loadPct ? ` · ${Math.round(s.loadPct*100)} %` : ""));
+          // H-014 B1: primary → C-hybridi (recommend()-totuus lähimmälle sessiolle +
+          // regain-projektio kauemmas, ~merkitty). data-sy-cell → applySykliHybridToDOM
+          // täydentää async cachesta. Fallback = _syRenderComputeKg-estimaatti.
+          let loadHTML;
+          if (s.role === "primary") {
+            const key = `${fw.weekNum}:${fw.dayOfWeek}`;
+            const hy = _syHybrid && _syHybrid.get(key);
+            const info = (hy && hy.load != null && hy.load > 0)
+              ? ` · ${hy.projected ? "~" : ""}${hy.load} kg`
+              : (hy && hy.load === 0 ? ` · BW` : fallbackInfo);
+            loadHTML = `<span data-sy-cell="${key}">${info}</span>`;
+          } else {
+            loadHTML = fallbackInfo;
+          }
           return `<div class="flex-between" style="padding:2px 0;font-size:12px">
             <span class="muted">${icon} ${s.defaultMovementName}</span>
-            <span class="muted">${s.sets}×${s.reps}${s.targetVx != null ? ` V${s.targetVx}` : ""}${loadInfo}</span>
+            <span class="muted">${s.sets}×${s.reps}${s.targetVx != null ? ` V${s.targetVx}` : ""}${loadHTML}</span>
           </div>`;
         }).join("");
         const dayLabel = stripRedundantDayPrefix(honestifyLoadLabel(fw.label, fw.slots, meso)) || dayTypeLabel(fw.dayType);
@@ -8417,12 +8424,17 @@ async function populateProgramOverviewTargets(meso) {
         });
         const load = rec?.targetExternalLoad;
         const isCapped = (rec?.traces || []).some(t => t.ruleId === "E1RM_INFLATION_CAP" || t.ruleId === "PROGRESSION_RATE_LIMIT");
+        // H-014 B1: tallenna progressio-rate Sykli 14pv -previewn C-hybridi-projektiolle.
+        // weeklyProgressionPct EMBEDDAA weeksSinceLast:n → per-viikko-rate = wpp/weeksSinceLast.
+        const ptAfter = (rec?.traces || []).find(t => t.ruleId === "PROGRESSION_TARGET")?.after;
         targets.set(`${wp.week}:${dow}`, {
           load: typeof load === "number" ? load : null,
           source: rec?.error || "ok",
           isCapped,
           movId: mov.movementId,
           movName: primarySlot.defaultMovementName,
+          weeklyProgressionPct: ptAfter?.weeklyProgressionPct ?? 0,
+          weeksSinceLast: ptAfter?.weeksSinceLast ?? 1,
         });
       } catch (e) {
         targets.set(`${wp.week}:${dow}`, { load: null, source: "error", isCapped: false, movId: mov.movementId });
@@ -8448,6 +8460,76 @@ function applyProgramTargetsToDOM(targets) {
       cell.innerHTML = `${baseHtml}<div style="font-size:10px;color:var(--text);margin-top:2px;font-weight:600">${loadStr}${badge}</div>`;
     } else {
       cell.innerHTML = `${baseHtml}<div style="font-size:10px;color:var(--muted);margin-top:2px">—</div>`;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// H-014 B1 — Sykli 14pv -preview C-HYBRIDI (preview = todellinen kuorma)
+// ═══════════════════════════════════════════════════════════════
+// Premissi (verifioitu koodista, HANDOFF §5): "flat 151" oli preview-artefakti —
+// _syRenderComputeKg laski vReps × cached-e1RM (flat), kun taas todellinen
+// recommend()-kuorma etenee progression-enginellä (regain × Helms-weekly).
+//
+// C-hybridi: lähin tuleva sessio per liike = recommend()-TOTUUS (programTargetsCache,
+// DRY — recommend() jo kutsuttu siellä per solu). Kauemmat preview-viikot =
+// regain-säädetty per-viikko-projektio lähimmästä totuus-ankkurista → MONOTONINEN.
+// Per-viikko-rate = weeklyProgressionPct / weeksSinceLast (wpp embeddaa weeksSinceLast:n
+// → suora käyttö tuplalaskisi). Deload-viikko → cache-totuus + re-anchor (ei nouse).
+// engine.js EI muutu — vain luetaan cachen recommend()-tulosta.
+//
+// Palauttaa Map "wk:dow" → { load, projected } tai null jos cachea ei vielä ole
+// (1. render ennen async-populatea → fallback _syRenderComputeKg-estimaattiin).
+function sykliHybridPreviewLoads(meso) {
+  const cache = state.programTargetsCache?.targets;
+  if (!cache || !meso) return null;
+  const fw = getFutureWorkouts(meso, todayISO(), 14);
+  const perLift = {};
+  for (const w of fw) {
+    for (const s of (w.slots || []).filter(x => x.role === "primary")) {
+      const key = `${w.weekNum}:${w.dayOfWeek}`;
+      const c = cache.get(key);
+      if (!c) continue;
+      (perLift[s.defaultMovementName] ||= []).push({
+        key, date: w.dateISO,
+        load: c.load,
+        perWeekRate: (c.weeklyProgressionPct || 0) / Math.max(1, c.weeksSinceLast || 1),
+        isDeload: (w.deltaPctBase || 0) < 0,
+      });
+    }
+  }
+  const out = new Map();
+  for (const days of Object.values(perLift)) {
+    days.sort((a, b) => a.date.localeCompare(b.date));
+    let anchorLoad = null, anchorRate = 0, step = 0;
+    for (let i = 0; i < days.length; i++) {
+      const d = days[i];
+      if (i === 0 || d.isDeload || anchorLoad == null || d.load == null) {
+        // anchor TAI deload TAI ei-totuutta → cache-arvo, re-anchor (ei projektiota)
+        out.set(d.key, { load: d.load != null ? roundToHalf(d.load) : null, projected: false });
+        anchorLoad = d.load; anchorRate = d.perWeekRate || 0; step = 0;
+      } else {
+        step++;
+        const proj = roundToHalf(anchorLoad * Math.pow(1 + anchorRate, step));
+        out.set(d.key, { load: proj, projected: true });
+      }
+    }
+  }
+  return out;
+}
+
+// Async render-jälkeinen DOM-täyttö: korvaa Sykli-previewn primary-load-spanit
+// recommend()-totuudella + projektiolla (peilaa applyProgramTargetsToDOM:ia).
+function applySykliHybridToDOM(meso) {
+  const hy = sykliHybridPreviewLoads(meso);
+  if (!hy) return;
+  for (const [key, v] of hy.entries()) {
+    const el = document.querySelector(`[data-sy-cell="${key}"]`);
+    if (!el) continue;
+    if (v.load != null && v.load > 0) {
+      el.textContent = ` · ${v.projected ? "~" : ""}${v.load} kg`;
+    } else if (v.load === 0) {
+      el.textContent = ` · BW`;
     }
   }
 }
