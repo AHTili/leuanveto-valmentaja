@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.27" />
+  <meta name="app-version" content="4.52.28" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -7884,10 +7884,13 @@ function renderMesocycle() {
     }
     if (!e1rmResult || !e1rmResult.value || e1rmResult.value <= 0) return null;
     // Tier-pohjainen pct-resolve (Lähde 1 tier 1/2/3:lle, muuten slot.loadPct)
+    // OBS-035+037 (2026-05-31): vReps-override VAIN ei-accessory-sloteille (pää/back-off).
+    // role="accessory" (same-movement-volyymi) käyttää loadPct:tä → preview = live (engine.js
+    // accessory-pass: resolvedLoadKg = e1RM × loadPct − bw). Estää Koti≠live-erkanemisen.
     let pctForResolve = slot.loadPct;
     try {
       const tier = resolveTier(movement, meso);
-      if ((tier === 1 || tier === 2 || tier === 3) && slot.reps != null && slot.targetVx != null) {
+      if ((tier === 1 || tier === 2 || tier === 3) && slot.reps != null && slot.targetVx != null && slot.role !== "accessory") {
         const maxReps = slot.reps + slot.targetVx;
         const expectedPct = vRepsToExpectedPct(maxReps);
         if (expectedPct !== null && expectedPct > 0) pctForResolve = expectedPct;
@@ -12872,10 +12875,14 @@ async function startWorkout(backfillDateISO = null) {
         // Apply variant load modifier (with athlete overrides)
         const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
         loadKg = roundToHalf(baseLoad * (1 + vMod));
-      } else if ((isBackoff || isSecondary || slot.role === "calibration") && typeof slot.resolvedLoadKg === "number") {
+      } else if ((isBackoff || isSecondary || slot.role === "calibration" || slot.role === "accessory") && typeof slot.resolvedLoadKg === "number") {
         // v4.27.13: Engine-resolvoitu loadPct-kuorma backoff/secondary-slotille.
         // v4.34.15: Lisätty calibration-rooli — cal-päivän slotit saavat nyt loadPct-resolution
         // engineltä (Fix #2: cal-load = pct × current e1RM, capped PR × 1.025).
+        // OBS-035+037 (2026-05-31): role="accessory" lisätty — same-movement-volyymi-apuliike
+        // saa nyt engine-resolvoidun resolvedLoadKg:n (liike-agnostinen accessory-pass). Vain
+        // same-movement-volyymilla on resolvedLoadKg≠null; eri liikkeen apuliikkeet (null) →
+        // putoavat yhä getMovementProgress-haaraan (ennallaan).
         const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
         loadKg = roundToHalf(slot.resolvedLoadKg * (1 + vMod));
       } else if (isBackoff && rec.targetExternalLoad !== null) {

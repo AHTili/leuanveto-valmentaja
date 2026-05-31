@@ -562,9 +562,13 @@ const ACCESSORY_SLOT_CATALOG = {
       // v4.34.16: loadPct lisätty repScheme-tasolle. resolveAccessorySlot välittää sen
       // resolvoituun slottiin → existing loadPct-resolver applioi sessionEffectiveE1RM × loadPct.
       // Eri Vx/intensiteetti kuin primary (V3/71%) → toinen stimulus-zona, ei duplikointia.
-      foundation: { sets: 3, reps: 6, targetVx: 4, loadPct: 0.55, note: "Loaded volume @ 55% V4 — eri intensiteetti-zona kuin primary V3" },
-      strength:   { sets: 3, reps: 5, targetVx: 3, loadPct: 0.60, note: "Loaded volume @ 60% V3" },
-      intensity:  { sets: 3, reps: 4, targetVx: 2, loadPct: 0.65, note: "Loaded volume @ 65% V2 — kevyempi taperia kohti" },
+      // OBS-035+037 (2026-05-31): same-movement loaded-volume. Liike-agnostinen accessory-pass
+      // (engine.js recommend(), resolveDayPlanSlots:n jälkeen) laskee resolvedLoadKg =
+      // currentE1RMSystem × loadPct − bw (EI vReps; back-off pitää ROOT-A:n vReps-reitin) →
+      // volyymi-apuliike < back-off < pää. Default jota AI Block Tuning myöhemmin adaptoi.
+      foundation: { sets: 3, reps: 10, targetVx: 4, loadPct: 0.60, note: "Loaded volume @ 60% V4 — eri intensiteetti-zona kuin primary" },
+      strength:   { sets: 3, reps: 8, targetVx: 3, loadPct: 0.65, note: "Loaded volume @ 65% V3" },
+      intensity:  { sets: 3, reps: 6, targetVx: 3, loadPct: 0.70, note: "Loaded volume @ 70% V3 — kevyempi taperia kohti" },
     },
   },
   "pull-horizontal-heavy": {

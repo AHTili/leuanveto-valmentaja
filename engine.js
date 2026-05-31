@@ -5276,6 +5276,36 @@ async function recommend(options = {}) {
     }
   }
 
+  // 15c. OBS-035+037 (2026-05-31): saman liikkeen volyymi-apuliikkeen kanoninen kuorma.
+  // resolveDayPlanSlots (15b) assignasi juuri apuliikkeen defaultMovementName + loadPct.
+  // Load-resoluutio-loop (Haara A, ~4869) ajettiin ENNEN tätä → same-movement-volyymi-
+  // apuliike jäi resolvedLoadKg=null (defaultMovementName ≠ primary loopin aikana, koska
+  // slotId-variantti ei vielä resolvoitu). Liike-agnostinen pass: role=accessory +
+  // defaultMovementName === sen päivän primary + loadPct + !loadPctReference →
+  // resolvedLoadKg = currentE1RMSystem × loadPct − bw (non-barbell) / × loadPct (barbell).
+  // EI vReps → kevyempi kuin back-off (joka pitää ROOT-A:n vReps-reitin). currentE1RMSystem
+  // = kanoninen primary-e1RM (sama lähde kuin back-off + preview).
+  if (dayPlan && dayPlan.slots && currentE1RMSystem !== null && currentE1RMSystem > 0) {
+    const primarySlotForAcc = dayPlan.slots.find(s => s.role === "primary");
+    const primaryMovNameForAcc = primarySlotForAcc?.defaultMovementName || null;
+    if (primaryMovNameForAcc) {
+      for (const slot of dayPlan.slots) {
+        if (slot.role !== "accessory") continue;
+        if (slot.loadPctReferenceMovementName) continue;
+        if ((slot.defaultMovementName || null) !== primaryMovNameForAcc) continue;
+        if (typeof slot.loadPct !== "number" || slot.loadPct <= 0) continue;
+        const slotIsBarbellAcc = slot.isBarbell === true;
+        slot.resolvedLoadKg = roundToHalf(Math.max(0, slotIsBarbellAcc
+          ? currentE1RMSystem * slot.loadPct
+          : currentE1RMSystem * slot.loadPct - bodyweightKg));
+        trace("SLOT_LOAD_RESOLVED_ACCESSORY",
+          { slotRole: slot.role, slotMovement: slot.defaultMovementName },
+          { resolvedLoadKg: slot.resolvedLoadKg, loadPct: slot.loadPct, e1RMSystem: currentE1RMSystem.toFixed(1), isBarbell: slotIsBarbellAcc },
+          `${slot.defaultMovementName} same-movement volyymi: ${(slot.loadPct*100).toFixed(0)}% × ${slotIsBarbellAcc ? "ext" : "sys"} e1RM (${currentE1RMSystem.toFixed(1)} kg)${slotIsBarbellAcc ? "" : " − BW"} = ${slot.resolvedLoadKg} kg [OBS-035+037 liike-agnostinen accessory-pass, ei vReps]`);
+      }
+    }
+  }
+
   // 16. Enrich dayPlan with variant names (if not already assigned from mesocycle)
   if (dayPlan && dayPlan.slots) {
     const variantMap = VARIANT_DAY_TYPE_MAP[dayType] || VARIANT_DAY_TYPE_MAP.heavy;
