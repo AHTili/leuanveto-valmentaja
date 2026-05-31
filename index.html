@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.25" />
+  <meta name="app-version" content="4.52.26" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -2940,6 +2940,43 @@ async function showPlanOverrideModal() {
       _isToday: isToday,
     });
   }
+  // OBS-027-A2: lisää SEURAAVAN viikon ensimmäinen treeni JOS turva-gate sallii
+  // (sama training-blokki + ei deload/cal/realization). planOverride attribuoituu
+  // suunnitellulle viikolle (planSourceDateISO) sekä progressionissa (OBS-030) että
+  // displayssä (OBS-027-A2) → ei yli-progressiota eikä mis-näyttöä. Sessio tallentuu
+  // tehtypäivälle (dateISO=today); vain attribuutio-luku käyttää planSourcea.
+  (() => {
+    const nextWeek = currentWeek + 1;
+    const nextWp = meso.weekPlans.find(w => w.week === nextWeek);
+    if (!nextWp?.days?.length) return;
+    let allowed = false;
+    if (meso.type === "streetlifting_16w") {
+      const BLOCKS = [[1, 2, 3], [5, 6, 7], [9, 10, 11]]; // training-blokit; deload 4/8/12 + peaking 13-16 EI
+      const bi = w => BLOCKS.findIndex(b => b.includes(w));
+      const cbi = bi(currentWeek), nbi = bi(nextWeek);
+      allowed = cbi >= 0 && cbi === nbi; // sama blokki, kumpikaan ei deload/peaking
+    } else {
+      const nwDef = meso.weekDefs?.find(x => x.week === nextWeek);
+      allowed = !!nwDef && (nwDef.deltaPctBase ?? 0) >= 0; // ei deload (konservatiivinen)
+    }
+    if (!allowed) return;
+    const firstDay = (nextWp.days || [])
+      .filter(x => x.dayOfWeek <= 6 && (x.slots || []).some(s => s.role === "primary"))
+      .sort((a, b) => a.dayOfWeek - b.dayOfWeek)[0];
+    if (!firstDay) return;
+    const offset = (firstDay.dayOfWeek - todayDow) + 7;
+    const nd = new Date(base); nd.setDate(nd.getDate() + offset);
+    const ndLabel = stripRedundantDayPrefix(firstDay.label) || DAY_TYPE_LABELS_MAP[firstDay.dayType] || firstDay.dayType || "?";
+    options.push({
+      icon: "⏭️",
+      label: `${dayNamesShort[firstDay.dayOfWeek]} · ${ndLabel} (ensi vk ${nextWeek})`,
+      desc: `${offset} pv eteenpäin · seuraavan viikon avaus`,
+      _dateISO: nd.toISOString().slice(0, 10),
+      _dayOfWeek: firstDay.dayOfWeek,
+      _dayType: firstDay.dayType,
+      _isToday: false,
+    });
+  })();
   if (options.length === 0) return null;
 
   const idx = await showListModal("Vaihda tämän päivän plani", options.map(o => ({ icon: o.icon, label: o.label, desc: o.desc })));
@@ -7975,9 +8012,17 @@ function renderMesocycle() {
     // päivästä. VAIN lukupää (state.sessions/allSets/movements luku) — save-polku koskematon.
     const weekStartISO = weekStart.toISOString().slice(0, 10);
     const weekEndISO = new Date(weekStart.getTime() + 6 * 86400000).toISOString().slice(0, 10);
+    // OBS-027-A2: planOverride-sessio attribuoidaan SUUNNITELLULLE viikolle
+    // (planSourceDateISO), symmetrisesti OBS-030:n progression-attribuution kanssa →
+    // etukäteen tehty seuraavan viikon työ näkyy oikean viikon slotissa. isPlanOverride-
+    // gate → normaalisessio käyttää dateISO:a (OBS-026/028 known-pos ennallaan).
     const _weekSessIds = new Set(
       (state.sessions || [])
-        .filter(s => s.endedAt && s.dateISO && s.dateISO >= weekStartISO && s.dateISO <= weekEndISO)
+        .filter(s => {
+          if (!s.endedAt) return false;
+          const _attribDate = (s.isPlanOverride && s.planSourceDateISO) ? s.planSourceDateISO : s.dateISO;
+          return _attribDate && _attribDate >= weekStartISO && _attribDate <= weekEndISO;
+        })
         .map(s => s.sessionId)
     );
     const _completedMovIdsThisWeek = new Set();

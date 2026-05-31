@@ -2075,8 +2075,10 @@ function computeProgressionTarget(ctx) {
   // OBS-030: progression attribuoi planOverride-session sen SUUNNITELLULLE päivälle
   // (planSourceDateISO) eikä kalenteri-tehtypäivälle (dateISO). Kutsuja asettaa
   // lastSession.planSourceDateISO:n VAIN planOverride-sessiolle; normaalisessiolle se
-  // puuttuu → fallback dateISO (= ennallaan, bittitarkka). Tarkoituksellinen divergenssi
-  // displaystä (OBS-028 = todellinen tehtypäivä; progression = aiottu kadenssi).
+  // puuttuu → fallback dateISO (= ennallaan, bittitarkka).
+  // OBS-027-A2 (2026-05-30): myös display (thisWeekHTML) attribuoi planOverriden
+  // planSourceDateISO:lle → planOverride menee aiottuun viikkoon SEKÄ progressionissa
+  // ETTÄ displayssä (yhtenäinen). Vain TALLENNETTU dateISO = todellinen tehtypäivä.
   // ceil()-kaava + cap[1,3] ENNALLAAN — vain käytetty lähtöpäivä muuttuu.
   let weeksSinceLast = 1;
   const lastDateForGap = lastSession.planSourceDateISO || lastSession.dateISO;
