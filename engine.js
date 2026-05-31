@@ -4797,10 +4797,15 @@ async function recommend(options = {}) {
     // v4.51.x loadpct-fix: sessionEffectiveE1RM on systeemi-pohjainen jotta
     // primary-rate-limit säteilee oikein backoff/secondary-sloteille post-fix-
     // loadPct-resolverissa (pct × system − BW non-barbellille, pct × system barbellille).
-    const sessionEffectiveE1RM = (primaryHasLoadPct && targetExternalLoad !== null)
-      ? (isBarbell
-          ? targetExternalLoad / primarySlotMeta.loadPct
-          : (targetExternalLoad + bodyweightKg) / primarySlotMeta.loadPct)
+    // OBS-CORE ROOT-A (2026-05-30): sessionEffectiveE1RM = KANONINEN primary-e1RM
+    // (currentE1RMSystem — sama lähde jonka preview/_syRenderComputeKg käyttää), EI
+    // back-laskettu target/loadPct. Vanha kaava jakoi vReps-lasketun targetin LABEL-
+    // loadPct:lla (esim. 0.78) eikä todellisella vReps-%:lla (0.833) → e1RM inflatoitui
+    // 1.068× (193.6 vs tosi 181.3) → Branch A -slotit (back-off + same-liike-apuliikkeet)
+    // raskaampia kuin pää JA ≠ preview (Koti≠live). Kanoninen lähde → back-off < pää,
+    // apuliike < pää, Koti = live yhdestä e1RM-lähteestä. (Sama null-ehto kuin ennen.)
+    const sessionEffectiveE1RM = (primaryHasLoadPct && targetExternalLoad !== null && currentE1RMSystem !== null)
+      ? currentE1RMSystem
       : null;
     const primaryMovementName = primarySlotMeta?.defaultMovementName || null;
 
