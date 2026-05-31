@@ -4,7 +4,7 @@
 > Valmis handoff arkistoidaan → `docs/handoffs/HANDOFF_<id>.md`, ja tämä tiedosto nollataan tyhjäksi pohjaksi.
 > Auktoriteettijärjestys: ks. `CLAUDE.md` §7. Session-protokolla: ks. `CLAUDE.md` §8. Kurilista: `docs/SELKARANKA.md`.
 >
-> *Tämänhetkinen tila: tyhjä pohja. Ensimmäinen varsinainen handoff laaditaan erikseen.*
+> *Laadittu 2026-05-30. Jatkaa OBS-027 A1:tä (mis-compute vahvistettu). A2-VALMISTELU (§6, read-only) ENNEN engine-editiä — STOP-gate. OBS-027 A2 (UI) parkissa tämän takana.*
 
 ---
 
@@ -12,50 +12,62 @@
 
 | Kenttä | Arvo |
 | --- | --- |
-| Handoff-id | `<H-001>` |
-| Tyyppi | `<block-tuning \| debug \| scope-expansion \| refactor \| architecture>` |
-| Laadittu | `<pvm>` / Cowork-sessio |
-| Tila | `LUONNOS \| AKTIIVINEN \| VALMIS` |
-| Liittyy R-sekvenssin vaiheeseen | `<esim. 17 — ks. ROADMAP.md>` |
-
-**Tyyppi määrää acceptance criteria -muodon (osio 2):**
-
-- **`block-tuning`** — A-kriteerit invarianttipohjaisina rajoina (esim. `learnedVlCap.strength ∈ [0,15; 0,20]`). **Vaatii lisäksi osion 4 (atletti-vastaukset) täytettynä ENNEN Code-suoritusta.**
-- **`debug`** — A-kriteerit muodossa "toistettava repro → odotettu vs. todettu käytös".
-- **`scope-expansion`** — A-kriteerit uuden ominaisuuden mitattavina hyväksyntäehtoina + eksplisiittinen scope-aita (osio 3).
-- **`refactor`** — pääkriteeri: käytös muuttumaton (regressio-pilot bittitarkka), vain rakenne muuttuu.
-- **`architecture`** — A-kriteerit suunnittelupäätöksinä ja niiden verifiointitapana; voi tuottaa seuraavan handoffin sen sijaan että muuttaa koodia suoraan.
+| Handoff-id | `OBS-030` (progression weeksSinceLast-attribuutio: planOverride-sessio plan-viikolle) |
+| Tyyppi | `debug` (engine-attribuutio mis-compute) |
+| Laadittu | 2026-05-30 / Cowork-sessio (jatkaa OBS-027 A1:tä) |
+| Tila | `AKTIIVINEN` |
+| Liittyy R-sekvenssin vaiheeseen | VALMIS-1-luokan engine-täsmäkorjaus — **EI siirrä NYT-merkkiä** (vaihe 18 ennallaan). |
+| Pohja-HEAD | `79c6853` · APP_VERSION `4.52.24` |
 
 ---
 
 ## 1. Tavoite
 
-`<1–3 lausetta: mitä ja miksi. Ei ratkaisua — haluttu lopputila.>`
+Progression-engine attribuoi **planOverride-session sen SUUNNITELLULLE meso-viikolle** (`planSourceDateISO`) eikä kalenteri-tehtypäivälle (`dateISO`), niin että `weeksSinceLast` laskee oikein eikä yli-progressoi kun atletti tekee seuraavan viikon session etukäteen. (Avaa OBS-027 A2:n turvalliseksi.)
 
 ## 2. Acceptance criteria
 
-`<A1, A2, … osion 0 tyypin mukaisessa muodossa. Skeema: docs/ACCEPTANCE_CRITERIA_SKEEMA.md.>`
+> Tyyppi `debug`: "toistettava repro → odotettu vs. todettu käytös". A1 = CONFIRM (jo tehty OBS-027 A1:ssä). A2-VALMISTELU (§6, read-only) ENNEN A2-fixiä. Mittari-ensin (Selkäranka 6).
+
+- **A1 — CONFIRM (vahvistettu OBS-027 A1 + OBS-030 §6, tämä sessio).** TODELLINEN mekanismi (engine.js 2074–2081, korjattu OBS-027 A1:n virhepäättelystä): `weeksSinceLast = Math.min(3, Math.max(1, Math.ceil(daysSince / 7)))`, missä `daysSince` = kalenteripäivät `lastSession.dateISO`:sta (= set.timestamp-tehtypäivä) target-`dateISO`:hon. **EI meso-viikkonumeroiden erotus, EI getMesocycleWeek.** planOverride päivää session tehtypäivälle → ceil()-karkeus: vk6-leuka etukäteen su 31.5 (8 pv ennen vk7-leukaa 8.6) → `ceil(8/7)=2` eikä `ceil(7/7)=1` → `weeklyProgressionPct` 10% eikä 5% → **yli-progressio 68 kg vs oikea 65 kg** (Lisäpainoleuanveto, mitattu). **VAHVISTETTU.**
+- **A2-VALMISTELU — §6 read-only (STOP-gate ENNEN engine-editiä).** Vastaa §6:n 4 kysymystä koodista (funktio · planSourceDateISO-asetus · backup/pilot-impact · jaettu-funktio-regressio). **STOP + raportoi ENNEN A2-fixiä.**
+- **A2 — FIX (vasta valmistelun + luvan jälkeen).** `weeksSinceLast`/meso-viikko-session-attribuutio käyttää **`planSourceDateISO`:n meso-viikkoa jos `planSourceDateISO` on olemassa, muuten `dateISO`:a** (= ennallaan normaaleille sessioille). **Repro → odotettu:** OBS-027 A1 skenaario C → **65 kg (ei 68)**. **Todettu (ennen):** 68 kg.
+- **A3 — Known-pos / known-neg.** **Known-pos:** planOverride-sessio (jolla `planSourceDateISO`) attribuoituu plan-viikolle → progressio korjattu (A1-skenaario 68→65). **Known-neg:** normaali sessio (ei `planSourceDateISO`) → `dateISO`-attribuutio **muuttumaton**.
+- **A4 — Regressio.** Pilot **bittitarkka 138 audit-flagia** (identity-gate 0). **Mutta:** jos pilot-datassa on `planSourceDateISO`-sessioita joiden attribuutio muuttuu (ks. §6 q3), pilot-kuormat voivat muuttua → **STOP + per-solu-diff Akselille ratifiointiin (kuten H-010), ei hiljaista baseline-muutosta.** Selain-testit eivät regressoi. APP_VERSION-bump.
 
 ## 3. Reunaehdot ja scope-aita
 
-- **Sovellettavat invariantit:** `<CLAUDE.md §2 -rivit jotka koskevat tätä työtä>`
-- **Mitä EI kosketa:** `<tiedostot / moduulit / funktiot scope-aidan ulkopuolella>`
-- **Tekniset reunaehdot:** `<esim. ei uusia npm-riippuvuuksia, vanilla JS, ES-modulit>`
+- **Sovellettavat invariantit (CLAUDE.md §2):** progression-rate/regain/VL-cap/deload-kaavat **ennallaan** — vain SESSION→meso-viikko-attribuutio korjataan (mistä päivästä viikko luetaan), ei progression matematiikkaa.
+- **Mitä EI kosketa (test-riippuvuus-verifioitava):**
+  - **Save-polku** — planOverride `dateISO`/`planSourceDateISO`/`endedAt`-asetus **ennallaan** (sessio tallennetaan kuten ennen; vain LUKU-puolen attribuutio muuttuu).
+  - `recommend()`-muu logiikka, RTF/velocity, identity-gate (H-010), data-flow (H-011).
+  - **Display-polut** (OBS-026/028 `thisWeekHTML` done-detektio) — **ELLEI** jaettu funktio (§6 q4); jos jaettu → flagattava + arvioitava regressio erikseen ENNEN editiä.
+  - Pilot-baseline (138) — jos muuttuu, A4:n STOP-gate.
+- **Sallittu muutosalue:** `engine.js` — funktio joka laskee `weeksSinceLast`/meso-viikon session päivästä (paikallistetaan §6 q1:ssä).
+- **Tekniset:** vanilla JS, ES-modulit, ei uusia riippuvuuksia.
+- **PRE-FLIGHT + peruutusankkuri (Selkäranka 1–2):** HEAD `79c6853`, main, working tree puhdas. Ankkuri `backup-pre-OBS030-79c6853` luotu. A2-valmistelu read-only; A2-fixille tuore ankkuri.
 
 ## 4. Atletti-vastaukset critical questions -kysymyksiin
 
-> Pakollinen vain tyypille `block-tuning`. Muut tyypit: merkitse "Ei sovellu".
-> Code **ei aloita** block-tuning-suoritusta ennen kuin tämä osio on täytetty.
-
-`<Kysymys → atletin vastaus.>`
+Ei sovellu (`debug`). Korjauksen suunta (#1, engine-attribuutio) on Akselin päätös (OBS-027 A1 → vaihtoehto 1).
 
 ## 5. Taustapäätökset ja hylätyt vaihtoehdot
 
-`<Jo tehdyt päätökset (ettei Code re-litigoi) + hylätyt vaihtoehdot perusteluineen.>`
+**Tehdyt päätökset (Akseli 2026-05-30; älä re-litigoi):**
+- **Korjaus = engine-attribuutio (OBS-027 vaihtoehto #1).** planOverride-sessio attribuoituu plan-viikolle progression-laskennassa.
+- **`planSourceDateISO` ensisijainen, `dateISO` fallback** — normaalit (ei-override) sessiot ennallaan → minimaalinen blast-radius.
+- **A2-valmistelu (§6 read-only) ENNEN fixiä** — varmistetaan funktio, planSourceDateISO-takuu, pilot-impact ja jaettu-funktio-regressio ennen engine-editiä (Selkäranka 5–6).
 
-## 6. Avoimet kysymykset
+**Hylätty:**
+- **UI-gate yksin (OBS-027 A2 ilman tätä)** — ei korjaa attribuutiota; yli-progressio jäisi.
+- **Save-polku-päiväys planSourceen** (sessio päivättäisiin plan-päivälle) — sivuvaikutukset (todellisen tekopäivän menetys, display-attribuutio). Korjataan luku-puolella sen sijaan.
 
-`<Mitä Code kysyy ENNEN toteutusta — ei arvaa. Tyhjä = ei avoimia kysymyksiä.>`
+## 6. Avoimet kysymykset (A2-VALMISTELU — Code vastaa read-only ENNEN A2-fixiä)
+
+1. **Funktio:** mikä engine.js-funktio laskee `weeksSinceLast`/meso-viikon session päivästä (PROGRESSION_TARGET-polku)? Käyttääkö `getMesocycleWeek(dateISO)`:a vai mitä?
+2. **planSourceDateISO-takuu:** asettaako planOverride-tallennus **aina** `planSourceDateISO`:n? (Jos ei aina → fallback dateISO:on on oikein, mutta varmistettava ettei normaali sessio saa vahingossa planSourceDateISO:a.)
+3. **Pilot/backup-impact:** onko Akselin backupissa / pilot-datassa `planSourceDateISO`-sessioita joiden meso-viikko-attribuutio muuttuisi korjauksen myötä → muuttuuko pilot-baseline (138, bittitarkka)? Jos kyllä → A4 STOP-gate.
+4. **Jaettu funktio:** jakaako joku muu polku (OBS-026/028 `thisWeekHTML`-display, `computeRecentSessionsForMovement`, anchor-valinta) saman attribuutio-funktion → display-/muu regressio-riski? Jos kyllä → scope-aita-arvio ennen editiä.
 
 ---
 

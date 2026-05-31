@@ -1946,6 +1946,7 @@ function computeRateLimitAnchor(recentTopSets, opts = {}) {
       medianVx: last.medianVx,
       isCalibration: last.isCalibrationSession === true,
       dateISO: last.dateISO || null,
+      sessionId: last.sessionId || null, // OBS-030: kutsuja lookuppaa planSourceDateISO:n
     },
   };
 }
@@ -2071,10 +2072,17 @@ function computeProgressionTarget(ctx) {
   trace.regainMultiplier = regainMultiplier;
 
   // 4. Weeks since last (multi-week-aware)
+  // OBS-030: progression attribuoi planOverride-session sen SUUNNITELLULLE päivälle
+  // (planSourceDateISO) eikä kalenteri-tehtypäivälle (dateISO). Kutsuja asettaa
+  // lastSession.planSourceDateISO:n VAIN planOverride-sessiolle; normaalisessiolle se
+  // puuttuu → fallback dateISO (= ennallaan, bittitarkka). Tarkoituksellinen divergenssi
+  // displaystä (OBS-028 = todellinen tehtypäivä; progression = aiottu kadenssi).
+  // ceil()-kaava + cap[1,3] ENNALLAAN — vain käytetty lähtöpäivä muuttuu.
   let weeksSinceLast = 1;
-  if (lastSession.dateISO && dateISO) {
+  const lastDateForGap = lastSession.planSourceDateISO || lastSession.dateISO;
+  if (lastDateForGap && dateISO) {
     const daysSince = Math.max(1, Math.floor(
-      (new Date(dateISO).getTime() - new Date(lastSession.dateISO).getTime()) / 86400000
+      (new Date(dateISO).getTime() - new Date(lastDateForGap).getTime()) / 86400000
     ));
     weeksSinceLast = Math.min(3, Math.max(1, Math.ceil(daysSince / 7)));
   }
@@ -4653,8 +4661,16 @@ async function recommend(options = {}) {
       if (anchor) {
         const planTarget = targetExternalLoad;
         const cfgInfoForProg = getCfgBaselineForMovement(mesocycle, primarySlotMeta);
+        // OBS-030: jos anchor-lastSession on planOverride, attribuoi se suunnitellulle
+        // päivälle (planSourceDateISO) progression-laskennassa. Vain planOverride →
+        // normaalisessio ennallaan (bittitarkka). sessions = recommend-scope (rivi 3900).
+        const _anchorSess = anchor.lastSession?.sessionId
+          ? sessions.find(s => s.sessionId === anchor.lastSession.sessionId) : null;
+        const _lastSessionProg = (_anchorSess?.isPlanOverride && _anchorSess.planSourceDateISO)
+          ? { ...anchor.lastSession, planSourceDateISO: _anchorSess.planSourceDateISO }
+          : anchor.lastSession;
         const progResult = computeProgressionTarget({
-          lastSession: anchor.lastSession,
+          lastSession: _lastSessionProg,
           targetVx: targetVx ?? 2,
           weekDef,
           dayType,
@@ -4955,8 +4971,14 @@ async function recommend(options = {}) {
             const cfgInfoCR = getCfgBaselineForMovement(mesocycle, {
               defaultMovementName: slot.defaultMovementName,
             });
+            // OBS-030: sama planSourceDateISO-attribuutio cross-ref-anchorille.
+            const _crSess = selfAnchor.lastSession?.sessionId
+              ? sessions.find(s => s.sessionId === selfAnchor.lastSession.sessionId) : null;
+            const _lastSessionCR = (_crSess?.isPlanOverride && _crSess.planSourceDateISO)
+              ? { ...selfAnchor.lastSession, planSourceDateISO: _crSess.planSourceDateISO }
+              : selfAnchor.lastSession;
             const progResultCR = computeProgressionTarget({
-              lastSession: selfAnchor.lastSession,
+              lastSession: _lastSessionCR,
               targetVx: slot.targetVx ?? 2,
               weekDef,
               dayType: dayPlan?.dayType ?? "heavy",
