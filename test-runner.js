@@ -3691,6 +3691,80 @@ function testBlockTuningHrvEnrichment() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// OBS-CORE SP-2: slot-load-johdonmukaisuus-invariantti (2026-05-30)
+// ═══════════════════════════════════════════════════════════════
+// Invariantti: saman liikkeen ei-primary-slotti (back-off/secondary/accessory),
+// jonka engine resolvoi kuorman (resolvedLoadKg), ei saa olla raskaampi kuin
+// primary-slotin kuorma. Tämä olisi napannut OBS-CORE-bugin jossa
+// sessionEffectiveE1RM = target/loadPct inflatoi e1RM:n (193.6 vs tosi 181.3) →
+// back-off 64 > pää 62 ja apuliike 73,5 > pää.
+//
+// Mittari-ensin (Selkäranka 6): tämä fixture tuotti pre-ROOT-A back-off 94 > pää 92
+// (FAIL = bugi näkyvissä), post-ROOT-A back-off 75,5 ≤ pää 92 (PASS).
+async function testSp2SlotLoadInvariant() {
+  const PID = "test-sp2-leuka";
+  const movements = [{
+    movementId: PID, name: "Lisäpainoleuanveto", category: "vertikaaliveto",
+    isPrimary: true, isPreset: true, isCompetitionLift: true, loadType: "system", tier: 1,
+  }];
+  const meso = createDefaultMesocycle("2026-01-05");
+  // Injektoi loadPct kuten Akselin Ma: pää 0.78, back-off 0.65 (saman liikkeen volyymisarja)
+  const ma = meso.weekPlans[0].days.find(d => d.dayOfWeek === 1);
+  for (const s of (ma?.slots || [])) {
+    if (s.role === "primary") s.loadPct = 0.78;
+    if (s.role === "backoff") s.loadPct = 0.65;
+  }
+  // e1RM-historia (Lisäpainoleuanveto system-sets) jotta currentE1RMSystem on määritelty
+  const sets = [];
+  for (let i = 0; i < 6; i++) {
+    sets.push({
+      setId: "sp2-" + i, movementId: PID, sessionId: "sp2sess" + i,
+      externalLoadKg: 90, reps: 3, actualVx: 2, targetVx: 2, setRole: "top",
+      timestamp: "2026-01-0" + (i + 1) + "T10:00:00Z",
+    });
+  }
+  const ctx = {
+    settings: { bodyweightKg: 91 }, bodyweightKg: 91, dateISO: "2026-01-05",
+    mesocycle: meso, allMovements: movements, allSets: sets, sessions: [],
+    readiness: {
+      combined: "GREEN", capLevel: 0,
+      channels: {
+        velocity: { class: "GREEN", z: 0.1 }, hrv: { class: "GREEN", z: 0.2 },
+        vara: { class: "GREEN", z: null, meanOvershoot: 0 },
+      },
+    },
+    primaryMovementId: PID, dryRun: true,
+  };
+  let rec;
+  try {
+    rec = await recommend(ctx);
+  } catch (e) {
+    assert(false, "SP-2: recommend() ei saa heittää", e.message);
+    return;
+  }
+  const primarySlot = (rec.dayPlan?.slots || []).find(s => s.role === "primary");
+  const primaryName = primarySlot?.defaultMovementName;
+  const primaryLoad = rec.targetExternalLoad;
+  assert(typeof primaryLoad === "number" && primaryLoad > 0,
+    "SP-2: primary targetExternalLoad on positiivinen numero", "got " + primaryLoad);
+  // Saman liikkeen ei-primary-slotit joilla engine-resolvoitu kuorma
+  const sameMovResolved = (rec.dayPlan?.slots || []).filter(s =>
+    s.role !== "primary" &&
+    s.defaultMovementName === primaryName &&
+    typeof s.resolvedLoadKg === "number");
+  // Non-vacuous: fixture tuottaa ≥1 resolvoidun saman-liike-slotin (back-off) — muuten fixture rikki
+  assert(sameMovResolved.length >= 1,
+    "SP-2: fixture tuottaa ≥1 resolvoidun saman-liike-slotin (non-vacuous)",
+    "got " + sameMovResolved.length + " — jos 0, fixture ei enää testaa invarianttia");
+  // Invariantti: jokainen saman-liike-slotti ≤ pää (0.5 kg toleranssi pyöristykselle)
+  for (const s of sameMovResolved) {
+    assert(typeof primaryLoad === "number" && s.resolvedLoadKg <= primaryLoad + 0.5,
+      `SP-2: ${s.role} (${s.defaultMovementName}) ei saa olla raskaampi kuin pää`,
+      `resolvedLoadKg=${s.resolvedLoadKg} > pää ${primaryLoad} (saman liikkeen ei-primary-slotti ylittää pään)`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // RUN ALL TESTS
 // ═══════════════════════════════════════════════════════════════
 
@@ -3779,6 +3853,8 @@ export async function runTests() {
   testRtfModelFilterExpansion();
   testAvailabilityStatusEmission();
   await testRecommendScenarios();
+  // OBS-CORE SP-2 (2026-05-30): saman liikkeen ei-primary-slotti ≤ pää (slot-load-invariantti)
+  await testSp2SlotLoadInvariant();
   await testBackupRoundtrip();
   // v4.34.45: mesosykli-historia + uudelleen-aktivointi
   await testMesocycleHistoryActivation();
