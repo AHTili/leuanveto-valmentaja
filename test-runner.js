@@ -43,6 +43,7 @@ import {
   // v4.38.5 — kisaliikkeiden tunnistus fallback nimellä
   isCompetitionLiftMovement,
   recommend,
+  computeDisplayedSlotLoad,
   computeVBTPromotionStatus,
   computeRateLimitAnchor,
   // v4.34.44: cfg-baseline-resolveri (TASO 1: movementCfg, TASO 2: streetliftingConfig)
@@ -3812,6 +3813,20 @@ async function testKotiEqualsLiveAccessory() {
     assert(Math.abs(acc.resolvedLoadKg - previewKg) <= 0.5,
       "Koti=live: same-liike-apuliike resolvedLoadKg = kanoninen e1RM × loadPct (ei getMovementProgress, ei vReps)",
       `live=${acc.resolvedLoadKg}, preview=${previewKg}, e1sys=${e1sys}, loadPct=${acc.loadPct}`);
+    // F-4 UNIFY: computeDisplayedSlotLoad antaa saman arvon dashboard- + workout-flow-kontekstissa
+    // (vMod mukana). C-tier exempt: apuliikkeeseen ei vaikuta primaryBaseLoad.
+    const _f4opts = { primaryBaseLoad: rec.targetExternalLoad, targetExternalLoad: rec.targetExternalLoad, accessoryProgressLoad: null, attemptLoads: rec.attemptLoads, variantModifiers: null };
+    const _dash = computeDisplayedSlotLoad(acc, _f4opts);
+    const _wf = computeDisplayedSlotLoad(acc, _f4opts);
+    assert(_dash === _wf && _dash === acc.resolvedLoadKg,
+      "F-4: apuliike displayed = resolvedLoadKg, dashboard=workout-flow (vMod=0, ei varianttia)",
+      `dash=${_dash}, wf=${_wf}, resolved=${acc.resolvedLoadKg}`);
+    // vMod-tapaus: +10% varianttimodifier → displayed = roundToHalf(resolvedLoadKg × 1.10)
+    const _accV = { ...acc, variantName: "F4-TEST-VARIANT" };
+    const _vModLoad = computeDisplayedSlotLoad(_accV, { ..._f4opts, variantModifiers: { "F4-TEST-VARIANT": 0.10 } });
+    assert(Math.abs(_vModLoad - roundToHalf(acc.resolvedLoadKg * 1.10)) <= 0.01,
+      "F-4: apuliikkeen vMod applioituu (resolvedLoadKg × 1.10)",
+      `vModLoad=${_vModLoad}, expected=${roundToHalf(acc.resolvedLoadKg * 1.10)}`);
   }
 }
 

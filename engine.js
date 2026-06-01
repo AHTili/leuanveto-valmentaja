@@ -6329,6 +6329,57 @@ function variantLoadModifier(variantName, customModifiers = null) {
 }
 
 /**
+ * F-4 UNIFY (value-resolution-audit, 2026-05-31): YKSI slot-kuorma-näyttölaskenta jota
+ * SEKÄ Koti-dashboard (renderTodayPlan) ETTÄ workout-flow (startWorkout) kutsuvat → render-
+ * polut eivät voi erkaantua slot-kuormalla (sulkee F-1 + F-4 rakenteellisesti).
+ * Palauttaa NUMERON (loadKg) | 0 (skill/BW-sentinel) | null (ei kuormaa / uusi liike).
+ * Kutsupaikat formatoivat itse (dashboard: loadStr/loadCls + "BW"/"Lämmittely"/🎯; workout-flow:
+ * numero suoraan + per-set warmup). B/E/F (variantLoadModifier) + I (roundToHalf) UNIFOITU.
+ * C (primaryBaseLoad) PARAMETRINEN: dashboard=TARGET, workout-flow=tier (nykykäytös; C erillinen).
+ * G (accessoryProgressLoad) PARAMETRINEN: kutsuja resolvoi (dashboard sync-map / workout-flow async).
+ * @returns {number|null}
+ */
+function computeDisplayedSlotLoad(slot, opts = {}) {
+  if (!slot) return null;
+  const {
+    primaryBaseLoad = null,
+    targetExternalLoad = null,
+    accessoryProgressLoad = null,
+    attemptLoads = null,
+    variantModifiers = null,
+  } = opts;
+  const role = slot.role;
+  const vMod = variantLoadModifier(slot.variantName, variantModifiers);
+  // Kisapäivä: attempt/warmup
+  if (["warmup", "opener", "attempt2", "attempt3"].includes(role) && attemptLoads) {
+    if (role === "warmup") return Array.isArray(attemptLoads.warmupLoads) ? (attemptLoads.warmupLoads[0] ?? 0) : 0;
+    if (role === "opener") return attemptLoads.opener ?? null;
+    if (role === "attempt2") return attemptLoads.second ?? null;
+    if (role === "attempt3") return attemptLoads.third ?? null;
+  }
+  // Primary
+  if (role === "primary") {
+    if (slot.suggestedLoadKg === 0 || slot.muSkillPhase === true) return 0; // skill/BW
+    if (typeof primaryBaseLoad === "number") return roundToHalf(primaryBaseLoad * (1 + vMod));
+    return null;
+  }
+  // Engine-resolvoidut slotit (back-off / secondary / calibration / same-liike-volyymi-apuliike)
+  if ((role === "backoff" || role === "secondary" || role === "calibration" || role === "accessory")
+      && typeof slot.resolvedLoadKg === "number") {
+    return roundToHalf(slot.resolvedLoadKg * (1 + vMod));
+  }
+  // Back-off legacy-fallback (slot ilman loadPct:tä) → target × 0.85
+  if (role === "backoff" && typeof targetExternalLoad === "number") {
+    return roundToHalf(targetExternalLoad * 0.85 * (1 + vMod));
+  }
+  // Eri-liike-apuliike: kutsujan resolvoima progress-load (ei vMod — nykykäytös)
+  if (role === "accessory" && typeof accessoryProgressLoad === "number") {
+    return accessoryProgressLoad;
+  }
+  return null;
+}
+
+/**
  * Rep/tempo override for specific variants.
  * Returns override info (repsLabel, tempoNotes) or null.
  */
@@ -8504,6 +8555,7 @@ export {
   DEFAULT_VARIANT_MODIFIERS,
   getDefaultVariantForDayType,
   variantLoadModifier,
+  computeDisplayedSlotLoad,
   variantRepOverride,
   assignVariantRotation,
   // Peaking

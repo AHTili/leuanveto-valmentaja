@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.29" />
+  <meta name="app-version" content="4.52.30" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -1191,7 +1191,7 @@ import {
   DEFAULT_VARIANT_MODIFIERS,
   SUGGESTED_NEXT_TEMPLATE,
   readinessTestLoad,
-  variantLoadModifier, variantRepOverride, assignVariantRotation,
+  variantLoadModifier, computeDisplayedSlotLoad, variantRepOverride, assignVariantRotation,
   computeAttemptLoads,
   phaseForWeek, resolveAccessorySlot, resolveDayPlanSlots, suggestAccessorySwaps,
   isInsertedDeloadWeek, isReplacedDeloadWeek, isDeloadOverrideWeek,
@@ -4435,67 +4435,56 @@ function renderDashboard() {
 
       let loadStr = "";
       let loadCls = "";
+      // F-4 UNIFY (value-resolution-audit, 2026-05-31): sama computeDisplayedSlotLoad kuin
+      // workout-flow (startWorkout) → render-polut eivät voi erkaantua slot-kuormalla (sulkee
+      // F-1 + F-4). C: dashboard välittää TARGET-kuorman (primary-tier exempt — Koti=live-assertio).
+      // G: sync movementProgressMap (dashboard-konteksti on refresh-tuore). Formatointi (string/
+      // cls/BW/Lämmittely/🎯/deload) per-rooli alla. Dashboard saa nyt vMod:n primary/resolved/
+      // fallback-sloteille (= workout-flow) — tämä on F-4-fix (näyttö muuttuu variant-sloteille).
+      const _accProg = slot.role === "accessory" ? state.movementProgressMap?.get(slot.movementId) : null;
+      const _dispLoad = computeDisplayedSlotLoad(slot, {
+        primaryBaseLoad: rec?.targetExternalLoad ?? null,
+        targetExternalLoad: rec?.targetExternalLoad ?? null,
+        accessoryProgressLoad: _accProg ? (_accProg.suggestedLoadKg ?? _accProg.lastLoadKg ?? null) : null,
+        attemptLoads: rec?.attemptLoads ?? null,
+        variantModifiers: state.settings?.variantModifiers,
+      });
       if (isAttempt && rec.attemptLoads) {
-        const loads = rec.attemptLoads;
         if (slot.role === "warmup") { loadStr = "Lämmittely"; loadCls = "backoff"; }
-        else if (slot.role === "opener") { loadStr = `+${loads.opener} kg`; loadCls = "opener"; }
-        else if (slot.role === "attempt2") { loadStr = `+${loads.second} kg`; loadCls = "attempt2"; }
-        else if (slot.role === "attempt3") { loadStr = `+${loads.third} kg 🎯`; loadCls = "attempt3"; }
+        else if (slot.role === "opener") { loadStr = `+${_dispLoad} kg`; loadCls = "opener"; }
+        else if (slot.role === "attempt2") { loadStr = `+${_dispLoad} kg`; loadCls = "attempt2"; }
+        else if (slot.role === "attempt3") { loadStr = `+${_dispLoad} kg 🎯`; loadCls = "attempt3"; }
       } else if (isPrimary && rec?.targetExternalLoad !== null && rec?.targetExternalLoad !== undefined) {
-        // v4.34.49: skill-vaiheen primary-slot (esim. Muscle-up eksentrinen vk 1-4) on
-        // BW-pohjainen — slot.suggestedLoadKg === 0 eksplisiittisesti. Älä näytä
-        // rec.targetExternalLoad joka voi vuotaa toisen liikkeen targetia (engine
-        // fallbackeaa kun aktiivisen liikkeen e1RM = 0). Skill = "BW + kuminauha/avustus".
-        if (slot.suggestedLoadKg === 0 || slot.muSkillPhase === true) {
+        // skill/BW (suggestedLoadKg===0 || muSkillPhase) → computeDisplayedSlotLoad palauttaa 0.
+        if (_dispLoad === 0) {
+          loadStr = "BW";
+          loadCls = "backoff";
+        } else if (_dispLoad != null) {
+          loadStr = `+${_dispLoad} kg`;
+          if (deloadMode) loadCls = "deload";
+        }
+      } else if (isBackoff && _dispLoad != null) {
+        // resolvedLoadKg TAI legacy-fallback ×0.85 — fn hoiti molemmat (vMod mukana = workout-flow).
+        loadStr = `+${_dispLoad} kg`;
+        loadCls = deloadMode ? "deload" : "backoff";
+      } else if (slot.role === "secondary" && _dispLoad != null) {
+        loadStr = `+${_dispLoad} kg`;
+        loadCls = deloadMode ? "deload" : "secondary";
+      } else if (slot.role === "calibration" && _dispLoad != null) {
+        loadStr = `+${_dispLoad} kg`;
+        loadCls = "cal";
+      } else if (slot.role === "accessory" && _dispLoad != null) {
+        // same-liike-volyymi (resolvedLoadKg → "+", deload-aware) vs eri-liike (progress → ei "+"); 0 → BW
+        if (_dispLoad === 0) {
           loadStr = "BW";
           loadCls = "backoff";
         } else {
-          loadStr = `+${rec.targetExternalLoad} kg`;
-          if (deloadMode) loadCls = "deload";
+          const _sameMov = typeof slot.resolvedLoadKg === "number";
+          loadStr = `${_sameMov ? "+" : ""}${_dispLoad} kg`;
+          loadCls = (_sameMov && deloadMode) ? "deload" : "backoff";
         }
-      } else if (isBackoff && typeof slot.resolvedLoadKg === "number") {
-        // v4.34.33 BUG-FIX 5.1: engine resolvoi backoff-kuorman slot.loadPct × current e1RM:llä.
-        // Aiempi 0.85 × primary -hardcode ei tunnista slot-spesifiä loadPct:tä (esim.
-        // foundation backoff loadPct=0.55, mutta dashboard näytti 0.85). Workout-flow
-        // (rivi 8414) lukee resolvedLoadKg:n oikein, dashboard ei aiemmin.
-        loadStr = `+${slot.resolvedLoadKg} kg`;
-        loadCls = deloadMode ? "deload" : "backoff";
-      } else if (isBackoff && rec?.targetExternalLoad !== null && rec?.targetExternalLoad !== undefined) {
-        // Fallback: legacy default-mesosykli ilman loadPct-arvoa → primary × 0.85
-        loadStr = `+${roundToHalf(rec.targetExternalLoad * 0.85)} kg`;
-        loadCls = deloadMode ? "deload" : "backoff";
-      } else if (slot.role === "secondary" && typeof slot.resolvedLoadKg === "number") {
-        // v4.34.33 RISK 5.3: secondary-slot näkyväksi dashboardilla. Streetlifting_16w
-        // käyttää secondary-slottia mm. vk 8/12/13/14 top-singletteihin (loadPct
-        // 0.85-0.92). Workout-flow renderöi ne, dashboard ei aiemmin.
-        loadStr = `+${slot.resolvedLoadKg} kg`;
-        loadCls = deloadMode ? "deload" : "secondary";
-      } else if (slot.role === "calibration" && typeof slot.resolvedLoadKg === "number") {
-        // Cal-slot näkyväksi dashboardilla
-        loadStr = `+${slot.resolvedLoadKg} kg`;
-        loadCls = "cal";
-      } else if (slot.role === "accessory" && typeof slot.resolvedLoadKg === "number") {
-        // OBS-035+037 jatko (F-1, 2026-05-31): same-liike-volyymi-apuliike → engine-resolvoitu
-        // kanoninen kuorma (kuten back-off 4456 / secondary 4467 / cal 4473). Pitää dashboard =
-        // Sykli-preview = live (~29), ei getMovementProgress (~65). Vain same-movement-volyymilla
-        // on resolvedLoadKg≠null (engine.js 15c-pass); eri liikkeen apuliikkeet (null) → alempi haara.
-        loadStr = `+${slot.resolvedLoadKg} kg`;
-        loadCls = deloadMode ? "deload" : "backoff";
-      } else if (slot.role === "accessory" && slot.movementId) {
-        // v4.38.9: Eri liikkeen accessory-kuorma haetaan state.movementProgressMap:istä
-        // (= getAllMovementProgress refresh:in yhteydessä). Sama logiikka kuin
-        // workout-flow:ssa: suggestedLoadKg → lastLoadKg → null/BW.
-        const progress = state.movementProgressMap?.get(slot.movementId);
-        const lkg = progress?.suggestedLoadKg ?? progress?.lastLoadKg ?? null;
-        if (typeof lkg === "number" && lkg > 0) {
-          loadStr = `${lkg} kg`;
-          loadCls = "backoff";
-        } else if (lkg === 0) {
-          loadStr = "BW";
-          loadCls = "backoff";
-        }
-        // else: ei progress-dataa → tyhjä (esim. uusi liike, käyttäjä syöttää treenin alussa)
       }
+      // else: ei kuormaa (uusi liike / null) → tyhjä loadStr (käyttäjä syöttää treenin alussa)
 
       const setsReps = `${slot.sets}×${slot.reps}`;
       const vxStr = slot.targetVx !== null && slot.targetVx !== undefined ? ` · V${slot.targetVx}` : "";
@@ -12871,44 +12860,28 @@ async function startWorkout(backfillDateISO = null) {
         } else if (slot.role === "attempt3") {
           loadKg = rec.attemptLoads.third;
         }
-      } else if (isPrimary && rec.targetExternalLoad !== null) {
-        // v4.51.0 (Track B 2D-δ-C): käytä defaultSuggestionId:n kuormaa primary-
-        // slotille. Backward compat: jos suggestions puuttuu tai default ei löydy,
-        // käytetään rec.targetExternalLoad:ia (= TARGET-tier, sama kuin ennen).
+      } else {
+        // F-4 UNIFY (value-resolution-audit, 2026-05-31): sama computeDisplayedSlotLoad kuin
+        // Koti-dashboard (renderTodayPlan) → render-polut eivät voi erkaantua slot-kuormalla.
+        // C: workout-flow välittää tier-kuorman (defaultSuggestion) → nykykäytös säilyy.
+        // G: eri-liike-apuliikkeen progress haetaan ASYNC (tuore DB) ja välitetään parametrina
+        //    (movementProgressMap voi olla stale workout-flow:ssa → ei sync-vaihtoa).
         const defaultSugg = (rec.suggestions || []).find(s => s.id === rec.defaultSuggestionId);
-        const baseLoad = (defaultSugg && typeof defaultSugg.targetExternalLoad === "number")
+        const wfPrimaryBase = (defaultSugg && typeof defaultSugg.targetExternalLoad === "number")
           ? defaultSugg.targetExternalLoad
           : rec.targetExternalLoad;
-        // Apply variant load modifier (with athlete overrides)
-        const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
-        loadKg = roundToHalf(baseLoad * (1 + vMod));
-      } else if ((isBackoff || isSecondary || slot.role === "calibration" || slot.role === "accessory") && typeof slot.resolvedLoadKg === "number") {
-        // v4.27.13: Engine-resolvoitu loadPct-kuorma backoff/secondary-slotille.
-        // v4.34.15: Lisätty calibration-rooli — cal-päivän slotit saavat nyt loadPct-resolution
-        // engineltä (Fix #2: cal-load = pct × current e1RM, capped PR × 1.025).
-        // OBS-035+037 (2026-05-31): role="accessory" lisätty — same-movement-volyymi-apuliike
-        // saa nyt engine-resolvoidun resolvedLoadKg:n (liike-agnostinen accessory-pass). Vain
-        // same-movement-volyymilla on resolvedLoadKg≠null; eri liikkeen apuliikkeet (null) →
-        // putoavat yhä getMovementProgress-haaraan (ennallaan).
-        const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
-        loadKg = roundToHalf(slot.resolvedLoadKg * (1 + vMod));
-      } else if (isBackoff && rec.targetExternalLoad !== null) {
-        // Fallback: slot ei määrittele loadPct:tä (legacy default-mesosykli) →
-        // käytä vanhaa primary × 0.85 -sääntöä.
-        const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
-        loadKg = roundToHalf(rec.targetExternalLoad * 0.85 * (1 + vMod));
-      } else if (mov) {
-        // Get movement progress for accessory
-        const progress = await getMovementProgress(movId);
-        if (progress?.suggestedLoadKg) {
-          loadKg = progress.suggestedLoadKg;
-        } else if (progress?.lastLoadKg) {
-          loadKg = progress.lastLoadKg;
-        } else {
-          loadKg = null; // New movement — user will enter
+        let wfAccProgressLoad = null;
+        if (slot.role === "accessory" && typeof slot.resolvedLoadKg !== "number" && mov) {
+          const _accProg = await getMovementProgress(movId);
+          wfAccProgressLoad = _accProg?.suggestedLoadKg ?? _accProg?.lastLoadKg ?? null;
         }
-      } else {
-        loadKg = null;
+        loadKg = computeDisplayedSlotLoad(slot, {
+          primaryBaseLoad: wfPrimaryBase,
+          targetExternalLoad: rec.targetExternalLoad,
+          accessoryProgressLoad: wfAccProgressLoad,
+          attemptLoads: rec.attemptLoads,
+          variantModifiers: state.settings?.variantModifiers,
+        });
       }
 
       const progressInfo = mov ? await getMovementProgress(movId) : null;
