@@ -6,6 +6,23 @@
 
 ---
 
+## 0. INVARIANTTI — e1RM- ja kuorma-totuuslähde (F-3 A2, 2026-05-31)
+
+**Kanoninen e1RM (ainoat sallitut lähteet näyttöön/kuormaan):**
+- **Näyttö (UI):** `computeMovementE1RMBest` (cal→plan→median). Edistyminen · Liikepankki · Trendit · Ennuste · Sykli-preview.
+- **Live-kuorma (recommend):** `currentE1RMSystem` (ketju cal→primer→plan→VBT-cap→floor) → `resolvedLoadKg` / `targetExternalLoad`.
+
+**EI-kanoniset storet — tarkoitus-segregoituja, EI lueta näyttöön/kuormaan:**
+- `MovementProgress.currentE1RM` (last-set Epley): VAIN stagnaatio + `e1rmHistory`.
+- `movementCfg.e1rmExternal` (manuaali cal-drift): VAIN cross-ref-lattia (`max(historia, cfg)`).
+- `peakingConfig.e1rmExternal` (wizard/93): VAIN fallback (live `currentE1RMExternal` voittaa). *Residuaali: stale jos live null peaking-päivänä — harvinainen, kisaliikkeellä on historiaa.*
+
+**Sääntö (uusille slot-kuorma-/e1RM-render-poluille):** lue VAIN (a) recommend() `resolvedLoadKg`/`targetExternalLoad` (live + dashboard) tai (b) `computeMovementE1RMBest` (UI-e1RM). `getMovementProgress.suggestedLoadKg` sallittu VAIN eri-liike-apuliikkeille (movement ≠ päivän primary).
+
+**Koneellinen lukko (regressio-vartija):** `test-runner.js` → `testKotiEqualsLiveAccessory` (same-liike-apuliike `resolvedLoadKg` = kanoninen e1RM × loadPct = preview) + `testSp2SlotLoadInvariant` (back-off ≤ pää). Nämä laukeavat jos store-arvo vuotaa näyttöön/kuormaan (F-1-luokka).
+
+---
+
 ## 1. Yhteenveto — tila kategorioittain
 
 | Kategoria | Totuuslähde (tavoite) | Suljettu (tämä arc) | Avoin | By-design / hyväksytty |
@@ -34,7 +51,8 @@
 - **Säilössä:** `stash@{0}` — SP-2-pilot-audit-check + a/b/c-tradeoff (a hyväksy 19 / b rate-limit-säteily +16 muuta virhettä / c clamp ≤ pää +6 muuta).
 - **Korjaus:** vaatii oman handoffin (valmennuspäätös: onko regain-viikon back-off>pää bugi vai hyväksyttävä; ripple-virheiden tutkinta).
 
-### F-3 — e1RM-persistenssistorejen hajonta  ⚠️ AVOIN (laaja)
+### F-3 — e1RM-persistenssistorejen hajonta  ✅ RATKAISTU (A1: segregoitu · A2: invariantti §0 + Koti=live-guard)
+**A1-verdikti (2026-05-31, read-only):** audit yli-kehysti tämän. Storet ovat **tarkoitus-segregoituja** (ks. §0): `MovementProgress.currentE1RM` = stagnaatio/historia (ei näyttöön/kuormaan), `movementCfg` = cross-ref-lattia, `peakingConfig` = fallback. Edistyminen/Liikepankki/Trendit käyttävät kanonista `computeMovementE1RMBest`:iä — ei divergenssiä. Ainoa aito käyttäjä-näkyvä divergenssi oli F-1 (jo korjattu). **A2 = invariantti §0 + `testKotiEqualsLiveAccessory`-vartija (ei segregaatio-koodimuutosta — jo oikein).** Alla alkuperäinen audit-kehys:
 - **Oire:** sama liike voi kantaa eri e1RM-arvoa neljässä eri storessa, jotka eivät synkronoidu:
   - `currentE1RMSystem` (recommend, sessio-laajuinen kanoninen ketju) — **totuuslähde laskennalle**.
   - `MovementProgress.currentE1RM` (`engine.js:1694`, vain VIIM. setistä `e1rmAccessory`) — accessory-progressio + dashboard/workout-flow apuliike-fallback.

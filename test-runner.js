@@ -3765,6 +3765,57 @@ async function testSp2SlotLoadInvariant() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// F-3 Koti=live -guard (value-resolution-audit A2, 2026-05-31)
+// ═══════════════════════════════════════════════════════════════
+// Same-liike-volyymi-apuliikkeen resolvedLoadKg (live) = kanoninen
+// currentE1RMSystem × loadPct − bw (= preview). Recurrence-vartija F-1-luokan
+// store-vuodolle (apuliike-display luki getMovementProgress ~65 eikä kanonista ~29).
+// Jos resolveri tai preview regressoituu ei-kanoniseen lähteeseen → tämä laukeaa.
+async function testKotiEqualsLiveAccessory() {
+  const PID = "test-koti-leuka";
+  const movements = [{
+    movementId: PID, name: "Lisäpainoleuanveto", category: "vertikaaliveto",
+    isPrimary: true, isPreset: true, isCompetitionLift: true, loadType: "system", tier: 1,
+  }];
+  const meso = createDefaultMesocycle("2026-01-05");
+  const ma = meso.weekPlans[0].days.find(d => d.dayOfWeek === 1);
+  for (const s of (ma?.slots || [])) {
+    if (s.role === "primary") s.loadPct = 0.78;
+    if (s.role === "backoff") s.loadPct = 0.65;
+  }
+  // Injektoi same-liike volyymi-apuliike (kuten pull-volume): sama liike kuin primary
+  if (ma?.slots) ma.slots.push({ role: "accessory", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 8, targetVx: 3, loadPct: 0.65 });
+  const sets = [];
+  for (let i = 0; i < 6; i++) {
+    sets.push({ setId: "kl-" + i, movementId: PID, sessionId: "klsess" + i, externalLoadKg: 90, reps: 3, actualVx: 2, targetVx: 2, setRole: "top", timestamp: "2026-01-0" + (i + 1) + "T10:00:00Z" });
+  }
+  const ctx = {
+    settings: { bodyweightKg: 91 }, bodyweightKg: 91, dateISO: "2026-01-05",
+    mesocycle: meso, allMovements: movements, allSets: sets, sessions: [],
+    readiness: { combined: "GREEN", capLevel: 0, channels: { velocity: { class: "GREEN", z: 0.1 }, hrv: { class: "GREEN", z: 0.2 }, vara: { class: "GREEN", z: null, meanOvershoot: 0 } } },
+    primaryMovementId: PID, dryRun: true,
+  };
+  let rec;
+  try { rec = await recommend(ctx); }
+  catch (e) { assert(false, "Koti=live: recommend() ei saa heittää", e.message); return; }
+  const lpr = (rec.traces || []).find(t => t.ruleId === "LOAD_PCT_RESOLVED")?.after;
+  const e1sys = lpr?.currentE1RMSystem;
+  const primaryName = (rec.dayPlan?.slots || []).find(s => s.role === "primary")?.defaultMovementName;
+  const acc = (rec.dayPlan?.slots || []).find(s =>
+    s.role === "accessory" && s.defaultMovementName === primaryName && typeof s.resolvedLoadKg === "number");
+  assert(typeof e1sys === "number" && !!acc,
+    "Koti=live: fixture tuottaa resolvoidun same-liike-apuliikkeen + currentE1RMSystem",
+    `e1sys=${e1sys}, acc=${!!acc}`);
+  if (typeof e1sys === "number" && acc) {
+    // preview = kanoninen e1RM × loadPct − bw (= _syRenderComputeKg apuliikkeelle post-OBS-035+037)
+    const previewKg = roundToHalf(Math.max(0, e1sys * acc.loadPct - 91));
+    assert(Math.abs(acc.resolvedLoadKg - previewKg) <= 0.5,
+      "Koti=live: same-liike-apuliike resolvedLoadKg = kanoninen e1RM × loadPct (ei getMovementProgress, ei vReps)",
+      `live=${acc.resolvedLoadKg}, preview=${previewKg}, e1sys=${e1sys}, loadPct=${acc.loadPct}`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // RUN ALL TESTS
 // ═══════════════════════════════════════════════════════════════
 
@@ -3855,6 +3906,8 @@ export async function runTests() {
   await testRecommendScenarios();
   // OBS-CORE SP-2 (2026-05-30): saman liikkeen ei-primary-slotti ≤ pää (slot-load-invariantti)
   await testSp2SlotLoadInvariant();
+  // F-3 Koti=live -guard (value-resolution-audit A2): apuliike live = preview (kanoninen e1RM × loadPct)
+  await testKotiEqualsLiveAccessory();
   await testBackupRoundtrip();
   // v4.34.45: mesosykli-historia + uudelleen-aktivointi
   await testMesocycleHistoryActivation();

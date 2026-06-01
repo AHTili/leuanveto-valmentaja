@@ -22,6 +22,8 @@ LeVe AI on suomenkielinen voimaharjoittelusovellus (PWA, paikallinen IndexedDB, 
 
 **Versio:** kts. `sw.js` APP_VERSION.
 
+**Arvo-resoluutio-invariantti (value-resolution-audit, F-3):** kanoninen e1RM = `computeMovementE1RMBest` (näyttö: Edistyminen/Liikepankki/Trendit/Sykli-preview) / `currentE1RMSystem` (live-kuorma → `resolvedLoadKg`/`targetExternalLoad`). `MovementProgress.currentE1RM` (last-set) **EI koskaan näyttöön/kuormaan** (vain stagnaatio/historia); `movementCfg.e1rmExternal` = cross-ref-lattia; `peakingConfig.e1rmExternal` = fallback (live voittaa). `getMovementProgress.suggestedLoadKg` sallittu VAIN eri-liike-apuliikkeille (movement ≠ päivän primary). Täysi kartta + koneellinen lukko: [docs/VALUE_RESOLUTION_AUDIT.md](docs/VALUE_RESOLUTION_AUDIT.md) (`testKotiEqualsLiveAccessory` + `testSp2SlotLoadInvariant`).
+
 ---
 
 ## 2. Tutkimusinvariantit ja adaptiiviset parametrit
