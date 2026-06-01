@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.28" />
+  <meta name="app-version" content="4.52.29" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -4474,8 +4474,15 @@ function renderDashboard() {
         // Cal-slot näkyväksi dashboardilla
         loadStr = `+${slot.resolvedLoadKg} kg`;
         loadCls = "cal";
+      } else if (slot.role === "accessory" && typeof slot.resolvedLoadKg === "number") {
+        // OBS-035+037 jatko (F-1, 2026-05-31): same-liike-volyymi-apuliike → engine-resolvoitu
+        // kanoninen kuorma (kuten back-off 4456 / secondary 4467 / cal 4473). Pitää dashboard =
+        // Sykli-preview = live (~29), ei getMovementProgress (~65). Vain same-movement-volyymilla
+        // on resolvedLoadKg≠null (engine.js 15c-pass); eri liikkeen apuliikkeet (null) → alempi haara.
+        loadStr = `+${slot.resolvedLoadKg} kg`;
+        loadCls = deloadMode ? "deload" : "backoff";
       } else if (slot.role === "accessory" && slot.movementId) {
-        // v4.38.9: Accessory-kuorma haetaan state.movementProgressMap:istä
+        // v4.38.9: Eri liikkeen accessory-kuorma haetaan state.movementProgressMap:istä
         // (= getAllMovementProgress refresh:in yhteydessä). Sama logiikka kuin
         // workout-flow:ssa: suggestedLoadKg → lastLoadKg → null/BW.
         const progress = state.movementProgressMap?.get(slot.movementId);
