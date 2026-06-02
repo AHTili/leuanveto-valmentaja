@@ -4,7 +4,7 @@
 > Valmis handoff arkistoidaan → `docs/handoffs/HANDOFF_<id>.md`, ja tämä tiedosto nollataan tyhjäksi pohjaksi.
 > Auktoriteettijärjestys: ks. `CLAUDE.md` §7. Session-protokolla: ks. `CLAUDE.md` §8. Kurilista: `docs/SELKARANKA.md`.
 >
-> *Tila: M2 (OBS-022) — `AKTIIVINEN`. DRAFT-COWORK ratifioitu (sisä-blokki-intensifikaatio, mekanismi (i), velocity-agnostinen). Code formalisoi tämän ratifioidusta suunnasta + A1a-d-rakenteesta + A1-orientaatiolöydöksistä — verifioitu repon koodista (§7: repo voittaa). Confirm-then-fix-disipliini: A1 (read-only CONFIRM) ajetaan ENSIN, Akseli ratifioi + täyttää §4-käyrävalidoinnin, vasta sitten A2 (FIX).*
+> *Tila: M2 (OBS-022) — `AKTIIVINEN`, **A2b GATED behind K-A6D** (sekvenssi a ratifioitu 2026-06-02: K-A6D ensin → M2-ship sen jälkeen). Edennyt: A1 (CONFIRM, read-only) + A1-lisäfasetti (velocity-autoreg) RAPORTOITU; SHAPE-only design ratifioitu (§5 päätös 4); A2a Vx-laskumuoto SIGN-OFF'ATTU (§4). A2b (FIX, data.js Vx-laskumuoto) odottaa K-A6D-sulkua. Code formalisoi ratifioidusta suunnasta — verifioitu repon koodista (§7: repo voittaa).*
 
 ---
 
@@ -69,7 +69,16 @@ Haluttu lopputila (mekanismi §5, ratifioitu): intra-blokki-intensifikaatio on *
 
 > Pakollinen (`block-tuning`). **Code EI aloita A2b:tä ennen kuin tämä on täytetty.** §4 = templaatin per-blokki-INTENTTI ilmaistuna **Vx-laskumuotona** (kiinteä toisto + Vx laskee → `vReps` nousee), **EI staattisina kuormina**. Akselin sign-off A2a-dry-runin reps+Vx-trajektoreille per blokki (Foundation/Strength/Intensity/Peaking) = laatuportti. Huippuviikon valinta (kiinteä toisto V0 vs toiston pudotus) ratkaistaan per VL-cap.
 
-`<TÄYTETÄÄN A2a-sign-offin jälkeen: ratifioitu per-blokki reps+Vx Vx-laskumuoto + huippuviikon valinta.>`
+**Sign-off'attu A2a-muoto (2026-06-02): per-blokki reps+Vx Vx-laskumuoto.** β-aloitus (nostettu start-Vx → kevyt vk1 = sisäänajo); reprodusoi templaatin loadPct-ramppi-intentin (+4–6pp vReps/blokki). VL-cap (CLAUDE.md §2) sanelee huippuviikon: Foundation/Peaking = Vx-lasku; **Strength/Intensity = toiston pudotus** (Vx→V0 rikkoisi VL-cappia). Pääliikkeet (leuanveto/kyykky/dippi) identtiset.
+
+| Blokki | reps×Vx (loading vk1/2/3) | vReps-% | huippu-mekanismi |
+| --- | --- | --- | --- |
+| Foundation | 6V3 / 6V2 / 6V1 | 76,9 / 78,9 / 81,1 (+4,2pp) | Vx-lasku (V1) |
+| Strength | 4V3 / 4V2 / **3V1** | 81,1 / 83,3 / 88,2 (+7,1pp) | toiston pudotus (4→3) |
+| Intensity | 3V2 / 3V1 / **2V1** | 85,7 / 88,2 / 90,9 (+5,2pp) | toiston pudotus (3→2) |
+| Peaking (singlet) | 1V3 / 1V2 / 1V1 | 88,2 / 90,9 / 93,8 (+5,6pp) | Vx-lasku (V1); V0=max-single vain testi/opener |
+
+Deload-viikot (vk4/8/12/16) ENNALLAAN (scope-aita). **Per-liike realisoituminen:** kyykky/leuanveto = velocity-ankkuroitu e1RM × vReps (skaalautuu mittaukseen); dippi/apuliikkeet = staattinen e1RM × vReps (rakenne+RPE). VL-cap-↔-velocity-stop-rajapinta (K-A6D) tarkistettava A2b:ssä.
 
 ## 5. Taustapäätökset ja hylätyt vaihtoehdot
 
