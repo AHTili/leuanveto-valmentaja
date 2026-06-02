@@ -3748,12 +3748,18 @@ async function testSp2SlotLoadInvariant() {
   const primaryLoad = rec.targetExternalLoad;
   assert(typeof primaryLoad === "number" && primaryLoad > 0,
     "SP-2: primary targetExternalLoad on positiivinen numero", "got " + primaryLoad);
-  // Saman liikkeen ei-primary-slotit joilla engine-resolvoitu kuorma
-  const sameMovResolved = (rec.dayPlan?.slots || []).filter(s =>
-    s.role !== "primary" &&
-    s.role !== "calibration" && // F-2 (2026-05-31): cal/test-slotit pl. (lähellä-maksimi rekalibrointi)
-    s.defaultMovementName === primaryName &&
-    typeof s.resolvedLoadKg === "number");
+  // Saman liikkeen ei-primary-slotit joilla engine-resolvoitu kuorma.
+  // Intensiteetti-tietoinen (2026-06-02): raskaampi-by-design (top single/opener, < pään reps+Vx)
+  // EI kuulu invarianttiin — vain suunniteltu kevyemmäksi/yhtä raskaaksi (≥ pään reps+Vx). Cal pl.
+  const primMax = (primarySlot?.reps != null && primarySlot?.targetVx != null) ? primarySlot.reps + primarySlot.targetVx : null;
+  const sameMovResolved = (rec.dayPlan?.slots || []).filter(s => {
+    if (s.role === "primary" || s.role === "calibration") return false;
+    if (s.defaultMovementName !== primaryName) return false;
+    if (typeof s.resolvedLoadKg !== "number") return false;
+    const slotMax = (s.reps != null && s.targetVx != null) ? s.reps + s.targetVx : null;
+    const heavierByDesign = slotMax != null && primMax != null && slotMax < primMax;
+    return !heavierByDesign;
+  });
   // Non-vacuous: fixture tuottaa ≥1 resolvoidun saman-liike-slotin (back-off) — muuten fixture rikki
   assert(sameMovResolved.length >= 1,
     "SP-2: fixture tuottaa ≥1 resolvoidun saman-liike-slotin (non-vacuous)",

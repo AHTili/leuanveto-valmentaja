@@ -275,14 +275,18 @@ function auditSp2SlotLoad(trace) {
         ? primary.resolvedLoadKg
         : null;
   if (primaryName == null || primaryLoad == null) return null;
-  const violators = slots.filter(
-    (s) =>
-      s.role !== "primary" &&
-      s.role !== "calibration" && // F-2 (2026-05-31): cal/test-slotit tarkoituksella lähellä-maksimi (rekalibrointi) — ei volyymi/back-off
-      (s.movementName || s.defaultMovementName) === primaryName &&
-      typeof s.resolvedLoadKg === "number" &&
-      s.resolvedLoadKg > primaryLoad + 0.5,
-  );
+  // Intensiteetti-tietoinen (2026-06-02): raskaampi-by-design (top single / opener — VÄHEMMÄN
+  // efektiivisiä toistoja kuin pää) EI ole SP-2-rikko. Vain suunniteltu kevyemmäksi/yhtä raskaaksi
+  // (slot.reps+Vx ≥ pään reps+Vx) joka resolvoituu > pää = aito inflaatio. Cal pl. (belt-and-suspenders).
+  const primMax = (primary.reps != null && primary.targetVx != null) ? primary.reps + primary.targetVx : null;
+  const violators = slots.filter((s) => {
+    if (s.role === "primary" || s.role === "calibration") return false;
+    if ((s.movementName || s.defaultMovementName) !== primaryName) return false;
+    if (typeof s.resolvedLoadKg !== "number" || s.resolvedLoadKg <= primaryLoad + 0.5) return false;
+    const slotMax = (s.reps != null && s.targetVx != null) ? s.reps + s.targetVx : null;
+    const heavierByDesign = slotMax != null && primMax != null && slotMax < primMax;
+    return !heavierByDesign;
+  });
   if (violators.length === 0) return null;
   const worst = violators.reduce((a, b) => (b.resolvedLoadKg > a.resolvedLoadKg ? b : a));
   return flag(
