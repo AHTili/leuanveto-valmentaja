@@ -4896,6 +4896,11 @@ async function recommend(options = {}) {
         slot.resolvedLoadKg = roundToHalf(Math.max(0, slotIsBarbellA
           ? sessionEffectiveE1RM * slotPctForResolveA
           : sessionEffectiveE1RM * slotPctForResolveA - bodyweightKg));
+        // F-2 (2026-05-31): same-liike back-off ≤ pään (suppressoitu) target — regain/deload.
+        // targetExternalLoad on jo PROGRESSION_TARGET-jälkeinen (4687) → suppressoitu pää-kuorma.
+        if (typeof targetExternalLoad === "number" && slot.resolvedLoadKg > targetExternalLoad) {
+          slot.resolvedLoadKg = roundToHalf(targetExternalLoad);
+        }
         trace("SLOT_LOAD_RESOLVED",
           { slotRole: slot.role, slotMovement: slot.defaultMovementName },
           { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct, pctForResolve: slotPctForResolveA, resolveSource: slotResolveSourceA, tier: slotTierA, sessionE1RM: sessionEffectiveE1RM.toFixed(1), isBarbell: slotIsBarbellA },
