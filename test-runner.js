@@ -3751,6 +3751,7 @@ async function testSp2SlotLoadInvariant() {
   // Saman liikkeen ei-primary-slotit joilla engine-resolvoitu kuorma
   const sameMovResolved = (rec.dayPlan?.slots || []).filter(s =>
     s.role !== "primary" &&
+    s.role !== "calibration" && // F-2 (2026-05-31): cal/test-slotit pl. (lähellä-maksimi rekalibrointi)
     s.defaultMovementName === primaryName &&
     typeof s.resolvedLoadKg === "number");
   // Non-vacuous: fixture tuottaa ≥1 resolvoidun saman-liike-slotin (back-off) — muuten fixture rikki

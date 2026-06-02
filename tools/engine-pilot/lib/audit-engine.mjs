@@ -256,6 +256,51 @@ function auditK3(trace) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// OBS-CORE SP-2 (2026-05-30): slot-load-johdonmukaisuus.
+// Saman liikkeen ei-primary-slotti (back-off/secondary) jonka engine resolvoi
+// kuorman (resolvedLoadKg) ei saa olla raskaampi kuin primary-slotin kuorma.
+// Olisi napannut OBS-CORE-bugin: sessionEffectiveE1RM = target/loadPct inflatoi
+// e1RM:n (193.6 vs tosi 181.3) → back-off 64 > pää 62, apuliike 73,5 > pää.
+// 0.5 kg toleranssi pyöristykselle.
+// ──────────────────────────────────────────────────────────────
+function auditSp2SlotLoad(trace) {
+  const slots = trace.output?.slots || [];
+  const primary = slots.find((s) => s.role === "primary");
+  if (!primary) return null;
+  const primaryName = primary.movementName || primary.defaultMovementName || null;
+  const primaryLoad =
+    typeof trace.output?.targetExternalLoad === "number"
+      ? trace.output.targetExternalLoad
+      : typeof primary.resolvedLoadKg === "number"
+        ? primary.resolvedLoadKg
+        : null;
+  if (primaryName == null || primaryLoad == null) return null;
+  const violators = slots.filter(
+    (s) =>
+      s.role !== "primary" &&
+      s.role !== "calibration" && // F-2 (2026-05-31): cal/test-slotit tarkoituksella lähellä-maksimi (rekalibrointi) — ei volyymi/back-off
+      (s.movementName || s.defaultMovementName) === primaryName &&
+      typeof s.resolvedLoadKg === "number" &&
+      s.resolvedLoadKg > primaryLoad + 0.5,
+  );
+  if (violators.length === 0) return null;
+  const worst = violators.reduce((a, b) => (b.resolvedLoadKg > a.resolvedLoadKg ? b : a));
+  return flag(
+    "SP-2",
+    "🐛 ERROR",
+    `Saman liikkeen ei-primary-slotti raskaampi kuin pää: ${worst.role} ${primaryName} ${worst.resolvedLoadKg} kg > pää ${primaryLoad} kg. ` +
+      `Slot-resolveri-inflaatio (vrt. OBS-CORE: sessionEffectiveE1RM = target/loadPct).`,
+    {
+      primaryName,
+      primaryLoad,
+      violatorRole: worst.role,
+      violatorLoad: worst.resolvedLoadKg,
+      violatorCount: violators.length,
+    },
+  );
+}
+
+// ──────────────────────────────────────────────────────────────
 // Sääntö: deltaPct hard-clamp (engine.js:3733 maxDelta default 0.25)
 // + heuristinen progression-range per tier (Latella 2020)
 // ──────────────────────────────────────────────────────────────
@@ -520,6 +565,7 @@ export function auditTrace(trace, sessionIndex = 0, allTracesForProfile = [], pr
     auditK1(trace),
     auditK2(trace),
     auditK3(trace),
+    auditSp2SlotLoad(trace),
     auditDeltaPctClamp(trace, profile),
     auditE1RMContinuity(trace, sessionIndex, allTracesForProfile),
     auditFailureLockout(trace),
