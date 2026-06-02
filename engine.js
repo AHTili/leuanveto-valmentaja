@@ -5344,6 +5344,34 @@ async function recommend(options = {}) {
     }
   }
 
+  // ── K-A6D (VELOCITY_VX_RECONCILE, 2026-06-02): velocityStop johdetaan liike-spesifistä RTF
+  // velocityAtTargetRir:stä (= odotettu velocity targetVx-varalla) KUN liikkeen RTF luotettava
+  // (status "reliable" — sama promootio-portti kuin VBT-autoregulaatiolla); muuten VAIENNETTU
+  // (null, päätös i: epäluotettava mittaus ei saa ajaa UI-varoitusta). Korvaa staattisen data.js-
+  // velocityStopin → engine single source. velocityStopSource="rtf-reconciled" merkkaa ettei kyse
+  // ole staattisesta arvauksesta (K-A6D-detektori ohittaa = AITO invariantti, ei mute). EI kosketa
+  // computeCfgDrift-primer-signaalia (eri mekanismi, aktiivinen) eikä VL-cappia (resolveVlCap).
+  if (dayPlan && dayPlan.slots) {
+    const _rtfCacheVS = new Map();
+    for (const _slot of dayPlan.slots) {
+      let _vStop = null, _vStopSrc = null;
+      if (typeof _slot.targetVx === "number" && _slot.defaultMovementName) {
+        const _movRec = allMovementsForTier.find(m => m.name === _slot.defaultMovementName);
+        const _movId = _movRec ? _movRec.movementId : null;
+        if (_movId) {
+          if (!_rtfCacheVS.has(_movId)) _rtfCacheVS.set(_movId, computeRtfVelocityModel(allSets, _movId));
+          const _rtf = _rtfCacheVS.get(_movId);
+          if (_rtf && _rtf.status === "reliable" && typeof _rtf.slope === "number" && _rtf.slope > 0 && typeof _rtf.intercept === "number") {
+            const _v = _rtf.intercept + _rtf.slope * _slot.targetVx;
+            if (_v > 0 && _v < 2) { _vStop = Math.round(_v * 100) / 100; _vStopSrc = "rtf-reconciled"; }
+          }
+        }
+      }
+      _slot.velocityStop = _vStop;
+      _slot.velocityStopSource = _vStopSrc;
+    }
+  }
+
   // 16. Enrich dayPlan with variant names (if not already assigned from mesocycle)
   if (dayPlan && dayPlan.slots) {
     const variantMap = VARIANT_DAY_TYPE_MAP[dayType] || VARIANT_DAY_TYPE_MAP.heavy;
