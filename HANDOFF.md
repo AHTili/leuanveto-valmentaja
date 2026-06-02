@@ -27,7 +27,7 @@ Saman liikkeen **TAVOITE-intensiteetti nousee (volyymi laskee) viikosta viikkoon
 
 A1-orientaation (2026-06-02, read-only) toteama nykytila: intra-blokki on **litteä** — kanoninen %-lähde on `vRepsToExpectedPct(reps+Vx)` (LOAD_PCT_RESOLVED, tier 1/2/3), mutta `reps+Vx` ei muutu blokin sisällä → TAVOITE-% pysyy vakiona (esim. Intensity vk9–11 = 88,2 % flat, FINAL 71/71/71 kg). Templaatin `loadPct`-ramppi (esim. 0,85→0,87→0,90) on **dead code** (vReps ohittaa loadPct:n). `computeProgressionTarget` on blokki-vaihe-sokea (ankkuri-suhteellinen Helms-creep). Display: @X% stripattu tier 1/2/3:lta → ei näkyvää intensifikaatiota.
 
-Haluttu lopputila (EI ratkaisua tässä — mekanismi §5): intra-blokki-intensiteetti nousee **yhdestä kanonisesta %-polusta** ilman kilpailevaa signaalia, ja se näkyy käyttäjälle rehellisesti.
+Haluttu lopputila (mekanismi §5, ratifioitu): intra-blokki-intensifikaatio on **SHAPE-only** — vain `reps+Vx` (→ `vReps`) ramppaa blokin sisällä; **ei lisätä velocity-kytkentää**. Olemassa oleva autoregulaatio (e1RM-ankkuri = VBT-promootio + primer-drift · regainMult/vxAdj · VBT-cap) toimittaa **anchor/magnitude/peak** automaattisesti per liike: luotettavilla liikkeillä (kyykky/leuanveto) absoluuttinen kuorma skaalautuu velocityyn, ei-VBT (dippi/apuliikkeet) jää rakenne+RPE-ankkuriin. `planTarget = currentE1RMSystem × vReps(reps+Vx)` — ramppi = velocity-agnostinen MUOTO, e1RM = velocity-ankkuroitu SKAALA. Ramppi näkyy käyttäjälle rehellisesti (b-display).
 
 ## 2. Acceptance criteria
 
@@ -67,9 +67,9 @@ Haluttu lopputila (EI ratkaisua tässä — mekanismi §5): intra-blokki-intensi
 
 ## 4. Atletti-vastaukset critical questions -kysymyksiin
 
-> Pakollinen (`block-tuning`). **Code EI aloita A2:ta ennen kuin tämä on täytetty.** Täytetään A1c:n tuottamasta käyräenumeraatiosta: Akseli validoi mitkä intra-blokki-intensiteettikäyrät (reps+Vx- / loadPct-rampit per blokki × liike) ovat oikein ja mitkä korjataan mekanismi (i):n mukaisiksi.
+> Pakollinen (`block-tuning`). **Code EI aloita A2b:tä ennen kuin tämä on täytetty.** §4 = templaatin per-blokki-INTENTTI ilmaistuna **Vx-laskumuotona** (kiinteä toisto + Vx laskee → `vReps` nousee), **EI staattisina kuormina**. Akselin sign-off A2a-dry-runin reps+Vx-trajektoreille per blokki (Foundation/Strength/Intensity/Peaking) = laatuportti. Huippuviikon valinta (kiinteä toisto V0 vs toiston pudotus) ratkaistaan per VL-cap.
 
-`<TÄYTETÄÄN A1c-raportin jälkeen — Akseli ratifioi käyrät.>`
+`<TÄYTETÄÄN A2a-sign-offin jälkeen: ratifioitu per-blokki reps+Vx Vx-laskumuoto + huippuviikon valinta.>`
 
 ## 5. Taustapäätökset ja hylätyt vaihtoehdot
 
@@ -77,6 +77,7 @@ Haluttu lopputila (EI ratkaisua tässä — mekanismi §5): intra-blokki-intensi
    - **Hylätty (ii):** loadPct takaisin intensiteettisignaaliksi vReps:n rinnalle → loisi `loadPct ↔ vReps`-kilpailun = F-2-luokan fragmentaatio. **Hylätty (iii):** blokki-vaihe-termi `computeProgressionTarget`:iin → sotkisi autoregulaatio-creepin ja periodisaation; rikkoo scope-aitaa (ei kosketa creep-logiikkaa).
 2. **Velocity-agnostinen (kirkastettu):** intra-blokki-kiipeäminen on PRESKRIPTIO (staattinen reps+Vx-haku), EI mitattu nopeus. Perustelu: dippi + apuliikkeet eivät mittaa luotettavasti (A1b vahvistaa) — kiipeäminen ei saa nojata epäluotettavaan signaaliin. Within-session VBT-autoregulaatio (velocity-stop, Vx-bias) säilyy erillisenä kerroksena, M2:n ulkopuolella.
 3. **Yksi-lähteisyys:** ramppi YHTEEN kanoniseen %-polkuun (vReps) — value-resolution-auditin (F-1…F-4) oppi: ei toista divergenttiä signaalia.
+4. **SHAPE-only + autoreg ratsastaa (A1-lisäfasetti ratifioitu 2026-06-02):** mekanismi (i) ramppaa VAIN reps+Vx-MUODON (vReps-trajektori). **EI lisätä velocity-kytkentää** — olemassa oleva e1RM-ankkuriketju (cal→primer-drift→plan-based→VBT-cap→floor) + `computeProgressionTarget` regainMult/vxAdj **ratsastaa rampilla** ja toimittaa anchor/magnitude/peak. `planTarget = currentE1RMSystem × vReps(reps+Vx)`: ramppi = velocity-agnostinen MUOTO (toimii myös dipille), e1RM = velocity-ankkuroitu SKAALA luotettavilla liikkeillä. **Per-liike VBT-vs-rakenne+RPE tulee e1RM-ankkurista ilmaiseksi** — ei eksplisiittistä per-liike-haaraa M2:ssa. VL-cap (CLAUDE.md §2) rajoittaa Vx-laskun syvyyttä per blokki → korkeissa blokeissa (Intensity, Vx jo V1) intensifikaatio = toiston pudotus, ei Vx→V0 (rikkoisi VL-cappia).
 
 ## 6. Avoimet kysymykset
 
