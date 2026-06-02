@@ -4603,6 +4603,14 @@ async function recommend(options = {}) {
   }
 
   let targetExternalLoad;
+  // F-2 intensiteetti-tietoinen korjaus (2026-06-02): same-liike non-primary clampataan ≤ pää VAIN
+  // jos slot suunniteltu kevyemmäksi/yhtä raskaaksi. Mittari = EFEKTIIVISET TOISTOT (reps+Vx):
+  // enemmän toistoja = kevyempi (volyymi/back-off) → clamp; vähemmän = raskaampi by-design
+  // (top single / opener) → EI clampata. Reps-pohjainen (ei pct) → robusti kaikilla resoluutio-
+  // poluilla + bittitarkka detektorin/testin kanssa (sama heavierByDesign). DESIGN-vertailu (pään
+  // reps+Vx, ei suppressoitua kuormaa) → back-off > suppressed pää deloadissa → yhä clampataan.
+  const primaryEffectiveReps = (primarySlotMeta && primarySlotMeta.reps != null && primarySlotMeta.targetVx != null)
+    ? primarySlotMeta.reps + primarySlotMeta.targetVx : null;
 
   // v4.22 P2: Relative-loading -polku. Kun slot määrittelee loadPct (% nykyisestä
   // ext e1RM:stä), engine kunnioittaa sitä suoraan. Tämä on ohjelma-tekijän
@@ -4896,9 +4904,15 @@ async function recommend(options = {}) {
         slot.resolvedLoadKg = roundToHalf(Math.max(0, slotIsBarbellA
           ? sessionEffectiveE1RM * slotPctForResolveA
           : sessionEffectiveE1RM * slotPctForResolveA - bodyweightKg));
-        // F-2 (2026-05-31): same-liike back-off ≤ pään (suppressoitu) target — regain/deload.
-        // targetExternalLoad on jo PROGRESSION_TARGET-jälkeinen (4687) → suppressoitu pää-kuorma.
-        if (typeof targetExternalLoad === "number" && slot.resolvedLoadKg > targetExternalLoad) {
+        // F-2 (2026-05-31; intensiteetti-tietoinen korjaus 2026-06-02): same-liike non-primary
+        // clampataan ≤ pään (suppressoitu) target VAIN jos suunniteltu kevyemmäksi/yhtä raskaaksi
+        // (efektiiviset toistot slot.reps+Vx ≥ pään reps+Vx). Raskaampi by-design (top single/opener,
+        // VÄHEMMÄN toistoja) → EI clampata. Reps-vertailu = pään DESIGN (ei suppressoitua) → back-off
+        // designed-lighter > suppressed pää deloadissa → yhä clampataan. Sama heavierByDesign kuin detektori.
+        if (typeof targetExternalLoad === "number"
+            && slot.resolvedLoadKg > targetExternalLoad
+            && !(slot.reps != null && slot.targetVx != null && primaryEffectiveReps !== null
+                 && (slot.reps + slot.targetVx) < primaryEffectiveReps)) {
           slot.resolvedLoadKg = roundToHalf(targetExternalLoad);
         }
         trace("SLOT_LOAD_RESOLVED",
@@ -5062,10 +5076,14 @@ async function recommend(options = {}) {
         }
 
         slot.resolvedLoadKg = baseLoad;
-        // F-2 (2026-05-31): jos cross-ref-slotti on poikkeuksellisesti same-liike, ≤ pää.
-        // (Branch B on yleensä eri liike → guard ei laukea; defensiivinen täydellisyyden vuoksi.)
+        // F-2 (2026-05-31; intensiteetti-tietoinen korjaus 2026-06-02): jos cross-ref-slotti on
+        // poikkeuksellisesti same-liike JA suunniteltu kevyemmäksi/yhtä raskaaksi (efektiiviset toistot
+        // ≥ pää), ≤ pää. (Branch B yleensä eri liike → guard ei laukea; defensiivinen.)
         if (primaryMovementName && slot.defaultMovementName === primaryMovementName
-            && typeof targetExternalLoad === "number" && slot.resolvedLoadKg > targetExternalLoad) {
+            && typeof targetExternalLoad === "number"
+            && slot.resolvedLoadKg > targetExternalLoad
+            && !(slot.reps != null && slot.targetVx != null && primaryEffectiveReps !== null
+                 && (slot.reps + slot.targetVx) < primaryEffectiveReps)) {
           slot.resolvedLoadKg = roundToHalf(targetExternalLoad);
         }
         trace("SLOT_LOAD_RESOLVED_CROSSREF",
@@ -5309,8 +5327,13 @@ async function recommend(options = {}) {
         slot.resolvedLoadKg = roundToHalf(Math.max(0, slotIsBarbellAcc
           ? currentE1RMSystem * slot.loadPct
           : currentE1RMSystem * slot.loadPct - bodyweightKg));
-        // F-2 (2026-05-31): same-liike volyymi-apuliike ≤ pään (suppressoitu) target — regain/deload.
-        if (typeof targetExternalLoad === "number" && slot.resolvedLoadKg > targetExternalLoad) {
+        // F-2 (2026-05-31; intensiteetti-tietoinen korjaus 2026-06-02): volyymi-apuliike ≤ pään target
+        // VAIN jos suunniteltu kevyemmäksi/yhtä raskaaksi (efektiiviset toistot ≥ pää). Raskaampi
+        // by-design → EI clampata. Sama reps-pohjainen heavierByDesign kuin detektori/testi/Branch A.
+        if (typeof targetExternalLoad === "number"
+            && slot.resolvedLoadKg > targetExternalLoad
+            && !(slot.reps != null && slot.targetVx != null && primaryEffectiveReps !== null
+                 && (slot.reps + slot.targetVx) < primaryEffectiveReps)) {
           slot.resolvedLoadKg = roundToHalf(targetExternalLoad);
         }
         trace("SLOT_LOAD_RESOLVED_ACCESSORY",
