@@ -153,3 +153,25 @@ Tämä osio korvaa aiemman staattisen "Vaiheiden 1–8 tila" -taulukon. **Ajanta
 
 1. Täytä `HANDOFF.md`:n osio 7 "Session-tulos": muuttuneet tiedostot, tehdyt päätökset, mikä jäi auki, seuraava askel.
 2. Jos tehtävä on valmis → arkistoi `HANDOFF.md` polkuun `docs/handoffs/HANDOFF_<id>.md` ja nollaa repo-juuren `HANDOFF.md` tyhjäksi pohjaksi. Jos koko `ROADMAP.md`-vaihe sulkeutui → siirrä NYT-merkki seuraavaan vaiheeseen.
+
+---
+
+## 9. EQUIP PROSESSI — M2-operointitapa (thin-harness, P-010)
+
+> M2/OBS-022 + K-A6D-kierroksien opit destilloituna kierroskuriksi. Tämä ei korvaa Selkärankaa (`docs/SELKARANKA.md`, 1–9) vaan täydentää sitä substantiaalisissa SHAPE/design/code-muutoksissa. Banaaleihin patch-fix:eihin näitä ei tarvitse soveltaa.
+
+1. **DESIGN ≠ mekaaninen.** Avointa designia EI aja /goal-kierroksena. `/goal` vain tarkistettavalle ehdolle (acceptance criterion, mittari, regressio-portti). Designkysymys → Plan-agentti tai Cowork-keskustelu ratifiointiin ennen toteutusta.
+
+2. **Plan mode ENNEN toteutusta.** Päätä what/how Plan-agentilla (tai EnterPlanMode-tilassa) ennen edit-vaihetta — estää **runtime-premissi-reversion** (= matkalla toteutukseen premissi muuttuu sub-implisiittisesti, ja A1-juurianalyysi käännetään takaperin).
+
+3. **A1 read-only runtime-first → STOP → A2.** Diagnoosivaihe on read-only ja ratifioidaan STOPilla ennen A2-FIXiä. ÄLÄ niputa A1+A2 samaan kierrokseen — A1:n raportoitu juuri on syöte Akselin ratifiointiin, ei oletus jonka päälle rakentaa fixiä.
+
+4. **Kuormamuutos → LOAD-DIFF-SWEEP push-ehto.** Jos muutos voi vaikuttaa `recommend()`-kuormaan, pre-vs-post-vertailu (sama profiili, sama seed) on push-ehto. F-2-oppi: **yksisuuntainen invariantti on sokea yli-korjaukselle** — vain numeerinen diff paljastaa. Jos rakenteellinen analyysi todistaa kuorma-neutraalin (esim. signaali ei ole recommend()-input), tämä raportoidaan eksplisiittisesti ja diff-vertailu voi olla rakenteellinen.
+
+5. **Checkpoint ennen design-pivottia.** Jos kesken kierroksen avautuu uusi designkysymys (premissi muuttuu, scope laajenee, A1-juuri ei pidäkään) → STOP, raportoi, kysy ennen pivot:ia. Älä ratko sitä autonomisesti samassa kierroksessa.
+
+6. **Effort-jako.** Design (acceptance criteria, premissi, scope, A1-juurianalyysi) → Opus high / xhigh. Mekaaninen toteutus (Edit/Write, runtime-vakio-vaihtoja) → Sonnet. Tämä on kustannus- ja tarkkuus-optimointi, ei statushierarkiaa.
+
+7. **Agent-arkkitehtuuri ei ylirakennettu.** Yksi muutos / yksi liittyvä tiedostosarja → solo-Agent (Plan/Explore tarvittaessa). Useita riippumattomia tiedostosarjoja samassa kierroksessa → Agent Teams `--max-budget`-cap:llä. ÄLÄ käytä Teams:ia banaalille edit-pinolle — overhead ylittää hyödyn.
+
+8. **STOP ennen pushia AINA.** Push = Akselin ratifiointi rakenteelliselle/irreversiibelille muutokselle (Selkäranka kohta 8). CC ei push:aa — vaikka kaikki vihreää.
