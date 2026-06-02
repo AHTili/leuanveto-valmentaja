@@ -728,8 +728,9 @@
 //           käyttää samaa värimaailmaa (#0b1220 / #e8eefc) kuin pää-app.
 //           Ei sekoita arjen käyttöä — esittely on omassa polussaan ja
 //           kortti on Asetukset-näkymän loppupuolella, Diagnostiikan EDELLÄ.
-const APP_VERSION = "4.52.30";
+const APP_VERSION = "4.52.31";
 
+// v4.52.30 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.29 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.28 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.27 oli aiempi APP_VERSION tässä kohdassa.
