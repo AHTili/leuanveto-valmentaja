@@ -5303,6 +5303,10 @@ async function recommend(options = {}) {
         slot.resolvedLoadKg = roundToHalf(Math.max(0, slotIsBarbellAcc
           ? currentE1RMSystem * slot.loadPct
           : currentE1RMSystem * slot.loadPct - bodyweightKg));
+        // F-2 (2026-05-31): same-liike volyymi-apuliike ≤ pään (suppressoitu) target — regain/deload.
+        if (typeof targetExternalLoad === "number" && slot.resolvedLoadKg > targetExternalLoad) {
+          slot.resolvedLoadKg = roundToHalf(targetExternalLoad);
+        }
         trace("SLOT_LOAD_RESOLVED_ACCESSORY",
           { slotRole: slot.role, slotMovement: slot.defaultMovementName },
           { resolvedLoadKg: slot.resolvedLoadKg, loadPct: slot.loadPct, e1RMSystem: currentE1RMSystem.toFixed(1), isBarbell: slotIsBarbellAcc },
