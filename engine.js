@@ -5062,6 +5062,12 @@ async function recommend(options = {}) {
         }
 
         slot.resolvedLoadKg = baseLoad;
+        // F-2 (2026-05-31): jos cross-ref-slotti on poikkeuksellisesti same-liike, ≤ pää.
+        // (Branch B on yleensä eri liike → guard ei laukea; defensiivinen täydellisyyden vuoksi.)
+        if (primaryMovementName && slot.defaultMovementName === primaryMovementName
+            && typeof targetExternalLoad === "number" && slot.resolvedLoadKg > targetExternalLoad) {
+          slot.resolvedLoadKg = roundToHalf(targetExternalLoad);
+        }
         trace("SLOT_LOAD_RESOLVED_CROSSREF",
           { slotRole: slot.role, slotMovement: slot.defaultMovementName,
             referenceMovement: slot.loadPctReferenceMovementName },
