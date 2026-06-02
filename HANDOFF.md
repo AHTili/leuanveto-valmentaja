@@ -65,13 +65,13 @@ velocity-stop ↔ Vx-tavoite -ristiriita pois: `slot.velocityStop` **reconciloit
 
 ---
 
-## 7. Session-tulos  *(Claude Code täyttää session lopussa)*
+## 7. Session-tulos
 
 | Kenttä | Arvo |
 | --- | --- |
-| Sessio päättyi | `<pvm>` |
-| Muuttuneet tiedostot | `<lista>` |
-| Tehdyt päätökset | `<lista>` |
-| Validointi | `<Stop hook · selain-testit · pilot · LOAD-DIFF-SWEEP · K-A6D 70→0>` |
-| Jäi auki | `<lista tai "—">` |
-| Seuraava askel | `<M2 un-gate (restore f53428b) tai R-vaihe>` |
+| Sessio päättyi | 2026-06-02 (jatkettu Code-sessio 2: kontekstin täyttymisen jälkeen) |
+| Muuttuneet tiedostot | `engine.js` (32c3dc7), `tools/engine-pilot/lib/audit-engine.mjs` + `trace-capture.mjs` (d2f8d0f), `data.js` (2c2d9ba), `sw.js` + `index.html` (958f095). HANDOFF.md §7 (tämä commit). |
+| Tehdyt päätökset | **Juuri (A1, ratifioitu):** velocityStop = absoluuttinen kalibroimaton staattinen kynnys data.js:n styleissä/sloteissa — ei liike-spesifi RTF-johdannainen. UI-varoitus (index.html:13466) saattoi laueta vaikka targetVx≥2 (Vx-mittarin mukaan reilu vara) → 70 K-A6D-flagia pilotissa. **Fix:** VELOCITY_VX_RECONCILE — recommend()-slot-finalisointi laskee velocityStop = RTF.intercept + RTF.slope × targetVx KUN liikkeen RTF "reliable" (r² ≥ 0,85, sama promootio-portti kuin VBT-autoregulaatiolla); muuten null (päätös i, suppress-when-unreliable). Per-liike RTF-cache. velocityStopSource="rtf-reconciled" merkitsee reconciled-tapauksen. Detektori (audit-engine.mjs:892) ohittaa rtf-reconciled-slotit → AITO invariantti (laukeaa yhä jos staattinen/reconciloimaton velocityStop + targetVx≥2 ilmenisi, mutta engine-korjauksen jälkeen sellaista ei synny). data.js-vestigiaalinen velocityStop poistettu → engine RTF-gated single source (value-resolution-audit F-oppi: ei dead divergenttiä signaalia). |
+| Validointi | Stop hook: smoke + pilot regressio passaa per-commit. Pilot Akselin profiili: 64/64 päivää, 0 virhettä, **K-A6D 70→0** ✅ (K_A1=10, INVARIANT_VIOLATION=4 ennallaan). **LOAD-DIFF-SWEEP=0** rakenteellisesti: engine ylikirjoittaa kaikki slot.velocityStop:t recommend()-vaiheessa → data.js-poisto on no-op käyttäytymiselle; velocityStop ei recommend()-kuorma-input (vaikuttaa vain UI-varoitukseen index.html:13466 + live-velocity→Vx-kirjaus→vxAdj-ketjuun). `node --check` data.js OK. Selaintestit ennallaan: UI-logiikka index.html:13466 (`velocity < slotVelocityStop`) ei muutettu, vain syöte muuttuu engineissä RTF-gated:ksi/null:ksi. APP_VERSION 4.52.32→4.52.33 sync (sw.js + meta + _syRenderAppVersion). |
+| Jäi auki | — (K-A6D 4/4 shipattu; push-portti odottaa Akselin ratifiointia) |
+| Seuraava askel | **STOP push-portille — Akseli ratifioi.** Push → M2 un-gate (`git show f53428b:HANDOFF.md > HANDOFF.md` palauttaa M2/OBS-022 -aktiivisen handoffin). |
