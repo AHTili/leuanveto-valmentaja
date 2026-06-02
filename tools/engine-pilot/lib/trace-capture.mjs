@@ -16,6 +16,7 @@ export function captureTrace({ profileId, scenarioId, weekNum, dayOfWeek, dateIS
     loadPct: s.loadPct ?? null,
     resolvedLoadKg: s.resolvedLoadKg ?? null,
     velocityStop: s.velocityStop ?? null,
+    velocityStopSource: s.velocityStopSource ?? null, // K-A6D: "rtf-reconciled" → detektori ohittaa (ei konflikti)
     suggestedLoadKg: s.suggestedLoadKg ?? null,
     warmupSets: s.warmupSets ?? null, // K1: tarkistetaan onko skeleton olemassa
     note: s.note ?? null,

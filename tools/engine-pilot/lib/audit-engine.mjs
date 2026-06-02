@@ -901,6 +901,11 @@ export function auditInvariants(trace, profile = null) {
   const slotsForA6D = trace.output?.slots || [];
   for (const slot of slotsForA6D) {
     if (typeof slot.velocityStop !== "number" || slot.velocityStop <= 0) continue;
+    // K-A6D-korjaus (VELOCITY_VX_RECONCILE, 2026-06-02): RTF-reconciled velocityStop
+    // (= velocityAtTargetRir) laukeaa TÄSMÄLLEEN targetVx-varalla → ei ennenaikainen → ei
+    // konflikti. Ohita. AITO invariantti, EI mute: staattinen/reconciloimaton velocityStop
+    // + targetVx≥2 laukeaisi yhä (engine-korjauksen jälkeen sellaista ei enää synny).
+    if (slot.velocityStopSource === "rtf-reconciled") continue;
     if (typeof slot.targetVx !== "number") continue;
     if (slot.targetVx < 2) continue;
     flags.push(
