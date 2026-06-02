@@ -19,7 +19,7 @@
 
 **Sääntö (uusille slot-kuorma-/e1RM-render-poluille):** lue VAIN (a) recommend() `resolvedLoadKg`/`targetExternalLoad` (live + dashboard) tai (b) `computeMovementE1RMBest` (UI-e1RM). `getMovementProgress.suggestedLoadKg` sallittu VAIN eri-liike-apuliikkeille (movement ≠ päivän primary).
 
-**Koneellinen lukko (regressio-vartija):** `test-runner.js` → `testKotiEqualsLiveAccessory` (same-liike-apuliike `resolvedLoadKg` = kanoninen e1RM × loadPct = preview) + `testSp2SlotLoadInvariant` (back-off ≤ pää). Nämä laukeavat jos store-arvo vuotaa näyttöön/kuormaan (F-1-luokka).
+**Koneellinen lukko (regressio-vartija):** `test-runner.js` → `testKotiEqualsLiveAccessory` (same-liike-apuliike `resolvedLoadKg` = kanoninen e1RM × loadPct = preview) + `testSp2SlotLoadInvariant` (same-liike non-primary ≤ pää, **intensiteetti-tietoinen**: vain designed-lighter/yhtä-raskaat = efektiiviset toistot reps+Vx ≥ pää; top single/opener raskaampi by-design pl.) + `engine-pilot` → `auditSp2SlotLoad` (sama reps-pohjainen ehto). Nämä laukeavat jos store-arvo vuotaa näyttöön/kuormaan (F-1-luokka) tai designed-lighter slotti inflatoituu > pää (F-2-luokka).
 
 ---
 
@@ -27,29 +27,28 @@
 
 | Kategoria | Totuuslähde (tavoite) | Suljettu (tämä arc) | Avoin | By-design / hyväksytty |
 | --- | --- | --- | --- | --- |
-| **e1RM** | `currentE1RMSystem` (recommend, kanoninen ketju cal→primer→plan→VBT-cap→floor) + `computeMovementE1RMBest` (UI) | ROOT-A: `sessionEffectiveE1RM = currentE1RMSystem` (back-off/secondary) | **F-3** persistenssi-storejen hajonta (MovementProgress vs movementCfg vs peakingConfig) | Epley-Vara-kaava (§e1rm 1-3) yhtenäinen; UI-näkymät (Edistyminen/Liikepankki/Trendit) käyttävät kaikki `computeMovementE1RMBest` |
-| **Kuorma** | recommend() `resolvedLoadKg` / `targetExternalLoad` (kanoninen e1RM × pct) | ROOT-A (back-off) · OBS-035+037 (same-liike-volyymi-apuliike workout-flow + Sykli) | **F-1** Koti-dashboard-apuliike (4477) · **F-2** rate-limit×back-off · **F-4** variantLoadModifier-epäsymmetria | seed/legacy-fallbackit (ei e1RM-historiaa) |
+| **e1RM** | `currentE1RMSystem` (recommend, kanoninen ketju cal→primer→plan→VBT-cap→floor) + `computeMovementE1RMBest` (UI) | ROOT-A: `sessionEffectiveE1RM = currentE1RMSystem` (back-off/secondary) · **F-3** store-segregaatio + invariantti §0 | — | Epley-Vara-kaava (§e1rm 1-3) yhtenäinen; UI-näkymät (Edistyminen/Liikepankki/Trendit) käyttävät kaikki `computeMovementE1RMBest` |
+| **Kuorma** | recommend() `resolvedLoadKg` / `targetExternalLoad` (kanoninen e1RM × pct) | ROOT-A (back-off) · OBS-035+037 (same-liike-volyymi-apuliike workout-flow + Sykli) · **F-1**+**F-4** (F-4-unify 0caf0a7 → dashboard=live) · **F-2** intensiteetti-tietoinen clamp (4.52.32) | — | seed/legacy-fallbackit (ei e1RM-historiaa) |
 | **Completion** | `session.endedAt` (persistoitu) | OBS-026/028 (endedAt-pohjainen done) · OBS-027-A2 (planSourceDateISO-attribuutio) | — | `set.completed` transient (save filtteröi) vs persistoitu presence-check — tarkoituksellinen; viikko-done = vk-numero |
-| **Preview** | recommend() live (= workout-flow) | OBS-035+037 (`_syRenderComputeKg` apuliike loadPct = live) · OBS-027 (Koti=live) | (F-1 koskee tätä: dashboard ≠ Sykli-preview ≠ live apuliikkeelle) | Sykli 14pv flat-estimaatti vs live-progressio = C-HYBRID (programTargetsCache sovittaa lähimmän session) |
+| **Preview** | recommend() live (= workout-flow) | OBS-035+037 (`_syRenderComputeKg` apuliike loadPct = live) · OBS-027 (Koti=live) · F-1 (dashboard=Sykli=live) · F-2 PATH 4 (Sykli-preview same-liike clamp-peilaus) | — | Sykli 14pv flat-estimaatti vs live-progressio = C-HYBRID (programTargetsCache sovittaa lähimmän session) |
 
-**Lopputulos:** 4 oire-juurta suljettu tässä arcissa (ROOT-A, OBS-035+037, OBS-026/028, OBS-027/030). **4 avointa fragmentaatiota (F-1…F-4)** roadmapattu §4. Loput by-design (dokumentoitu §3).
+**Lopputulos (2026-06-02):** 4 oire-juurta suljettu (ROOT-A, OBS-035+037, OBS-026/028, OBS-027/030) + **kaikki 4 fragmentaatiota suljettu (F-1, F-2, F-3, F-4)** → **value-resolution-audit KOKONAAN KIINNI.** F-1 + F-4 = F-4-unify (commit 0caf0a7, `computeDisplayedSlotLoad`); F-3 = store-segregaatio + invariantti §0; F-2 = intensiteetti-tietoinen reps-pohjainen clamp (push 4.52.32). Loput by-design (dokumentoitu §3).
 
 ---
 
 ## 2. Fragmentaatiorekisteri
 
-### F-1 — Koti-dashboard apuliike-render ≠ workout-flow + Sykli  ⚠️ AVOIN (OBS-035+037-jäänne)
-- **Oire:** same-liike-volyymi-apuliike näkyy Koti-dashboardin "tämän päivän" -listassa `getMovementProgress.suggestedLoadKg`-arvolla (≈ 65–73,5 ≈ pää), kun workout-flow + Sykli-preview näyttävät kanonisen `resolvedLoadKg`:n (≈ 29).
-- **Polku:** `index.html:4477-4491` — `state.movementProgressMap.get(movId).suggestedLoadKg ?? lastLoadKg`. **EI lue `slot.resolvedLoadKg`:ia** (toisin kuin back-off 4456 / secondary 4467 / cal 4473).
-- **Juuri:** OBS-035+037 laajensi UI-resolvedLoadKg-gaten role=accessory:lle workout-flow:ssa (`12875`) + previewissä (`7890`), mutta **dashboard-render (4477) jäi väliin** — se on oma haaransa joka aina käyttää movementProgressMap:ia.
-- **Korjaus (pieni, valmis):** 4477-haara lukee ensin `slot.resolvedLoadKg` (kuten 4456/4467/4473), fallback `getMovementProgress`. → dashboard = Sykli = live = ~29.
-- **Verifioitu:** kyllä (luettu 4443-4491, HEAD 6908a89).
+### F-1 — Koti-dashboard apuliike-render ≠ workout-flow + Sykli  ✅ RATKAISTU (F-4-unify, commit 0caf0a7)
+- **Oire:** same-liike-volyymi-apuliike näkyi Koti-dashboardilla `getMovementProgress.suggestedLoadKg`-arvolla (≈ pää), kun workout-flow + Sykli-preview näyttivät kanonisen `resolvedLoadKg`:n.
+- **Ratkaisu:** F-4-refaktori (commit 0caf0a7) yhdisti dashboard- + workout-flow-kuormanäytön funktioon `computeDisplayedSlotLoad` (`index.html:4445`). Dashboard-render lukee nyt `slot.resolvedLoadKg`:n same-liike-apuliikkeelle (4476-4485: `_sameMov = typeof slot.resolvedLoadKg === "number"` → "+", deload-aware) → dashboard = Sykli = live.
+- **Verifioitu:** kyllä (luettu 4440-4496, HEAD 99c84be — `computeDisplayedSlotLoad`-haara kaikille rooleille).
 
-### F-2 — rate-limit × back-off  ⚠️ AVOIN (OBS-CORE-juuri #2)
-- **Oire:** regain-viikoilla pään top-set suppressoituu kanonisen e1RM × loadPct -arvon alle; back-off (käyttää `sessionEffectiveE1RM` = täysi kanoninen e1RM) → back-off > pää 19 pilot-sessiossa.
-- **Polku:** `engine.js` Branch A back-off (~4896) käyttää `sessionEffectiveE1RM`:ää, joka ei seuraa pään progressio-/rate-limit-suppressointia (`PROGRESSION_TARGET` ~4687).
-- **Säilössä:** `stash@{0}` — SP-2-pilot-audit-check + a/b/c-tradeoff (a hyväksy 19 / b rate-limit-säteily +16 muuta virhettä / c clamp ≤ pää +6 muuta).
-- **Korjaus:** vaatii oman handoffin (valmennuspäätös: onko regain-viikon back-off>pää bugi vai hyväksyttävä; ripple-virheiden tutkinta).
+### F-2 — rate-limit × back-off  ✅ RATKAISTU (intensiteetti-tietoinen reps-pohjainen clamp, 2026-06-02)
+- **Oire:** regain/deload-viikoilla pään top-set suppressoituu kanonisen e1RM × loadPct -arvon alle; designed-lighter back-off / volyymi-apuliike (käyttää `sessionEffectiveE1RM` = täysi kanoninen e1RM) → > suppressed pää.
+- **Polku:** `engine.js` Branch A (~4896) + 15c accessory-pass (~5309) + Branch B cross-ref (~5062).
+- **Ratkaisu (i = clamp-laajennettu, ratifioitu):** same-liike non-primary clampataan ≤ pään (suppressoitu) `targetExternalLoad` VAIN jos suunniteltu kevyemmäksi/yhtä raskaaksi = **efektiiviset toistot (reps+Vx) ≥ pää** (`primaryEffectiveReps` = `primarySlotMeta.reps+targetVx`). Raskaampi by-design (top single/opener, VÄHEMMÄN toistoja) → EI clampata. Tämä **intensiteetti-tietoinen** ehto esti regression jossa pct-laajennus yli-clamppasi vk10/11 "heavy-first top single" -slotit (81→71, 166,5→163, 90→79,5). Sama reps-pohjainen `heavierByDesign` clampissa + `auditSp2SlotLoad`-detektorissa + `testSp2SlotLoadInvariant`-selaintestissä → bittitarkka clamp↔detektori-yhtenäisyys.
+- **PATH 4 (Koti=live):** Sykli-preview (`_syRenderComputeKg`, fw-loop) peilaa clampin same-liike non-primarylle cache-pään suhteen (warm-cache; cold-start flat-fallback dokumentoitu koodissa).
+- **Verifiointi (sweep pakollinen, F-2-oppi):** pre-vs-post-sweep (Akseli backup, HEAD vs pre-F2 0caf0a7): **0 nykykuorma-muutosta** (top-singlet ennallaan, clamp dormantti nykydatalle); pilot 64/64 0 virhettä SP-2=0; selain 748/752 (4 pre-existing VBT/T9). **Pushattu origin/main 4.52.32** (8 commitia 7dd6983→99c84be); Akseli ratifioi pushin 2× (kuorma-muutos-portti → sweep paljasti regression → korjaus → re-ratifiointi).
 
 ### F-3 — e1RM-persistenssistorejen hajonta  ✅ RATKAISTU (A1: segregoitu · A2: invariantti §0 + Koti=live-guard)
 **A1-verdikti (2026-05-31, read-only):** audit yli-kehysti tämän. Storet ovat **tarkoitus-segregoituja** (ks. §0): `MovementProgress.currentE1RM` = stagnaatio/historia (ei näyttöön/kuormaan), `movementCfg` = cross-ref-lattia, `peakingConfig` = fallback. Edistyminen/Liikepankki/Trendit käyttävät kanonista `computeMovementE1RMBest`:iä — ei divergenssiä. Ainoa aito käyttäjä-näkyvä divergenssi oli F-1 (jo korjattu). **A2 = invariantti §0 + `testKotiEqualsLiveAccessory`-vartija (ei segregaatio-koodimuutosta — jo oikein).** Alla alkuperäinen audit-kehys:
@@ -61,10 +60,10 @@
 - **Juuri:** `computeMovementE1RMBest` (cal→plan→median) on UI:n totuuslähde, mutta `MovementProgress.currentE1RM` lasketaan eri tavalla (viim. setti) ja sitä käytetään apuliike-kuormiin → F-1:n taustasyy.
 - **Korjaus:** vaatii oman handoffin (e1RM-source-of-truth-konsolidointi; arvio: apuliike-fallback → `computeMovementE1RMBest`; movementCfg/peakingConfig-synkronointi).
 
-### F-4 — variantLoadModifier-epäsymmetria  ⚠️ AVOIN (pieni)
-- **Oire:** workout-flow applioi `variantLoadModifier`:n `resolvedLoadKg`:hen (`index.html:12880`), Koti-dashboard EI (`4456-4476`). → sama back-off/secondary-slotti voi näyttää eri kuorman dashboardissa vs livessä jos variantilla on modifier ≠ 0.
-- **Korjaus:** pieni — applioi sama modifier dashboard-renderissä TAI poista molemmista (jos modifier on aina ~0 streetliftingissä, matala prioriteetti).
-- **Huom:** F-1:n korjaus tuo apuliikkeen samaan haaraan → varmista modifier-yhtenäisyys samalla.
+### F-4 — variantLoadModifier-epäsymmetria  ✅ RATKAISTU (F-4-unify, commit 0caf0a7)
+- **Oire:** workout-flow applioi `variantLoadModifier`:n `resolvedLoadKg`:hen, Koti-dashboard EI → sama back-off/secondary-slotti saattoi näyttää eri kuorman dashboardissa vs livessä jos variantilla modifier ≠ 0.
+- **Ratkaisu:** commit 0caf0a7 — dashboard välittää `variantModifiers`:n `computeDisplayedSlotLoad`-kutsuun (`index.html:4450`) → vMod applioituu primary/back-off/resolved/fallback-sloteille = workout-flow. (Sama unify joka sulki F-1:n.)
+- **Verifioitu:** kyllä (luettu 4445-4451, HEAD 99c84be).
 
 ### CLOSED — suljetut tässä arcissa (verifioitu)
 | ID | Fragmentaatio | Korjaus | Status |
@@ -86,14 +85,12 @@
 
 ---
 
-## 4. Sulkeutumis-roadmap
+## 4. Sulkeutumis-roadmap — ✅ VALMIS (2026-06-02, kaikki fragmentaatiot suljettu)
 
-**Priorisointi (suositus):**
-
-1. **F-1 (Koti-dashboard-apuliike) — VÄLITÖN.** Pieni, hyvin ymmärretty, **täydentää juuri shipatun OBS-035+037:n** (muuten dashboard ~65 ≠ live ~29 jää näkyviin). Korjaus: `index.html:4477` lukee ensin `slot.resolvedLoadKg`. Sama gate-laajennus kuin 12875. + F-4 variantLoadModifier samalla. → uusi pieni handoff TAI OBS-035+037-jatko-committi (ratifioitava: muuttaa dashboard-näyttöä; ei bittitarkka pilotille koska dashboard ei ole pilotissa).
-2. **F-2 (rate-limit×back-off) — OMA HANDOFF.** `stash@{0}` valmiina. Valmennuspäätös + ripple-tutkinta.
-3. **F-3 (e1RM-persistenssi) — OMA HANDOFF (laaja).** e1RM-source-of-truth-konsolidointi. F-1:n taustasyy; jos F-3 ratkaistaan (apuliike-fallback → computeMovementE1RMBest), F-1 sulkeutuu rakenteellisesti.
-4. **F-4 (variantLoadModifier) — niputettava F-1:een.**
+1. **F-1 (Koti-dashboard-apuliike)** ✅ — F-4-unify (commit 0caf0a7): dashboard-render → `computeDisplayedSlotLoad` (= workout-flow), lukee `slot.resolvedLoadKg`:n same-liike-apuliikkeelle.
+2. **F-2 (rate-limit×back-off)** ✅ — intensiteetti-tietoinen reps-pohjainen clamp (push 4.52.32, 8 commitia 7dd6983→99c84be). Sweep (Akseli backup): 0 nykykuorma-muutosta; pilot SP-2=0.
+3. **F-3 (e1RM-persistenssi)** ✅ — store-segregaatio (tarkoituksellinen, ei koodimuutosta) + invariantti §0 + `testKotiEqualsLiveAccessory`-vartija.
+4. **F-4 (variantLoadModifier)** ✅ — F-4-unify (0caf0a7), niputettu F-1:een (`variantModifiers` → `computeDisplayedSlotLoad`).
 
 **Invariantti jatkoa varten:** uusi slot-kuorma- tai e1RM-render-polku EI saa lukea arvoa muusta kuin (a) recommend() `resolvedLoadKg`/`targetExternalLoad` (live + dashboard) tai (b) `computeMovementE1RMBest` (UI-e1RM-näkymät). `getMovementProgress.suggestedLoadKg` sallittu VAIN eri-liike-apuliikkeille (movement ≠ päivän primary). SP-2-selainassertio (test-runner.js) lukitsee back-off ≤ pää; harkitse vastaava apuliike ≤ back-off -assertio.
 
