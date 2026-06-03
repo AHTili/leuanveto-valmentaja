@@ -4,7 +4,7 @@
 > Valmis handoff arkistoidaan → `docs/handoffs/HANDOFF_<id>.md`, ja tämä tiedosto nollataan tyhjäksi pohjaksi.
 > Auktoriteettijärjestys: ks. `CLAUDE.md` §7. Session-protokolla: ks. `CLAUDE.md` §8. Kurilista: `docs/SELKARANKA.md`.
 >
-> *Tila: **K-A6D — `AKTIIVINEN`**. M2 (OBS-022) **GATED + säilytetty** git-committissa `f53428b` (sekvenssi a ratifioitu 2026-06-02: K-A6D ensin → M2-ship; M2 palautetaan HANDOFF.md:hen K-A6D:n shipattua: `git show f53428b:HANDOFF.md`). DRAFT-COWORK ratifioitu: VELOCITY_VX_RECONCILE, RTF-gated, suppress-when-unreliable (i). A1-broad-sweep TEHTY (juuri lokalisoitu). Code formalisoi ratifioidusta suunnasta — verifioitu repon koodista (§7: repo voittaa).*
+> *Tila: M2 (OBS-022) — `AKTIIVINEN`, **A2b GATED behind K-A6D** (sekvenssi a ratifioitu 2026-06-02: K-A6D ensin → M2-ship sen jälkeen). Edennyt: A1 (CONFIRM, read-only) + A1-lisäfasetti (velocity-autoreg) RAPORTOITU; SHAPE-only design ratifioitu (§5 päätös 4); A2a Vx-laskumuoto SIGN-OFF'ATTU (§4). A2b (FIX, data.js Vx-laskumuoto) odottaa K-A6D-sulkua. Code formalisoi ratifioidusta suunnasta — verifioitu repon koodista (§7: repo voittaa).*
 
 ---
 
@@ -12,66 +12,98 @@
 
 | Kenttä | Arvo |
 | --- | --- |
-| Handoff-id | `K-A6D` (velocity-stop ↔ Vx-tavoite -reconcile) |
-| Tyyppi | `debug` (confirm-then-fix + §5b laaja-A1: A1 tehty → A2 FIX). Muuttaa velocityStop-johdannan (staattinen → RTF-gated); **kuorma-neutraali** (velocityStop on UI-varoituskynnys, ei recommend()-kuormainput). |
-| Laadittu | 2026-06-02 / Cowork (DRAFT-COWORK ratifioitu) · Code formalisoi |
-| Tila | `AKTIIVINEN` (A2-FIX-vaihe) |
-| Pohja-HEAD | `f53428b` (= `76d5aa5` + M2/ROADMAP-docit, kuorma-neutraali → koodipohja identtinen 76d5aa5:n kanssa) · APP_VERSION `4.52.32` |
-| Liittyy R-sekvenssin vaiheeseen | γ-gate (vaihe 19, reunaehto a) hallitseva este: **70 INVARIANT_VIOLATION_K_A6D** pilotissa. Myös M2:n portti (sekvenssi a). |
+| Handoff-id | `M2` (OBS-022 — todellinen %-progressio / sisä-blokki-intensifikaatio) |
+| Tyyppi | `block-tuning` (intra-blokki-progressiokäyrät) **confirm-then-fix-disipliinillä** (A1 read-only CONFIRM → STOP → Akselin §4-käyrävalidointi → A2 FIX). EI `debug` (ei toistettava bugi vaan suunniteltu käytösmuutos), EI `scope-expansion` (muuttaa olemassa olevan blokki-progression parametreja, ei lisää erillistä ominaisuutta). §4 pakollinen — täytetään A1c:n tuottamasta käyräenumeraatiosta ENNEN A2:ta. |
+| Laadittu | 2026-06-02 / Cowork-sessio (DRAFT-COWORK ratifioitu) · Code formalisoi |
+| Tila | `AKTIIVINEN` (A1-vaihe) |
+| Pohja-HEAD | `3ed7226` (= `76d5aa5` + ROADMAP §0 -doc, kuorma-neutraali → koodipohja identtinen 76d5aa5:n kanssa) · APP_VERSION `4.52.32` |
+| Liittyy R-sekvenssin vaiheeseen | Ei yksittäinen R-vaihe. NYT-merkki = vaihe 18 (Round B-β). M2 = milestone OBS-022 (todellinen %-progressio), ajetaan vaiheen 18 rinnalla. |
 
 ---
 
 ## 1. Tavoite
 
-velocity-stop ↔ Vx-tavoite -ristiriita pois: `slot.velocityStop` **reconciloitu targetVx:ään liike-spesifisti RTF-mallilla** (kun luotettava), tai **vaiennettu** (kun ei). A1-nykytila: velocityStop = absoluuttinen kalibroimaton kynnys (data.js — primary vx-ämpäri 6014 `vx≤1?0,45:vx≤2?0,50:0,60`, backoff/secondary style-vakio 0,40–0,55) → UI-varoitus ("harkitse kuorman laskua / sarjan lopettamista", index.html:13466) voi laueta kun Vx-vara ≥2 (atletilla yhä reilu vara). 70 K-A6D-flagia.
+Saman liikkeen **TAVOITE-intensiteetti nousee (volyymi laskee) viikosta viikkoon SAMAN blokin sisällä** — suunnitellusti, **velocity-agnostisesti** (ei nojaa mitattuun nopeuteen; dippi/apuliikkeet eivät mittaa luotettavasti) ja **rehellisesti näytettynä**.
+
+A1-orientaation (2026-06-02, read-only) toteama nykytila: intra-blokki on **litteä** — kanoninen %-lähde on `vRepsToExpectedPct(reps+Vx)` (LOAD_PCT_RESOLVED, tier 1/2/3), mutta `reps+Vx` ei muutu blokin sisällä → TAVOITE-% pysyy vakiona (esim. Intensity vk9–11 = 88,2 % flat, FINAL 71/71/71 kg). Templaatin `loadPct`-ramppi (esim. 0,85→0,87→0,90) on **dead code** (vReps ohittaa loadPct:n). `computeProgressionTarget` on blokki-vaihe-sokea (ankkuri-suhteellinen Helms-creep). Display: @X% stripattu tier 1/2/3:lta → ei näkyvää intensifikaatiota.
+
+Haluttu lopputila (mekanismi §5, ratifioitu): intra-blokki-intensifikaatio on **SHAPE-only** — vain `reps+Vx` (→ `vReps`) ramppaa blokin sisällä; **ei lisätä velocity-kytkentää**. Olemassa oleva autoregulaatio (e1RM-ankkuri = VBT-promootio + primer-drift · regainMult/vxAdj · VBT-cap) toimittaa **anchor/magnitude/peak** automaattisesti per liike: luotettavilla liikkeillä (kyykky/leuanveto) absoluuttinen kuorma skaalautuu velocityyn, ei-VBT (dippi/apuliikkeet) jää rakenne+RPE-ankkuriin. `planTarget = currentE1RMSystem × vReps(reps+Vx)` — ramppi = velocity-agnostinen MUOTO, e1RM = velocity-ankkuroitu SKAALA. Ramppi näkyy käyttäjälle rehellisesti (b-display).
 
 ## 2. Acceptance criteria
 
-> A1 = CONFIRM (TEHTY, read-only laaja-sweep): juuri = velocityStop ei RTF-reconcile'd — staattinen arvaus velocity-at-targetVx:stä, ei liike-spesifi `velocityAtTargetRir`. A2 = FIX.
+> **A1 = CONFIRM (read-only, runtime-first — `docs/SELKARANKA.md` §5–6 + leve-handoff §5b). STOP ennen A2:ta.** A1a–A1d ovat yhden CONFIRM-gaten neljä faksettia (eivät itsenäisiä korjauksia → poikkeus skeeman A1/A2-sekvenssistä; perusteltu confirm-then-fix-rakenteella). A2–A5 = FIX vasta A1-vahvistuksen + Akselin §4-ratifioinnin jälkeen.
 
-**A2a — velocityStop ← velocityAtTargetRir (RTF-johdettu).** Kun liikkeen RTF luotettava (`computeRtfVelocityModel` status `reliable`, r² ≥ 0,85 — sama promootio-portti kuin VBT-autoregulaatiolla): `velocityStop = rtfModel.intercept + rtfModel.slope × slot.targetVx` (= velocity targetVx-varalla). Kaava jo olemassa (3245/3416).
+**A1a — velocity-agnostisuus (read-only).** Kanonisen %-polun (`vRepsToExpectedPct` / LOAD_PCT_RESOLVED) "Vx" on **preskriptio-descriptor** (staattinen `slot.targetVx`-haku), EI mitattuun nopeuteen kytketty.
+- *Mitattu:* koodiluku `engine.js` LOAD_PCT_RESOLVED + `vRepsToExpectedPct` + runtime-trace (resolveSource).
+- *Ehto:* `pctForResolve` johtuu `slot.reps + slot.targetVx`:stä (template-preskriptio), ei `measurements`/velocity-syötteestä → intra-blokki-kiipeäminen toteutettavissa ilman mittausta.
 
-**A2b — suppress-when-unreliable (päätös i).** RTF EI luotettava (ml. dippi/ei-VBT/riittämätön data) → `velocityStop = null` (UI-varoitus ei laukea; detektori ohittaa).
+**A1b — per-liike VBT-trust (read-only).** Kartoita VBT-promootio/luottamus (`computeVBTPromotionStatus`, RTF r²-kynnys) per liike.
+- *Ehto:* tunnistettu mitkä liikkeet ovat VBT-luotettavia (kyykky / lisäpainoleuanveto) vs ei (dippi / apuliikkeet → staattinen Epley-vReps). Vahvistaa että velocity-agnostinen ramppi on oikea valinta (ei nojata epäluotettavaan mittaukseen).
 
-**A2c — poista staattinen data.js-velocityStop.** 6014 (vx-ämpäri) + style-vakiot (`SQUAT/PULL/DIP_BACKOFF_STYLES`) → engine RTF-gated **single source** (value-resolution-audit-oppi: ei dead divergenttiä signaalia).
+**A1c — nykykäyrät (read-only).** Enumeroi KAIKKI `data.js`:n nykyiset intra-blokki `loadPct`- (ja reps+Vx-) rampit per blokki-tyyppi (Foundation / Strength / Intensity / Peaking) × per liike.
+- *Ehto:* täydellinen käyräkartta **§4-validointiin** (Akseli vahvistaa mitkä rampit oikein, mitkä korjataan). **ÄLÄ muuta käyriä A1:ssä.**
 
-**A2d — K-A6D 70→0 AIDOSTI** (ei detektoria vaimentamalla): RTF-epäluotettava→vaiennettu→flag selviää (velocityStop null); RTF-luotettava→velocityStop=velocityAtTargetRir (vastaa targetVx-varaa → ei ennenaikaista laukaisua → ei aito konflikti; jos detektori vaatii reconciled-tunnistuksen, korjaa ehto vastaamaan AITOA invarianttia, ei mute). known-neg: cal V1/accessory/Intensity-Peaking-primary-V1 ENNALLAAN. per-liike gating: kyykky/leuka promotoitavissa, dippi ei.
+**A1d — yksi-lähteisyys (read-only).** Vahvista voidaanko intra-blokki-ramppi syöttää YHTEEN kanoniseen %-polkuun ilman kilpailevaa signaalia.
+- *Ehto:* mekanismi (i) (reps+Vx-mikroporras → vReps) ei luo toista `loadPct ↔ vReps`-fragmentaatiota (F-2-luokan virhe vältetty).
 
-**A2e — push-ehto.** Pre-vs-post **LOAD-DIFF-SWEEP** (odotus ~0: velocityStop ei suoraan recommend()-kuormassa; vaikuttaa vain UI-varoitukseen + live-velocity→Vx-kirjaus→vxAdj-ketjuun). pilot 64/64 0 virhettä. Backup-ankkuri. per-löydös-committi. **STOP push-portille.**
+**A2 — FIX: mekanismi (i)** (vasta A1-vahvistuksen + §4-käyrävalidoinnin jälkeen). Intra-blokki-intensifikaatio reps+Vx-mikroportaalla, syötettynä kanoniseen vReps-polkuun. Invarianttien (VL-cap, tier-progression) sisällä.
+
+**A3 — kuormamuutos-portti (pakollinen, F-2-oppi).** Pre-vs-post **LOAD-DIFF-SWEEP** (korjattu HEAD vs pohja, koko Akseli-backup) = **push-ehto** (ei pelkkä invariantti). Lisäksi pilot 64/64 0 virhettä + uusi baseline ratifioituna + **known-pos** (intra-blokki-TAVOITE-% nousee vk-vk) / **known-neg** (deload + blokkiraja ennallaan).
+
+**A4 — display (b).** Intra-blokki-intensifikaatio rehellisesti näkyvissä (otsikko/per-slot ≡ todellinen nouseva intensiteetti).
+
+**A5 — Stop hook + selain.** smoke + pilot exit 0; selain-testit (`?test=1`) ennallaan (748/752 baseline; 4 pre-existing VBT/T9 ei M2:n scopessa).
 
 ## 3. Reunaehdot ja scope-aita
 
-- **Invariantit (`CLAUDE.md` §2):** VL-cap ENNALLAAN — `resolveVlCap` on **eri mekanismi** (velocity-LOSS-cap %, jo RTF-reconcile'd `velocityAtTargetRir`-individual-haarassa 3416). Ei kosketa.
-- **Mitä EI kosketa:** `resolveVlCap` (VL-cap) · `computeRtfVelocityModel` (RTF-malli itse) · slot-resolveri / sweep-invariantit (F-2: Branch A/15c/Branch B + SP-2/Koti=live-vartijat) · makro/deload/regain.
-- **Lokus:** velocityStop-johdanta — poista data.js (6014 + styles), laske recommend() slot-finalisoinnissa RTF-gated. UI-varoitus (index.html:13466) lukee `slot.velocityStop`:n — **logiikkaa ei muuteta, vain syöte.** Mahd. K-A6D-detektori (audit-engine.mjs:892) jos reconciled-tunnistus tarvitaan (Q1).
-- **Tekniset:** vanilla JS, ei npm, ES-modulit, Stop-hook-yhteensopiva.
+- **Sovellettavat invariantit (`CLAUDE.md` §2):** VL-cap per blokki (Foundation 25–35 / Strength 15–20 / Intensity 10–15 / Peaking 5–10 %), Tier-progression elite ≤ 0,05 ×/vk (Latella 2020), Deload Δ% −20…−30 %, Rep1 MPV slope. Intra-blokki-intensiteettiramppi **pysyttävä näiden rajojen sisällä** — ei saa tuottaa tier-progressiota yli rajan eikä rikkoa VL-cappia.
+- **Mitä EI kosketa (scope-aita, ratifioitu):**
+  - **EI makro-periodisaatiota** (blokkien välinen rakenne, blokki-tyyppisekvenssi ennallaan).
+  - **EI deload/regain-suppressiota** (`computeProgressionTarget` deload-passthrough + regain-multiplier ennallaan).
+  - **EI slot-resolveria / sweep-invariantteja** (F-2:n same-liike-clamp Branch A/15c/Branch B + `auditSp2SlotLoad`/`testSp2SlotLoadInvariant`/`testKotiEqualsLiveAccessory` ennallaan).
+  - **EI `computeProgressionTarget`-creep-logiikkaa** (ankkuri-Helms-creep on blokki-sokea by-design; M2 ei lisää sinne blokki-vaihe-termiä — mekanismi (i) toimii vReps-tasolla).
+- **M2:n lokus:** `data.js` weekDefs (reps+Vx per viikko per blokki) + LOAD_PCT_RESOLVED (vReps-target) + display. Mekanismi (i) = reps+Vx-mikroporras.
+- **Tekniset:** vanilla JS (`.js`/`.mjs`), ei npm-riippuvuuksia, ES-modulit, Stop-hook-yhteensopiva.
 
 ## 4. Atletti-vastaukset critical questions -kysymyksiin
 
-**Ei sovellu** — tyyppi `debug` (ei `block-tuning`).
+> Pakollinen (`block-tuning`). **Code EI aloita A2b:tä ennen kuin tämä on täytetty.** §4 = templaatin per-blokki-INTENTTI ilmaistuna **Vx-laskumuotona** (kiinteä toisto + Vx laskee → `vReps` nousee), **EI staattisina kuormina**. Akselin sign-off A2a-dry-runin reps+Vx-trajektoreille per blokki (Foundation/Strength/Intensity/Peaking) = laatuportti. Huippuviikon valinta (kiinteä toisto V0 vs toiston pudotus) ratkaistaan per VL-cap.
+
+**Sign-off'attu A2a-muoto (2026-06-02): per-blokki reps+Vx Vx-laskumuoto.** β-aloitus (nostettu start-Vx → kevyt vk1 = sisäänajo); reprodusoi templaatin loadPct-ramppi-intentin (+4–6pp vReps/blokki). VL-cap (CLAUDE.md §2) sanelee huippuviikon: Foundation/Peaking = Vx-lasku; **Strength/Intensity = toiston pudotus** (Vx→V0 rikkoisi VL-cappia). Pääliikkeet (leuanveto/kyykky/dippi) identtiset.
+
+| Blokki | reps×Vx (loading vk1/2/3) | vReps-% | huippu-mekanismi |
+| --- | --- | --- | --- |
+| Foundation | 6V3 / 6V2 / 6V1 | 76,9 / 78,9 / 81,1 (+4,2pp) | Vx-lasku (V1) |
+| Strength | 4V3 / 4V2 / **3V1** | 81,1 / 83,3 / 88,2 (+7,1pp) | toiston pudotus (4→3) |
+| Intensity | 3V2 / 3V1 / **2V1** | 85,7 / 88,2 / 90,9 (+5,2pp) | toiston pudotus (3→2) |
+| Peaking (singlet) | 1V3 / 1V2 / 1V1 | 88,2 / 90,9 / 93,8 (+5,6pp) | Vx-lasku (V1); V0=max-single vain testi/opener |
+
+Deload-viikot (vk4/8/12/16) ENNALLAAN (scope-aita). **Per-liike realisoituminen:** kyykky/leuanveto = velocity-ankkuroitu e1RM × vReps (skaalautuu mittaukseen); dippi/apuliikkeet = staattinen e1RM × vReps (rakenne+RPE). VL-cap-↔-velocity-stop-rajapinta (K-A6D) tarkistettava A2b:ssä.
 
 ## 5. Taustapäätökset ja hylätyt vaihtoehdot
 
-1. **VELOCITY_VX_RECONCILE:** velocityStop johdetaan `velocityAtTargetRir`:stä (RTF-gated), ei staattisesta arvauksesta. Reconcile-kaava jo olemassa (vlCapFromRtfModel:3245, resolveVlCap:3416).
-2. **RTF-gate r² ≥ 0,85** — sama promootio-portti kuin VBT-autoregulaatiolla (`RTF_R2_THRESHOLD_RELIABLE`) → yhtenäisyys.
-3. **Suppress-when-unreliable (i):** RTF ei luotettava (ml. dippi/ei-VBT) → velocityStop null. Perustelu (A1b): dippi/apuliikkeet eivät VBT-luotettavia → epäluotettava mittaus ei saa ajaa varoitusta. Hylätty: MVT-fallback-estimaatti (jättäisi kalibroimattoman kynnyksen — sama juuriongelma).
-4. **Single-source:** poista staattinen data.js-velocityStop → engine RTF-gated ainoa lähde.
-5. **VL-cap erillinen, ei kosketa:** resolveVlCap (velocity-LOSS-cap) on eri mekanismi + jo RTF-reconcile'd.
+1. **Mekanismi (i) ratifioitu (kirkastettu):** intra-blokki-intensifikaatio toteutetaan **reps+Vx-mikroportaalla** → `vReps(reps+Vx)` nousee blokin sisällä → TAVOITE-% nousee yhdestä kanonisesta lähteestä.
+   - **Hylätty (ii):** loadPct takaisin intensiteettisignaaliksi vReps:n rinnalle → loisi `loadPct ↔ vReps`-kilpailun = F-2-luokan fragmentaatio. **Hylätty (iii):** blokki-vaihe-termi `computeProgressionTarget`:iin → sotkisi autoregulaatio-creepin ja periodisaation; rikkoo scope-aitaa (ei kosketa creep-logiikkaa).
+2. **Velocity-agnostinen (kirkastettu):** intra-blokki-kiipeäminen on PRESKRIPTIO (staattinen reps+Vx-haku), EI mitattu nopeus. Perustelu: dippi + apuliikkeet eivät mittaa luotettavasti (A1b vahvistaa) — kiipeäminen ei saa nojata epäluotettavaan signaaliin. Within-session VBT-autoregulaatio (velocity-stop, Vx-bias) säilyy erillisenä kerroksena, M2:n ulkopuolella.
+3. **Yksi-lähteisyys:** ramppi YHTEEN kanoniseen %-polkuun (vReps) — value-resolution-auditin (F-1…F-4) oppi: ei toista divergenttiä signaalia.
+4. **SHAPE-only + autoreg ratsastaa (A1-lisäfasetti ratifioitu 2026-06-02):** mekanismi (i) ramppaa VAIN reps+Vx-MUODON (vReps-trajektori). **EI lisätä velocity-kytkentää** — olemassa oleva e1RM-ankkuriketju (cal→primer-drift→plan-based→VBT-cap→floor) + `computeProgressionTarget` regainMult/vxAdj **ratsastaa rampilla** ja toimittaa anchor/magnitude/peak. `planTarget = currentE1RMSystem × vReps(reps+Vx)`: ramppi = velocity-agnostinen MUOTO (toimii myös dipille), e1RM = velocity-ankkuroitu SKAALA luotettavilla liikkeillä. **Per-liike VBT-vs-rakenne+RPE tulee e1RM-ankkurista ilmaiseksi** — ei eksplisiittistä per-liike-haaraa M2:ssa. VL-cap (CLAUDE.md §2) rajoittaa Vx-laskun syvyyttä per blokki → korkeissa blokeissa (Intensity, Vx jo V1) intensifikaatio = toiston pudotus, ei Vx→V0 (rikkoisi VL-cappia).
 
-## 6. Avoimet kysymykset (Code selvittää A2:ssa, raportoi)
+## 6. Avoimet kysymykset
 
-- **Q1:** Onko pilotissa (akseli-elite-streetlifter) luotettavaa RTF:ää? **Ei** → suppression yksin vie K-A6D 70→0 (ei detektori-muutosta). **Kyllä** → reconciled velocityStop (>0) + targetVx≥2 → detektorin tunnistettava reconcile (korjaa ehto AITOON invarianttiin, ei mute).
-- **Q2:** Per-slot-RTF (`computeRtfVelocityModel` per `slot.movementId`) vs primary-only? Per-slot = oikein päätös (i):lle (per-liike gating). Code valitsee + raportoi.
+> Code raportoi A1a–A1d:n tulokset (VAIHE 1). Akseli ratifioi ENNEN A2:ta.
+
+- **Q1:** A1a–A1d:n löydökset (Code raportoi A1-vaiheessa) — vahvistavatko mekanismi (i):n + velocity-agnostisuuden toteutettavuuden?
+- **Q2 (A1c:n jälkeen):** §4-käyrävalidointi — mitkä nykyiset intra-blokki-rampit ovat oikein, mitkä korjataan?
 
 ---
 
-## 7. Session-tulos
+## 7. Session-tulos  *(Claude Code täyttää session lopussa)*
 
 | Kenttä | Arvo |
 | --- | --- |
-| Sessio päättyi | 2026-06-02 (jatkettu Code-sessio 2: kontekstin täyttymisen jälkeen) |
-| Muuttuneet tiedostot | `engine.js` (32c3dc7), `tools/engine-pilot/lib/audit-engine.mjs` + `trace-capture.mjs` (d2f8d0f), `data.js` (2c2d9ba), `sw.js` + `index.html` (958f095). HANDOFF.md §7 (tämä commit). |
-| Tehdyt päätökset | **Juuri (A1, ratifioitu):** velocityStop = absoluuttinen kalibroimaton staattinen kynnys data.js:n styleissä/sloteissa — ei liike-spesifi RTF-johdannainen. UI-varoitus (index.html:13466) saattoi laueta vaikka targetVx≥2 (Vx-mittarin mukaan reilu vara) → 70 K-A6D-flagia pilotissa. **Fix:** VELOCITY_VX_RECONCILE — recommend()-slot-finalisointi laskee velocityStop = RTF.intercept + RTF.slope × targetVx KUN liikkeen RTF "reliable" (r² ≥ 0,85, sama promootio-portti kuin VBT-autoregulaatiolla); muuten null (päätös i, suppress-when-unreliable). Per-liike RTF-cache. velocityStopSource="rtf-reconciled" merkitsee reconciled-tapauksen. Detektori (audit-engine.mjs:892) ohittaa rtf-reconciled-slotit → AITO invariantti (laukeaa yhä jos staattinen/reconciloimaton velocityStop + targetVx≥2 ilmenisi, mutta engine-korjauksen jälkeen sellaista ei synny). data.js-vestigiaalinen velocityStop poistettu → engine RTF-gated single source (value-resolution-audit F-oppi: ei dead divergenttiä signaalia). |
-| Validointi | Stop hook: smoke + pilot regressio passaa per-commit. Pilot Akselin profiili: 64/64 päivää, 0 virhettä, **K-A6D 70→0** ✅ (K_A1=10, INVARIANT_VIOLATION=4 ennallaan). **LOAD-DIFF-SWEEP=0** rakenteellisesti: engine ylikirjoittaa kaikki slot.velocityStop:t recommend()-vaiheessa → data.js-poisto on no-op käyttäytymiselle; velocityStop ei recommend()-kuorma-input (vaikuttaa vain UI-varoitukseen index.html:13466 + live-velocity→Vx-kirjaus→vxAdj-ketjuun). `node --check` data.js OK. Selaintestit ennallaan: UI-logiikka index.html:13466 (`velocity < slotVelocityStop`) ei muutettu, vain syöte muuttuu engineissä RTF-gated:ksi/null:ksi. APP_VERSION 4.52.32→4.52.33 sync (sw.js + meta + _syRenderAppVersion). |
-| Jäi auki | — (K-A6D 4/4 shipattu; push-portti odottaa Akselin ratifiointia) |
-| Seuraava askel | **STOP push-portille — Akseli ratifioi.** Push → M2 un-gate (`git show f53428b:HANDOFF.md > HANDOFF.md` palauttaa M2/OBS-022 -aktiivisen handoffin). |
+| Sessio päättyi | `<pvm>` |
+| Muuttuneet tiedostot | `<lista>` |
+| Tehdyt päätökset | `<lista>` |
+| Validointi | `<Stop hook pass/fail · selain-testit · regressio-pilot · LOAD-DIFF-SWEEP>` |
+| Jäi auki | `<lista tai "—">` |
+| Seuraava askel | `<seuraava handoff tai R-sekvenssin vaihe>` |
