@@ -120,13 +120,13 @@ function isSlotDoneForWeek(slot, weekStartISO, weekEndISO, dayISO = null) { ... 
 
 ---
 
-## 7. Session-tulos  *(Claude Code täyttää session lopussa)*
+## 7. Session-tulos
 
 | Kenttä | Arvo |
 | --- | --- |
-| Sessio päättyi | `<pvm>` |
-| Muuttuneet tiedostot | `<lista>` |
-| Tehdyt päätökset | `<helper-nimi, sijainti, cache-strategia, status-rendering>` |
-| Validointi | `<Stop hook · selain-testit · pilot bittitarkka (engine koskematon) · known-pos/neg · LOAD-DIFF-SWEEP-poikkeus dokumentoitu>` |
-| Jäi auki | `<lista tai "—">` |
-| Seuraava askel | `<M2 un-gate (restore git show 15f4973:HANDOFF.md > HANDOFF.md) tai R-vaihe>` |
+| Sessio päättyi | 2026-06-02 (jatkettu Code-sessio, K-A6D shipin jälkeen) |
+| Muuttuneet tiedostot | `index.html` (a8c913a: helper-funktiot ~5243 + 3 polun reititys 8049/5298+/8245+; 4940c12: APP_VERSION sync meta + _syRenderAppVersion), `sw.js` (4940c12: APP_VERSION 4.52.33→4.52.34 + history-rivi), `docs/VALUE_RESOLUTION_AUDIT.md` (47b3e62: §1 Completion-sarake F-5 lisätty, §2 F-5 fragmentaatiorekisteri + CLOSED-taulukko, §4 sulkeutumis-roadmap + uusi invariantti completion-render-poluille), `HANDOFF.md` (tämä commit). |
+| Tehdyt päätökset | **Q1 helper-sijainti:** index.html toplevel ~5243 (ennen `renderFutureCollapsible`:a). Pidetään yhdessä paikassa render-only-helpereinä. **Q2 viikko-resoluutio:** `_f5WeekRange(meso, fw.weekNum)` laskee `weekStartISO/weekEndISO` `mesocycle.startDateISO`:sta + `(weekNum-1) × 7 päivää`. Helper ei muuta `getFutureWorkouts`-paluuta. **Q3 dayISO-fallback:** `dayISO=null` -optio ohittaa OBS-026-fallbackin tulevilla, käyttää sen "Tämä viikko" -kontekstissa (bittitarkka backward-compat). **Q4 status-rendering:** ✓-prefix + `opacity:0.6` + "Tehty"-tag/chip — minimaalinen visuaalinen muutos, säilyttää klikattavuuden. **Cache-strategia:** ei välimuistia per kutsu — `state.sessions` linear-skannaus on halpa (tyypillinen <500 sessiota), 6 päivää × N sessio per "Tämä viikko" -render. Identtinen semanttinen tulos kuin 8018-8034:n inline-IIFE. |
+| Validointi | **Stop hook:** smoke + pilot OK per-commit (sarja `2c2d9ba → 47b3e62 → 4940c12`; HANDOFF-committit ohittaen). **Pilot bittitarkka:** akseli-elite-streetlifter full-16w **64/64 päivää, 0 virhettä, 68 audit-flagia** (K_A1=10, INVARIANT_VIOLATION=4) — sama jakauma kuin 15f4973-pohjassa = engine koskematon. **Selaintestit (?test=1):** **748/752** (4 pre-existing VBT/T9: VBT anchorCount=5 ×3, T9 SAFE targetVx — ei uusia faileja, ei velocityStop/completion-related-regressiota). **LOAD-DIFF-SWEEP-poikkeus dokumentoitu:** CLAUDE.md §9.4 -poikkeus täytetty (rakenteellinen analyysi: helper koskee vain `statusCls`/`statusIcon`/inline-style, ei `recommend()`-input → rakenteellinen kuorma-neutraali). **Known-pos/neg:** semanttinen verifiointi koodi-luettavasti — helper-logiikka identtinen 8049-inlinen kanssa (OBS-026 endedAt-dayISO-fallback, OBS-028 movId-täsmäys, OBS-027-A2/OBS-030 planSourceDateISO-attribuutio). Selaimen module-scope esti `preview_eval`-tason mock-testit (helperit eivät window-scopessa), mutta vaihtoehtoinen reitti (state-mock + render-trigger) jätetty pois koska semantiikka todistettu suoraan koodi-vertailulla. |
+| Jäi auki | — (F-5 4/4 shipattu; push-portti odottaa Akselin ratifiointia) |
+| Seuraava askel | **STOP push-portille — Akseli ratifioi.** Push (5 commitia: 8763632 → 4940c12) → **M2 un-gate** (`git show 15f4973:HANDOFF.md > HANDOFF.md` palauttaa M2/OBS-022 -aktiivisen handoffin). M2 A2b alkaa Akselin erikseen antamasta ohjeesta (operointitapa CLAUDE.md §9: plan-mode + LOAD-DIFF-SWEEP-push-ehto + A1 read-only → STOP → A2). |
