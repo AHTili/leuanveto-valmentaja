@@ -2,9 +2,9 @@
 
 > Repon **ainoa aktiivinen handoff**. Cowork täyttää osiot 0–6, Claude Code täyttää osion 7.
 > Valmis handoff arkistoidaan → `docs/handoffs/HANDOFF_<id>.md`, ja tämä tiedosto nollataan tyhjäksi pohjaksi.
-> Auktoriteettijärjestys: ks. `CLAUDE.md` §7. Session-protokolla: ks. `CLAUDE.md` §8. Kurilista: `docs/SELKARANKA.md`.
+> Auktoriteettijärjestys: ks. `CLAUDE.md` §7. Session-protokolla: ks. `CLAUDE.md` §8. Kurilista: `docs/SELKARANKA.md`. Operointitapa: `CLAUDE.md` §9 EQUIP PROSESSI.
 >
-> *Tila: M2 (OBS-022) — `AKTIIVINEN`, **A2b GATED behind K-A6D** (sekvenssi a ratifioitu 2026-06-02: K-A6D ensin → M2-ship sen jälkeen). Edennyt: A1 (CONFIRM, read-only) + A1-lisäfasetti (velocity-autoreg) RAPORTOITU; SHAPE-only design ratifioitu (§5 päätös 4); A2a Vx-laskumuoto SIGN-OFF'ATTU (§4). A2b (FIX, data.js Vx-laskumuoto) odottaa K-A6D-sulkua. Code formalisoi ratifioidusta suunnasta — verifioitu repon koodista (§7: repo voittaa).*
+> *Tila: **F-5 (= OBS-034) — `AKTIIVINEN`** (DRAFT-COWORK ratifioitu 2026-06-02). A1 read-only TEHTY (3 Explore-agenttia + koodiverifiointi): "Tämä viikko" (index.html:8049) tekee kanonisen done-checkin (dual-gate `movDoneThisWeek ∨ sess.endedAt` + OBS-028-liike­täsmäys + OBS-027-A2-planSourceDateISO-attribuutio); "Tulevat treenit" (index.html:5201 `renderFutureCollapsible`) + "Seuraavat 14 päivää" (index.html:8163) EIVÄT → off-plan-day tehty liike näkyy tekemättömänä tulevien-listoilla. Sama luokka kuin **F-1** value-resolution-auditissa (rendering-haja samalle loogiselle arvolle). Code formalisoi UNIFY-A2:n ratifioidusta suunnasta — verifioitu repon koodista (§7: repo voittaa).* **M2 (OBS-022) GATED + säilytetty** git-committissa `15f4973` (M2 palautetaan F-5 shipin jälkeen: `git show 15f4973:HANDOFF.md > HANDOFF.md`, samaan tapaan kuin M2 palautui K-A6D shipin jälkeen).
 
 ---
 
@@ -12,88 +12,111 @@
 
 | Kenttä | Arvo |
 | --- | --- |
-| Handoff-id | `M2` (OBS-022 — todellinen %-progressio / sisä-blokki-intensifikaatio) |
-| Tyyppi | `block-tuning` (intra-blokki-progressiokäyrät) **confirm-then-fix-disipliinillä** (A1 read-only CONFIRM → STOP → Akselin §4-käyrävalidointi → A2 FIX). EI `debug` (ei toistettava bugi vaan suunniteltu käytösmuutos), EI `scope-expansion` (muuttaa olemassa olevan blokki-progression parametreja, ei lisää erillistä ominaisuutta). §4 pakollinen — täytetään A1c:n tuottamasta käyräenumeraatiosta ENNEN A2:ta. |
-| Laadittu | 2026-06-02 / Cowork-sessio (DRAFT-COWORK ratifioitu) · Code formalisoi |
-| Tila | `AKTIIVINEN` (A1-vaihe) |
-| Pohja-HEAD | `3ed7226` (= `76d5aa5` + ROADMAP §0 -doc, kuorma-neutraali → koodipohja identtinen 76d5aa5:n kanssa) · APP_VERSION `4.52.32` |
-| Liittyy R-sekvenssin vaiheeseen | Ei yksittäinen R-vaihe. NYT-merkki = vaihe 18 (Round B-β). M2 = milestone OBS-022 (todellinen %-progressio), ajetaan vaiheen 18 rinnalla. |
+| Handoff-id | `F-5` (completion-render-koherenssi — `isSlotDoneForWeek`-unify) · OBS-034 ("Tulevat treenit done") |
+| Tyyppi | `refactor` (UNIFY, F-1/F-4-unify-malli — extract helper, reititä render-polut). **Render-only**: ei kosketa engineä, ei kuormaa, ei done-semantiikkaa (vain ekstraktointi). **EI LOAD-DIFF-SWEEPiä** — rakenteellisesti kuorma-neutraali (CLAUDE.md §9 kohta 4 -poikkeus: signaali ei ole `recommend()`-input, raportoidaan eksplisiittisesti). |
+| Laadittu | 2026-06-02 / Cowork (DRAFT-COWORK ratifioitu) · Code formalisoi |
+| Tila | `AKTIIVINEN` (A2 FIX -vaihe) |
+| Pohja-HEAD | `15f4973` (= M2 un-gate -committi; APP_VERSION `4.52.33`). M2 HANDOFF säilyy git-historiassa `15f4973:HANDOFF.md`. |
+| Liittyy R-sekvenssin vaiheeseen | Ei yksittäinen R-vaihe. Sulkee value-resolution-auditin viimeisen aukon (Completion-sarake "Avoin" → F-5 RATKAISTU). |
 
 ---
 
 ## 1. Tavoite
 
-Saman liikkeen **TAVOITE-intensiteetti nousee (volyymi laskee) viikosta viikkoon SAMAN blokin sisällä** — suunnitellusti, **velocity-agnostisesti** (ei nojaa mitattuun nopeuteen; dippi/apuliikkeet eivät mittaa luotettavasti) ja **rehellisesti näytettynä**.
+**Off-plan-day tehty liike näkyy "tehtynä" kaikilla kolmella viikko-/päivänäkymällä** — samalla kanonisella done-säännöllä kuin "Tämä viikko" -kortti käyttää tänään (OBS-026 + OBS-028 + OBS-027-A2 -semantiikka).
 
-A1-orientaation (2026-06-02, read-only) toteama nykytila: intra-blokki on **litteä** — kanoninen %-lähde on `vRepsToExpectedPct(reps+Vx)` (LOAD_PCT_RESOLVED, tier 1/2/3), mutta `reps+Vx` ei muutu blokin sisällä → TAVOITE-% pysyy vakiona (esim. Intensity vk9–11 = 88,2 % flat, FINAL 71/71/71 kg). Templaatin `loadPct`-ramppi (esim. 0,85→0,87→0,90) on **dead code** (vReps ohittaa loadPct:n). `computeProgressionTarget` on blokki-vaihe-sokea (ankkuri-suhteellinen Helms-creep). Display: @X% stripattu tier 1/2/3:lta → ei näkyvää intensifikaatiota.
+**A1-orientaation (2026-06-02, read-only) toteama nykytila:** "Tämä viikko" -kortin per-day done-checkin (index.html:8049) dual-gate `movDoneThisWeek ∨ sess.endedAt` on **kanoninen completion-render-totuuslähde**. Se tekee:
+1. OBS-026: `endedAt`-pohjainen sessio-done -fallback (tasan-tällä-plan-päivällä).
+2. OBS-028: liike-pohjainen viikkotäsmäys (top-set `movementId` viikon päättyneissä sessioissa) — atletti voi tehdä plan-liikkeen eri viikonpäivänä kuin slot suunniteltu.
+3. OBS-027-A2 / OBS-030: `isPlanOverride && planSourceDateISO`-attribuutio → etukäteen tehty seuraavan viikon työ liikkuu oikean viikon scopeen.
 
-Haluttu lopputila (mekanismi §5, ratifioitu): intra-blokki-intensifikaatio on **SHAPE-only** — vain `reps+Vx` (→ `vReps`) ramppaa blokin sisällä; **ei lisätä velocity-kytkentää**. Olemassa oleva autoregulaatio (e1RM-ankkuri = VBT-promootio + primer-drift · regainMult/vxAdj · VBT-cap) toimittaa **anchor/magnitude/peak** automaattisesti per liike: luotettavilla liikkeillä (kyykky/leuanveto) absoluuttinen kuorma skaalautuu velocityyn, ei-VBT (dippi/apuliikkeet) jää rakenne+RPE-ankkuriin. `planTarget = currentE1RMSystem × vReps(reps+Vx)` — ramppi = velocity-agnostinen MUOTO, e1RM = velocity-ankkuroitu SKAALA. Ramppi näkyy käyttäjälle rehellisesti (b-display).
+**Mutta:** kaksi tulevat-listaa render-poluineen EIVÄT tee tätä tarkistusta:
+- `renderFutureCollapsible()` (Koti-dashboard, index.html:5201–5241) — iteroi `getFutureWorkouts(...)` ja renderöi rivit ilman done-tilaa.
+- "Seuraavat 14 päivää" -kortti (Sykli-näkymä, index.html:8163–8194+) — sama `getFutureWorkouts`-data + F-2 PATH 4 same-liike-clamp + summary, **mutta ei done-tarkistusta**.
+
+**Seuraus (käyttäjälle):** Atletti tekee Heavy-kyykky-päivän jo ennen suunniteltua sunnuntaita → sunnuntain Heavy-kyykky-rivi näkyy "tekemättömänä" Koti-dashboardin "Tulevat treenit" -listalla ja Sykli-näkymän "Seuraavat 14 päivää" -kortilla. **"Tämä viikko" -kortti** (sama viikko, sama liike) näyttää sen samaan aikaan "tehtynä" → **epäkoherentti UI**.
+
+**Haluttu lopputila (mekanismi, ratifioitu):** Sama dual-gate-sääntö kaikilla 3 render-polulla. **EI replikointia** (= sama luokka kuin F-1:n alkuperäinen virhe: kaksi rendering-polkua, divergenssiriski jos joku muutetaan). **UNIFY**: ekstraktoi 8049:n done-check jaettuun helperiin (esim. `isSlotDoneForWeek`), reititä kaikki 3 polkua sen kautta. Sama korjausmalli kuin **F-1+F-4-unify** (commit `0caf0a7`, `computeDisplayedSlotLoad`).
 
 ## 2. Acceptance criteria
 
-> **A1 = CONFIRM (read-only, runtime-first — `docs/SELKARANKA.md` §5–6 + leve-handoff §5b). STOP ennen A2:ta.** A1a–A1d ovat yhden CONFIRM-gaten neljä faksettia (eivät itsenäisiä korjauksia → poikkeus skeeman A1/A2-sekvenssistä; perusteltu confirm-then-fix-rakenteella). A2–A5 = FIX vasta A1-vahvistuksen + Akselin §4-ratifioinnin jälkeen.
+> A1 = CONFIRM (TEHTY 2026-06-02, read-only laaja-sweep, 3 Explore-agenttia): juuri = "Tulevat treenit" (5201) + "Seuraavat 14 päivää" (8163) render-polut EIVÄT käytä 8049:n kanonista dual-gatea → sama luokka kuin F-1 (rendering-haja samalle loogiselle arvolle). A2 = FIX (UNIFY).
 
-**A1a — velocity-agnostisuus (read-only).** Kanonisen %-polun (`vRepsToExpectedPct` / LOAD_PCT_RESOLVED) "Vx" on **preskriptio-descriptor** (staattinen `slot.targetVx`-haku), EI mitattuun nopeuteen kytketty.
-- *Mitattu:* koodiluku `engine.js` LOAD_PCT_RESOLVED + `vRepsToExpectedPct` + runtime-trace (resolveSource).
-- *Ehto:* `pctForResolve` johtuu `slot.reps + slot.targetVx`:stä (template-preskriptio), ei `measurements`/velocity-syötteestä → intra-blokki-kiipeäminen toteutettavissa ilman mittausta.
+**A2a — Ekstraktoi kanoninen helper.** Siirrä 8049:n done-check (mukaan lukien 8018–8034:n viikkokohtainen sessio- ja `_completedMovIdsThisWeek`-laskenta) jaettuun helperiin. **Ehdotettu signature (Code päättää tarkka muoto):**
+```js
+// Palauttaa Set<movementId>:n top-set-liikkeistä joiden sessio päättynyt (endedAt)
+// ja attribuoituu tähän viikkoon (dateISO TAI isPlanOverride+planSourceDateISO,
+// OBS-027-A2 + OBS-028). Cached per (weekStartISO, weekEndISO).
+function _getCompletedMovIdsForWeek(weekStartISO, weekEndISO) { ... }
 
-**A1b — per-liike VBT-trust (read-only).** Kartoita VBT-promootio/luottamus (`computeVBTPromotionStatus`, RTF r²-kynnys) per liike.
-- *Ehto:* tunnistettu mitkä liikkeet ovat VBT-luotettavia (kyykky / lisäpainoleuanveto) vs ei (dippi / apuliikkeet → staattinen Epley-vReps). Vahvistaa että velocity-agnostinen ramppi on oikea valinta (ei nojata epäluotettavaan mittaukseen).
+// Done-ehto: slotin pääliike on top-set:nä päättyneessä saman viikon sessiossa
+// (OBS-028) TAI sessio päätetty tasan tällä plan-päivällä (OBS-026 fallback).
+function isSlotDoneForWeek(slot, weekStartISO, weekEndISO, dayISO = null) { ... }
+```
+- *Ehto:* helper kirjoittaa **identtinen done-tila** kuin 8049:n inline-logiikka tuottaa nyt. Semantiikkaa EI muuteta — vain ekstraktointi.
 
-**A1c — nykykäyrät (read-only).** Enumeroi KAIKKI `data.js`:n nykyiset intra-blokki `loadPct`- (ja reps+Vx-) rampit per blokki-tyyppi (Foundation / Strength / Intensity / Peaking) × per liike.
-- *Ehto:* täydellinen käyräkartta **§4-validointiin** (Akseli vahvistaa mitkä rampit oikein, mitkä korjataan). **ÄLÄ muuta käyriä A1:ssä.**
+**A2b — Reititä kaikki 3 render-polkua helperin kautta.**
+1. `index.html:8049` ("Tämä viikko" `cv-week-card`-render) → kutsuu `isSlotDoneForWeek(primary, weekStartISO, weekEndISO, dayISO)` ja `_getCompletedMovIdsForWeek`. Inline-laskenta poistetaan (siirtyy helperiin).
+2. `index.html:5201–5241` (`renderFutureCollapsible`, Koti-dashboard) → per-`fw` laske `weekStartISO/weekEndISO` (fw:n viikko mesocyclen pohjalta) ja per-slot kutsu `isSlotDoneForWeek(slot, weekStartISO, weekEndISO, fw.dateISO)`. Renderöi done-statusCls (esim. CSS-luokka `done`/check-ikoni) yhdenmukaisesti.
+3. `index.html:8163–8194+` ("Seuraavat 14 päivää" Sykli-kortti) → sama logiikka kuin 5201, per-slot done-check helperin kautta. **F-2 PATH 4 same-liike-clamp säilyy ennallaan** — done on visuaalinen overlay, ei kuorma-input.
 
-**A1d — yksi-lähteisyys (read-only).** Vahvista voidaanko intra-blokki-ramppi syöttää YHTEEN kanoniseen %-polkuun ilman kilpailevaa signaalia.
-- *Ehto:* mekanismi (i) (reps+Vx-mikroporras → vReps) ei luo toista `loadPct ↔ vReps`-fragmentaatiota (F-2-luokan virhe vältetty).
+- *Ehto:* **ÄLÄ KOPIOI** dual-gatea (= sama kuin F-1:n alkuperäinen virhe). Yksi totuuslähde, kolme käyttöä.
 
-**A2 — FIX: mekanismi (i)** (vasta A1-vahvistuksen + §4-käyrävalidoinnin jälkeen). Intra-blokki-intensifikaatio reps+Vx-mikroportaalla, syötettynä kanoniseen vReps-polkuun. Invarianttien (VL-cap, tier-progression) sisällä.
+**A2c — Known-pos / known-neg (mittari-ensin, CLAUDE.md §3 + Selkäranka §6).**
+- **Known-pos:** off-plan-day tehty liike → "tehty" molemmissa tulevien-listoilla.
+  - Setup: kuvitteellinen state jossa Heavy-kyykky on suunniteltu vk6 SU, mutta endedAt-sessio on LA (top-set Kyykky, sama vk). Atribuutio dateISO=LA, sessio kuuluu vk6:n weekStartISO..weekEndISO -ikkunaan.
+  - Odotus: "Tämä viikko" SU-rivi = ✓ (kuten tänään), "Tulevat treenit" SU-rivi = ✓ (uusi), "Seuraavat 14 päivää" SU-slot = ✓ (uusi).
+- **Known-neg:** aidosti tekemätön ennallaan ("Tulevat" + "Seuraavat" eivät false-positoidu) + **"Tämä viikko" bittitarkasti ennallaan** (refactor on no-op nykytilalle).
+  - Setup: state jossa vk5–vk7 ei mitään endedAt-sessioita.
+  - Odotus: kaikki 3 näkymää näyttävät tekemätön-tilan (ei ✓).
 
-**A3 — kuormamuutos-portti (pakollinen, F-2-oppi).** Pre-vs-post **LOAD-DIFF-SWEEP** (korjattu HEAD vs pohja, koko Akseli-backup) = **push-ehto** (ei pelkkä invariantti). Lisäksi pilot 64/64 0 virhettä + uusi baseline ratifioituna + **known-pos** (intra-blokki-TAVOITE-% nousee vk-vk) / **known-neg** (deload + blokkiraja ennallaan).
+**A2d — Pilot bittitarkka (engine koskematon).** Stop hook (`smoke-test.mjs` + `run-pilot.mjs --profile=akseli-elite-streetlifter --scenario=full-16w`) tuottaa **identtiset** trace-arvot kuin pohja `15f4973` — render-only-muutos ei kosketa engineä. **64/64 päivää 0 virhettä** + audit-flagien jakauma muuttumaton (K_A1=10, INVARIANT_VIOLATION=4, jne.).
 
-**A4 — display (b).** Intra-blokki-intensifikaatio rehellisesti näkyvissä (otsikko/per-slot ≡ todellinen nouseva intensiteetti).
+**A2e — Selaintestit 748/752.** `?test=1` (test-runner.js) pysyy 748/752 (4 pre-existing VBT/T9). UI-pinta ei testattava CLI:stä — manuaalinen browser-preview-verifiointi tarvittaessa (kuten K-A6D-vaiheessa).
 
-**A5 — Stop hook + selain.** smoke + pilot exit 0; selain-testit (`?test=1`) ennallaan (748/752 baseline; 4 pre-existing VBT/T9 ei M2:n scopessa).
+**A2f — `VALUE_RESOLUTION_AUDIT.md` §2 → F-5 RATKAISTU.** Päivitä:
+- §1 Yhteenveto-taulukko Completion-sarake: lisää "F-5 (`isSlotDoneForWeek`-unify, helper-ekstrakt)" Suljettu-listalle.
+- §2 Fragmentaatiorekisteri: uusi **F-5** -merkintä (oire, polku-enumerointi, ratkaisu, verifiointi). Käytä F-1+F-4-unify-formaattia mallina.
+- §4 Sulkeutumis-roadmap: päivitä lopputulos "kaikki 5 fragmentaatiota suljettu".
+
+**A2g — push-ehto.** Stop hook exit 0 + selain 748/752 + Akselin known-pos/neg-ratifiointi + per-löydös-committi. **STOP push-portille.**
 
 ## 3. Reunaehdot ja scope-aita
 
-- **Sovellettavat invariantit (`CLAUDE.md` §2):** VL-cap per blokki (Foundation 25–35 / Strength 15–20 / Intensity 10–15 / Peaking 5–10 %), Tier-progression elite ≤ 0,05 ×/vk (Latella 2020), Deload Δ% −20…−30 %, Rep1 MPV slope. Intra-blokki-intensiteettiramppi **pysyttävä näiden rajojen sisällä** — ei saa tuottaa tier-progressiota yli rajan eikä rikkoa VL-cappia.
-- **Mitä EI kosketa (scope-aita, ratifioitu):**
-  - **EI makro-periodisaatiota** (blokkien välinen rakenne, blokki-tyyppisekvenssi ennallaan).
-  - **EI deload/regain-suppressiota** (`computeProgressionTarget` deload-passthrough + regain-multiplier ennallaan).
-  - **EI slot-resolveria / sweep-invariantteja** (F-2:n same-liike-clamp Branch A/15c/Branch B + `auditSp2SlotLoad`/`testSp2SlotLoadInvariant`/`testKotiEqualsLiveAccessory` ennallaan).
-  - **EI `computeProgressionTarget`-creep-logiikkaa** (ankkuri-Helms-creep on blokki-sokea by-design; M2 ei lisää sinne blokki-vaihe-termiä — mekanismi (i) toimii vReps-tasolla).
-- **M2:n lokus:** `data.js` weekDefs (reps+Vx per viikko per blokki) + LOAD_PCT_RESOLVED (vReps-target) + display. Mekanismi (i) = reps+Vx-mikroporras.
-- **Tekniset:** vanilla JS (`.js`/`.mjs`), ei npm-riippuvuuksia, ES-modulit, Stop-hook-yhteensopiva.
+- **Invariantit (`CLAUDE.md` §2):** Ei sovelleta — render-only, ei kosketa tutkimusperustaisia parametreja (VL-cap, tier, deload Δ%, MPV slope). Pilot bittitarkka = invarianttien validointi pysyy ennallaan.
+- **Operointitapa (`CLAUDE.md` §9 EQUIP PROSESSI):**
+  - **§9.4 LOAD-DIFF-SWEEP -poikkeus:** rakenteellinen analyysi todistaa kuorma-neutraalin (helper koskee vain UI-render-statusta `statusCls`/`statusIcon`; `_completedMovIdsThisWeek` on lukupää, ei syöte `recommend()`:lle). Ei sweep-vaatimusta — raportoidaan eksplisiittisesti A2:n session-tuloksessa.
+  - **§9.2 Plan mode ENNEN toteutusta:** Code suunnittelee helper-sijainti (index.html funktion-taso lähellä `_cvSessionByDate`-cachea vai utils-modulissa), cache-strategia, signature ja per-fw-viikon-resoluutio Plan-agentilla ENNEN edit-vaihetta. Estää runtime-premissi-reversion (esim. cache-rikko, jos helper kutsutaan eri context:eista).
+  - **§9.6 Effort-jako:** ekstrakti+reititys on mekaaninen → Sonnet. Design-päätökset (Plan-vaihe) tarvittaessa Opus high.
+- **Mitä EI kosketa (scope-aita):**
+  - **Done-logiikan semantiikkaa** — vain ekstraktointi 8049:stä helperiin, identtinen output.
+  - **Engine** (`engine.js` `getFutureWorkouts`, `recommend`, `computeProgressionTarget`, MovementProgress-päivitykset) — koskematon.
+  - **Load-polut** — same-liike-clamp (F-2 PATH 4 8170–8194), `_syRenderComputeKg`, dashboard `computeDisplayedSlotLoad` ennallaan. Done on visuaalinen overlay; kuorma-laskenta tekee oman tienss.
+  - **`_cvWeekStatus`-viikko-numero-by-design** (index.html:7953–7958) — tulevat viikot = "future" puhtaasti vk-numeron pohjalta. F-5 koskee **päivätason slot-rivejä** (futureWorkouts-iterointi), ei viikko-otsikoita.
+  - **Save-polku** (`saveWorkoutToDb`, `saveSets`, `set.completed`-transient) — value-resolution-audit §3 footgun ennallaan. `set.completed` ei persistoidu, helper lukee `endedAt`+`setRole="top"`+`movementId` -presence-checkillä.
+  - **M2 (OBS-022) HANDOFF** — säilyy git-committissa `15f4973`, palautuu F-5 shipin jälkeen.
+- **Tekniset:** vanilla JS, ei npm, ES-modulit, Stop hook -yhteensopiva.
 
 ## 4. Atletti-vastaukset critical questions -kysymyksiin
 
-> Pakollinen (`block-tuning`). **Code EI aloita A2b:tä ennen kuin tämä on täytetty.** §4 = templaatin per-blokki-INTENTTI ilmaistuna **Vx-laskumuotona** (kiinteä toisto + Vx laskee → `vReps` nousee), **EI staattisina kuormina**. Akselin sign-off A2a-dry-runin reps+Vx-trajektoreille per blokki (Foundation/Strength/Intensity/Peaking) = laatuportti. Huippuviikon valinta (kiinteä toisto V0 vs toiston pudotus) ratkaistaan per VL-cap.
-
-**Sign-off'attu A2a-muoto (2026-06-02): per-blokki reps+Vx Vx-laskumuoto.** β-aloitus (nostettu start-Vx → kevyt vk1 = sisäänajo); reprodusoi templaatin loadPct-ramppi-intentin (+4–6pp vReps/blokki). VL-cap (CLAUDE.md §2) sanelee huippuviikon: Foundation/Peaking = Vx-lasku; **Strength/Intensity = toiston pudotus** (Vx→V0 rikkoisi VL-cappia). Pääliikkeet (leuanveto/kyykky/dippi) identtiset.
-
-| Blokki | reps×Vx (loading vk1/2/3) | vReps-% | huippu-mekanismi |
-| --- | --- | --- | --- |
-| Foundation | 6V3 / 6V2 / 6V1 | 76,9 / 78,9 / 81,1 (+4,2pp) | Vx-lasku (V1) |
-| Strength | 4V3 / 4V2 / **3V1** | 81,1 / 83,3 / 88,2 (+7,1pp) | toiston pudotus (4→3) |
-| Intensity | 3V2 / 3V1 / **2V1** | 85,7 / 88,2 / 90,9 (+5,2pp) | toiston pudotus (3→2) |
-| Peaking (singlet) | 1V3 / 1V2 / 1V1 | 88,2 / 90,9 / 93,8 (+5,6pp) | Vx-lasku (V1); V0=max-single vain testi/opener |
-
-Deload-viikot (vk4/8/12/16) ENNALLAAN (scope-aita). **Per-liike realisoituminen:** kyykky/leuanveto = velocity-ankkuroitu e1RM × vReps (skaalautuu mittaukseen); dippi/apuliikkeet = staattinen e1RM × vReps (rakenne+RPE). VL-cap-↔-velocity-stop-rajapinta (K-A6D) tarkistettava A2b:ssä.
+**Ei sovellu** — tyyppi `refactor` (ei `block-tuning`). Render-only UNIFY, ei muuta atleettiparametrejä.
 
 ## 5. Taustapäätökset ja hylätyt vaihtoehdot
 
-1. **Mekanismi (i) ratifioitu (kirkastettu):** intra-blokki-intensifikaatio toteutetaan **reps+Vx-mikroportaalla** → `vReps(reps+Vx)` nousee blokin sisällä → TAVOITE-% nousee yhdestä kanonisesta lähteestä.
-   - **Hylätty (ii):** loadPct takaisin intensiteettisignaaliksi vReps:n rinnalle → loisi `loadPct ↔ vReps`-kilpailun = F-2-luokan fragmentaatio. **Hylätty (iii):** blokki-vaihe-termi `computeProgressionTarget`:iin → sotkisi autoregulaatio-creepin ja periodisaation; rikkoo scope-aitaa (ei kosketa creep-logiikkaa).
-2. **Velocity-agnostinen (kirkastettu):** intra-blokki-kiipeäminen on PRESKRIPTIO (staattinen reps+Vx-haku), EI mitattu nopeus. Perustelu: dippi + apuliikkeet eivät mittaa luotettavasti (A1b vahvistaa) — kiipeäminen ei saa nojata epäluotettavaan signaaliin. Within-session VBT-autoregulaatio (velocity-stop, Vx-bias) säilyy erillisenä kerroksena, M2:n ulkopuolella.
-3. **Yksi-lähteisyys:** ramppi YHTEEN kanoniseen %-polkuun (vReps) — value-resolution-auditin (F-1…F-4) oppi: ei toista divergenttiä signaalia.
-4. **SHAPE-only + autoreg ratsastaa (A1-lisäfasetti ratifioitu 2026-06-02):** mekanismi (i) ramppaa VAIN reps+Vx-MUODON (vReps-trajektori). **EI lisätä velocity-kytkentää** — olemassa oleva e1RM-ankkuriketju (cal→primer-drift→plan-based→VBT-cap→floor) + `computeProgressionTarget` regainMult/vxAdj **ratsastaa rampilla** ja toimittaa anchor/magnitude/peak. `planTarget = currentE1RMSystem × vReps(reps+Vx)`: ramppi = velocity-agnostinen MUOTO (toimii myös dipille), e1RM = velocity-ankkuroitu SKAALA luotettavilla liikkeillä. **Per-liike VBT-vs-rakenne+RPE tulee e1RM-ankkurista ilmaiseksi** — ei eksplisiittistä per-liike-haaraa M2:ssa. VL-cap (CLAUDE.md §2) rajoittaa Vx-laskun syvyyttä per blokki → korkeissa blokeissa (Intensity, Vx jo V1) intensifikaatio = toiston pudotus, ei Vx→V0 (rikkoisi VL-cappia).
+1. **UNIFY-MALLI (= F-1/F-4-unify, commit `0caf0a7`).** Ekstraktoi 8049:n done-check yhdeksi kanoniseksi funktioksi (esim. `isSlotDoneForWeek`), reititä kaikki 3 render-polkua sen kautta. Sama rakenne kuin `computeDisplayedSlotLoad` -refaktori joka sulki F-1+F-4 (`index.html:4445`).
+2. **HYLÄTTY: replikoi dual-gate joka render-polkuun.** Riski: divergenssi jos joku muutetaan (= F-1:n alkuperäinen virhe). Single-source-puhtaus (= value-resolution-audit-oppi: "ei dead divergenttiä signaalia") pakottaa UNIFY:n.
+3. **EI LOAD-DIFF-SWEEPiä — render-only-poikkeus.** Helper ei vaikuta `recommend()`-kuormaan (`_completedMovIdsThisWeek` luetaan UI-statuksesta, ei kuormalaskennasta). EQUIP §9.4 -poikkeus: rakenteellinen analyysi todistaa kuorma-neutraalin. Sweep olisi rakenteellisesti tyhjä (helper ei ole `recommend()`-input).
+4. **Helper-sijainti: index.html funktion-tasolle** lähellä `_cvSessionByDate`-cacheia (~7948) tai pinnan ulkopuolelle. Vaihtoehto utils-modulin oma tiedosto hylätty: render-only utility ei tarvitse omaa moduulia, ja yhdessä paikassa pidetty helper näkyy paremmin tulevien render-polkujen yhteydessä. Code päättää tarkka sijainti Plan-vaiheessa.
+5. **Cache-strategia: per-(weekStartISO, weekEndISO) sisällä yhden renderin scopessa.** Tulevat-näkymä kattaa enintään 2–3 viikkoa (14 päivää) → 2–3 cache-entryä per render. Säilyttäisi nykyisen 8018–8034 yhden-kerran-laskennan luonteen "Tämä viikko" -renderissä.
+6. **F-1 -opit suoraan sovellettu:** F-1:n korjaus oli `computeDisplayedSlotLoad` joka yhdisti dashboard- ja workout-flow-kuorma-renderin (single source `slot.resolvedLoadKg` same-liike-apuliikkeelle). F-5:n korjaus on `isSlotDoneForWeek` joka yhdistää "Tämä viikko" + "Tulevat" + "Seuraavat" done-renderin (single source 8018–8049-dual-gate).
+7. **VALUE_RESOLUTION_AUDIT.md klusteri-loppu:** F-5 sulkemisen jälkeen audit on KOKONAAN KIINNI (F-1, F-2, F-3, F-4, F-5 kaikki ratkaistut) — invariantti uusille completion/attribuutio-render-poluille: lue VAIN `isSlotDoneForWeek` (UI-done) tai `session.endedAt`+presence (audit/historia).
 
-## 6. Avoimet kysymykset
+## 6. Avoimet kysymykset (Code selvittää A2-Plan-vaiheessa, raportoi session-tuloksessa)
 
-> Code raportoi A1a–A1d:n tulokset (VAIHE 1). Akseli ratifioi ENNEN A2:ta.
-
-- **Q1:** A1a–A1d:n löydökset (Code raportoi A1-vaiheessa) — vahvistavatko mekanismi (i):n + velocity-agnostisuuden toteutettavuuden?
-- **Q2 (A1c:n jälkeen):** §4-käyrävalidointi — mitkä nykyiset intra-blokki-rampit ovat oikein, mitkä korjataan?
+- **Q1: Helperin sijainti.** index.html funktion-tasolla (lähellä `_cvSessionByDate`-cacheia ~7948) vai pinnan ulkopuolelle (esim. ~5180 ennen `renderFutureCollapsible`:a)? Code valitsee + perustelee (suositeltu: yksi paikka jossa render-only-helperit asuvat).
+- **Q2: Per-fw-viikon-resoluutio "Tulevat treenit" + "Seuraavat 14 päivää" -render-poluissa.** `fw` (futureWorkout) sisältää `weekNum`-kentän (engine.js:5988). Resolvoiko helper `weekStartISO/weekEndISO` `mesocycle.startDateISO + (weekNum-1) × 7`-laskennalla, vai vaaditaanko `fw`:lle eksplisiittinen `weekStartISO`-attribuutti `getFutureWorkouts`-paluuobjektista? Suositus: laske helperissä `mesocycle`-parametristä (helper ei muuta `getFutureWorkouts`-paluuta).
+- **Q3: dayISO-fallback (OBS-026) tulevien-listoilla.** "Tämä viikko" käyttää `_cvSessionByDate.get(dayISO)` -fallbackin (8038). Tulevilla päivillä `sess` ei ole olemassa → fallback no-op. Säilytä helperissä `dayISO=null` -optio joka ohittaa fallbackin tulevilla, mutta käyttää sen "Tämä viikko" -kontekstissa (bittitarkka backward-compat).
+- **Q4: Status-rendering.** "Tulevat treenit" + "Seuraavat" -kortit eivät tällä hetkellä renderöi `statusCls="done"` / check-ikonia. Lisätäänkö **visuaalinen tila** (esim. läpiviivaus, ✓-merkki, opacity) vai pelkkä tiedotemerkintä (esim. small badge "tehty")? Suositus: minimaalinen ✓-ikoni rivin lopussa + opacity 0.6, säilyttäen "klikattavissa" -ominaisuuden. Akseli ratifioi visuaalisen tyylin A2-Plan-vaiheen jälkeen tarvittaessa.
 
 ---
 
@@ -103,7 +126,7 @@ Deload-viikot (vk4/8/12/16) ENNALLAAN (scope-aita). **Per-liike realisoituminen:
 | --- | --- |
 | Sessio päättyi | `<pvm>` |
 | Muuttuneet tiedostot | `<lista>` |
-| Tehdyt päätökset | `<lista>` |
-| Validointi | `<Stop hook pass/fail · selain-testit · regressio-pilot · LOAD-DIFF-SWEEP>` |
+| Tehdyt päätökset | `<helper-nimi, sijainti, cache-strategia, status-rendering>` |
+| Validointi | `<Stop hook · selain-testit · pilot bittitarkka (engine koskematon) · known-pos/neg · LOAD-DIFF-SWEEP-poikkeus dokumentoitu>` |
 | Jäi auki | `<lista tai "—">` |
-| Seuraava askel | `<seuraava handoff tai R-sekvenssin vaihe>` |
+| Seuraava askel | `<M2 un-gate (restore git show 15f4973:HANDOFF.md > HANDOFF.md) tai R-vaihe>` |
