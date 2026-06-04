@@ -29,10 +29,10 @@
 | --- | --- | --- | --- | --- |
 | **e1RM** | `currentE1RMSystem` (recommend, kanoninen ketju cal→primer→plan→VBT-cap→floor) + `computeMovementE1RMBest` (UI) | ROOT-A: `sessionEffectiveE1RM = currentE1RMSystem` (back-off/secondary) · **F-3** store-segregaatio + invariantti §0 | — | Epley-Vara-kaava (§e1rm 1-3) yhtenäinen; UI-näkymät (Edistyminen/Liikepankki/Trendit) käyttävät kaikki `computeMovementE1RMBest` |
 | **Kuorma** | recommend() `resolvedLoadKg` / `targetExternalLoad` (kanoninen e1RM × pct) | ROOT-A (back-off) · OBS-035+037 (same-liike-volyymi-apuliike workout-flow + Sykli) · **F-1**+**F-4** (F-4-unify 0caf0a7 → dashboard=live) · **F-2** intensiteetti-tietoinen clamp (4.52.32) | — | seed/legacy-fallbackit (ei e1RM-historiaa) |
-| **Completion** | `session.endedAt` (persistoitu) | OBS-026/028 (endedAt-pohjainen done) · OBS-027-A2 (planSourceDateISO-attribuutio) | — | `set.completed` transient (save filtteröi) vs persistoitu presence-check — tarkoituksellinen; viikko-done = vk-numero |
+| **Completion** | `session.endedAt` (persistoitu) + helper `isSlotDoneForWeek` (UI-render) | OBS-026/028 (endedAt-pohjainen done) · OBS-027-A2 (planSourceDateISO-attribuutio) · **F-5** (`isSlotDoneForWeek`-unify, render-koherenssi 3 polulla) | — | `set.completed` transient (save filtteröi) vs persistoitu presence-check — tarkoituksellinen; viikko-done = vk-numero |
 | **Preview** | recommend() live (= workout-flow) | OBS-035+037 (`_syRenderComputeKg` apuliike loadPct = live) · OBS-027 (Koti=live) · F-1 (dashboard=Sykli=live) · F-2 PATH 4 (Sykli-preview same-liike clamp-peilaus) | — | Sykli 14pv flat-estimaatti vs live-progressio = C-HYBRID (programTargetsCache sovittaa lähimmän session) |
 
-**Lopputulos (2026-06-02):** 4 oire-juurta suljettu (ROOT-A, OBS-035+037, OBS-026/028, OBS-027/030) + **kaikki 4 fragmentaatiota suljettu (F-1, F-2, F-3, F-4)** → **value-resolution-audit KOKONAAN KIINNI.** F-1 + F-4 = F-4-unify (commit 0caf0a7, `computeDisplayedSlotLoad`); F-3 = store-segregaatio + invariantti §0; F-2 = intensiteetti-tietoinen reps-pohjainen clamp (push 4.52.32). Loput by-design (dokumentoitu §3).
+**Lopputulos (2026-06-02):** 5 oire-juurta suljettu (ROOT-A, OBS-035+037, OBS-026/028, OBS-027/030, **OBS-034**) + **kaikki 5 fragmentaatiota suljettu (F-1, F-2, F-3, F-4, F-5)** → **value-resolution-audit KOKONAAN KIINNI.** F-1 + F-4 = F-4-unify (commit 0caf0a7, `computeDisplayedSlotLoad`); F-3 = store-segregaatio + invariantti §0; F-2 = intensiteetti-tietoinen reps-pohjainen clamp (push 4.52.32); **F-5 = `isSlotDoneForWeek`-unify (commit a8c913a, ekstrakti 8049-inlinesta + 3 render-polun reititys)**. Loput by-design (dokumentoitu §3).
 
 ---
 
@@ -65,6 +65,20 @@
 - **Ratkaisu:** commit 0caf0a7 — dashboard välittää `variantModifiers`:n `computeDisplayedSlotLoad`-kutsuun (`index.html:4450`) → vMod applioituu primary/back-off/resolved/fallback-sloteille = workout-flow. (Sama unify joka sulki F-1:n.)
 - **Verifioitu:** kyllä (luettu 4445-4451, HEAD 99c84be).
 
+### F-5 — completion-render-koherenssi (= OBS-034) ✅ RATKAISTU (`isSlotDoneForWeek`-unify, commit a8c913a)
+- **Oire:** "Tämä viikko" cv-week-card (`index.html:8049`) teki kanonisen dual-gate done-checkin (OBS-028 liike-täsmäys ∨ OBS-026 endedAt + OBS-027-A2 planSourceDateISO-attribuutio), mutta "Tulevat treenit" Koti-dashboard (`renderFutureCollapsible`, `index.html:5274`) ja "Seuraavat 14 päivää" Sykli-näkymä (`index.html:8219`) EIVÄT → off-plan-day tehty liike näkyi tekemättömänä tulevien-listoilla, vaikka "Tämä viikko" näytti sen tehtynä = epäkoherentti UI.
+- **Polku-enumerointi (A1 read-only, 3 Explore-agenttia):**
+  - **8049** (kanoninen): `if (movDoneThisWeek || (sess && sess.endedAt)) statusCls="done"`.
+  - **5274 `renderFutureCollapsible`**: `getFutureWorkouts(...)` → per-fw renderöinti ilman done-tarkistusta.
+  - **8219 "Seuraavat 14 päivää"**: sama `futureWorkouts`-data + F-2 PATH 4 same-liike-clamp, **mutta ei done-tarkistusta**.
+- **Luokka:** Sama kuin **F-1** (rendering-haja samalle loogiselle arvolle, divergenssiriski jos joku muutetaan).
+- **Ratkaisu (commit a8c913a, render-only):** Ekstraktoi 8049-inline-logiikka jaettuun helperiin (~`index.html:5243`):
+  - `_getCompletedMovIdsForWeek(weekStart, weekEnd)` — top-set-movementId:t päättyneistä sessioista (OBS-026/027-A2/028 -attribuutio).
+  - `isSlotDoneForWeek(slot, weekStart, weekEnd, dayISO=null)` — kanoninen done-ehto (OBS-028 ∨ OBS-026-dayISO-fallback).
+  - `_f5WeekRange(meso, weekNum)` — viikko-haarukka per fw.weekNum.
+  - Kaikki 3 render-polkua reititetty helperin kautta. **ÄLÄ replikoi dual-gatea** (F-1+F-4-unify-oppi). Visuaalinen merkintä: ✓-prefix + `opacity:0.6` + "Tehty"-tag/chip tulevien-listoilla.
+- **Verifiointi:** **render-only-poikkeus LOAD-DIFF-SWEEPiin** (CLAUDE.md §9.4): helper koskee vain UI-statusta (`statusCls`/`statusIcon`/inline-style), ei `recommend()`-kuormaa. Rakenteellinen kuorma-neutraali. Pilot **64/64 0 virhettä, 68 audit-flagia (sama jakauma)** = engine bittitarkka. Selaintestit **748/752** (4 pre-existing VBT/T9 ennallaan, ei uusia). Helper-semantiikka koodi-luettavasti identtinen 8049-inlinen kanssa.
+
 ### CLOSED — suljetut tässä arcissa (verifioitu)
 | ID | Fragmentaatio | Korjaus | Status |
 | --- | --- | --- | --- |
@@ -73,6 +87,7 @@
 | OBS-026/028 | session-done `completed`-flag (ei-persistoitu) → `endedAt` + liike-pohjainen viikkomatch | `index.html:8013-8053` | ✅ |
 | OBS-027-A2 | planOverride-session väärässä viikossa | `index.html:8026` planSourceDateISO-attribuutio | ✅ |
 | OBS-030 | progression-attribuutio (lepotila lastSession) | `engine.js` ctx.lastSession | ✅ |
+| OBS-034 (F-5) | completion-render-koherenssi: "Tämä viikko" done-check puuttui "Tulevat treenit" + "Seuraavat 14 päivää" -render-poluilta | `index.html:5243` `isSlotDoneForWeek`-helper + 3 polun reititys (commit a8c913a) | ✅ |
 
 ---
 
@@ -85,14 +100,17 @@
 
 ---
 
-## 4. Sulkeutumis-roadmap — ✅ VALMIS (2026-06-02, kaikki fragmentaatiot suljettu)
+## 4. Sulkeutumis-roadmap — ✅ VALMIS (2026-06-02, kaikki 5 fragmentaatiota suljettu)
 
 1. **F-1 (Koti-dashboard-apuliike)** ✅ — F-4-unify (commit 0caf0a7): dashboard-render → `computeDisplayedSlotLoad` (= workout-flow), lukee `slot.resolvedLoadKg`:n same-liike-apuliikkeelle.
 2. **F-2 (rate-limit×back-off)** ✅ — intensiteetti-tietoinen reps-pohjainen clamp (push 4.52.32, 8 commitia 7dd6983→99c84be). Sweep (Akseli backup): 0 nykykuorma-muutosta; pilot SP-2=0.
 3. **F-3 (e1RM-persistenssi)** ✅ — store-segregaatio (tarkoituksellinen, ei koodimuutosta) + invariantti §0 + `testKotiEqualsLiveAccessory`-vartija.
 4. **F-4 (variantLoadModifier)** ✅ — F-4-unify (0caf0a7), niputettu F-1:een (`variantModifiers` → `computeDisplayedSlotLoad`).
+5. **F-5 (completion-render-koherenssi)** ✅ — `isSlotDoneForWeek`-unify (commit a8c913a): ekstrakti 8049-inlinesta + 3 render-polun reititys ("Tämä viikko" + "Tulevat treenit" + "Seuraavat 14 päivää"). Render-only, ei LOAD-DIFF-SWEEPiä (CLAUDE.md §9.4 -poikkeus rakenteellisesti kuorma-neutraali).
 
-**Invariantti jatkoa varten:** uusi slot-kuorma- tai e1RM-render-polku EI saa lukea arvoa muusta kuin (a) recommend() `resolvedLoadKg`/`targetExternalLoad` (live + dashboard) tai (b) `computeMovementE1RMBest` (UI-e1RM-näkymät). `getMovementProgress.suggestedLoadKg` sallittu VAIN eri-liike-apuliikkeille (movement ≠ päivän primary). SP-2-selainassertio (test-runner.js) lukitsee back-off ≤ pää; harkitse vastaava apuliike ≤ back-off -assertio.
+**Invariantti jatkoa varten:**
+- **Kuorma / e1RM -render:** uusi slot-kuorma- tai e1RM-render-polku EI saa lukea arvoa muusta kuin (a) recommend() `resolvedLoadKg`/`targetExternalLoad` (live + dashboard) tai (b) `computeMovementE1RMBest` (UI-e1RM-näkymät). `getMovementProgress.suggestedLoadKg` sallittu VAIN eri-liike-apuliikkeille (movement ≠ päivän primary). SP-2-selainassertio (test-runner.js) lukitsee back-off ≤ pää; harkitse vastaava apuliike ≤ back-off -assertio.
+- **Completion-render (F-5):** uusi viikko-/päivä-tason done-render EI saa replikoida dual-gatea — kutsu `isSlotDoneForWeek(slot, weekStart, weekEnd, dayISO=null)` (~`index.html:5243`). Tämä invariantti suojaa siltä että "Tämä viikko" + "Tulevat" + "Seuraavat" -render-polut divergoituvat tulevaisuudessa.
 
 ---
 
