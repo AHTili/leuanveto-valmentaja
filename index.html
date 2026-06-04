@@ -5198,6 +5198,79 @@ function renderStimCard(deloadMode) {
   </div>`;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// F-5 (OBS-034, 2026-06-02) — completion-render-koherenssi UNIFY
+// ═══════════════════════════════════════════════════════════════
+// Ekstrakti index.html:8049-inline-logiikasta. Kanoninen done-check kolmelle
+// render-polulle: "Tämä viikko" cv-week-card + "Tulevat treenit" -lista +
+// "Seuraavat 14 päivää" -kortti. F-1/F-4-unify-malli (commit 0caf0a7):
+// yksi totuuslähde, kolme käyttöä — ÄLÄ replikoi dual-gatea (= F-1:n
+// alkuperäinen virhe, divergenssiriski). Render-only: ei vaikuta
+// recommend()-kuormaan (CLAUDE.md §9.4 LOAD-DIFF-SWEEP -poikkeus).
+//
+// Semantiikka säilyy bittitarkasti 8049-inlinen kanssa:
+//   - OBS-026: endedAt-pohjainen sessio-done -fallback (dayISO-täsmäys)
+//   - OBS-028: liike-pohjainen viikkotäsmäys (top-set movementId)
+//   - OBS-027-A2 / OBS-030: isPlanOverride && planSourceDateISO -attribuutio
+
+// Palauttaa Set<movementId>:n top-set-liikkeistä joiden sessio päättynyt
+// (endedAt) ja attribuoituu kyseiseen viikkoon.
+function _getCompletedMovIdsForWeek(weekStartISO, weekEndISO) {
+  const sessIds = new Set(
+    (state.sessions || [])
+      .filter(s => {
+        if (!s.endedAt) return false;
+        const attrDate = (s.isPlanOverride && s.planSourceDateISO) ? s.planSourceDateISO : s.dateISO;
+        return attrDate && attrDate >= weekStartISO && attrDate <= weekEndISO;
+      })
+      .map(s => s.sessionId)
+  );
+  const movIds = new Set();
+  if (sessIds.size) {
+    for (const set of (state.allSets || [])) {
+      if (set.setRole === "top" && set.movementId && sessIds.has(set.sessionId)) {
+        movIds.add(set.movementId);
+      }
+    }
+  }
+  return movIds;
+}
+
+// Done-ehto: slotin pääliike on top-set:nä päättyneessä saman viikon sessiossa
+// (OBS-028) TAI sessio päätetty tasan tällä plan-päivällä (OBS-026 fallback).
+// dayISO-fallback käyttää sessio-presence -lookupia state.sessions:sta;
+// tulevilla päivillä sess on undefined → fallback no-op (turvallinen).
+// Caller voi ohittaa dayISO:n (null) tulevien-listoilla, jolloin OBS-026-
+// fallback skipataan ja vain OBS-028-liike-täsmäys ratkaisee.
+function isSlotDoneForWeek(slot, weekStartISO, weekEndISO, dayISO = null) {
+  if (!slot) return false;
+  const movIds = _getCompletedMovIdsForWeek(weekStartISO, weekEndISO);
+  const slotName = slot.defaultMovementName;
+  if (slotName) {
+    const slotMov = state.movements?.find(m => m.name === slotName);
+    if (slotMov && movIds.has(slotMov.movementId)) return true;
+  }
+  if (dayISO) {
+    const sess = (state.sessions || []).find(s => s.dateISO === dayISO && s.endedAt);
+    if (sess) return true;
+  }
+  return false;
+}
+
+// Apuri F-5: laske mesocyclen viikon weekStartISO + weekEndISO weekNum:sta.
+// Käytetään "Tulevat treenit" + "Seuraavat 14 päivää" -render-poluilla
+// resolvoimaan per-fw (futureWorkout, sis. weekNum) viikkohaarukka.
+function _f5WeekRange(mesocycle, weekNum) {
+  if (!mesocycle || !mesocycle.startDateISO || !weekNum) return null;
+  const start = new Date(mesocycle.startDateISO);
+  const weekStart = new Date(start.getTime() + (weekNum - 1) * 7 * 86400000);
+  const weekEnd = new Date(weekStart.getTime() + 6 * 86400000);
+  return {
+    weekStartISO: weekStart.toISOString().slice(0, 10),
+    weekEndISO: weekEnd.toISOString().slice(0, 10),
+  };
+}
+
 function renderFutureCollapsible() {
   if (!state.mesocycle) return "";
   const futureWorkouts = getFutureWorkouts(state.mesocycle, todayISO(), 14);
@@ -5208,6 +5281,11 @@ function renderFutureCollapsible() {
   const rows = futureWorkouts.slice(0, 5).map(fw => {
     const isDeload = (fw.weekLabel || "").toLowerCase().includes("deload");
     const primaries = fw.slots.filter(s => s.role === "primary" || s.role === "backoff" || ["opener", "attempt2", "attempt3"].includes(s.role)).slice(0, 2);
+    // F-5 (OBS-034): done-status helperin kautta (sama sääntö kuin "Tämä viikko").
+    // Pään (primary) suoritus viikon sisällä mistä tahansa päivästä → ✓ + opacity.
+    const _f5Range = _f5WeekRange(state.mesocycle, fw.weekNum);
+    const _f5Primary = fw.slots.find(s => s.role === "primary");
+    const _f5IsDone = !!(_f5Range && isSlotDoneForWeek(_f5Primary, _f5Range.weekStartISO, _f5Range.weekEndISO, fw.dateISO));
     const descBits = primaries.map(s => {
       const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "🏆";
       return `${icon} ${s.defaultMovementName} ${s.sets}×${s.reps}`;
@@ -5215,17 +5293,19 @@ function renderFutureCollapsible() {
     const descHead = `<b>${dayTypeLabel(fw.dayType)}</b>`;
     const desc = descBits.length ? `${descHead} · ${descBits.join(" · ")}` : descHead;
     const tagCls = isDeload ? " deload" : "";
-    const tagLabel = isDeload ? "Deload"
+    const tagLabel = _f5IsDone ? "Tehty"
+      : isDeload ? "Deload"
       : fw.dayType === "heavy" ? "Heavy"
       : fw.dayType === "speed" ? "Speed"
       : fw.dayType === "volume" ? "Volume"
       : fw.dayType === "competition" ? "Kisa"
       : "Prog";
+    const _f5DoneTag = _f5IsDone ? " done" : "";
     const monthDay = fw.dateISO.slice(5).replace(/^0/, "").replace("-0", ".").replace("-", ".");
-    return `<div class="future-row">
-      <div class="future-day">${dayNames[fw.dayOfWeek] || ""}<b>${monthDay}</b></div>
+    return `<div class="future-row"${_f5IsDone ? ' style="opacity:0.6"' : ''}>
+      <div class="future-day">${_f5IsDone ? "✓ " : ""}${dayNames[fw.dayOfWeek] || ""}<b>${monthDay}</b></div>
       <div class="future-desc">${desc}</div>
-      <div class="future-tag${tagCls}">${tagLabel}</div>
+      <div class="future-tag${tagCls}${_f5DoneTag}">${tagLabel}</div>
     </div>`;
   }).join("");
   return `<details class="dash-collapsible" data-persist="dash_future_open"${open ? " open" : ""}>
@@ -8004,49 +8084,24 @@ function renderMesocycle() {
     const start = new Date(meso.startDateISO);
     const weekStart = new Date(start.getTime() + (currentWeek - 1) * 7 * 86400000);
     const days = (wp.days || []).filter(d => d.dayOfWeek <= 6).sort((a, b) => a.dayOfWeek - b.dayOfWeek);
-    // OBS-028: liike-pohjainen viikkotäsmäys. Atletti voi tehdä plan-liikkeen eri
-    // viikonpäivänä kuin slot on suunniteltu (esim. dippi To-slot tehtynä Ke 27.5).
-    // Kerää tällä meso-viikolla PÄÄTETYISSÄ (endedAt) sessioissa tehdyt PÄÄLIIKKEET
-    // (top-set movementId) → slot "done" jos sen liike on joukossa, riippumatta tarkasta
-    // päivästä. VAIN lukupää (state.sessions/allSets/movements luku) — save-polku koskematon.
+    // F-5 (2026-06-02): completion-render-koherenssi — done-check ekstraktoitu
+    // jaettuun helperiin (isSlotDoneForWeek + _getCompletedMovIdsForWeek, ~5200).
+    // Sama kanoninen sääntö myös "Tulevat treenit" + "Seuraavat 14 päivää" -render-
+    // poluilla → off-plan-day tehty liike näkyy "tehtynä" kaikilla 3 näkymällä.
+    // Semantiikka (OBS-026 endedAt + OBS-028 liike-täsmäys + OBS-027-A2 planSource-
+    // DateISO) säilyy bittitarkasti — ekstrakti vain, ei kosketa logiikkaa.
     const weekStartISO = weekStart.toISOString().slice(0, 10);
     const weekEndISO = new Date(weekStart.getTime() + 6 * 86400000).toISOString().slice(0, 10);
-    // OBS-027-A2: planOverride-sessio attribuoidaan SUUNNITELLULLE viikolle
-    // (planSourceDateISO), symmetrisesti OBS-030:n progression-attribuution kanssa →
-    // etukäteen tehty seuraavan viikon työ näkyy oikean viikon slotissa. isPlanOverride-
-    // gate → normaalisessio käyttää dateISO:a (OBS-026/028 known-pos ennallaan).
-    const _weekSessIds = new Set(
-      (state.sessions || [])
-        .filter(s => {
-          if (!s.endedAt) return false;
-          const _attribDate = (s.isPlanOverride && s.planSourceDateISO) ? s.planSourceDateISO : s.dateISO;
-          return _attribDate && _attribDate >= weekStartISO && _attribDate <= weekEndISO;
-        })
-        .map(s => s.sessionId)
-    );
-    const _completedMovIdsThisWeek = new Set();
-    if (_weekSessIds.size) {
-      for (const set of (state.allSets || [])) {
-        if (set.setRole === "top" && set.movementId && _weekSessIds.has(set.sessionId)) {
-          _completedMovIdsThisWeek.add(set.movementId);
-        }
-      }
-    }
     const rowsHTML = days.map(d => {
       const dayDate = new Date(weekStart.getTime() + (d.dayOfWeek - 1) * 86400000);
       const dayISO = dayDate.toISOString().slice(0, 10);
       const sess = _cvSessionByDate.get(dayISO);
       const primary = (d.slots || []).find(s => s.role === "primary");
-      // OBS-028: onko slotin pääliike PÄÄTETTY (endedAt) tällä viikolla — millä tahansa päivällä?
-      const slotMov = primary ? state.movements?.find(m => m.name === primary.defaultMovementName) : null;
-      const movDoneThisWeek = !!(slotMov && _completedMovIdsThisWeek.has(slotMov.movementId));
       let statusCls = "next";
       let statusIcon = "○";
-      // OBS-026 + OBS-028 (lukupää, save-polku koskematon): valmius = slotin pääliike
-      // PÄÄTETTY tällä viikolla (OBS-028, mikä tahansa päivä) TAI sessio päätetty tasan
-      // tällä plan-päivällä (OBS-026-fallback jos liikettä ei resolvoida). `completed`-flag
-      // EI käytössä (ei persistoitu, 0/19 sessiossa).
-      if (movDoneThisWeek || (sess && sess.endedAt)) { statusCls = "done"; statusIcon = "✓"; }
+      // F-5 UNIFY: dual-gate (OBS-026 endedAt + OBS-028 liike-täsmäys) helperin kautta.
+      // `completed`-flag EI käytössä (ei persistoitu, 0/19 sessiossa, value-resolution-audit §3).
+      if (isSlotDoneForWeek(primary, weekStartISO, weekEndISO, dayISO)) { statusCls = "done"; statusIcon = "✓"; }
       else if (dayISO === today) { statusCls = "now"; statusIcon = "●"; }
       else if (dayISO < today) { statusCls = "skip"; statusIcon = "✕"; }
       const focus = stripRedundantDayPrefix(honestifyLoadLabel(d.label, d.slots, meso)) || dayTypeLabel(d.dayType) || "?";
@@ -8183,6 +8238,13 @@ function renderMesocycle() {
           if (!_p4PrimaryMov || slot.defaultMovementName !== _p4PrimaryMov) return flatKg; // vain same-liike
           return Math.min(flatKg, _p4CachePrimaryKg);
         };
+        // F-5 (OBS-034): done-status helperin kautta (sama sääntö kuin "Tämä viikko"
+        // -kortti + "Tulevat treenit" Koti-dashboard). Pään (primary) suoritus viikon
+        // sisällä mistä tahansa päivästä → ✓ + opacity. Tulevien päivien dayISO-fallback
+        // no-op (ei sessiota tulevaisuudessa).
+        const _f5Range = _f5WeekRange(meso, fw.weekNum);
+        const _f5Primary = fw.slots.find(s => s.role === "primary");
+        const _f5IsDone = !!(_f5Range && isSlotDoneForWeek(_f5Primary, _f5Range.weekStartISO, _f5Range.weekEndISO, fw.dateISO));
         // v4.44.0 (2C-β2): summary näyttää primary+backoff lisätiedoilla suoraan
         // (= ei enää erillistä "PÄÄLIIKKEET + BACKOFF" -osiota details:ssä, jotta
         // sama tieto ei toistu yhden kortin sisällä).
@@ -8238,11 +8300,11 @@ function renderMesocycle() {
         // v4.44.0 (2C-β2): primaryDetail-osio poistettu — summary näyttää jo
         // primary+backoff lisätiedoilla. Details laajentaa nyt vain warmup +
         // accessoryt (= UNIIKKI tieto kortissa).
-        return `<details style="padding:8px 0;border-bottom:1px solid var(--border)">
+        return `<details style="padding:8px 0;border-bottom:1px solid var(--border)${_f5IsDone ? ';opacity:0.6' : ''}">
           <summary style="cursor:pointer;list-style:none;outline:none">
             <div class="flex-between">
-              <span style="font-weight:600;font-size:13px">${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5).replace("-", ".")} <span style="font-weight:400;color:var(--muted);font-size:11px">— ${dayLabel}</span></span>
-              <span class="chip" style="font-size:10px">${dayTypeLabel(fw.dayType)} ▼</span>
+              <span style="font-weight:600;font-size:13px">${_f5IsDone ? "✓ " : ""}${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5).replace("-", ".")} <span style="font-weight:400;color:var(--muted);font-size:11px">— ${dayLabel}</span></span>
+              <span class="chip" style="font-size:10px">${_f5IsDone ? "Tehty" : dayTypeLabel(fw.dayType)} ▼</span>
             </div>
             <div style="margin-top:4px">${summary}</div>
           </summary>
