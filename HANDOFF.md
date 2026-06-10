@@ -132,13 +132,13 @@ Kuormahaarukat kyykyllä/leualla ovat kohtuulliset → matala r² ei selity haar
 
 ---
 
-## 7. Session-tulos  *(Claude Code täyttää session lopussa)*
+## 7. Session-tulos
 
 | Kenttä | Arvo |
 | --- | --- |
-| Sessio päättyi | `<pvm>` |
-| Muuttuneet tiedostot | `<lista>` |
-| Tehdyt päätökset | `<lista>` |
-| Validointi | `<Stop hook pass/fail · selain-testit · regressio-pilot · LOAD-DIFF-SWEEP>` |
-| Jäi auki | `<lista tai "—">` |
-| Seuraava askel | `<seuraava handoff tai R-sekvenssin vaihe>` |
+| Sessio päättyi | 2026-06-10 (ensimmäinen P-013 batch=2 -ajo, Fable 5 -lead) |
+| Muuttuneet tiedostot | **Vaihe A:** HANDOFF.md §4b (496beb8 + c9b26fb — velocity-luotettavuuskartta, 2 ajoa: stale 6.5.-backup → tuore 10.6.-backup). **Vaihe B:** `data.js` (f9a7274 — reps+Vx-ramppi vk2/3/5/7/9/11 + labelit + M2-kommentti + PROGRAM_BUILD_VERSION 4.52.1→4.52.35), `sw.js` + `index.html` (6b70e3f — APP_VERSION 4.52.35), HANDOFF.md §7 + docs/MEMORY.md (tämä commit). |
+| Tehdyt päätökset | (1) **Gate-haara a:** tuore backup osoitti velocity-datan tallentuvan ja exporttautuvan oikein — ei export-fragmentaatiota; kartta päivitetty primääridatalla (kyykky r²=0,373 / leuka 0,075 / dippi 0,326 — kaikki < 0,85 → velocity-agnostisuus vahvistettu). (2) **Peaking-checkpoint (Akseli 2026-06-10):** §4-taulukon Peaking-rivi (1V3→1V2→1V1) EI sovellettavissa toteutuneeseen taper-rakenteeseen (vk13 mökki → vk14 93 %-aktivointi → vk15 opener-taper → vk16 kisa; Bosquet 2007) → **Peaking ennallaan, ramppi = F/S/I**. (3) loadPct-parametrit jätetty ennalleen (dead-arvo tier 1/2/3:lla; seed-fallback-sivuvaikutuksen välttäminen — kirjattu M2-kommenttiin). (4) M3-verifier-löydös korjattu ennen committia: PROGRAM_BUILD_VERSION-bump → auto-rebuild aktivoi rampin olemassa olevissa asennuksissa. |
+| Validointi | Pilot 64/64, 0 virhettä; flagit 🐛14/⚠️6/📋51 — ERROR/WARN **bittitarkasti** baseline, +3 INFO = PRESET_TARGETVX_BY_DESIGN 7→10 (by-design). **M3-verifier (riippumaton subagentti): PASS** — 42/42 parametrirubriikkia, vReps-monotonia 76,9<78,9<81,1 · 81,1<83,3<88,2 · 85,7<88,2<90,9, diff-scope puhdas, oma baseline-vertailuajo. **Selaintestit 748/752** (4 pre-existing VBT/T9). **LOAD-DIFF-SWEEP (A3):** 28 päivää muuttui / 36 bittitarkkaa; suorat muutokset täsmälleen §4 (known-pos ✓: blokin sisäinen %-nousu; known-neg ✓: vk1 + deload-rakenne + cal-% + peaking-parametrit ennallaan). Polkuriippuvat diffit (vk5-dippi 19,5→0,5 kg; vk10 +27…50 kg) juurianalysoitu trace-tasolla: **pre-existing regain-simulaattoridynamiikka** (regainRatio-ankkuri simuloidusta suorituksesta; PRE:ssäkin 38,5→19,5-suppressio) — ei M2-regressio; tuotannossa ankkuri = Akselin todellinen suoritus. |
+| Jäi auki | (1) Mahdollinen tuleva OBS: regain-ankkuri deload-BW-sessiosta (0 kg) voi suppressoida seuraavan heavy-targetin epärealistisen matalaksi — pilot-simulaattorissa näkyvä, tuotantoriski matala, EI korjattu (scope-aita). (2) weekDefs.heavyReps/heavyTargetVx ei seuraa ramppia — vaikutukseton (slot-arvot voittavat), pre-existing epäsynkka, kirjattu verifier-raporttiin. (3) A4-display: kuormat + strippaus päivittyvät automaattisesti (verifioitu rakenteellisesti); puhelinverifiointi rampin näkymisestä Sykli-näkymässä Akselin ajossa. |
+| Seuraava askel | **STOP push-portille — Akseli ratifioi** (M2 A2b + APP_VERSION 4.52.35 + PROGRAM_BUILD_VERSION-rebuild). Push → puhelinverifiointi (PWA-päivitys + Sykli-näkymän ramppi + vk-kuormat) → M2-handoff arkistoidaan kun A4-puhelinverifiointi kuitattu. Editability-feature jonossa seuraavana. |

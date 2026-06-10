@@ -39,6 +39,15 @@
 - **Sääntö (consult):** Akselille raportoidaan sovelluksen käyttäytymisen tasolla (mitä atletti näkee, mikä muuttuu treenissä); file:line-detalji kuuluu Code-kanavan sisäiseen työhön ja committeihin. UI-stringeissä ei tutkijanimiä (CLAUDE.md §6).
 - **Evidenssi:** Akselin toistuva palaute treeni-auditeissa (mm. 2026-06-08 ohjelmointi-kysymykset).
 
+### Oppi 6 — Ohjelmamuutos ilman PROGRAM_BUILD_VERSION-bumpia on kuollut kirjain (distill 2026-06-10)
+- **Fail (melkein):** M2 A2b -ramppi (data.js weekPlan-muutos) oli valmis ja verifioitu, mutta `PROGRAM_BUILD_VERSION` (data.js:~28) jäi bumppaamatta → init()-auto-rebuild ei olisi lauennut → ramppi ei olisi koskaan aktivoitunut Akselin olemassa olevassa asennuksessa. **M3-verifier-subagentti nappasi tämän riippumattomassa tarkistuksessa** — toteuttava agentti (minä) ei huomannut.
+- **Sääntö (consult):** jokainen `createStreetlifting16WMesocycle`-ohjelmasisällön muutos (slotit, reps/Vx, kuormat, liikkeet) → bumppaa `PROGRAM_BUILD_VERSION` SAMASSA commitissa + sw.js APP_VERSION erikseen (PWA-banneri). Checklist: data.js-ohjelmamuutos = 2 versiota.
+- **Meta-evidenssi:** verifier > self-check (T-030) sai ensimmäisen kovan todisteen tässä repossa.
+
+### Oppi 7 — Pilot-LOAD-DIFF-SWEEP mittaa systeemiä, ei vain parametria (distill 2026-06-10)
+- **Havainto:** M2-rampin sweep näytti odottamattomia diffejä EI-muutetuilla viikoilla (vk5-dippi 19,5→0,5 kg; vk10 +27…50 kg). Juuri: pilot-simulaattori on polkuriippuva — muutettu preskriptio muuttaa simuloitua suoritusta → regain/rate-limit-ankkurit eroavat → ketjuvaikutus myöhempiin viikkoihin. PRE-tilassakin sama mekanismi suppressoi (38,5→19,5) — ei uusi regressio.
+- **Sääntö (consult):** sweep-tulkinnassa erota (a) **suorat muutokset** muutetuilla riveillä (verrattava spec-taulukkoon täsmälleen) ja (b) **ketjuvaikutukset** muilla viikoilla (juurianalysoitava decision-traceista — `PROGRESSION_TARGET.why` + `regainRatio` kertovat ankkurin). Älä kuittaa "ketjuvaikutuksena" ilman trace-todistetta, älä myöskään tulkitse regressioksi ilman PRE-vertailua samasta mekanismista.
+
 ---
 
 ## 2. Fallback-loki (P-013 M6)
@@ -58,3 +67,4 @@
 | Pvm | Sessio | R-vaiheita valmiiksi | Rubriikki-iteraatiot / verifier-hylkäykset | Relay-kierrokset (Cowork↔Akseli↔Code) | Fallbackit | Kuri piti? (Akseli) |
 | --- | --- | --- | --- | --- | --- | --- |
 | 2026-06-10 | P-013-bootstrap (doc-only) + F-5-push-ratifiointi | 0 (doc-sessio; F-5-push suljetti edellisen session työn) | — (ei rubriikki-looppia, doc-only) | 2 (PRE-FLIGHT-STOP → ratifiointi → jatko) | 0 | *(Akseli täyttää)* |
+| 2026-06-10 | M2 A2b batch=2 (Vaihe A velocity-kartta + Vaihe B Vx-ramppi) | 2 batch-vaihetta (M2-milestone, ei R-vaihe) | 1 iteraatio / 0 hylkäystä (verifier PASS + 2 huomautusta, joista 1 → korjaus ennen committia: PROGRAM_BUILD_VERSION) | 3 (gate: tuore backup → gate-vahvistus → Peaking-checkpoint) | 0 | *(Akseli täyttää)* |
