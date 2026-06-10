@@ -7017,6 +7017,25 @@ function renderActiveWorkout() {
           ⚠ <b>Venähdys-riski</b> — V${exercise.targetVx} on tiukka${isRiskyCat ? ` ${exercise.category === "horisontaalityöntö" ? "(rinta/sternum)" : exercise.category === "alaraaja" ? "(hamstring/etureisi)" : "(olkapää/anterior delt)"}` : ""}. Älä mene suoraan työpainoon väsyneenä. <br><b style="color:#f59e0b">${ramp}</b>
         </div>`;
       })()}
+      ${(() => {
+        // H-015 (2c): paluuramppi-PRESKRIPTIO — liike palaa ≥14 pv tauolta → kevennysohje.
+        // EI kuormalaskenta-muutosta (gate-päätös 2026-06-10): engine ehdottaa plan-tason
+        // (plan-floor, engine.js:2129), atletti keventää itse ja hardCap+regain ramppaa
+        // takaisin ~2 sessiossa (VAIHE A -kartta, runtime-verifioitu 45→51,7→plan).
+        if (isWarmupSet) return "";
+        const _histSets = (state.allSets || []).filter(s =>
+          s.movementId === exercise.movementId && s.setRole !== "warmup" &&
+          s.setRole !== "skipped" && s.reps != null && s.timestamp);
+        if (!_histSets.length) return "";
+        let _maxTs = 0;
+        for (const s of _histSets) { const t = new Date(s.timestamp).getTime(); if (t > _maxTs) _maxTs = t; }
+        const _gapDays = Math.floor((Date.now() - _maxTs) / 86400000);
+        if (_gapDays < 14) return "";
+        return `<div style="background:rgba(79,140,255,0.10);border-left:3px solid var(--acc);padding:8px 10px;margin-top:6px;border-radius:6px;font-size:12px;line-height:1.45;color:var(--text)">
+          ↩ <b>Paluu tauolta</b> — edellinen ${exercise.name}-suoritus ${_gapDays} pv sitten. Ehdotus ei kevene automaattisesti:<br>
+          <b style="color:var(--acc)">1. paluusessio −15–20 % ehdotuksesta (napauta lukua) · ei kalibrointisettiä · ei V0-grindiä.</b> Sovellus ramppaa itse takaisin parissa sessiossa.
+        </div>`;
+      })()}
     </div>
 
     ${whyThisMovementHTML}
@@ -7913,6 +7932,7 @@ function renderWorkoutSummary() {
     </div>
 
     <button class="btn btn-ok btn-full mb" id="btn-save-workout">💾 Tallenna treeni</button>
+    <button class="btn btn-outline btn-full mb" id="btn-back-to-workout">← Palaa muokkaamaan (lisää liike / korjaa sarjoja)</button>
     <button class="btn btn-outline btn-full" id="btn-discard-workout">Hylkää</button>
   </div>`;
 }
@@ -13909,6 +13929,17 @@ function bindWorkoutEvents() {
             s.reps = null; s.actualVx = null;
           }
         });
+        // H-015 (K2): valinnainen yhden napautuksen syytagi — pelkkä loki (persistoituu
+        // exerciseNote-kenttään → näkyy Historia-detaljissa), EI ohjelmointikytkentää v1:ssä.
+        const ti = await showListModal("Syy skippaukselle? (valinnainen, vain lokiin)", [
+          { icon: "🤕", label: "Vaiva", desc: "" },
+          { icon: "⏱", label: "Aikapula", desc: "" },
+          { icon: "➖", label: "Ohita", desc: "" },
+        ]);
+        const tag = ti === 0 ? "vaiva" : ti === 1 ? "aikapula" : null;
+        if (tag) {
+          exercise.exerciseNote = `${exercise.exerciseNote ? exercise.exerciseNote + " · " : ""}[skip: ${tag}]`;
+        }
       }
     }
     w.currentExerciseIdx++;
@@ -14070,6 +14101,21 @@ function bindWorkoutEvents() {
     releaseWakeLock();
     await refresh();
     state.view = "dashboard";
+    render();
+  });
+
+  // H-015 (A4i): paluu summarysta liikenäkymään — ratkaisee 3.6. estyneen polun
+  // ("ei voinut lisätä liikettä done-klikkailun jälkeen"): summary-tilassa + Liike
+  // -nappia ei ole, joten paluu viimeiseen liikkeeseen avaa täyden muokkauksen
+  // (+ Liike, sarjakorjaus, skip) ENNEN tallennusta. Liikenavigointi-chipit
+  // hoitavat vapaan järjestyksen (A4ii) — mihin tahansa liikkeeseen voi palata.
+  const backToWorkoutBtn = $("#btn-back-to-workout");
+  if (backToWorkoutBtn) backToWorkoutBtn.addEventListener("click", () => {
+    const w2 = state.workout;
+    if (!w2 || !w2.exercises?.length) return;
+    w2.currentExerciseIdx = w2.exercises.length - 1;
+    w2.currentSetIdx = 0;
+    savePendingWorkoutLocal(state.workout);
     render();
   });
 
