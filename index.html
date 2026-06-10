@@ -1166,6 +1166,7 @@ import {
   varaFeedback,
   analyzeSessionAdaptation, applyAdaptations,
   getFutureWorkouts,
+  applyMovementSubstitutions,
   findMissedPriorSessions,
   eliteVolumeCheck,
   computeMovementE1RM, computeMovementE1RMHistory,
@@ -8096,7 +8097,11 @@ function renderMesocycle() {
       const dayDate = new Date(weekStart.getTime() + (d.dayOfWeek - 1) * 86400000);
       const dayISO = dayDate.toISOString().slice(0, 10);
       const sess = _cvSessionByDate.get(dayISO);
-      const primary = (d.slots || []).find(s => s.role === "primary");
+      // H-015 (A5): liike-korvaukset applioidaan ennen done-täsmäystä ja nimi-renderiä →
+      // korvattu slotti täsmää KORVAAJAN suorituksiin eikä näy väärin tekemättömänä.
+      // Sama kanoninen funktio kuin recommend()/getFutureWorkouts — ei replikointia.
+      const _slots = applyMovementSubstitutions(d.slots || [], meso);
+      const primary = _slots.find(s => s.role === "primary");
       let statusCls = "next";
       let statusIcon = "○";
       // F-5 UNIFY: dual-gate (OBS-026 endedAt + OBS-028 liike-täsmäys) helperin kautta.
@@ -8104,13 +8109,13 @@ function renderMesocycle() {
       if (isSlotDoneForWeek(primary, weekStartISO, weekEndISO, dayISO)) { statusCls = "done"; statusIcon = "✓"; }
       else if (dayISO === today) { statusCls = "now"; statusIcon = "●"; }
       else if (dayISO < today) { statusCls = "skip"; statusIcon = "✕"; }
-      const focus = stripRedundantDayPrefix(honestifyLoadLabel(d.label, d.slots, meso)) || dayTypeLabel(d.dayType) || "?";
+      const focus = stripRedundantDayPrefix(honestifyLoadLabel(d.label, _slots, meso)) || dayTypeLabel(d.dayType) || "?";
       const load = primary ? `${primary.sets}×${primary.reps}${primary.targetVx != null ? ` V${primary.targetVx}` : ""}` : "";
       const isSkipped = statusCls === "skip";
       return `<div class="cv-day ${statusCls === "now" ? "now" : ""}${isSkipped ? " skipped" : ""}">
         <div class="dn">${dayNames[d.dayOfWeek]} ${dayDate.getDate()}.${dayDate.getMonth() + 1}.</div>
         <div class="stat ${statusCls}">${statusIcon}</div>
-        <div class="focus">${focus}${primary ? `<span class="why">${primary.defaultMovementName || ""}</span>` : ""}</div>
+        <div class="focus">${focus}${primary ? `<span class="why">${primary._substituted ? "↔ " : ""}${primary.defaultMovementName || ""}</span>` : ""}</div>
         <div class="load">${load}</div>
       </div>`;
     }).join("");
@@ -14299,12 +14304,66 @@ function bindWorkoutEvents() {
     const exercise = w.exercises[w.currentExerciseIdx];
     if (!exercise) return;
 
-    // v4.32.2 KRIITTINEN BUGIKORJAUS: estä primary/backoff/secondary -liikkeiden
-    // swap. Aiemmin käyttäjä saattoi vahingossa vaihtaa MA-leuka-primaryn esim.
-    // Pendlay row:hyn legacy-pathia pitkin → ohjelman kilpailuspesifisyys rikki.
-    // Pää­liikkeet ovat lukittuja kisaspesifisyyteen; vain accessoryja swappataan.
+    // v4.32.2: primary/backoff/secondary EI kertaswappaudu (kisaspesifisyys).
+    // H-015 (2026-06-10, A2): pääliikkeen voi kuitenkin KORVATA VAIVAN AJAKSI —
+    // liike-tason substituutio (movementSubstitutions, kaikki esiintymät) joka
+    // pysyy kunnes käyttäjä palauttaa. Slotin reps/Vx/ramppi säilyvät (C1-engine);
+    // kuorma lasketaan korvaajan e1RM:stä seuraavasta recommend()-ajosta.
     if (exercise.role === "primary" || exercise.role === "backoff" || exercise.role === "secondary") {
-      showToast(`Pää­liikettä ei voi vaihtaa swapilla. Variantin vaihto: 🔀 Variaatio (jos käytössä).`, "warn", 4000);
+      const subsMap = state.mesocycle?.movementSubstitutions || {};
+      const origName = exercise._substituted?.originalName || exercise.name;
+      const activeSub = subsMap[origName] && !subsMap[origName].endedISO ? subsMap[origName] : null;
+      if (activeSub) {
+        // Palautus-flow (K1: paluu kun vaiva ohi + paluuohje-preskriptio 2c)
+        const ri = await showListModal(
+          `${origName} on korvattu: ${activeSub.replacementName}${activeSub.reason ? " · " + activeSub.reason : ""} (alkaen ${activeSub.startedISO})`,
+          [
+            { icon: "↩", label: `Palauta ${origName} ohjelmaan`, desc: "Vaiva ohi — korvaus päättyy, liike palaa seuraavasta treenistä" },
+            { icon: "✗", label: "Peruuta", desc: "Korvaus jatkuu" },
+          ]
+        );
+        if (ri === 0) {
+          activeSub.endedISO = todayISO();
+          await saveMesocycle(state.mesocycle);
+          showToast(`${origName} palautettu. Paluuohje: 1. paluusessio kevennettynä (−15–20 % ehdotuksesta), ei kalibrointisettiä, ei V0-grindiä — sovellus ramppaa itse takaisin.`, "ok", 8000);
+          render();
+        }
+        return;
+      }
+      // Korvaus-flow: valitse korvaaja (sama kategoria ensin) + K2-syytagi
+      const sameCat = state.movements.filter(m => m.category === exercise.category && m.name !== exercise.name);
+      const otherCat = state.movements.filter(m => m.category !== exercise.category && m.name !== exercise.name);
+      const subOpts = [...sameCat, ...otherCat];
+      const mi = await showListModal(
+        `Korvaa ${exercise.name} vaivan ajaksi — koskee kaikkia esiintymiä kunnes palautat (🔄-napista)`,
+        subOpts.map(m => ({
+          icon: m.category === exercise.category ? "✅" : "🔹",
+          label: m.name,
+          desc: m.category === exercise.category ? `${m.category} (sama kategoria)` : m.category,
+        }))
+      );
+      if (mi === null || mi < 0 || mi >= subOpts.length) return;
+      const chosenSub = subOpts[mi];
+      // K2: valinnainen yhden napautuksen syytagi — pelkkä loki, ei ohjelmointikytkentää (v1)
+      const ti = await showListModal("Syy (valinnainen, vain lokiin)", [
+        { icon: "🤕", label: "Vaiva", desc: "esim. rintalasta, olkapää" },
+        { icon: "⏱", label: "Aikapula", desc: "" },
+        { icon: "➖", label: "Muu / ohita", desc: "" },
+      ]);
+      const subReason = ti === 0 ? "vaiva" : ti === 1 ? "aikapula" : null;
+      if (!state.mesocycle.movementSubstitutions) state.mesocycle.movementSubstitutions = {};
+      state.mesocycle.movementSubstitutions[origName] = {
+        replacementName: chosenSub.name, reason: subReason, startedISO: todayISO(), endedISO: null,
+      };
+      await saveMesocycle(state.mesocycle);
+      // Päivitä käynnissä oleva treeni in-place — kuorman atletti tarkistaa itse tänään
+      exercise.name = chosenSub.name;
+      exercise.movementId = chosenSub.movementId;
+      exercise.category = chosenSub.category;
+      exercise._substituted = { originalName: origName, reason: subReason, startedISO: todayISO() };
+      savePendingWorkoutLocal(state.workout);
+      showToast(`${origName} → ${chosenSub.name} vaivan ajaksi. Tarkista kuorma napauttamalla lukua tänään — seuraavasta treenistä sovellus laskee sen ${chosenSub.name}-datastasi. Sarjat/toistot säilyvät ohjelman mukaisina.`, "ok", 8000);
+      render();
       return;
     }
 
