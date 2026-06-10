@@ -2,7 +2,12 @@
 
 > Repon **ainoa aktiivinen handoff**. Cowork täyttää osiot 0–6, Claude Code täyttää osion 7.
 > Valmis handoff arkistoidaan → `docs/handoffs/HANDOFF_<id>.md`, ja tämä tiedosto nollataan tyhjäksi pohjaksi.
-> Auktoriteettijärjestys: ks. `CLAUDE.md` §7. Session-protokolla: ks. `CLAUDE.md` §8. Kurilista: `docs/SELKARANKA.md`.
+> Auktoriteettijärjestys: ks. `CLAUDE.md` §7. Session-protokolla: ks. `CLAUDE.md` §8. Kurilista: `docs/SELKARANKA.md`. Muisti: `docs/MEMORY.md` (konsultoi session alussa, distill lopussa).
+>
+> **P-013 batch-rakenne (M1–M3, ratifioitu 2026-06-10):**
+> **M1 — batch-handoff.** Yksi handoff saa niputtaa **2 R-vaihetta** (skaalaus 4:ään vasta P-013-mittausdatalla). Jokaisella vaiheella **oma acceptance-rubriikki + oma scope-valkolista**; vaiheiden välissä **STOP-gate** (Code raportoi + bittitarkka pilot ajetaan ennen seuraavaa vaihetta). Per-löydös = oma commit säilyy ennallaan.
+> **M2 — ajettava rubriikki.** Osion 2 A-kriteerit muotoillaan **koneellisesti tarkistettaviksi** (testi / skripti / mitattava ehto) ja ajetaan self-correction-looppina kunnes rubriikki täyttyy tai STOP-ehto laukeaa. Mittari-ensin (Selkäranka 6) säilyy: known-positive + known-negative ennen kuin kriteeriin luotetaan. Rubriikki-looppi **EI ohita** confirm-then-fix/A1-read-only-STOP-gatea (CLAUDE.md §9.3).
+> **M3 — verifier-subagentti.** A-kriteerien täyttymisen verifioi **erillinen subagentti riippumattomassa kontekstissa** (ei toteuttava agentti itse) ennen STOP-raporttia. Verifierin hylkäykset kirjataan `docs/MEMORY.md`-mittauslokiin.
 >
 > *Tila: M2 (OBS-022) — `AKTIIVINEN`, **A2b-toteutusvaihe SEURAAVA** (gate purettu 2026-06-10: K-A6D shipattu 4.52.33 + F-5 shipattu 4.52.34 → sekvenssi a:n ehto täyttyi, origin/main = d52de7c). Edennyt: A1 (CONFIRM, read-only) + A1-lisäfasetti (velocity-autoreg) RAPORTOITU; SHAPE-only design ratifioitu (§5 päätös 4); A2a Vx-laskumuoto SIGN-OFF'ATTU (§4). A2b (FIX, data.js Vx-laskumuoto) käynnistyy Akselin ohjeesta omana sessiona (plan mode + LOAD-DIFF-SWEEP push-ehto, CLAUDE.md §9). A1-LISÄYS (Akseli 2026-06-03): A1b-velocity-luotettavuuskartta laajennetaan KAIKKIIN liikkeisiin A2b:n alussa (tangoliikkeet ml. kapea penkki = velocity-kandidaatit; dippi/koneet = rakenne+RPE). Code formalisoi ratifioidusta suunnasta — verifioitu repon koodista (§7: repo voittaa).*
 
