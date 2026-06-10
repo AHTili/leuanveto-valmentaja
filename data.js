@@ -25,7 +25,10 @@ const TIMEZONE = "Europe/Helsinki";
 // ACCESSORY_SLOT_CATALOG / DayN-funktiot eivät muutu, joten
 // streetlifting_16w-mesocyclen auto-rebuild EI saa laueta. Sw.js APP_VERSION
 // bumppataan erikseen 4.39.0:ksi PWA-päivitysbannerin triggeröimiseksi.
-const PROGRAM_BUILD_VERSION = "4.52.1";
+// v4.52.35 (M2/OBS-022): sisä-blokki-intensifikaatio — primary reps+Vx-ramppi
+// vk2/3/5/7/9/11 (HANDOFF §4). Bump triggeröi auto-rebuildin → ramppi aktivoituu
+// olemassa olevissa asennuksissa ilman edistyksen menetystä.
+const PROGRAM_BUILD_VERSION = "4.52.35";
 
 // ── Store names ──
 const STORES = {
@@ -7039,6 +7042,15 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // variantScale 1.05 oli vääräpaikkainen. Yhtenäistetty Lisäpainoleuanvetoon → e1RM-
     // historia jatkuu saumattomasti vk 1 → vk 4 deload → vk 8 cal → ... ilman variantti-
     // resetiä joka aiheutti vk 9 erosion-spiralin.
+    // M2/OBS-022 (2026-06-10): SISÄ-BLOKKI-INTENSIFIKAATIO — primary-slottien reps+Vx
+    // ramppaa loading-viikkojen sisällä (HANDOFF §4-taulukko, sign-off 2026-06-02):
+    // Foundation 6V3→6V2→6V1 (76,9→78,9→81,1 %) · Strength 4V3→4V2→3V1 (81,1→83,3→88,2 %)
+    // · Intensity 3V2→3V1→2V1 (85,7→88,2→90,9 %). Kanoninen %-lähde = vReps(reps+targetVx)
+    // → kuorma nousee blokin sisällä YHDESTÄ lähteestä; loadPct-parametri on tier 1/2/3
+    // -liikkeillä dead-arvo (vReps ohittaa; säilytetty seed-fallbackia varten). Backoff
+    // perii reps+1/Vx+1 → ramppaa mukana. Deload-vk:t (4/8/12) + Peaking-taper (vk13–16,
+    // mökki→93 %-aktivointi→opener-taper) ENNALLAAN — nouseva ramppi ei sovi taperiin
+    // (Bosquet 2007; Akselin ratifiointi 2026-06-10). Vx→V0 EI käytetä (VL-cap, §4).
     { week:1, days:[
       maDay("MA — Lisäpainoleuanveto 4×6 @68.6%", 4,6,3, 0.686, null, null, undefined, undefined, "foundation", null, false, false, true),
       tiDay("TI — Kyykky 4×6 @68.6%",             4,6,3, 0.686, null, undefined, tiBackoffRegular(0.55)),
@@ -7047,17 +7059,17 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     ]},
     { week:2, days:[
       // v4.34.14: 74.3% → 71% (Foundation-progressionin pehmennys, ~+2.4pp vk 1:stä)
-      maDay("MA — Lisäpainoleuanveto 4×6 @71%", 4,6,3, 0.71, null, null, undefined, undefined, "foundation", null, false, false, true),
-      tiDay("TI — Kyykky 4×6 @71%",             4,6,3, 0.71, null, undefined, tiBackoffRegular(0.58)),
-      toDay("TO — Dippi 4×6 @71%",              4,6,3, 0.71, null, null, pushAccPrehab()),
+      maDay("MA — Lisäpainoleuanveto 4×6 V2 @79%", 4,6,2, 0.71, null, null, undefined, undefined, "foundation", null, false, false, true),
+      tiDay("TI — Kyykky 4×6 V2 @79%",             4,6,2, 0.71, null, undefined, tiBackoffRegular(0.58)),
+      toDay("TO — Dippi 4×6 V2 @79%",              4,6,2, 0.71, null, null, pushAccPrehab()),
       laDay("LA — MU skill + tekninen takakyykky", 0, 5, null, null, FS.w2),
     ]},
     { week:3, days:[
       // v4.34.14: 80% → 75% (Foundation-progressionin pehmennys, ~+4pp vk 2:sta)
-      maDay("MA — Lisäpainoleuanveto 4×5 @75%", 4,5,3, 0.75, null, null, undefined, undefined, "foundation", null, false, false, true),
+      maDay("MA — Lisäpainoleuanveto 4×6 V1 @81%", 4,6,1, 0.75, null, null, undefined, undefined, "foundation", null, false, false, true),
       // Backoff: 2×6 @61% (vähennetty 3×7→2×6 — siirtymä intensifikaatioon, hybridi A→B vk 3)
-      tiDay("TI — Kyykky 4×5 @75%",          4,5,3, 0.75, null, undefined, { style: "regular", pct: 0.61, sets: 2, reps: 6, targetVx: 4, note: "Hybridi A→B siirtymä — backoff vähennetty 3×7→2×6, intensifikaatio alkaa" }),
-      toDay("TO — Dippi 4×5 @75%",             4,5,3, 0.75, null, null, pushAccPrehab()),
+      tiDay("TI — Kyykky 4×6 V1 @81%",          4,6,1, 0.75, null, undefined, { style: "regular", pct: 0.61, sets: 2, reps: 6, targetVx: 4, note: "Hybridi A→B siirtymä — backoff vähennetty 3×7→2×6, intensifikaatio alkaa" }),
+      toDay("TO — Dippi 4×6 V1 @81%",             4,6,1, 0.75, null, null, pushAccPrehab()),
       laDay("LA — MU: ENSIMMÄINEN STRICT 🎯 + tekninen takakyykky", 0, 5, "🎯 Tavoite: ensimmäinen puhdas strict muscle-up (eksentrinen → full MU)", null, FS.w3),
     ]},
     { week:4, days:[
@@ -7101,9 +7113,9 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     // Jos halutaan lockout-spesifiä työtä, lisätään 1 BACKOFF-slot Paused pull-up:lla
     // strength-blokin sisällä — ei korvata päärekistöä.
     { week:5, days:[
-      maDay("MA — Lisäpainoleuanveto 4×4 @75 %",  4,4,2, 0.75, 0.65, null, undefined, "myotaote", "strength", null, true, false, true),
-      tiDay("TI — Kyykky 4×4 @75%",       4,4,2, 0.75, null, undefined, tiBackoffPaused(0.60)),
-      toDay("TO — Dippi 4×4 @75%",        4,4,2, 0.75, 0.65, null, undefined, "kapea"),
+      maDay("MA — Lisäpainoleuanveto 4×4 V3 @81%",  4,4,3, 0.75, 0.65, null, undefined, "myotaote", "strength", null, true, false, true),
+      tiDay("TI — Kyykky 4×4 V3 @81%",       4,4,3, 0.75, null, undefined, tiBackoffPaused(0.60)),
+      toDay("TO — Dippi 4×4 V3 @81%",        4,4,3, 0.75, 0.65, null, undefined, "kapea"),
       laDay("LA — MU +2.5 kg + paused squat", 2.5, 3, "Ensimmäinen painolla (+2.5 kg) — jos strict puhdas", 2, FS.w5),
     ]},
     { week:6, days:[
@@ -7116,9 +7128,9 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       // v4.28.0 (H4): Vk 7 top single @88% POISTETTU kaikilta kolmelta — strength-blokin
       // piikki on volyymi-intensiteetti 4×4@82 (26 reps), ei near-max-test. Top @88%
       // oli duplikaatti vk 8 välitestille @92%. Vähentää near-max-sessioita 5→4 (vk 7–12).
-      maDay("MA — Lisäpainoleuanveto 4×4 @82 %",   4,4,2, 0.82, 0.68, null, undefined, "myotaote", "strength", null, true, false, true),
-      tiDay("TI — Kyykky 4×4 @82%", 4,4,2, 0.82, null, undefined, tiBackoffPaused(0.66)),
-      toDay("TO — Dippi 4×4 @82%",  4,4,2, 0.82, 0.68, null, undefined, "kapea"),
+      maDay("MA — Lisäpainoleuanveto 4×3 V1 @88%",   4,3,1, 0.82, 0.68, null, undefined, "myotaote", "strength", null, true, false, true),
+      tiDay("TI — Kyykky 4×3 V1 @88%", 4,3,1, 0.82, null, undefined, tiBackoffPaused(0.66)),
+      toDay("TO — Dippi 4×3 V1 @88%",  4,3,1, 0.82, 0.68, null, undefined, "kapea"),
       laDay("LA — MU +5 kg + paused squat",      5, 3, "+5 kg — raskas viikko", 2, FS.w7),
     ]},
     { week:8, days:[
@@ -7143,9 +7155,9 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     //    ei erillistä "bump" ilman perustelua. Intensifikaatio nostaa kuormaa, ei sarjoja.
     { week:9, days:[
       // v4.30.0: Vk 9+ ME-rotaatio päättyy → kilpa-spesifisyys lukko. Heavy negative -overload säilyy intensitassa.
-      maDay("MA — Leuka 4×3 @85 %",  4,3,1, 0.85, 0.70, null, undefined, "kilpaote", "intensity", undefined, true, false, true),
-      tiDay("TI — Kyykky 4×3 @85%", 4,3,1, 0.85, null, undefined, tiBackoffTempo(0.68)),
-      toDay("TO — Dippi 4×3 @85%",  4,3,1, 0.85, 0.70, null, undefined, "kilpaote"),
+      maDay("MA — Leuka 4×3 V2 @86%",  4,3,2, 0.85, 0.70, null, undefined, "kilpaote", "intensity", undefined, true, false, true),
+      tiDay("TI — Kyykky 4×3 V2 @86%", 4,3,2, 0.85, null, undefined, tiBackoffTempo(0.68)),
+      toDay("TO — Dippi 4×3 V2 @86%",  4,3,2, 0.85, 0.70, null, undefined, "kilpaote"),
       // H5: 4→3 sarjaa (yhdenmukaistus vk 10-11 kanssa)
       laDay("LA — MU +7.5 kg + pin squat", 7.5, 3, "+7.5 kg — intensifikaatio alkaa", 2, FS.w9),
     ]},
@@ -7160,9 +7172,9 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       // v4.25 P1-5: 4×3 → 3×3 (Prilepin: 85–95% max 14 reps/sessio, optimal 10).
       // Top @97% → @95% (edelleen near-max, mutta CNS-palautuminen parempi vk 12:een).
       // v4.32.9 M14: heavy-first
-      maDay("MA — Top@95% (heavy-first) + Leuka 3×3 @90%",  3,3,1, 0.90, null, 0.95, undefined, undefined, "intensity", undefined, true, false, true, true),
-      tiDay("TI — Top@95% (heavy-first) + Kyykky 3×3 @90%", 3,3,1, 0.90, 0.95, undefined, tiBackoffTempo(0.72), undefined, undefined, true),
-      toDay("TO — Top@95% (heavy-first) + Dippi 3×3 @90%",  3,3,1, 0.90, null, 0.95, undefined, undefined, undefined, true),
+      maDay("MA — Top@95% (heavy-first) + Leuka 3×2 V1 @91%",  3,2,1, 0.90, null, 0.95, undefined, undefined, "intensity", undefined, true, false, true, true),
+      tiDay("TI — Top@95% (heavy-first) + Kyykky 3×2 V1 @91%", 3,2,1, 0.90, 0.95, undefined, tiBackoffTempo(0.72), undefined, undefined, true),
+      toDay("TO — Top@95% (heavy-first) + Dippi 3×2 V1 @91%",  3,2,1, 0.90, null, 0.95, undefined, undefined, undefined, true),
       laDay("LA — MU +12.5 kg (viim. raskas) + pin squat", 12.5, 3, "+12.5 kg", 2, FS.w11),
     ]},
     { week:12, days:[
