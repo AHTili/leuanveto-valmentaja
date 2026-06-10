@@ -85,6 +85,27 @@ Haluttu lopputila (mekanismi §5, ratifioitu): intra-blokki-intensifikaatio on *
 
 Deload-viikot (vk4/8/12/16) ENNALLAAN (scope-aita). **Per-liike realisoituminen:** kyykky/leuanveto = velocity-ankkuroitu e1RM × vReps (skaalautuu mittaukseen); dippi/apuliikkeet = staattinen e1RM × vReps (rakenne+RPE). VL-cap-↔-velocity-stop-rajapinta (K-A6D) tarkistettava A2b:ssä.
 
+### 4b. A1-LISÄYS: velocity-luotettavuuskartta — VAIHE A TEHTY (2026-06-10, read-only)
+
+> Runtime-sweep: `computeRtfVelocityModel` (sama funktio jota recommend()/K-A6D käyttää, kynnys r² ≥ 0,85) ajettiin **kaikille** aktiivisen 16w-ohjelman + backup-historian liikkeille (39 kpl) Akselin repo-backupia vasten (`.claude/backup-data.json`, export **2026-05-06**, schema 4).
+
+**KERROS 1 — mittausdata (verifioitu):** **0/132 setistä sisältää velocity-arvon** (velocityMean/velocityRep1/mvReps kaikki null/puuttuu); 0 primer-measurements-riviä. → RTF-status `no-data` **kaikilla 39 liikkeellä**, r² ei laskettavissa. VBT-kerros täysin dormantti: velocityStop vaiennettu (K-A6D suppress), e1RM-ankkuri staattinen (cal/plan-based) kaikilla liikkeillä. *Rajaus: backup ei kata 6.5. jälkeisiä sessioita (mm. 31.5., 8.6.) — tuore export voi muuttaa kerros 1:n lukuja, ei kerros 2:n rakennetta.*
+
+**KERROS 2 — rakenteellinen mittauskelpoisuus (Enode Pro: anturi tankoon/vyöhön + vertikaali ROM):**
+
+| Luokka | Liikkeet (ohjelmassa) | A2b-käsittely |
+| --- | --- | --- |
+| **Velocity-kandidaatti: tanko** | Takakyykky (+ Paused/Pin squat -variantit; ainoat `isBarbell`-slotit), Penkkipunnerrus (acc), Pystypunnerrus (acc), Romanian DL (acc), *(Close-grip bench — EI nykyohjelmassa, vain huhtikuun historiassa)* | velocity-ankkuroitu e1RM × vReps **kun** RTF promotoituu; siihen asti staattinen |
+| **Velocity-kandidaatti: vyö/BW-vertikaali** | Lisäpainoleuanveto (+ Vastaote, chest-to-bar -variantit) | sama kuin yllä (anturi vyöhön) |
+| **Rakenne+RPE (kohinainen/ei-mitattava)** | Lisäpainodippi (forward-lean-ROM; atletti-realismi-päätös H-006b), Muscle-up (räjähtävä taito), koneet (jalkaprässi, leg curl, pushdown, face pull), DB/kaapeli-isolaatiot, core | staattinen e1RM × vReps pysyvästi |
+
+**KERROS 3 — sekundäärilähde (EI verifioitavissa repo-datasta):** Cowork-tilannekuvan r²-luvut tuoreemmasta datasta (kyykky 0,37 · leuanveto 0,01 · dippi 0,33 · MU ei dataa) — kaikki < 0,85 eli unreliable sielläkin. Kirjattu sekundäärilähteenä; repo-data ei sisällä näitä settejä.
+
+**Johtopäätös A2b:lle (vahvistaa HANDOFF §5.2 + §5.4 — data voitti, ennakko-odotus piti):**
+1. **Mekanismi (i):n velocity-agnostisuus on oikea ja välttämätön:** yhdelläkään liikkeellä ei ole velocity-luotettavuutta → preskriptiivinen reps+Vx-ramppi toimii kaikille heti; velocity-yksilöinti aktivoituu e1RM-ankkurin kautta automaattisesti kun datan laatu paranee — **ilman A2b-koodin muutosta**.
+2. **Per-liike-haaraa EI rakenneta** (§5.4 vahvistettu): VBT-vs-rakenne+RPE realisoituu e1RM-ankkurista ilmaiseksi.
+3. **Suositus datankeruulle (Akselille):** velocity-mittaus tangoliikkeistä (kyykky ensisijaisesti; penkki-accessoryt kun ohjelmassa) + leuanveto vyöanturilla. Dippiä ei mitata. Tuore puhelin-backup repoon päivittäisi kerros 1:n.
+
 ## 5. Taustapäätökset ja hylätyt vaihtoehdot
 
 1. **Mekanismi (i) ratifioitu (kirkastettu):** intra-blokki-intensifikaatio toteutetaan **reps+Vx-mikroportaalla** → `vReps(reps+Vx)` nousee blokin sisällä → TAVOITE-% nousee yhdestä kanonisesta lähteestä.
