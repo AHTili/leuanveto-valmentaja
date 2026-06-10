@@ -146,8 +146,9 @@ Tämä osio korvaa aiemman staattisen "Vaiheiden 1–8 tila" -taulukon. **Ajanta
 2. Lue [docs/SELKARANKA.md](docs/SELKARANKA.md) — Selkäranka 1–9, jokaisen muutoskierroksen pakollinen kurilista (PRE-FLIGHT, peruutusankkuri, scope-lukko, STOP-ehdot, …).
 3. Lue `ROADMAP.md` — strateginen 20-vaiheinen R-sekvenssi, NYT-merkki (aktiivinen vaihe), reunaehdot (a)/(b)/(c) ja aikataulu.
 4. Lue repo-juuren `HANDOFF.md` — aktiivisen tehtävän tavoite, acceptance criteriat ja edellisen session tulos.
-5. Aja `git log --oneline -10` ja `git status`. Varmista että `HANDOFF.md`:n "Session-tulos" vastaa repon todellista tilaa. Ristiriidassa → repo voittaa (§7), kerro erosta.
-6. Jos `HANDOFF.md`:ssä on avoimia kysymyksiä (osio 6) → kysy ne ennen toteutusta, älä arvaa.
+5. Lue [docs/MEMORY.md](docs/MEMORY.md) — distilloidut opit (konsultoi ennen työtä; session lopussa distill-kirjaus, P-013 M4).
+6. Aja `git log --oneline -10` ja `git status`. Varmista että `HANDOFF.md`:n "Session-tulos" vastaa repon todellista tilaa. Ristiriidassa → repo voittaa (§7), kerro erosta.
+7. Jos `HANDOFF.md`:ssä on avoimia kysymyksiä (osio 6) → kysy ne ennen toteutusta, älä arvaa.
 
 **Session LOPUSSA (ennen kuin pinnaat työn valmiiksi):**
 
@@ -170,8 +171,27 @@ Tämä osio korvaa aiemman staattisen "Vaiheiden 1–8 tila" -taulukon. **Ajanta
 
 5. **Checkpoint ennen design-pivottia.** Jos kesken kierroksen avautuu uusi designkysymys (premissi muuttuu, scope laajenee, A1-juuri ei pidäkään) → STOP, raportoi, kysy ennen pivot:ia. Älä ratko sitä autonomisesti samassa kierroksessa.
 
-6. **Effort-jako.** Design (acceptance criteria, premissi, scope, A1-juurianalyysi) → Opus high / xhigh. Mekaaninen toteutus (Edit/Write, runtime-vakio-vaihtoja) → Sonnet. Tämä on kustannus- ja tarkkuus-optimointi, ei statushierarkiaa.
+6. **Effort-jako.** Design (acceptance criteria, premissi, scope, A1-juurianalyysi) → Opus high / xhigh. Mekaaninen toteutus (Edit/Write, runtime-vakio-vaihtoja) → Sonnet. Tämä on kustannus- ja tarkkuus-optimointi, ei statushierarkiaa. *Fable-ikkunassa (→22.6.2026) lead-mallin routing: ks. §10.*
 
 7. **Agent-arkkitehtuuri ei ylirakennettu.** Yksi muutos / yksi liittyvä tiedostosarja → solo-Agent (Plan/Explore tarvittaessa). Useita riippumattomia tiedostosarjoja samassa kierroksessa → Agent Teams `--max-budget`-cap:llä. ÄLÄ käytä Teams:ia banaalille edit-pinolle — overhead ylittää hyödyn.
 
 8. **STOP ennen pushia AINA.** Push = Akselin ratifiointi rakenteelliselle/irreversiibelille muutokselle (Selkäranka kohta 8). CC ei push:aa — vaikka kaikki vihreää.
+
+---
+
+## 10. P-013 — Fable-ikkunan model routing ja fallback (voimassa → 22.6.2026)
+
+> Ratifioitu 2026-06-10 (Akseli): P-013 M1–M6 kokonaisuutena. Työnjako: **M1–M3** (batch=2 R-vaihetta/handoff, ajettava rubriikki, verifier-subagentti) asuvat `HANDOFF.md`-headerissä · **M4** (muistiprotokolla) `docs/MEMORY.md`:ssä + §8-aloitusprotokollan kohta 5 · **M5–M6 + mittaus** = tämä osio. **23.6.2026 alkaen tämä osio raukeaa:** paluu Opus-leadiin, ellei mittausdata perustele jatkoa. Osio ei muuta §9:n sääntöjä (plan mode designille, /goal vain tarkistettavalle ehdolle, A1-STOP-gate, LOAD-DIFF-SWEEP).
+
+**M5 — model routing (→22.6.):**
+
+- Lead: **Fable 5**; teammates / mekaaninen exec: **Sonnet** (§9.6 ja §9.7 muuten ennallaan).
+- P-011 LeVe-täydennys, **5. taso:** *"Mythos-luokka vain compound-tason batch-handoffeihin ja pitkiin autonomisiin ajoihin; yksittäinen tiedostomuutos ei perustele Fablea."*
+- 23.6. alkaen: paluu Opus-leadiin, ellei P-013-mittausloki (`docs/MEMORY.md` osio 3) perustele credit-budjettia (kriteeri: teho ≥ ~2× Opus-baseline JA Selkäranka-kuri piti).
+
+**M6 — fallback-protokolla:**
+
+- Bio/kemia-luokittelija voi pudottaa session Opus 4.8 -fallbackiin kesken työn (LeVe:n fysiologia-läheinen sisältö: adaptaatio, palautuminen, kuormitus). **Ei keskeytystä** — Opus 4.8 riittää useimpiin vaiheisiin: kirjaa laukaisija `docs/MEMORY.md` osion 2 fallback-lokiin ja jatka työtä.
+- Jos fallback-frekvenssi nousee häiritseväksi → raportoi Akselille (syöte 23.6.-päätökseen).
+
+**Mittauskirjanpito (23.6.-päätöstä varten):** jokainen Fable-ikkunan Code-sessio kirjaa `docs/MEMORY.md` osion 3 mittauslokiin: (1) R-vaiheita valmiiksi/sessio, (2) rubriikki-iteraatiot + verifier-hylkäykset, (3) relay-kierrokset (Cowork↔Akseli↔Code), (4) fallback-tapahtumat, (5) Akselin kuri-arvio.
