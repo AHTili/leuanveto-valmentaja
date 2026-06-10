@@ -85,11 +85,20 @@ Haluttu lopputila (mekanismi §5, ratifioitu): intra-blokki-intensifikaatio on *
 
 Deload-viikot (vk4/8/12/16) ENNALLAAN (scope-aita). **Per-liike realisoituminen:** kyykky/leuanveto = velocity-ankkuroitu e1RM × vReps (skaalautuu mittaukseen); dippi/apuliikkeet = staattinen e1RM × vReps (rakenne+RPE). VL-cap-↔-velocity-stop-rajapinta (K-A6D) tarkistettava A2b:ssä.
 
-### 4b. A1-LISÄYS: velocity-luotettavuuskartta — VAIHE A TEHTY (2026-06-10, read-only)
+### 4b. A1-LISÄYS: velocity-luotettavuuskartta — VAIHE A TEHTY (2026-06-10, read-only; **päivitetty tuoreella backupilla samana päivänä**)
 
-> Runtime-sweep: `computeRtfVelocityModel` (sama funktio jota recommend()/K-A6D käyttää, kynnys r² ≥ 0,85) ajettiin **kaikille** aktiivisen 16w-ohjelman + backup-historian liikkeille (39 kpl) Akselin repo-backupia vasten (`.claude/backup-data.json`, export **2026-05-06**, schema 4).
+> Runtime-sweep: `computeRtfVelocityModel` (sama funktio jota recommend()/K-A6D käyttää, kynnys r² ≥ 0,85) ajettiin **kaikille** aktiivisen 16w-ohjelman + backup-historian liikkeille (45 kpl) Akselin **tuoretta** backupia vasten (export **2026-06-10T09:31**, schema 5, 402 settiä / 22 sessiota; kopioitu `.claude/backup-data.json`-polkuun, git-ignoroitu). *Ensimmäinen ajo tehtiin stalella 6.5.-backupilla (0 velocity-settiä) — tuore export osoitti että velocity-data tallentuu ja exporttautuu oikein: ei export-polun fragmentaatiota.*
 
-**KERROS 1 — mittausdata (verifioitu):** **0/132 setistä sisältää velocity-arvon** (velocityMean/velocityRep1/mvReps kaikki null/puuttuu); 0 primer-measurements-riviä. → RTF-status `no-data` **kaikilla 39 liikkeellä**, r² ei laskettavissa. VBT-kerros täysin dormantti: velocityStop vaiennettu (K-A6D suppress), e1RM-ankkuri staattinen (cal/plan-based) kaikilla liikkeillä. *Rajaus: backup ei kata 6.5. jälkeisiä sessioita (mm. 31.5., 8.6.) — tuore export voi muuttaa kerros 1:n lukuja, ei kerros 2:n rakennetta.*
+**KERROS 1 — mittausdata (verifioitu tuoreesta backupista):** velocity-dataa on kertynyt **kolmelle liikkeelle**; kaikki RTF-mallit yhä **unreliable** (< 0,85) → VBT-kerros dormantti: velocityStop vaiennettu (K-A6D suppress), e1RM-ankkuri staattinen (cal/plan-based) kaikilla.
+
+| Liike | velocity-settejä (mvReps) | kuormahaarukka | aikaväli | RTF r² (n) | status |
+| --- | --- | --- | --- | --- | --- |
+| Takakyykky | 17 vMean / 13 mvReps-settiä (53 rep-arvoa) | 112,5–160 kg | 12.5.–26.5. | **0,373** (43) | unreliable |
+| Lisäpainoleuanveto | 12 / 10 (38) | 52,5–71 kg | 11.5.–31.5. | **0,075** (29) | unreliable |
+| Lisäpainodippi | 3 / 3 (12) | 70 kg (yksi kuorma) | 15.5. | **0,326** (12) | unreliable |
+| Kaikki muut (42) | 0 | — | — | no-data | no-data |
+
+Kuormahaarukat kyykyllä/leualla ovat kohtuulliset → matala r² ei selity haarukalla vaan kohinalla (mittaus + Vx-arvio) ja datan määrällä. Primer-measurements: 1 kpl (H-006b-polku elää).
 
 **KERROS 2 — rakenteellinen mittauskelpoisuus (Enode Pro: anturi tankoon/vyöhön + vertikaali ROM):**
 
@@ -99,12 +108,12 @@ Deload-viikot (vk4/8/12/16) ENNALLAAN (scope-aita). **Per-liike realisoituminen:
 | **Velocity-kandidaatti: vyö/BW-vertikaali** | Lisäpainoleuanveto (+ Vastaote, chest-to-bar -variantit) | sama kuin yllä (anturi vyöhön) |
 | **Rakenne+RPE (kohinainen/ei-mitattava)** | Lisäpainodippi (forward-lean-ROM; atletti-realismi-päätös H-006b), Muscle-up (räjähtävä taito), koneet (jalkaprässi, leg curl, pushdown, face pull), DB/kaapeli-isolaatiot, core | staattinen e1RM × vReps pysyvästi |
 
-**KERROS 3 — sekundäärilähde (EI verifioitavissa repo-datasta):** Cowork-tilannekuvan r²-luvut tuoreemmasta datasta (kyykky 0,37 · leuanveto 0,01 · dippi 0,33 · MU ei dataa) — kaikki < 0,85 eli unreliable sielläkin. Kirjattu sekundäärilähteenä; repo-data ei sisällä näitä settejä.
+**KERROS 3 — ristivahvistus:** Cowork-tilannekuvan sekundääriluvut (kyykky 0,37 · dippi 0,33 · leuanveto "0,01") täsmäävät nyt primääridataan (0,373 / 0,326 / 0,075) — sekundäärilähde osoittautui samaksi dataksi. Kerros 3 sulautui kerrokseen 1.
 
 **Johtopäätös A2b:lle (vahvistaa HANDOFF §5.2 + §5.4 — data voitti, ennakko-odotus piti):**
-1. **Mekanismi (i):n velocity-agnostisuus on oikea ja välttämätön:** yhdelläkään liikkeellä ei ole velocity-luotettavuutta → preskriptiivinen reps+Vx-ramppi toimii kaikille heti; velocity-yksilöinti aktivoituu e1RM-ankkurin kautta automaattisesti kun datan laatu paranee — **ilman A2b-koodin muutosta**.
+1. **Mekanismi (i):n velocity-agnostisuus on oikea ja välttämätön:** yhdelläkään liikkeellä RTF ei ole luotettava (max r² 0,373 < 0,85) → preskriptiivinen reps+Vx-ramppi toimii kaikille heti; velocity-yksilöinti aktivoituu e1RM-ankkurin kautta automaattisesti kun mallit promotoituvat — **ilman A2b-koodin muutosta**.
 2. **Per-liike-haaraa EI rakenneta** (§5.4 vahvistettu): VBT-vs-rakenne+RPE realisoituu e1RM-ankkurista ilmaiseksi.
-3. **Suositus datankeruulle (Akselille):** velocity-mittaus tangoliikkeistä (kyykky ensisijaisesti; penkki-accessoryt kun ohjelmassa) + leuanveto vyöanturilla. Dippiä ei mitata. Tuore puhelin-backup repoon päivittäisi kerros 1:n.
+3. **Velocity-keruu on jo käynnissä oikein** (export-polku ehjä): kyykky 13 mvReps-settiä, leuanveto 10, dippi 3. **Suositus:** jatka tangoliikkeistä (kyykky) + leuanveto vyöanturilla; dippi-mittaus vapaaehtoinen (rakenne+RPE-luokka, ei promotoidu). Mallit tarkentuvat datamäärällä — VBT-kerros herää itsestään jos/kun r² ≥ 0,85.
 
 ## 5. Taustapäätökset ja hylätyt vaihtoehdot
 
