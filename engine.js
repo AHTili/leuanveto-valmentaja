@@ -1063,6 +1063,45 @@ function detectPrimaryMovementIdentityMismatch(e1rmSourceMovementId, shownPrimar
   };
 }
 
+// ═══════════════════════════════════════════════════════════════
+// H-015 (2026-06-10): LIIKKEEN KORVAUS VAIVAN AJAKSI (movementSubstitutions)
+// ═══════════════════════════════════════════════════════════════
+// K1 (ratifioitu): korvaus on VAIVAN KESTON MITTAINEN, liike-tasolla — kaikki
+// liikkeen esiintymät (primary/backoff/secondary/accessory/cal) korvautuvat
+// kunnes substituutio päätetään (endedISO). Skeema mesocycle-objektissa:
+//   movementSubstitutions: { [originalName]: { replacementName, reason,
+//     startedISO, endedISO|null } }   — reason = K2-tagi ("vaiva"|"aikapula"|"muu"|null)
+//
+// RAMPPI-PERINTÄ ILMAISEKSI: slotin reps/targetVx/loadPct EIVÄT muutu — vain
+// defaultMovementName vaihtuu ENNEN kuormaresoluutiota → M2-sisä-blokki-ramppi
+// (vReps slotin reps+targetVx:stä), e1RM-haku, F-2-clamp, K-A6D-velocityStop ja
+// identity-detektori (e1rmSource = shown = korvaaja) seuraavat korvaajaa
+// automaattisesti. Alkuperäisen liikkeen e1RM-tila EI muutu (sen dataan ei
+// kirjoiteta substituution aikana).
+//
+// YKSI KANONINEN APPLIKOINTIFUNKTIO (value-resolution-oppi: ei replikointia):
+// kutsutaan recommend()-dayPlan-resoluutiossa + getFutureWorkouts:ssa + UI:n
+// viikkorenderissä — kaikki polut näkevät saman substituoidun nimen.
+function applyMovementSubstitutions(slots, mesocycle) {
+  const subs = mesocycle?.movementSubstitutions || {};
+  const activeKeys = Object.keys(subs).filter(k => subs[k] && subs[k].replacementName && !subs[k].endedISO);
+  if (!activeKeys.length || !Array.isArray(slots)) return slots;
+  let changed = false;
+  const mapped = slots.map(s => {
+    const sub = s?.defaultMovementName ? subs[s.defaultMovementName] : null;
+    if (!sub || sub.endedISO || !sub.replacementName) return s;
+    changed = true;
+    return {
+      ...s,
+      defaultMovementName: sub.replacementName,
+      // Variantti-vihjeet kuuluvat alkuperäiselle liikkeelle — ei siirretä korvaajalle.
+      variantHint: undefined,
+      _substituted: { originalName: s.defaultMovementName, reason: sub.reason || null, startedISO: sub.startedISO || null },
+    };
+  });
+  return changed ? mapped : slots;
+}
+
 /**
  * deltaPct_raw calculation: mesocycle week coefficient × day type multiplier
  */
@@ -3862,6 +3901,19 @@ async function recommend(options = {}) {
   let dayPlan = getTodayPlan(mesocycle, weekNum, dayOfWeek);
   let dayType = dayPlan?.dayType || options.dayType || "heavy";
 
+  // H-015: liike-korvaukset (vaivan ajaksi) applioidaan HETI dayPlan-resoluution
+  // jälkeen → koko downstream-kuormaketju näkee korvaajan. Ks. applyMovementSubstitutions.
+  if (dayPlan && dayPlan.slots) {
+    const subbedSlots = applyMovementSubstitutions(dayPlan.slots, mesocycle);
+    if (subbedSlots !== dayPlan.slots) {
+      dayPlan = { ...dayPlan, slots: subbedSlots };
+      const subList = subbedSlots.filter(s => s._substituted)
+        .map(s => `${s._substituted.originalName}→${s.defaultMovementName}${s._substituted.reason ? ` (${s._substituted.reason})` : ""}`);
+      trace("SLOT_SUBSTITUTION", {}, { count: subList.length, substitutions: subList },
+        `Liike-korvaus aktiivinen: ${[...new Set(subList)].join(", ")} — slotin ramppi (reps+Vx) säilyy, kuorma korvaajan e1RM:stä`);
+    }
+  }
+
   const isInsertedDeload = isInsertedDeloadWeek(mesocycle, dateISO);
   const isReplacedDeload = isReplacedDeloadWeek(mesocycle, dateISO);
   // v4.49.2 QF-4: laajenna deload-tunnistus presetti-built-in deload-viikoille
@@ -6015,7 +6067,8 @@ function getFutureWorkouts(mesocycle, currentDateISO, daysAhead = 14) {
       weekLabel: weekDef?.label || "",
       label: dayPlan.label || "",
       deltaPctBase: weekDef?.deltaPctBase || 0,
-      slots: dayPlan.slots,
+      // H-015: tulevat-listat näkevät saman korvauksen kuin live (sama kanoninen funktio)
+      slots: applyMovementSubstitutions(dayPlan.slots, mesocycle),
       // v4.30.4: warmup mukaan jotta sykli-näkymä voi näyttää koko treenin tarkasteluun
       warmup: dayPlan.warmup || [],
     });
@@ -8587,6 +8640,8 @@ export {
   getTodayPlan,
   // v4.52.18 H-009 P1a (A1): identity-coherence-detektori (tuning-vapaa)
   detectPrimaryMovementIdentityMismatch,
+  // H-015: liike-korvaus vaivan ajaksi (kanoninen applikointi — UI-renderit kutsuvat tätä)
+  applyMovementSubstitutions,
   deltaPctRaw,
   calibrateMesocycle,
   // Vara

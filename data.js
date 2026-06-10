@@ -7451,6 +7451,10 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
     weekPlans,
     postCycleAnalysis: null,
     accessorySlotOverrides: {}, // { [slotId]: { movementName, locked, variantIndex, reason, swappedAt } }
+    // H-015 (2026-06-10): liike-korvaus vaivan ajaksi. { [originalName]: { replacementName,
+    // reason ("vaiva"|"aikapula"|"muu"|null), startedISO, endedISO|null } }. endedISO=null =
+    // aktiivinen. Engine lukee defensiivisesti (|| {}) → vanhat mesot yhteensopivia ilman migraatiota.
+    movementSubstitutions: {},
     insertedDeloads: [], // [{ afterProgramWeek: N, invokedDateISO, reason }] — laajentaa kalenteripituutta
     replacedWithDeload: [], // [{ programWeek: N, invokedDateISO, reason }] — korvaa kyseisen vk:n kevennyksellä, ei pidennä
     // v4.30.2: ohjelmaversio auto-rebuild -mekanismille. Init() vertaa tätä
