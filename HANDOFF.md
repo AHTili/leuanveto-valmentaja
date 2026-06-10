@@ -76,13 +76,14 @@ Ei sovellu (ei block-tuning). Käyttäjätarina: ks. §1; lisäkonteksti §5.
 
 ---
 
-## 7. Session-tulos  *(Claude Code täyttää session lopussa)*
+## 7. Session-tulos — VAIHE A (2026-06-10)
 
 | Kenttä | Arvo |
 | --- | --- |
-| Sessio päättyi | `<pvm>` |
-| Muuttuneet tiedostot | `<lista>` |
-| Tehdyt päätökset | `<lista>` |
-| Validointi | `<Stop hook · selain-testit · pilot · LOAD-DIFF-SWEEP tarvittaessa>` |
-| Jäi auki | `<lista tai "—">` |
-| Seuraava askel | `<VAIHE B gate-vahvistuksella tai R-vaihe>` |
+| Sessio päättyi | 2026-06-10 (VAIHE A read-only valmis; VAIHE B odottaa gatea) |
+| Muuttuneet tiedostot | docs/handoffs/HANDOFF_M2.md (f0e9c61 arkistointi) · HANDOFF.md (0805eff H-015 + tämä §7) · docs/MEMORY.md (mittausloki). EI koodimuutoksia (read-only-vaihe). |
+| Tehdyt päätökset | Heti-ohje annettu nykyversiolla (skip ⏩ + "+ Liike"; Close-grip bench pankista, Käsipainopenkki custom-luontina; paluu vk8-deloadin kautta, cal-setti skipataan jos tuntemuksia). Id H-015. |
+| **A1-KARTTA (gate-syöte)** | **(a) Skip × paluu:** liike-skippi ei muuta e1RM-tilaa (skipped-suodatus verifioitu); ramppimuoto tulee templaatin viikosta (ei siirry); **paluu tauon jälkeen on plan + 2,5 %/vk × tauko (jopa YLI planin — runtime: 2 vk tauko → 56,7 @ plan 53,8)** — engine ei kevennä LIIKE-tason paluuta; `breakAnalysis` (-5/-10/-15 % @ 7/14/28 pv) on olemassa mutta KOKO-treenin granulariteetilla (globaali lastSession) → ei laukea kun muu treeni jatkuu. **Itsekorjautuva silta toimii:** kevennetty paluusessio → hardCap (+15 %/vk viime tehdystä) + regain ×2.0 ramppaavat takaisin ~2 sessiossa (runtime: 45 → 51,7 → plan). **(b) Substituutio:** 🔄-swap vain accessoryille (primary estetty :14306), pysyvä `accessorySlotOverrides` (vain slotId-polulla; legacy-swap jää in-memoryyn ✏️verifier); "+ Liike" ad-hoc EI peri slotin reps×Vx-ramppia (ei slotId:tä — M2-ramppi elää weekPlan-sloteissa) → primary-korvaus ramppi-perinnällä on VAIHE B -rakennuskohde. **(c) Jälkimuokkaus:** set-edit → e1RM-historia elää seuraavassa renderissä (haluttu); `MovementProgress.currentE1RM` ei päivity jälkikäteen mutta segregoitu (§0-invariantti, matala riski; ✏️verifier: `suggestedLoadKg`-poikkeus eri-liike-apuliikkeille = ei-nolla); `suggestParamsForMovement`/`computeMovementGrowth` eivät suodata skipped-raakatasolla (ehdotuslähde-reunariski). |
+| Validointi | Runtime-sweep 8 skenaariota (known-pos: 2/3/4 vk tauot, kevennetty silta, regain-FAR; known-neg: normaalirytmi, regain-kynnys 0,96, V0-suoja+plan-floor) · **M3-verifier: KYLLÄ, 0 hylkäystä** (V1–V6 TOSI; 2 täsmennystä sisällytetty karttaan: breakAnalysis-granulariteetti + legacy-swap-persistenssi) · pilot ei ajettu uudelleen (ei koodimuutoksia; pohja d1542d8 vihreä). |
+| Jäi auki | VAIHE B -scope (gate-kysymys Akselille): (1) per-liike-paluuramppi — laajennetaanko breakAnalysis liike-tasolle vai paluuprotokolla-preskriptio (tauko ≥ 2 vk → 1. sessio −15…20 % + Vx+1)? (2) primary-korvausmekanismi slotId-sidonnalla (ramppi-perintä) — engine-muutos, ei vain UX. (3) K2-syytagi versio-1-laajuus. |
+| Seuraava askel | **STOP-gate: Akseli vahvistaa VAIHE B:n scopen** → design plan-modessa → toteutus rubriikki-loopilla (A2–A6) + M3-verifier. EI pushia ilman lupaa (lokaalit commitit f0e9c61 + 0805eff + tämä). |
