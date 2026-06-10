@@ -11,6 +11,8 @@ import {
   getTodayPlan,
   // H-009 P1a (2026-05-29): identity-coherence-detektori
   detectPrimaryMovementIdentityMismatch,
+  // H-015 (2026-06-10): liike-korvaus vaivan ajaksi
+  applyMovementSubstitutions,
   calibrateMesocycle,
   varaFeedback, varaTrendCorrection,
   // v4.34.34
@@ -720,6 +722,39 @@ function testPrimaryMovementIdentityMismatch() {
     "P1a-T4 (edge): shown null → mismatch=false");
   assertEqual(detectPrimaryMovementIdentityMismatch(null, null).reason, "insufficient-data",
     "P1a-T4 (edge): molemmat null → reason=insufficient-data");
+}
+
+// H-015 (2026-06-10): liike-korvaus vaivan ajaksi — kanoninen applikointi.
+// Lukko: ramppi-perintä (reps/targetVx/loadPct EIVÄT muutu) + immutability +
+// ended/puuttuva substituutio = no-op samalla array-referenssillä.
+function testMovementSubstitutions() {
+  const slots = [
+    { role: "primary", defaultMovementName: "Lisäpainodippi", reps: 3, targetVx: 1, loadPct: 0.82, sets: 4, variantHint: "Kilpaote" },
+    { role: "backoff", defaultMovementName: "Lisäpainodippi", reps: 4, targetVx: 2, loadPct: 0.68, sets: 3 },
+    { role: "accessory", defaultMovementName: "Face pull", reps: 12, targetVx: 4 },
+  ];
+  // ── Known-POSITIVE: aktiivinen substituutio ──
+  const meso = { movementSubstitutions: { "Lisäpainodippi": { replacementName: "Close-grip bench", reason: "vaiva", startedISO: "2026-06-10", endedISO: null } } };
+  const out = applyMovementSubstitutions(slots, meso);
+  assertEqual(out[0].defaultMovementName, "Close-grip bench", "H015-T1 (pos): primary-nimi korvautuu");
+  assertEqual(out[0].reps, 3, "H015-T1: reps säilyy (ramppi-perintä)");
+  assertEqual(out[0].targetVx, 1, "H015-T1: targetVx säilyy (ramppi-perintä)");
+  assertEqual(out[0].loadPct, 0.82, "H015-T1: loadPct säilyy");
+  assert(out[0].variantHint === undefined, "H015-T1: variantHint ei siirry korvaajalle");
+  assertEqual(out[0]._substituted?.originalName, "Lisäpainodippi", "H015-T1: _substituted.originalName kirjattu");
+  assertEqual(out[1].defaultMovementName, "Close-grip bench", "H015-T1: backoff seuraa (liike-tason korvaus)");
+  assertEqual(out[2].defaultMovementName, "Face pull", "H015-T1: muu liike ennallaan");
+  assert(out[2]._substituted === undefined, "H015-T1: muulla liikkeellä ei _substituted-merkintää");
+  assertEqual(slots[0].defaultMovementName, "Lisäpainodippi", "H015-T1: alkuperäinen slots-array immutable");
+
+  // ── Known-NEGATIVE: päätetty substituutio (endedISO) → no-op + sama referenssi ──
+  const mesoEnded = { movementSubstitutions: { "Lisäpainodippi": { replacementName: "Close-grip bench", reason: "vaiva", startedISO: "2026-06-01", endedISO: "2026-06-09" } } };
+  assert(applyMovementSubstitutions(slots, mesoEnded) === slots, "H015-T2 (neg): ended-substituutio → no-op (sama ref)");
+
+  // ── Known-NEGATIVE: vanha meso ilman kenttää / tyhjä / null ──
+  assert(applyMovementSubstitutions(slots, {}) === slots, "H015-T3 (neg): meso ilman kenttää → no-op");
+  assert(applyMovementSubstitutions(slots, null) === slots, "H015-T3 (neg): null-meso → no-op");
+  assert(applyMovementSubstitutions(slots, { movementSubstitutions: {} }) === slots, "H015-T3 (neg): tyhjä substituutio-map → no-op");
 }
 
 function testCalibration() {
@@ -3876,6 +3911,8 @@ export async function runTests() {
   testGetTodayPlanForwardFirst();
   // H-009 P1a: identity-coherence-detektori (known-pos/neg, tuning-vapaa)
   testPrimaryMovementIdentityMismatch();
+  // H-015: liike-korvaus vaivan ajaksi (ramppi-perintä + immutability + no-op)
+  testMovementSubstitutions();
   testCalibration();
   testBackupReminderLogic();
   testMaintenanceStatus();
