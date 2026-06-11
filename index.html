@@ -5175,6 +5175,11 @@ function renderStimCard(deloadMode) {
   weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
   const weekStartISO = weekStart.toISOString().slice(0, 10);
   const weekSets = state.allSets.filter(s => {
+    // H-015 ABC/C (volyymisignaali-suoja): skip-rivit EIVÄT kuulu viikkostimulukseen —
+    // weeklyStimulus laskisi ne settimääriin ja heavy-altistuksiin (effectiveReps =
+    // 0 + targetVx ≤ 4). Pre-existing aukko jonka C:n skip-semantiikka olisi
+    // pahentanut; suodatin = sama kanoninen ehto kuin historia-poluissa (5647).
+    if (s.setRole === "skipped" || s.reps === null || s.reps === undefined) return false;
     const session = state.sessions.find(ses => ses.sessionId === s.sessionId);
     return session && session.dateISO >= weekStartISO;
   });
@@ -13987,27 +13992,31 @@ function bindWorkoutEvents() {
       const idx = await showListModal(
         `${exercise.name} — olet tehnyt ${counts.completed}/${counts.total} sarjaa`,
         [
-          { icon: "✓", label: `Valmis — riittää ${counts.completed}/${counts.total} sarjaa`, desc: `Loput ${counts.remaining} sarjaa poistuu listalta (et tehnyt niitä)` },
+          { icon: "✓", label: `Valmis — riittää ${counts.completed}/${counts.total} sarjaa`, desc: `Loput ${counts.remaining} sarjaa merkitään ohitetuiksi (palautettavissa napauttamalla)` },
           { icon: "⏭", label: "Ohita loput sarjat (merkitse skipatuiksi)", desc: `${counts.remaining} sarjaa kirjataan skipatuksi historiaan` },
           { icon: "✗", label: "Peruuta", desc: "Pysy tässä liikkeessä" },
         ]
       );
       if (idx === 2 || idx === null) return;
-      if (idx === 1) {
-        // Skipataan loput, ei poisteta
-        exercise.sets.forEach(s => {
-          if (!s.completed && !s.skipped && !s.isWarmup) {
-            s.skipped = true;
-            s.reps = null; s.actualVx = null;
-          }
-        });
-      } else {
-        // idx === 0: poista keskeneräiset (vanha "Liike valmis" -käyttäytyminen)
-        exercise.sets = exercise.sets.filter(s => s.completed || s.skipped);
-      }
+      // H-015 ABC/C (2026-06-10, ei-tuhoava): MOLEMMAT haarat skippaavat —
+      // tekemättömiä sarjoja EI ENÄÄ POISTETA. Skipattu sarja on palautettavissa
+      // (ABC/B: napauta riviä) ja tallentuu setRole:"skipped"-rivinä (= sama
+      // semantiikka jota "Ohita loput" on aina käyttänyt; engine-suodattimet
+      // e1RM/progressio/vara ohittavat sen — verifioitu, ks. commit-viesti).
+      exercise.sets.forEach(s => {
+        if (!s.completed && !s.skipped && !s.isWarmup) {
+          s.skipped = true;
+          s.reps = null; s.actualVx = null;
+        }
+      });
     } else {
-      // Ei sarjoja tehty, ei jäljellä — vain poista keskeneräiset
-      exercise.sets = exercise.sets.filter(s => s.completed || s.skipped);
+      // Ei yhtään tehtyä sarjaa → skippaa tekemättömät (ei poistoa; palautettavissa)
+      exercise.sets.forEach(s => {
+        if (!s.completed && !s.skipped && !s.isWarmup) {
+          s.skipped = true;
+          s.reps = null; s.actualVx = null;
+        }
+      });
     }
     w.currentExerciseIdx++;
     w.currentSetIdx = 0;
