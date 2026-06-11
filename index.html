@@ -6531,8 +6531,29 @@ function renderActiveWorkout() {
       else if (allFinished && anyCompleted) cls = "done";
     }
     const name = (ex.name || "").split(" ")[0] || ex.name || "?";
-    return `<div class="pill ${cls}" data-jump-idx="${i}" title="${ex.name || ""}${fullySkipped ? " (ohitettu)" : ""}">${name}</div>`;
+    // H-015 A (löydettävyys): done-pilleri kantaa ✎-affordanssin — kertoo että
+    // valmiiseen liikkeeseen voi palata muokkaamaan napauttamalla.
+    const editHint = cls === "done" ? " ✎" : "";
+    return `<div class="pill ${cls}" data-jump-idx="${i}" title="${ex.name || ""}${fullySkipped ? " (ohitettu)" : ""}${cls === "done" ? " — napauta muokataksesi" : ""}">${name}${editHint}</div>`;
   }).join("");
+
+  // H-015 A (löydettävyys, ratifioitu 2026-06-10): kun edellisellä liikkeellä on
+  // kirjattuja sarjoja, näytä paluuvihje-kortti aktiivisen liikkeen yläpuolella —
+  // "Liike valmis" ei saa kadottaa polkua takaisin. Klikki kulkee olemassa olevan
+  // data-jump-idx-handlerin kautta (sama mekanismi kuin pillerit, ei uutta polkua).
+  let prevExerciseHintHTML = "";
+  if (currentExIdx > 0) {
+    const prevEx = w.exercises[currentExIdx - 1];
+    const prevCompleted = prevEx ? prevEx.sets.filter(s => s.completed && !s.isWarmup).length : 0;
+    const prevSkipped = prevEx ? prevEx.sets.filter(s => s.skipped && !s.isWarmup).length : 0;
+    if (prevEx && (prevCompleted > 0 || prevSkipped > 0)) {
+      prevExerciseHintHTML = `<div data-jump-idx="${currentExIdx - 1}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;margin-bottom:10px;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.25);border-radius:8px;cursor:pointer;font-size:12px">
+        <span style="color:var(--ok);font-weight:800">✓</span>
+        <span style="flex:1"><b>${prevEx.name}</b> · ${prevCompleted} sarjaa${prevSkipped ? ` (+${prevSkipped} ohitettu)` : ""}</span>
+        <span class="muted" style="font-size:11px">napauta muokataksesi ✎</span>
+      </div>`;
+    }
+  }
 
   // ── Exercise head ──
   const roleLabel = exercise.role === "primary" ? "⭐ Pääliike"
@@ -6970,6 +6991,7 @@ function renderActiveWorkout() {
     <div class="progress" style="margin-bottom:10px"><div class="progress-fill" style="width:${progressPct}%"></div></div>
 
     <div class="pill-ticker">${pillsHTML}</div>
+    ${prevExerciseHintHTML}
 
     <div class="ex-head">
       <div class="ex-role">${roleLabel} ${progressTag}</div>
