@@ -6917,8 +6917,12 @@ function renderActiveWorkout() {
     ${allFinishedWorkSets.map((s, i) => {
       const origIdx = completedAndSkippedIndices[i];
       if (s.skipped) {
-        return `<div class="row" style="opacity:0.6;text-decoration:line-through;color:var(--warn)">
-          <span class="done-mark">⏭</span><b>S${i + 1}</b> · Ohitettu
+        // H-015 ABC/B (2026-06-10): skipattu rivi on napautettava — edit-modal
+        // palauttaa sarjan (skipped→completed kun toistot syötetään). K3:n
+        // "rajaton peruutus" kattaa nyt myös skip-merkinnät (confirm-aukko kiinni).
+        return `<div class="row completed-row-editable" data-edit-set-idx="${origIdx}" title="Napauta palauttaaksesi ohitetun sarjan" style="opacity:0.6;color:var(--warn)">
+          <span class="done-mark">⏭</span><b style="text-decoration:line-through">S${i + 1}</b> · Ohitettu
+          <span class="completed-edit-hint">↩</span>
         </div>`;
       }
       const vel = s.velocity ? ` · ${s.velocity.toFixed(2)} m/s` : "";
@@ -14359,6 +14363,13 @@ function bindWorkoutEvents() {
       setData.actualVx = edit.actualVx;
       setData.loadKg = edit.loadKg;
       setData.velocity = edit.velocity;
+      // H-015 ABC/B: skipatun sarjan palautus — kun toistot syötetään, sarja
+      // palaa tehdyksi (skipped pois). Tila täsmälleen kuin normaalisti kirjattu.
+      if (setData.skipped && edit.reps != null) {
+        setData.skipped = false;
+        setData.completed = true;
+      }
+      savePendingWorkoutLocal(state.workout);
       // Jos kyseessä V0 → attemptedReps ei ole enää relevantti (ellei käyttäjä
       // itse päivittänyt): jätetään vanha arvo kunnes käyttäjä syöttää uuden
       showToast(`Sarja ${idx + 1 - exercise.sets.filter(s => s.isWarmup).length} päivitetty`, "ok");
