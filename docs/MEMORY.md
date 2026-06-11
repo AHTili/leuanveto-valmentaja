@@ -48,6 +48,11 @@
 - **Havainto:** M2-rampin sweep näytti odottamattomia diffejä EI-muutetuilla viikoilla (vk5-dippi 19,5→0,5 kg; vk10 +27…50 kg). Juuri: pilot-simulaattori on polkuriippuva — muutettu preskriptio muuttaa simuloitua suoritusta → regain/rate-limit-ankkurit eroavat → ketjuvaikutus myöhempiin viikkoihin. PRE-tilassakin sama mekanismi suppressoi (38,5→19,5) — ei uusi regressio.
 - **Sääntö (consult):** sweep-tulkinnassa erota (a) **suorat muutokset** muutetuilla riveillä (verrattava spec-taulukkoon täsmälleen) ja (b) **ketjuvaikutukset** muilla viikoilla (juurianalysoitava decision-traceista — `PROGRESSION_TARGET.why` + `regainRatio` kertovat ankkurin). Älä kuittaa "ketjuvaikutuksena" ilman trace-todistetta, älä myöskään tulkitse regressioksi ilman PRE-vertailua samasta mekanismista.
 
+### Oppi 8 — UI-acceptance = käyttäjän polku end-to-end render-tasolla (ratifioitu 2026-06-10)
+- **Fail:** H-015 §7b väitti A3/A4 valmiiksi handler-koodin olemassaolon + funktiotason testien perusteella; puhelinverifiointi paljasti ettei käyttäjä löydä/pääse polkuun ("Liike valmis" → ei näkyvää paluureittiä; skip-rivit ei-muokattavia; "Valmis — riittää" poisti sarjat). M3-verifier ei napannut — rubriikki oli staattinen kooditarkistus = rakenteellisesti sokea tälle virheluokalle (sama luokka kuin F-2-oppi).
+- **Sääntö (consult):** UI-polkua muuttava handoff: **acceptance = käyttäjän polku end-to-end render-tasolla** — (1) DOM-klikit preview-selaimessa (`LeVe.pendingWorkout`-injektio + recovery-resume = toistettava harness; HUOM `workout.sessionId` pakollinen), (2) mobiiliviewport (390 px), (3) verifier AJAA saman polun itse (ei staattista rubriikkia), (4) löydettävyys arvioidaan eksplisiittisesti (näkyykö reitti ilman ohjetta?). **Handler-koodin olemassaolo ≠ polku käyttäjälle.**
+- **Evidenssi:** confirm-kierros 2026-06-10 — reproduktio osoitti polkujen toimivan teknisesti mutta olevan löytymättömiä/aukkoisia; §7b-väite vs todellisuus -taulukko STOP-raportissa.
+
 ---
 
 ## 2. Fallback-loki (P-013 M6)
