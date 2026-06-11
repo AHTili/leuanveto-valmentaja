@@ -316,3 +316,10 @@ tarkistuksen vs Akselin backup-dippi-historia (reaali ~62.5–71 kg työkuormat)
 **Prioriteetti:** P2-luokka (ei estä identity-gatea, joka on nyt elävä). Ei
 H-008-tyyppinen perityn-kuorman-bugi (dippi näyttää OMAN liikkeen e1RM:n, vain
 magnitude poikkeaa fixture vs reaali).
+
+## BACKLOG-D (H-015 retro, 2026-06-10): sarjaloki-redesign-kandidaatti
+
+Workout-flow'n pysyvä kaikki-liikkeet-sarjaloki (kaikki liikkeet + rivit aina
+näkyvissä, ei nykyistä yksi-liike-kerrallaan-näkymää). STOP-raportin vaihtoehto
+D — EI ratifioitu A+B+C-kierrokseen (10.6.); arvioidaan jos A:n löydettävyys-
+kerros ei riitä puhelinkäytössä.
