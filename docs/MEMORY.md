@@ -53,6 +53,11 @@
 - **Sääntö (consult):** UI-polkua muuttava handoff: **acceptance = käyttäjän polku end-to-end render-tasolla** — (1) DOM-klikit preview-selaimessa (`LeVe.pendingWorkout`-injektio + recovery-resume = toistettava harness; HUOM `workout.sessionId` pakollinen), (2) mobiiliviewport (390 px), (3) verifier AJAA saman polun itse (ei staattista rubriikkia), (4) löydettävyys arvioidaan eksplisiittisesti (näkyykö reitti ilman ohjetta?). **Handler-koodin olemassaolo ≠ polku käyttäjälle.**
 - **Evidenssi:** confirm-kierros 2026-06-10 — reproduktio osoitti polkujen toimivan teknisesti mutta olevan löytymättömiä/aukkoisia; §7b-väite vs todellisuus -taulukko STOP-raportissa.
 
+### Oppi 9 — Verifioi myös TAVOITTEEN MÄÄRITELMÄ ankkurista (ratifioitu 2026-06-10)
+- **Fail:** 10.6. goal-drift — kompaktio/tilannekuvadokumentit romahduttivat "mullistava"-määritelmän muotoon "M1 ∧ M2", vaikka kanoninen muoto on **M1 ∧ M2 ∧ Kerros 3 (L3a/L3b/L3c) ∧ KAPSTONI (eliittiverdikti 3 pilarissa)** (master-auditplan v4 FINAL §7 + §13). Kerros 3 ja KAPSTONI putosivat sekvenssistä huomaamatta.
+- **Sääntö (consult):** verifioi tavoitteen MÄÄRITELMÄ aina alkuperäisestä ankkurista (v4 FINAL §7/§13), ei tilannekuva-/bootstrap-dokumenteista — **kompaktio syö ensimmäisenä monikomponenttiset määritelmät (A ∧ B ∧ C ∧ D → A ∧ B).** Sama mekanismi kuin oppi 4:n tilannekuva-drift, mutta kohdistuu tavoitteeseen itseensä — vaarallisempi, koska työ suuntautuu väärin huomaamatta.
+- **Evidenssi:** ROADMAP §1 kanoninen määritelmä + vaiheet 19b/21 palautettu sekvenssiin (commit 2026-06-10).
+
 ---
 
 ## 2. Fallback-loki (P-013 M6)

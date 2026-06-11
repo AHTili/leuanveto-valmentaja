@@ -14,6 +14,11 @@
 
 Akselin omat sanat. Tämä taso säilyy ennallaan koko prosessin ajan, reunaehtojen (a)/(b)/(c) suojaamana.
 
+**KANONINEN MÄÄRITELMÄ (palautettu 2026-06-10, ankkuri: master-auditplan v4 FINAL §7 + §13 — goal-drift-korjaus):**
+
+> **Mullistava = M1 ∧ M2 ∧ Kerros 3 (L3a/L3b/L3c) ∧ KAPSTONI (eliittiverdikti 3 pilarissa).**
+> Mikään osakomponentti yksin EI riitä: M1 (virheetön pohja) ja M2 (sisä-blokki-äly) ovat välttämättömiä mutta eivät riittäviä ilman Kerros 3:a (L3a/L3b/L3c) ja KAPSTONI-eliittiverdiktin kolmea pilaria (1: reaaliaikainen autoregulaatio · 2–3: ks. v4 FINAL §13). Kompaktio-/tilannekuvadokumentit eivät saa supistaa tätä määritelmää (MEMORY oppi 9) — täysi muoto verifioidaan AINA v4 FINAL -ankkurista.
+
 β-arkkitehtuurin täysimittainen lopputila tarjoaa **eliittitason VBT-autoregulaation kotioloissa** — Enode Pro + Oura Ring -kalustolla, täysin lokaalissa ympäristössä, ilman ulkopuolista kommunikaatiota.
 
 Konkreettinen käyttökokemus lopputilassa:
@@ -70,7 +75,9 @@ Nämä eivät saa kadota missään vaiheessa.
 | 17 | Round B-α-2 — Lähde 2 primer + K-β-primer audit | VALMIS | toteutettu H-006a (velocity-data-flow, ba63654^7..6676a86) + H-006b (primer + sys-1RM-päivitys + K-β-1/2/4/5-audit + measurements-store type='primer', 70cf681..ba63654). Atletti-realismi: 3-pisteen primer + primer-pohjainen LV-regressio torjuttiin (dippi-velocity epäluotettava); cal-pohjainen LV-regressio aktiivinen recommend():ssa. |
 | 18 | Round B-β — HRV-bias + shadow mode + K-β-HRV audit | **NYT** | ~135–225 riviä; H-006a+H-006b stabiloitu — empiirinen primer-baseline rakentuu ~2 vk arkitreeneissä, vaihe 18 LUONNOS voidaan aloittaa rinnakkain |
 | 19 | Pohja-puhtaus 8/8 -verifiointi | SEURAAVA | reunaehto (a) -gate; edellyttää vaiheen 14b sulkua |
+| 19b | **Kerros 3 (L3a/L3b/L3c)** — ml. L3b-audit + Wizard-eliittiarvio | AVOIN (palautettu sekvenssiin 2026-06-10) | mullistava-määritelmän 3. komponentti (v4 FINAL §7); pudonnut sekvenssistä goal-driftissä — palautettu |
 | 20 | Round B-γ — peaking | LYKÄTTY | VL-cap 20→15→10 %; aktivoidaan ~6 vk ennen kisaa |
+| 21 | **KAPSTONI — eliittiverdikti 3 pilarissa** | AVOIN (palautettu sekvenssiin 2026-06-10) | mullistava-määritelmän 4. komponentti (v4 FINAL §13); pilari 1 = reaaliaikainen autoregulaatio (vrt. DESIGN-D1, docs/OBS-038); verdikti annetaan vasta kun M1 ∧ M2 ∧ Kerros 3 pystyssä |
 
 **Vaihe 17 (VALMIS, 2026-05-28)** toteutettu kapeammin kuin alkuperäinen ROADMAP-spec: H-006b A1 liike-spesifi primer-rajaus (tankoliikkeet + Lisäpainoleuanveto primerEnabled=true; Dippi+MU false atletti-realismin pohjalta), A2 yksipisteinen primer @ ~60% + sys-1RM-päivitys baseline-vertailusta ±2.5/5% (EI 3-pisteen LV-regressio), A3 K-β-1/2/4/5 audit-engine.mjs, A4 measurements-store type='primer'. 5-vaiheinen validointi: 4 K-β-flagia + LV-r²-tarkistus computeLoadVelocityProfile:ssa (engine.js:2437) — kanoninen 5-vaiheinen. Cal-pohjainen LV-regressio aktiivinen recommend():ssa (engine.js:2735, 4224).
 
