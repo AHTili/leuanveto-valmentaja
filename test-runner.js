@@ -13,6 +13,8 @@ import {
   detectPrimaryMovementIdentityMismatch,
   // H-015 (2026-06-10): liike-korvaus vaivan ajaksi
   applyMovementSubstitutions,
+  // H-016 (2026-06-12): liike-tason paluuramppi
+  computeMovementReload,
   calibrateMesocycle,
   varaFeedback, varaTrendCorrection,
   // v4.34.34
@@ -755,6 +757,41 @@ function testMovementSubstitutions() {
   assert(applyMovementSubstitutions(slots, {}) === slots, "H015-T3 (neg): meso ilman kenttää → no-op");
   assert(applyMovementSubstitutions(slots, null) === slots, "H015-T3 (neg): null-meso → no-op");
   assert(applyMovementSubstitutions(slots, { movementSubstitutions: {} }) === slots, "H015-T3 (neg): tyhjä substituutio-map → no-op");
+}
+
+// H-016 (2026-06-12): liike-tason paluuramppi — lukot known-pos/neg (VAIHE B).
+function testMovementReload() {
+  const mk = (sid, day, kg, role = "top") => ({ sessionId: sid, movementId: "dip", setRole: role, externalLoadKg: kg, reps: 3, timestamp: day + "T10:00:00Z", exerciseNote: "" });
+  const base = [mk("a", "2026-05-20", 72.5), mk("a", "2026-05-20", 75), mk("b", "2026-05-27", 75), mk("b", "2026-05-27", 75)];
+  const mesoSub = { movementSubstitutions: { "Lisäpainodippi": { replacementName: "Close-grip bench", reason: "vaiva", startedISO: "2026-06-01", endedISO: "2026-06-15" } } };
+  // Known-pos: 1. paluu ~20 pv, korvaaja + vaiva → −15 % ankkurista 75
+  const r1 = computeMovementReload(base, "Lisäpainodippi", "dip", mesoSub, "2026-06-16");
+  assertEqual(r1?.anchorKg, 75, "H016-T1: ankkuri = tauon-edeltävä top-mediaani 75");
+  assertEqual(r1?.reloadPct, 0.15, "H016-T1: vaiva-floor 0.15 (A5)");
+  assert(Math.abs(r1?.targetKg - 63.75) < 0.01, "H016-T1: first-return target 63.75 = 75 × 0.85");
+  assertEqual(r1?.phase, "first-return", "H016-T1: phase first-return");
+  // Known-pos: ramppi-porras 2 TOTEUMASTA (64 tehty) → 64 + (75−64)/2 = 69.5
+  const r2 = computeMovementReload([...base, mk("c", "2026-06-16", 64)], "Lisäpainodippi", "dip", mesoSub, "2026-06-19");
+  assert(Math.abs(r2?.targetKg - 69.5) < 0.01, "H016-T2: porras 2 toteumasta = 69.5 (§6.3)");
+  assertEqual(r2?.step, 2, "H016-T2: step 2/3");
+  // Known-pos: porras 3 → anchor; ramppi valmis → null
+  const r3 = computeMovementReload([...base, mk("c", "2026-06-16", 64), mk("d", "2026-06-23", 69.5)], "Lisäpainodippi", "dip", mesoSub, "2026-06-26");
+  assertEqual(r3?.targetKg, 75, "H016-T3: porras 3 = ankkuri (ei ylitystä ennen rampin päätöstä)");
+  assert(computeMovementReload([...base, mk("c", "2026-06-16", 64), mk("d", "2026-06-23", 69.5), mk("e", "2026-06-26", 75)], "Lisäpainodippi", "dip", mesoSub, "2026-06-30") === null,
+    "H016-T4: ramppi valmis → null (normaali progressio jatkuu)");
+  // Known-neg: normaalirytmi 5 pv → null (DORMANTTI — prioriteettilinjaus)
+  assert(computeMovementReload(base, "Lisäpainodippi", "dip", {}, "2026-06-01") === null,
+    "H016-T5 (neg): 5 pv gap → null (reload dormantti arjessa)");
+  // Known-neg: 0 kg accessory-rivi EI kelpaa ankkuriksi (A3, VAIHE A -ansa)
+  const trap = [...base, { sessionId: "t", movementId: "dip", setRole: "accessory", externalLoadKg: 0, reps: 4, timestamp: "2026-05-31T10:00:00Z", exerciseNote: "" }];
+  assertEqual(computeMovementReload(trap, "Lisäpainodippi", "dip", mesoSub, "2026-06-16")?.anchorKg, 75,
+    "H016-T6 (neg): 0 kg accessory ei ankkuriksi — top+kuorma>0-rajaus");
+  // Known-neg: ilman korvaajaa/vaivaa → noReplacement-pct
+  assertEqual(computeMovementReload(base, "Lisäpainodippi", "dip", {}, "2026-06-16")?.reloadPct, 0.15,
+    "H016-T7 (neg): ei korvaajaa 20 pv → noReplacement 0.15");
+  // Known-neg: ei top-settejä lainkaan → null (uusi liike)
+  assert(computeMovementReload([], "Uusi liike", "x", {}, "2026-06-16") === null,
+    "H016-T8 (neg): ei ankkurisettejä → null");
 }
 
 function testCalibration() {
@@ -3913,6 +3950,8 @@ export async function runTests() {
   testPrimaryMovementIdentityMismatch();
   // H-015: liike-korvaus vaivan ajaksi (ramppi-perintä + immutability + no-op)
   testMovementSubstitutions();
+  // H-016: liike-tason paluuramppi (detektio + kevennys + toteuma-ramppi + dormantti)
+  testMovementReload();
   testCalibration();
   testBackupReminderLogic();
   testMaintenanceStatus();
