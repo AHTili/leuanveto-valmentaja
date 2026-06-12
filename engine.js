@@ -1449,6 +1449,126 @@ function breakAnalysis(lastSessionDateISO, todayDateISO) {
   };
 }
 
+// ═══════════════════════════════════════════════════════════════
+// H-016 (2026-06-12): LIIKE-TASON PALUURAMPPI (movement reload)
+// ═══════════════════════════════════════════════════════════════
+// Globaali breakAnalysis (yllä) toimii koko-treenin granulariteetilla — se EI
+// laukea kun muu treeni jatkuu ja vain yksi liike on tauolla/korvattuna
+// (H-015 §7 A1-kartta + H-016 VAIHE A). Tämä kerros tunnistaa LIIKKEEN tauon
+// ja preskriptoi kevennetyn paluun + lineaarisen toteuma-ankkuroidun rampin.
+//
+// Ratifioidut säännöt (H-016 §6, Akseli 2026-06-12):
+//   §6.1 min-precedence: konservatiivisin target voittaa, kevennyksiä EI
+//        kumuloida; TÄYSIN erillään mesocycleBreakReset-polusta.
+//   §6.2 v1 = pääliikeketju (integraatio targetExternalLoad-tasolla ennen
+//        sessionEffectiveE1RM:ää → back-off/secondary seuraavat ilmaiseksi;
+//        accessoryt ja cal-slotit ULOS v1:stä).
+//   §6.3 lineaarinen ramppi toteumasta tauon-edeltävään ~2 vk:ssa
+//        (RELOAD_CONFIG.rampSessions); skipattu paluusessio pysäyttää portaan
+//        (toteuma-ankkurointi = mekaaninen kipu-gate, ei kuittauskitkaa).
+//   A3-ankkuri: VAIN oikeat työsarjat (setRole "top" + externalLoadKg > 0) —
+//        BW 0 kg -kirjaukset eivät kelpaa (VAIHE A -löydös: dippi-ansa).
+//
+// EVIDENSSI (R1 §2.5, KOHTALAINEN — käytäntösynteesi, EI RCT-protokolla):
+// reloadPct-matriisi (tauon kesto × korvaava-liike-olemassa) ja ramppinopeus
+// ovat konfiguroitavia oletuksia, eivät tutkimustotuuksia. Kipu-gate on
+// kliininen periaate (R1 §2.3). Reunaehto (b): kaikki staattisia — ei opita.
+const RELOAD_CONFIG = {
+  thresholdDays: 14,   // sama kynnys kuin paluubannerilla — yksi käsite käyttäjälle
+  table: [
+    // 14–27 pv ≈ "2–3 vk" -solu; ≥28 pv = pitkä tauko
+    { minDays: 14, maxDays: 27, withReplacement: 0.125, noReplacement: 0.15 },
+    { minDays: 28, maxDays: Infinity, withReplacement: 0.15, noReplacement: 0.20 },
+  ],
+  vaivaFloorPct: 0.15, // A5: vaiva-syytagi → vähintään konservatiivinen pää
+  rampSessions: 3,     // 1. paluusessio + 2 porrasta ≈ ~2 vk tyypillisellä frekvenssillä
+};
+
+// Palauttaa null (ei taukoa / ei ankkuria / ramppi valmis) tai
+// { targetKg, breakDays, reloadPct, anchorKg, reason, hadReplacement,
+//   phase: "first-return"|"ramp", step, stepsTotal }.
+// READ-ONLY datalle; kutsuja päättää applioinnista (min-precedence).
+function computeMovementReload(allSets, movementName, movementId, mesocycle, dateISO) {
+  if (!movementId || !Array.isArray(allSets) || !dateISO) return null;
+  // A3-ankkurisetit: oikeat työsarjat aikajärjestyksessä
+  const workTops = allSets
+    .filter(s => s.movementId === movementId && s.setRole === "top"
+      && (s.externalLoadKg || 0) > 0 && s.reps != null && s.timestamp)
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  if (!workTops.length) return null; // uusi liike — ei reload-ankkuria
+  const now = new Date(dateISO).getTime();
+  const dayMs = 86400000;
+  // Etsi viimeisin TAUKO-raja: käy sessiot lopusta ja löydä ≥ threshold -gap.
+  // Sessiokohtaiset ryhmät (sessionId) aikajärjestyksessä:
+  const sessOrder = [];
+  const bySess = new Map();
+  for (const s of workTops) {
+    if (!bySess.has(s.sessionId)) { bySess.set(s.sessionId, []); sessOrder.push(s.sessionId); }
+    bySess.get(s.sessionId).push(s);
+  }
+  const sessTimes = sessOrder.map(id => {
+    const sets = bySess.get(id);
+    const med = sets.map(x => x.externalLoadKg).sort((a, b) => a - b)[Math.floor(sets.length / 2)];
+    return { id, t: new Date(sets[sets.length - 1].timestamp).getTime(), medianLoad: med };
+  });
+  const lastSess = sessTimes[sessTimes.length - 1];
+  const gapNowDays = Math.floor((now - lastSess.t) / dayMs);
+  // Tauko-rajan haku: viimeisin sessioväli jonka gap ≥ threshold, tai gap nykyhetkeen
+  let breakIdx = -1; // sessTimes-indeksi: tauon JÄLKEISEN ensimmäisen session indeksi
+  for (let i = sessTimes.length - 1; i >= 1; i--) {
+    const gap = Math.floor((sessTimes[i].t - sessTimes[i - 1].t) / dayMs);
+    if (gap >= RELOAD_CONFIG.thresholdDays) { breakIdx = i; break; }
+  }
+  // Substituutiojakso + K2-syy (rakenteellinen lähde ensisijainen; skip-tagi sekundäärinen)
+  const sub = mesocycle?.movementSubstitutions?.[movementName] || null;
+  let reason = sub?.reason || null;
+  if (!reason) {
+    // Sekundäärinen: tauko-ikkunan skip-settien exerciseNote "[skip: vaiva]"
+    const windowStart = breakIdx >= 0 ? sessTimes[breakIdx - 1].t : lastSess.t;
+    const vaivaSkip = allSets.some(s => s.movementId === movementId && s.setRole === "skipped"
+      && s.timestamp && new Date(s.timestamp).getTime() >= windowStart
+      && /\[skip: vaiva\]/.test(s.exerciseNote || ""));
+    if (vaivaSkip) reason = "vaiva";
+  }
+  const hadReplacement = !!(sub && sub.replacementName);
+  const pctFor = (days) => {
+    const row = RELOAD_CONFIG.table.find(r => days >= r.minDays && days <= r.maxDays);
+    if (!row) return null;
+    let pct = hadReplacement ? row.withReplacement : row.noReplacement;
+    if (reason === "vaiva") pct = Math.max(pct, RELOAD_CONFIG.vaivaFloorPct); // A5
+    return pct;
+  };
+  // TILA 1: tauko käynnissä NYT (gap nykyhetkeen ≥ threshold) → 1. paluusessio
+  if (gapNowDays >= RELOAD_CONFIG.thresholdDays) {
+    const reloadPct = pctFor(gapNowDays);
+    if (reloadPct === null) return null;
+    const anchorKg = lastSess.medianLoad; // tauon-edeltävä työkuorma (A3)
+    return {
+      targetKg: anchorKg * (1 - reloadPct), breakDays: gapNowDays, reloadPct,
+      anchorKg, reason, hadReplacement, phase: "first-return",
+      step: 1, stepsTotal: RELOAD_CONFIG.rampSessions,
+    };
+  }
+  // TILA 2: ramppi käynnissä — tauko löytyi historiasta ja paluusessioita on
+  // tehty vähemmän kuin rampSessions → seuraava porras TOTEUMASTA (§6.3).
+  if (breakIdx >= 0) {
+    const returnSessions = sessTimes.length - breakIdx; // tauon jälkeen toteutuneet
+    if (returnSessions < RELOAD_CONFIG.rampSessions) {
+      const anchorKg = sessTimes[breakIdx - 1].medianLoad; // tauon-edeltävä
+      const prevActual = lastSess.medianLoad;               // toteuma-ankkuri
+      const stepsLeft = RELOAD_CONFIG.rampSessions - returnSessions;
+      const targetKg = Math.min(anchorKg, prevActual + (anchorKg - prevActual) / stepsLeft);
+      const breakDays = Math.floor((sessTimes[breakIdx].t - sessTimes[breakIdx - 1].t) / dayMs);
+      const reloadPct = pctFor(breakDays);
+      return {
+        targetKg, breakDays, reloadPct, anchorKg, reason, hadReplacement,
+        phase: "ramp", step: returnSessions + 1, stepsTotal: RELOAD_CONFIG.rampSessions,
+      };
+    }
+  }
+  return null; // ei taukoa / ramppi valmis → normaali progressio
+}
+
 /**
  * Check if mesocycle needs reset after break
  */
@@ -4849,8 +4969,47 @@ async function recommend(options = {}) {
   //      → Takakyykky) → haetaan referenssi-liikkeen e1RM sen omasta
   //      historiasta, ja sovelletaan erillinen rate-limit slotin oman
   //      liikkeen viim. sarjasta jos historiaa on.
+  // ── H-016 (2026-06-12): liike-tason paluuramppi — MIN-PRECEDENCE (§6.1) ──
+  // Applioidaan targetExternalLoadiin ENNEN sessionEffectiveE1RM-johdantoa →
+  // kevennys säteilee back-off/secondaryyn automaattisesti (§6.2) ja Sykli-
+  // preview + K1-projektio perivät sen hybrid-cachen kautta (A6). Kevennyksiä
+  // EI kumuloida: min() kattaa myös globaalin breakAnalysis-modifierin polun.
+  // Ei koske cal-slotteja eikä accessoryja (omat polut). DORMANTTI kun liike
+  // treenattu < 14 pv sisällä (prioriteettilinjaus: arjen polku bittitarkka).
+  let primaryReloadInfo = null;
+  if (primaryMovement && typeof targetExternalLoad === "number" && targetExternalLoad > 0) {
+    primaryReloadInfo = computeMovementReload(
+      allSets, primaryMovement.name, primaryMovement.movementId, mesocycle, dateISO);
+    if (primaryReloadInfo) {
+      const reloadTarget = roundToHalf(Math.max(0, primaryReloadInfo.targetKg));
+      if (reloadTarget < targetExternalLoad) {
+        // A8: falsifiointi-instrumentointi — R1 §2.6 -ennusteen vertailudata
+        trace("BREAK_RELOAD",
+          { targetExternalLoad },
+          { targetExternalLoad: reloadTarget, breakDays: primaryReloadInfo.breakDays,
+            reloadPct: primaryReloadInfo.reloadPct, anchorKg: primaryReloadInfo.anchorKg,
+            reason: primaryReloadInfo.reason, hadReplacement: primaryReloadInfo.hadReplacement,
+            phase: primaryReloadInfo.phase, step: primaryReloadInfo.step,
+            stepsTotal: primaryReloadInfo.stepsTotal },
+          `Paluuramppi (${primaryMovement.name}): tauko ${primaryReloadInfo.breakDays} pv → ` +
+          `${primaryReloadInfo.phase === "first-return"
+            ? `kevennys −${(primaryReloadInfo.reloadPct * 100).toFixed(1)} % ankkurista ${primaryReloadInfo.anchorKg} kg`
+            : `porras ${primaryReloadInfo.step}/${primaryReloadInfo.stepsTotal} kohti ${primaryReloadInfo.anchorKg} kg`} ` +
+          `= ${reloadTarget} kg (min-precedence; normaali ${targetExternalLoad} kg)${primaryReloadInfo.reason === "vaiva" ? " · vaiva: etene vain oireettomana" : ""}`);
+        targetExternalLoad = reloadTarget;
+      } else {
+        primaryReloadInfo = null; // normaali target on jo konservatiivisempi → ei applikointia
+      }
+    }
+  }
+
   // Resolvoitu kuorma asetetaan slot.resolvedLoadKg:ksi; UI lukee sen.
   if (dayPlan?.slots) {
+    // H-016 A6: reload-tieto primary-slottiin UI-indikaatiota varten (banneri lukee)
+    if (primaryReloadInfo) {
+      const _reloadPSlot = dayPlan.slots.find(s => s.role === "primary");
+      if (_reloadPSlot) _reloadPSlot._reload = primaryReloadInfo;
+    }
     const primaryHasLoadPct = primarySlotMeta?.loadPct !== undefined &&
                               primarySlotMeta?.loadPct !== null &&
                               primarySlotMeta.loadPct > 0;
@@ -8642,6 +8801,9 @@ export {
   detectPrimaryMovementIdentityMismatch,
   // H-015: liike-korvaus vaivan ajaksi (kanoninen applikointi — UI-renderit kutsuvat tätä)
   applyMovementSubstitutions,
+  // H-016: liike-tason paluuramppi (reload) — testattava yksikkönä + UI lukee slot._reload
+  computeMovementReload,
+  RELOAD_CONFIG,
   deltaPctRaw,
   calibrateMesocycle,
   // Vara
