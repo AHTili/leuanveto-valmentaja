@@ -1,15 +1,9 @@
-# HANDOFF.md — aktiivinen Cowork → Code -toimeksianto
+# HANDOFF.md — aktiivinen Cowork → Code -toimeksianto (H-018)
 
-> Repon **ainoa aktiivinen handoff**. Cowork täyttää osiot 0–6, Claude Code täyttää osion 7.
-> Valmis handoff arkistoidaan → `docs/handoffs/HANDOFF_<id>.md`, ja tämä tiedosto nollataan tyhjäksi pohjaksi.
-> Auktoriteettijärjestys: ks. `CLAUDE.md` §7. Session-protokolla: ks. `CLAUDE.md` §8. Kurilista: `docs/SELKARANKA.md`. Muisti: `docs/MEMORY.md` (konsultoi session alussa, distill lopussa).
->
-> **P-013 batch-rakenne (M1–M3, ratifioitu 2026-06-10):**
-> **M1 — batch-handoff.** Yksi handoff saa niputtaa **2 R-vaihetta** (skaalaus 4:ään vasta P-013-mittausdatalla). Jokaisella vaiheella **oma acceptance-rubriikki + oma scope-valkolista**; vaiheiden välissä **STOP-gate** (Code raportoi + bittitarkka pilot ajetaan ennen seuraavaa vaihetta). Per-löydös = oma commit säilyy ennallaan.
-> **M2 — ajettava rubriikki.** Osion 2 A-kriteerit muotoillaan **koneellisesti tarkistettaviksi** (testi / skripti / mitattava ehto) ja ajetaan self-correction-looppina kunnes rubriikki täyttyy tai STOP-ehto laukeaa. Mittari-ensin (Selkäranka 6) säilyy: known-positive + known-negative ennen kuin kriteeriin luotetaan. Rubriikki-looppi **EI ohita** confirm-then-fix/A1-read-only-STOP-gatea (CLAUDE.md §9.3).
-> **M3 — verifier-subagentti.** A-kriteerien täyttymisen verifioi **erillinen subagentti riippumattomassa kontekstissa** (ei toteuttava agentti itse) ennen STOP-raporttia. UI-polkuja muuttavissa handoffeissa verifier AJAA polut itse (oppi 8). Verifierin hylkäykset kirjataan `docs/MEMORY.md`-mittauslokiin.
->
-> *Tila: **H-016 — `AKTIIVINEN` (VAIHE A käynnissä)**. Siirretty Cowork-draftista (`HANDOFF_H-016_paluuramppi-breakAnalysis-liiketasolle_DRAFT-COWORK.md`, RATIFIOITU Akseli 2026-06-12). Ankkurit verifioitu siirrossa (✏️): Pohja-HEAD `fa89e41` = origin/main ✓ · APP_VERSION 4.52.38 ✓ · id H-016 = seuraava vapaa (arkisto päättyy H-015:een) ✓ — §6.4 ratkaistu. Premissit (§5) ovat H-015 §7 A1-kartan runtime-verifioituja löydöksiä — ei re-litigoida.*
+> **H-016-PARKKI:** H-016 (paluuramppi) on VALMIS-ODOTTAA-LIVE-PORTTIA (vk 25 dippipaluu) — handoff säilyy git-historiassa commitissa 3bad610 (`git show 3bad610:HANDOFF.md`), arkistoidaan vk 25 -kuittauksen jälkeen. H-017 (D1) siirtyy sen jälkeen.
+
+> Cowork-draft 2026-06-12 — ratifioitu laadittavaksi (Akseli 12.6.: "laadi nyt, ajo ennen vk 25"). Siirto repoon = kanava b:n akti.
+> Pohja: OBS-040/041 A1-confirm-raportti (Code 12.6., read-only — juuret lokalisoitu) + docs/backlog.md-kirjaus (3bad610) + Akselin design-linjaus.
 
 ---
 
@@ -17,118 +11,73 @@
 
 | Kenttä | Arvo |
 | --- | --- |
-| Handoff-id | `H-016` ✏️ (vahvistettu: seuraava vapaa) |
-| Tyyppi | `scope-expansion` (uusi engine-käytös; P-013 batch=2: **VAIHE A = CONFIRM read-only → STOP-gate → VAIHE B = toteutus** rubriikki-loopilla + M3-verifier) |
-| Laadittu | 2026-06-12 / Cowork-sessio · Tila: **AKTIIVINEN** (RATIFIOITU Akseli 2026-06-12; siirretty repoon 2026-06-12) |
-| Prioriteettilinjaus (Akseli 12.6.) | **Arjen ohjelmointi on ydin — tämä on paluu-erikoistilanteen kehitystä.** Käytännössä: reload-kerros on DORMANTTI normaalirytmissä (vrt. F-2), A7-regressiosuoja (ei-tauko-polut bittitarkka) on handoffin kovin portti, ja ristiriitatilanteessa arjen polun koskemattomuus voittaa paluuominaisuuden laajuuden — **kavenna paluuta, älä riskeeraa arkea.** |
-| Pohja-HEAD | `fa89e41` ✏️ (verifioitu PRE-FLIGHTissä 2026-06-12: HEAD = origin/main, puhdas tree) · APP_VERSION `4.52.38` ✏️ |
-| Liittyy R-sekvenssin vaiheeseen | Ei yksittäinen R-vaihe (NYT = 18). H-015-jatko + KAPSTONI pilari 1 -esiaskel. **Ajoitusinvariantti (ratifioitu, docs/OBS-038 PÄÄTÖKSET):** paluuramppi → D1 → γ (~11.7.); engineä ei muuteta peaking-blokissa. Fable-ikkuna → 22.6. |
-| Aikakriittisyys | Akselin dippipaluu ~vk 25 (15.–21.6.) = **live-known-positive** — handoff on jonon kärjessä tästä syystä. |
+| Handoff-id | `H-018` ✏️ (vahvistettu: H-016 ei-arkistoitu, H-017 varattu D1:lle → seuraava vapaa) |
+| Tyyppi | `debug` (todettu vs odotettu käytös, juuret lokalisoitu A1-confirmissa; P-013 batch=2: **OSA 1 = OBS-040-fix → STOP + pilot → OSA 2 = OBS-041-fix**, omat rubriikit) |
+| Laadittu | 2026-06-12 / Cowork-sessio · Tila: **AKTIIVINEN** (ratifioitu 12.6.; siirretty repoon 12.6.) ✏️ Esiehto-status: backup repossa = 10.6. → A1-vahvistus PENDING (täydennetään kun tuore backup saapuu; ei blokkaa — juuri lukupolussa) |
+| Pohja-HEAD | `3bad610` ✏️ (= origin/main, verifioitu PRE-FLIGHTissä 12.6.; puhdas tree) · APP_VERSION 4.52.39 |
+| Ajoitus | **Ajo ennen vk 25:tä** (Akselin päätös): pieni, display+persistenssi-tasoa — ei riskeeraa D1-aikataulua. Esiehto OSA 1:lle: tuore backup repoon (Akseli: Asetukset → vie varmuuskopio) → 11.6.-session vahvistus. Mekanismi ja korjaus ovat samat vaikka backup näyttäisi eri rakenteen (Code A1) — poikkeama raportoidaan, ei muuta suuntaa. |
+| Prioriteettilinjaus | Sama kuin H-016/H-017: arjen ohjelmointi ydin — kuorma-neutraalius todistetaan, ei oleteta. |
 
 ---
 
 ## 1. Tavoite (lopputila, ei ratkaisua)
 
-Kun liike on ollut tauolla tai korvattuna (≥ 14 pv) ja palaa ohjelmaan, sovellus tarjoaa **itse** kevennetyn aloituskuorman ja rampin takaisin tauon-edeltävälle tasolle — liike-tasolla, tauon syy huomioiden (vaiva-syyllä kipu ohittaa voimatason). Atletin ei tarvitse keventää käsin eikä engine tarjoa täyttä plan+progressio-kuormaa suoraan tauon perään. Ei-tauko-tilanteiden ja muiden liikkeiden kuormat eivät muutu millään tavalla.
-
-Mitä Akseli näkee puhelimella vk 25: dippi palaa ohjelmaan kevennetyllä kuormalla (ei tauon-edeltävää tai sen yli), näkyvä paluuramppi-indikaatio kertoo mistä luku tulee ja miten paluu etenee, ja sama luku näkyy sekä treeninäkymässä että Sykli-previewissä.
+Liikenäkymän e1RM-kortti ja sen trendi kertovat atleetille totuuden: luku tulee kanonisesta parhaasta (sama lähde kuin muissa näkymissä), ei viimeisen session hetkellisarvosta — kapean penkin kortti näyttää ~143-tason eikä 82:ta, ja hauiskääntö-anomalia poistuu samalla. Lisäksi treenin aikana luotu uusi liike säilyy liikepankissa pysyvästi, ja yleiset työntöliikkeet (käsipainopenkki flätti + vino) löytyvät pankista valmiina. Kuormiin tämä ei vaikuta missään — muutos on näyttö- ja kirjauskerroksessa.
 
 ## 2. Acceptance criteria
 
-### VAIHE A — CONFIRM (read-only, STOP-gate ennen VAIHE B:tä)
+### OSA 1 — OBS-040: e1RM-kortin lähdekorjaus (STOP + pilot ennen OSA 2:ta)
 
-- **A1 — Integraatiopiste-sweep (LAAJA runtime-first, ei kapea hypoteesi — MEMORY oppi 2 / §5b):**
-  - Enumeroi **kaikki** polut joissa palaavan liikkeen target syntyy: recommend()-päähaara (plan-floor, hardCap, regain), `breakAnalysis`-kutsupisteet + `mesocycleBreakReset`, Sykli-preview (OBS-038 K1 -suhde-projektio — **periytyykö pään kevennys back-off-previewiin automaattisesti**), getFutureWorkouts, 2c-paluubanneri (≥14 pv gap), pilot-simulaattori.
-  - Verifioi datan saatavuus per-liike-detektiolle: viimeisin ei-skipattu, ei-korvattu suoritus per liike; korvausjakso `movementSubstitutions`-datasta; K2-syytagin (exerciseNote-loki + substituution reason-kenttä) luettavuus engine-tasolle.
-  - Selvitä precedence-nykytila: mitä tapahtuu kun globaali breakAnalysis JA liike-tason tauko osuvat päällekkäin (→ §6.1).
-  - Rajaa mihin slot-rooleihin reload kohdistuu v1:ssä (primary/secondary/backoff vs accessory — missä poluissa kuormaresoluutio elää; → §6.2).
-  - **Known-positive Akselin todellisella datalla:** dippi — raportoi (i) tauon-edeltävä toteutunut työkuorma, (ii) nyky-enginen tarjoama paluukuorma, (iii) spec-kevennyksen tuottama kuorma. Aritmetiikka käsin raportissa. **Known-negative:** kyykky/leuka normaalirytmissä → reload ei laukea.
-  - **STOP + gate-raportti Akselille.** Jos A1 paljastaa että ratifioitu mekanismi (liike-tason breakAnalysis) on selvästi riskialttiimpi kuin vaihtoehtoinen toteutus samalle käytökselle → raportoi vaihtoehto, älä pivotoi hiljaa (CLAUDE.md §9.5).
+- **A1 — Backup-vahvistus (read-only-esiaskel):** tuoreesta backupista 11.6.-session rakenne (kuorma × reps × V, roolit) → vahvista/raportoi mistä 82,0 laskettiin. Jos rakenne ≠ odotettu (60×6 V5 -luokka), raportoi poikkeama — korjaussuunta ei muutu (juuri on lukupolussa, ei datassa).
+- **A2 — Kortti kanoniseen lähteeseen:** e1RM-kortti (modal-header) + trendi lukevat `computeMovementE1RMBest`-polkua. *Known-pos 1:* kapea penkki → kortti ~143-tasolla (110-historia dominoi), trendi ei näytä −61 kg -romahdusta. *Known-pos 2:* hauiskääntö-anomalia (−26,3 kg) poistuu samalla korjauksella. *Known-neg:* liike jonka viimeisin sessio = paras → näyttö ei muutu. Aritmetiikka käsin raportissa.
+- **A3 — Ristiriita poistuu:** VX-trendi ja e1RM-kortti eivät enää väitä vastakkaista samasta liikkeestä (sama tai yhteensovitettu lähdeperhe; ei uutta totuuslähdettä). *Mitattu:* kapea penkki -näkymän e2e-tarkistus.
+- **A4 — Rakenteellinen lukko:** VALUE_RESOLUTION_AUDIT §0-lukon laajennus kattamaan tämä lukupolku — testi joka estää last-set-arvon paluun näyttöön (known-pos + known-neg, mittari-ensin ennen luottamusta). Rekisteripäivitys docs/VALUE_RESOLUTION_AUDIT.md:hen.
+- **A5 — Kuorma-neutraalius (push-ehto):** display-only-muutos → rakenteellinen kuorma-neutraali-todistus (lukupolku ei ole recommend()-input) + pilot bittitarkka + selaintestit ≥ 774/778. `MovementProgress.currentE1RM`-kenttään ja suggestedLoadKg-poikkeukseen EI kosketa (ks. §5).
 
-### VAIHE B — Toteutus (vasta gate-vahvistuksen jälkeen; koneellisesti tarkistettavat ehdot, P-013 M2)
+### OSA 2 — OBS-041: persistenssi + katalogi (vasta OSA 1:n STOP/pilot jälkeen)
 
-- **A2 — Liike-tason tauko-detektio:** engine tunnistaa liikkeen tauon kun viimeisimmästä ei-skipatusta, ei-korvatusta suorituksesta on ≥ 14 pv (kynnys konfiguroitava; korvausjakso lasketaan tauoksi alkuperäiselle liikkeelle movementSubstitutions-datasta). *Mitattu:* yksikkötesti known-pos (17 pv + korvaus aktiivinen) + known-neg (normaalirytmi 3–7 pv; yksittäinen skip ilman taukoa).
-- **A3 — Kevennetty aloituskuorma:** 1. paluusession target = tauon-edeltävä toteutunut työkuorma × (1 − reloadPct). Ankkuri = liikkeen viimeisimmän toteutuneen (ei-skipatun, ei-korvatun) session pääsarjakuorma; A1 täsmentää resoluutiolähteen F-3-invarianttien sisällä (ei uutta e1RM-polkua). reloadPct luetaan **konfiguroitavasta taulukosta** (tauon kesto × korvaava-liike-olemassa), oletusarvot R1 §2.5 -matriisista; Akselin solu (2–3 vk × korvaava olemassa) = −10…15 %, piste-oletus −12,5 %. **EI** plan + 2,5 %/vk × tauko (nykykäytös). *Mitattu:* pilot-tauko-skenaario + runtime-ajo Akselin datalla; aritmetiikka käsin; known-neg: ei-tauko-liikkeen target muuttumaton.
-- **A4 — Ramppi takaisin:** paluu tauon-edeltävälle tasolle konfiguroitavassa ajassa (oletus ~2 vk Akselin solulle); rampin seuraava porras lasketaan **edellisestä toteutuneesta paluusessiosta** (toteuma-ankkurointi — ratifioitu 12.6.); ramppi ei ylitä tauon-edeltävää tasoa ennen rampin päätöstä, jonka jälkeen normaali progressio jatkuu. Invariantit eivät rikkoudu (hardCap +15 %/vk, VL-cap per blokki, tier-progression). *Mitattu:* pilot-skenaario simuloiduilla paluusessioilla — monotonisuus + cap-tarkistus + skipattu paluusessio pysäyttää portaan (known-neg).
-- **A5 — K2-syytagin ohjelmointikytkentä (v1):** vaiva-tagilla korvatun/skipatun liikkeen paluu käyttää taulukon konservatiivista päätä (esim. −15 %) + UI-viesti kipu-gatesta ("etene vain oireettomana" -tyyppinen; ei tutkijanimiä, CLAUDE.md §6); ei-vaiva-syy → taulukon kevyempi pää. Toteuma-ankkurointi (A4) toimii mekaanisena gatena: vaiva-skip pysäyttää rampin ilman lisäkitkaa. *Mitattu:* yksikkötesti tagi → reloadPct-valinta, molemmat haarat.
-- **A6 — Näkyvyys (oppi 8 — käyttäjän polku e2e render-tasolla):** paluusessiossa kevennetty kuorma näkyy treeninäkymässä JA Sykli-previewissä samana lukuna (back-off seuraa K1-suhde-projektiona — ei uutta totuuslähdettä); paluuramppi-indikaatio liike-tasolla (2c-bannerin laajennus: mistä kevennys tulee + rampin kesto). *Mitattu:* e2e-DOM 390 px, M3-verifier ajaa polun itse; löydettävyysarvio eksplisiittisesti.
-- **A7 — Regressiosuoja (KOVIN PORTTI, prioriteettilinjaus):** pilot bittitarkka kaikille ei-tauko-poluille; **LOAD-DIFF-SWEEP on push-ehto** (kuormaa muuttava muutos) — diffit sallittuja VAIN tauko/paluu-skenaarioissa ja jokainen diff täsmätään spec-taulukkoon tai juurianalysoidaan decision-traceista (oppi 7: suorat vs ketjuvaikutukset); selaintestit ≥ 762/766 (4 pre-existing VBT/T9-failia dokumentoitu); H-015:n 14 test-lukkoa passaavat.
-- **A8 — Falsifiointi-instrumentointi:** reload-päätös emittoi tracen (esim. `BREAK_RELOAD`): tauon kesto, korvaava-tieto, syytagi, valittu reloadPct, ramppisuunnitelma — jotta R1 §2.6 -ennuste (menetys ~0–5 %, kevennys ~10–15 %, ramppi ~2 vk, falsifiointiehto) on verrattavissa dippipaluun toteumaan. *Mitattu:* trace-kenttien läsnäolo smoke-testissä.
+- **A6 — Workout-flow-luonti persistoi:** treenin aikana luotu custom-liike tallentuu liikepankkiin pysyvästi (repro: luo → sulje sovellus → avaa → löytyy pankista omalla identiteetillään). *Known-neg:* olemassa olevan liikkeen valinta ei luo duplikaattia; legacy-swapin aiempi käytös muille poluille ei muutu.
+- **A7 — Katalogitäydennys:** käsipainopenkki flätti + vino (ja A1-confirmin gap-listan ilmeiset työntöliikkeet) liikepankkiin. **Verifier tarkistaa eksplisiittisesti** Coden väitteen "PROGRAM_BUILD_VERSION ei tarvita (liikepankki ≠ weekPlan)" — oppi 6 -luokan väite todistetaan, ei uskota. APP_VERSION bumpataan joka tapauksessa (PWA).
+- **A8 — Löydettävyys (oppi 8):** käyttäjä löytää käsipainopenkin workout-flown liikevalinnasta ilman ohjetta; e2e-DOM 390 px; M3-verifier ajaa polun itse (luonti + uudelleenkäynnistys + haku).
 
 ## 3. Reunaehdot ja scope-aita
 
-**Sovellettavat tutkimusinvariantit (CLAUDE.md §2):** VL-cap per blokki · Deload Δ% · Tier-progression elite ≤ 0,05×/vk · Failure-pudotus 5 % — reload-kerros ei riko mitään näistä. **Reunaehto (b):** reload-parametrit (kynnys, reloadPct-taulukko, ramppikesto) ovat **staattisia konfiguraatioita** — ei uutta oppivaa parametria.
-
-**Evidenssimerkintä (R1-kuri):** reloadPct-magnitudit ja ramppinopeus ovat **KOHTALAINEN / käytäntösynteesiä** (R1 §2.5), eivät RCT-protokollaa → koodikommenttiin evidenssiluokka + konfiguroitavuus, ei "totuus"-väitettä. Kipu-gate on kliininen periaate (R1 §2.3). R1 §2.4 spesifisyysrajaus: matriisi ennustaa voimavajetta, ei tekniikka-/kiputottumusta — kipu-gate ja toteuma-ankkurointi kattavat jälkimmäisen.
-
 **Mitä EI kosketa (test-riippuvuus nimetty):**
-- **D1 / intra-session-säätö** — oma handoff, ajoitusinvariantin mukaan tämän jälkeen. H-016 ei lisää session-sisäistä reaktiota.
-- **e1RM-resoluutiopolut** (F-3, VALUE_RESOLUTION_AUDIT §0) — lukot `testKotiEqualsLiveAccessory` + `testSp2SlotLoadInvariant` pysyvät vihreinä.
-- **M2-ramppimuoto** (data.js weekPlan reps×Vx) ja **F-2-clamp** — reload muuttaa aloitustasoa, ei blokkirampin muotoa.
-- **PRIMER-signaali, RTF, velocityStop** (K-A6D) — koskemattomat.
-- **OBS-038 K1 -suhde-projektio** — luetaan (kevennyksen periytyminen back-off-previewiin), ei muokata.
-- **Globaalin breakAnalysisin nykykäytös** koko-treeni-tauoissa säilyy; jos A1 paljastaa precedence-ristiriidan → STOP, sääntö Akselille (§6.1), ei hiljaista muutosta.
-- Jos data.js-ohjelmasisältö muuttuu → `PROGRAM_BUILD_VERSION` + APP_VERSION samassa commitissa (oppi 6).
+- **Engine-live-polku:** recommend(), computeMovementReload/RELOAD_CONFIG (H-016, juuri shipattu), tuleva D1-alue, regain/hardCap/progressio — täysin koskemattomat.
+- **e1RM-LASKENTAfunktiot:** computeMovementE1RMBest, currentE1RMSystem, Epley-Vara-kaava — vain kortin LUKUPOLKU vaihtuu kanoniseen.
+- **`MovementProgress.currentE1RM` + suggestedLoadKg-poikkeus** (F-3 §0:n dokumentoitu sallittu poikkeus eri-liike-apuliikkeille + "Lisää liike" -esitäyttö) — ei muuteta tässä; arviointi erikseen (§6.1).
+- **weekPlan/ohjelmasisältö** (M2-ramppi, slotit) — katalogi ≠ ohjelma; A7-verifiointi todistaa rajan.
+- Lukot vihreinä: `testKotiEqualsLiveAccessory` + `testSp2SlotLoadInvariant` + H-016:n 12 lukkoa + H-015:n 14 lukkoa.
 
-**Selkäranka (docs/SELKARANKA.md):** PRE-FLIGHT ✏️ (tehty: HEAD `fa89e41` = origin/main, puhdas tree) · VAIHE A read-only = ei peruutusankkuria (mainittu) · VAIHE B: `backup-pre-h016-<sha>` ennen muutoksia · scope-valkolista tiedostotasolla = Code esittää VAIHE B plan-modessa, Akseli näkee gate-raportissa · per-löydös = oma commit + pilot · STOP-ehdot imperatiiveina · **EI pushia ilman Akselin lupaa.** Design plan-modessa (CLAUDE.md §9.2); M3-verifier ennen STOP-raporttia; UI-polut: verifier ajaa itse (oppi 8).
+**Selkäranka:** PRE-FLIGHT (HEAD = origin post-3bad610-push; ero → STOP) · peruutusankkuri `backup-pre-h018-<sha>` · scope-valkolista tiedostotasolla plan-modessa · per-löydös = oma commit + pilot · OSA-väli-STOP · **EI pushia ilman lupaa** · M3-verifier ajaa UI-polut itse.
 
 ## 4. Atletti-vastaukset
 
-Ei sovellu (scope-expansion, ei block-tuning). Atleettikonteksti: ks. §5 verifioidut premissit + A1:n known-positive (dippi, korvaajina kapea penkki + käsipainopenkki ~2–3 vk, paluu vk 25, rintalastavaiva → vaiva-syytagi).
+Ei sovellu (debug). Konteksti: kapea penkki = dipin H-015-korvaaja; trendikorttien luotettavuus halutaan kuntoon ennen dippipaluuta vk 25.
 
 ## 5. Taustapäätökset ja hylätyt vaihtoehdot
 
-**Ratifioidut päätökset:**
-- **2026-06-12 (Akseli, ratifiointi):** koko handoff ratifioitu prioriteettilinjauksella: arjen ohjelmoinnin priimaus on ydin, paluuramppi on tärkeä erikoistilanne — ei ydin. Scope-konflikteissa kavenna paluuominaisuutta, älä koske arjen polkuun (§0 prioriteettilinjaus).
-- **2026-06-10 (H-015 §7b/7d, Akseli):** breakAnalysis liiketasolle + K2-tagin ohjelmointikytkentä = oma handoff (tämä).
-- **2026-06-12 (Akseli, Cowork-sessio):** (1) reloadPct = **R1-matriisi konfiguroitavana** (kesto × korvaava-olemassa, R1 §2.5 oletukset); (2) kipu-gate = **toteuma-ankkuroitu ramppi + UI-viesti** (ei kalenteripohjaista etenemistä, ei kuittauskitkaa); (3) laukaisukynnys **≥ 14 pv** (linjassa 2c-bannerin kanssa — yksi käsite käyttäjälle).
-- **Ajoitus:** paluuramppi → D1 → γ (~11.7.); Fable-ikkuna → 22.6.; dippipaluu ~vk 25.
+- **A1-confirm lokalisoi juuret (Code 12.6., read-only):** OBS-040 = F-3-luokan display-rikko — kortti lukee history[viimeisin].e1rm, ei kanonista polkua; 82,0 = 60×6 V5 -rakenteen Epley (60 × (1+11/30) = 82,0 tasan); VX-trendi eri lähteestä → sisäinen ristiriita; hauiskääntö −26,3 kg = saman juuren toinen evidenssipiste. Substituutio-vuoto (hyp. a) POISSULJETTU: H-015-substituutio ei kirjoita CGB-dataa. H-016-reload-ankkuri PUHDAS (top-rooli + kuorma > 0 → CGB:n accessory-setit eivät kelpaa ankkuriksi).
+- **Kuormavaikutus rajattu:** kortti display-only; sama last-set-arvo virtaa currentE1RM → suggestedLoadKg vain eri-liike-apuliike-ehdotuksiin (dokumentoitu §0-poikkeus) — pääliikeketjuun EI vuoda. Siksi tämä on debug-luokan näyttökorjaus, ei kuorma-audit.
+- **OBS-041:** Liikkeet-näkymän ➕-luonti persistoi oikein; vika on workout-flown legacy-polussa (H-015 §7b kohta 4, in-memory). Katalogi-gap vahvistettu data.js:stä.
+- **Akselin design-linjaus (12.6.):** katalogikattavuus + pysyvä custom-identiteetti; **EI vapaatekstikenttää** (identiteetittömät kirjaukset sekoittaisivat historiat — OBS-040 näytti läheltä miltä se näyttäisi).
+- **Hylätty:** trendikortin poisto/piilotus korjauksen sijaan (tieto on arvokas kun lähde on oikea); currentE1RM-kentän laajempi remontti tässä (oma arviointi, §6.1); katalogin massiivinen laajennus (vain gap-listan ilmeiset — ei scope-paisutusta).
 
-**Verifioidut premissit (H-015 §7 A1-kartta, runtime + koodi — ei re-litigoida):**
-- `breakAnalysis` (engine.js, "RETURN FROM BREAK") on olemassa: modifier −5/−10/−15 % @ 7/14/28 pv + forcedDayType, mutta **koko treenin granulariteetilla** (globaali lastSession) → ei laukea kun muu treeni jatkuu. ✏️ Koodi verifioitu mainista (H-015-verifier: engine.js ~1380–1421 + kutsupisteet ~3909–3932, 4529–4533 — A1 täsmentää).
-- Liike-tason paluussa engine tarjoaa **plan + 2,5 %/vk × tauko, jopa yli planin** (runtime: 2 vk tauko → 56,7 @ plan 53,8; 53,8 × 1,025² ≈ 56,5 ✓) — engine ei kevennä paluuta.
-- "Itsekorjautuva silta" toimii vain jos atletti keventää itse (hardCap + regain ×2.0 ramppaavat takaisin ~2 sessiossa).
-- H-015 toi rakennuspalikat: `movementSubstitutions` (pysyvä, reason-kenttä = K2-tagi datassa), K2-syytagi (exerciseNote-loki skip-flowssa), 2c-paluubanneri (≥14 pv gap), skip-semantiikka (setRole:"skipped" suodattuu e1RM/progressio/volyymisignaaleista).
-- R1 §2.6 -ennuste kirjattu falsifiointiehtoineen — A8 instrumentoi vertailun.
+## 6. Avoimet kysymykset
 
-**Hylätyt vaihtoehdot:**
-- *Pelkkä paluuprotokolla-preskriptio-overlay ilman liike-tason detektiota* (H-015 gate-vaihtoehto 2) — ratifioitu suunta on liike-tason breakAnalysis; A1:n STOP-gate tuo vaihtoehdon takaisin vain jos riskikuva muuttuu olennaisesti.
-- *Nykytila (manuaalinen kevennys + itsekorjautuva silta)* — ei täytä eliittitasoa: sovelluksen pitää preskriptoida paluu, ei atleetin muistaa keventää.
-- *Oppiva reload-parametri* — reunaehto (b) kieltää (vain RIR-bias adaptiivinen).
-- *Eksplisiittinen oireeton-kuittaus per ramppiporras* — kitka (H-015 K2-periaate: kirjaus ei saa lisätä kitkaa); toteuma-ankkurointi antaa saman turvan ilman kuittausta.
-
-**Huom (atletti = valmentaja, ei nanny):** kevennys on suositus — atletti voi aina ylikirjata kuorman; ylikirjaus syöttää toteuma-ankkuroinnin kautta seuraavaa porrasta.
-
-## 6. Avoimet kysymykset — KAIKKI RATKAISTU (gate-ratifiointi Akseli 2026-06-12; Cowork-auditti vahvisti aritmetiikan: 75 × 1,025³ ≈ 80,8 ≈ 80,6 ✓ · 65,6/63,8 ✓ · 20 pv = R1-solu "2–3 vk × korvaava olemassa")
-
-1. **§6.1 Precedence — RATKAISTU:** konservatiivisin voittaa (**min-target**), kevennyksiä EI kumuloida. Liike-tason reload **täysin erillään meson nollauspolusta** (mesocycleBreakReset) — reload ei koskaan nollaa ohjelmaa.
-2. **§6.2 Roolirajaus v1 — RATKAISTU:** vain **pääliikeketju**; back-off/secondary seuraavat samasta lähteestä (sessionEffectiveE1RM) automaattisesti; **apuliikkeet ulos v1:stä**.
-3. **§6.3 Rampin muoto — RATKAISTU:** **lineaarinen, toteumaan ankkuroitu** — ~2 vk / 2–3 sessiota kevennyksestä takaisin tauon-edeltävälle tasolle; skipattu/vajaa paluusessio pysäyttää portaan (kipu-gate-mekanismi).
-4. ~~Handoff-id~~ ✏️ RATKAISTU: **H-016**.
-5. **A3-ankkuritäsmennys (A1-löydös, ratifioitu):** kevennysankkuri = oikeat työsarjat (**top-rooli + kuorma > 0**) — BW 0 kg -kirjaukset eivät kelpaa ankkuriksi.
+1. **suggestedLoadKg-poikkeuksen v2-arvio:** pitäisikö eri-liike-apuliike-ehdotuksen nojata kanoniseen parhaaseen last-setin sijaan? EI tässä handoffissa — kirjataan backlogiin arvioitavaksi (mahd. kytkös D1/v2-aaltoon).
+2. **Gap-listan laajuus A7:ssä:** vain käsipainopenkit vs koko ilmeinen työntölista — Code esittää listan plan-modessa, Akseli kuittaa gate-raportissa.
+3. **Handoff-id:** H-018 vai seuraava vapaa — vahvista siirrossa.
 
 ---
 
-## 7. Session-tulos — VAIHE A (2026-06-12, read-only)
+## 7. Session-tulos *(Claude Code täyttää)*
 
 | Kenttä | Arvo |
 | --- | --- |
-| Sessio päättyi | 2026-06-12 (VAIHE A valmis → STOP-gate; ei peruutusankkuria — read-only, ei koodimuutoksia) |
-| Muuttuneet tiedostot | HANDOFF.md (siirto e869ca5 + tämä §7) — ei muuta |
-| **A1-INTEGRAATIOKARTTA** | **(1) breakAnalysis:** funktio engine.js:1394–1450 (porrastus <7→0 · 7–13→−5 % · 14–27→−10 %+volume · ≥28→−15 %+volume); **YKSI kutsupiste** recommend():3964, syöte = GLOBAALI `lastSession.dateISO` (mikä tahansa liike) → liike-tason tauko ei laukaise (premissi vahvistettu). Modifier applioidaan deltaPct-tasolla (RETURN_FROM_BREAK-trace). **VAARA-ALUE:** breakDays ≥ 14 + skippedWeeks ≥ 2 → `mesocycle = createDefaultMesocycle()` — koko meson nollaus (3975–3983); liike-reload EI saa kytkeytyä tähän polkuun. **(2) Target-synty:** Branch A (4929–4974: primary + same-liike backoff/secondary vReps-polulla sessionEffectiveE1RM:stä) · computeProgressionTarget (2040–2158: plan-floor + hardCap + regain) · accessoryt eri ketju (15c + accessoryProgression). **(3) K1-periytyminen ✓:** back-off-preview projisoi pään NÄYTETYSTÄ → reload-kevennys periytyy automaattisesti, ei lisätyötä. **(4) 2c-banneri:** sama ≥14 pv gap-laskenta (skipped-suodatettu allSets) → A6-laajennus luonteva. **(5) getFutureWorkouts:** ei kuormia → hybrid/recommend kantaa reloadin. **(6) Pilot:** EI tauko-skenaariota → VAIHE B lisää (A7-portti edellyttää). |
-| **DATAN SAATAVUUS + LÖYDÖS** | Per-liike viimeisin suoritus laskettavissa allSets:stä — **MUTTA naiivi "viimeisin ei-skipattu" on ANSA:** dipin viimeisin rivi on 0 kg BW-accessory (31.5.) → **ankkuriresoluutio RAJATTAVA: setRole="top" + externalLoadKg>0** (tauon-edeltävä TYÖkuorma). `movementSubstitutions.reason` = rakenteellinen K2-lähde (ensisijainen); skip-tagin exerciseNote-parsinta hauras → sekundäärinen. Vanha meso ilman substituutio-kenttää → defensive read ✓. |
-| **KNOWN-POS (dippi, Akselin data, aritmetiikka käsin)** | (i) Tauon-edeltävä top-työkuorma: **27.5. — 4 settiä @ 75 kg** (viim. 75×3 V1). (ii) **Nyky-engine paluussa 16.6. (gap 20 pv): 80,6 kg** = 75 × (1 + 2,5 %×3 vk) — engine tarjoaisi ENEMMÄN kuin tauon-edeltävä, rintalastavaivasta palaavalle (premissi vahvistettu omalla datalla). (iii) **Spec-kevennys: 65,6 kg** (−12,5 %) / **vaiva-pää 63,8 kg** (−15 %, A5 → Akselin tapaus). **KNOWN-NEG:** kyykky gap 11 pv / leuka 12 pv (backup-snapshot) → < 14 pv → reload ei laukea ✓. |
-| **§6-EHDOTUKSET (gate-päätettäväksi)** | **§6.1 precedence:** konservatiivisin target voittaa — `min(globaali-break-target, liike-reload-target)`, EI kumulointia; liike-reload EI koske mesocycleBreakReset-polkuun. **§6.2 slot-roolit v1:** reload kohdistuu **primary-ketjuun** (Branch A) → same-liike backoff/secondary seuraavat automaattisesti sessionEffectiveE1RM:n kautta; **accessoryt ULOS v1:stä** (eri ehdotusketju; prioriteettilinjaus: kavenna paluuta). **§6.3 ramppimuoto:** lineaarinen interpolaatio toteumasta tauon-edeltävään ~2 vk:ssa (2–3 sessiota), toteuma-ankkuroituna; hardCap-yhteensopiva. |
-| Validointi | Read-only: pilot ei ajettu uudelleen (ei muutoksia; pohja fa89e41 vihreä). Runtime-ajot: computeProgressionTarget + ankkuridata Akselin backupista (10.6.), aritmetiikka käsin yllä. |
-| Jäi auki | VAIHE B -scope-valkolista (plan-mode gate-vahvistuksen jälkeen); pilot-tauko-skenaarion muoto; riskikuva EI muuttunut → ratifioitu mekanismi (liike-tason breakAnalysis) pitää, ei vaihtoehto-pivotia. |
-| Seuraava askel | ~~STOP-gate~~ → ratifioitu 12.6. → **VAIHE B TOTEUTETTU** (alla). |
-
-## 7b. Session-tulos — VAIHE B (2026-06-12, gate-ratifioitu §6.1–6.3 + A3-täsmennys)
-
-| Kenttä | Arvo |
-| --- | --- |
-| Commitit | `10082e8` §6-ratkaisut (pushattu gate-luvalla) · `bdf7af7` C1–C2 engine (RELOAD_CONFIG + computeMovementReload + min-precedence + BREAK_RELOAD-trace + slot._reload, +162) · `e186bd5` C3–C4 (12 test-lukkoa + A6-banneri) · `9039417` versio 4.52.39 · + tämä docs-commit. Peruutusankkuri `backup-pre-h016-b-10082e8`. |
-| Toteutuneet kriteerit | **A2** ✓ detektio (top+kuorma>0-sessiovälit, ≥14 pv; substituutio-reason rakenteellinen + [skip: vaiva] -fallback) · **A3** ✓ kevennys R1-matriisista (konfiguroitava, EVIDENSSI KOHTALAINEN koodikommentissa; dippi-case: 75 → 63,75 vaiva-floorilla) · **A4** ✓ lineaarinen toteuma-ankkuroitu ramppi 3 sessiota (64 → 69,5 → 75; skip ei nosta porrasta — verifier kumousyritti, piti) · **A5** ✓ vaiva-floor 0,15 + UI-viesti "etene vain oireettomana" · **A6** ✓/osin: banneri + treeninäkymä + Sykli-periytyminen (hybrid+K1, A1-vahvistettu rakenteellisesti); *warm-reload-e2e ei rakennettavissa synteettisesti → Akselin dippipaluu vk 25 = live-known-positive (handoffin suunnitelma)* · **A7** ✓ KOVIN PORTTI: pilot 64/64 + **LOAD-DIFF-SWEEP 0/64** (reload dormantti arjessa; verifier vahvisti myös UUID-stripattuna) + selaintestit **774/778** (+12 H016, 4 pre-existing) + H-015-lukot ✓ · **A8** ✓ BREAK_RELOAD-trace (7+1 kenttää). |
-| Validointi | Runtime known-pos/neg 7/7 (toteuttaja) + **M3-verifier: VAHVISTETTU** (V1–V4; 17/17 omilla syötteillä; scope-aita: breakAnalysis/mesocycleBreakReset/cal/accessory/F-2/K1 koskemattomat; min-precedence ei koskaan nosta). Verifier-huomautukset: (1) breakDays flooraa osapäivät (kosmeettinen ±1 pv kynnyksessä), (2) §6.2-säteily kulkee primary-clampin kautta — sijoitus oikein. |
-| Jäi auki | Puhelinverifiointi vk 25 (dippipaluu = live-known-positive: odotus ~63,8–65,6 kg @ ankkuri 75, vaiva-banneri näkyvissä) → H-016-arkistointi sen jälkeen. D1-handoff tämän perään (ajoitusinvariantti). |
-| Seuraava askel | **STOP push-portille — VAIHE B -push vaatii erillisen luvan** (5 lokaalia committia bdf7af7..tämä). |
+| Sessio päättyi | — |
+| Muuttuneet tiedostot | — |
+| Tehdyt päätökset | — |
+| Validointi | — |
+| Jäi auki | — |
+| Seuraava askel | — |
