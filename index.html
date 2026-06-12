@@ -5898,18 +5898,28 @@ async function computeMovementStatsForModal(movementId, sessions) {
     futureRecDate: null, // v4.34.40: jos rec on tulevasta päivästä, näytä päivämäärä
   };
 
-  // e1RM-history (movement-pohjalta, ottaa system/external loadType:n huomioon)
+  // e1RM-kortti + trendi (H-018 OSA 1 / OBS-040, 2026-06-12): KANONINEN lähde.
+  // Aiempi versio luki history[viimeisin].e1rm = viimeisen session Epley → kevyt
+  // paluusessio romahdutti kortin (kapea penkki 143→82; hauiskääntö −26,3 kg —
+  // sama juuri). VALUE_RESOLUTION_AUDIT §0: näyttö lukee computeMovementE1RMBest
+  // (cal→plan→median). Trendi = "paras nyt vs paras ~3 vk sitten" — molemmat päät
+  // SAMASTA kanonisesta funktiosta (≤cutoff-osajoukolla), ei last-set-pisteistä.
   if (mov) {
     const allSets = state.allSets.filter(s => s.movementId === movementId && (s.externalLoadKg || 0) > 0 && s.reps >= 1);
-    const history = computeMovementE1RMHistory(allSets, state.sessions, mov, bw);
-    if (history.length > 0) {
+    const bestNow = allSets.length
+      ? computeMovementE1RMBest(allSets, state.sessions, state.mesocycle, mov, bw)
+      : null;
+    if (bestNow && bestNow.value != null && bestNow.value > 0) {
       stats.hasE1RM = true;
-      stats.e1rm = history[history.length - 1].e1rm;
-      // 3 vk:n trendi: vertaa nyt vs n. 21 pv sitten
+      stats.e1rm = bestNow.value;
+      // 3 vk:n trendi: paras nyt vs paras ≤ 21 pv sitten (sama kanoninen funktio)
       const cutoffMs = Date.now() - 21 * 86400000;
-      const olderPoint = history.find(p => new Date(p.dateISO).getTime() >= cutoffMs - 7 * 86400000) || history[0];
-      if (olderPoint && olderPoint !== history[history.length - 1]) {
-        const delta = stats.e1rm - olderPoint.e1rm;
+      const oldSets = allSets.filter(s => s.timestamp && new Date(s.timestamp).getTime() <= cutoffMs);
+      const bestThen = oldSets.length
+        ? computeMovementE1RMBest(oldSets, state.sessions, state.mesocycle, mov, bw)
+        : null;
+      if (bestThen && bestThen.value != null && bestThen.value > 0) {
+        const delta = stats.e1rm - bestThen.value;
         if (Math.abs(delta) >= 0.5) {
           stats.e1rmDeltaText = `${delta > 0 ? "+" : ""}${delta.toFixed(1)} kg · 3 vk`;
           stats.e1rmDeltaClass = delta > 0 ? "up" : "down";
