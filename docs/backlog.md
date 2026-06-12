@@ -369,3 +369,9 @@ Design-linjaus (Akselin kysymys 12.6. + Coworkin suositus):
 A1 (read-only): toistuuko in-memory-katoaminen (luo custom → sulje → avaa → onko pankissa); katalogin työntöliike-kattavuuden gap-lista. Korjaus omana handoffina (persistenssi + katalogitäydennys), EI H-016/H-017-scopeen.
 
 Liittyy: OBS-040, H-015 §7b kohta 4 (legacy-swap in-memory), H-015 VAIHE B C1 (movementSubstitutions).
+
+### OBS-042 · 2026-06-12 · H-018 OSA 1 -löydös · AVOIN
+**Kanonisen e1RM-fallbackin median = slice(-6) INSERTION-järjestyksestä** (`computeMovementE1RM`, engine.js:~6383) — ei aikajärjestys-ikkuna. Kaksoisriski: (1) lajittelematon array → "viimeiset 6" voi olla mitä tahansa; (2) kevyt sessio arrayn lopussa dominoi medianin (sim: 82,0). Todellisella 12.6.-datalla kortti-taso OK (137,9), mutta H-016-paluusessiot vk 25–26 lisäävät kevyitä settejä → arvioitava ennen kuin trendikortteihin luotetaan paluujaksolla. Dipin oma Best on cal-lähteestä (immuuni). Korjausarvio: aikaleimasortti + sessio-ikkuna fallback-polkuun — KANONINEN funktio → LOAD-DIFF-SWEEP-luokan muutos, oma handoff. Liittyy: OBS-040 (sama lajittelemattomuus), H-016 (ramppi verifioitu immuuniksi min-precedencellä).
+
+### OBS-043 · 2026-06-12 · puhelinhavainto · AVOIN
+**Tuore sessio ei näy liikehistoria-listalla heti** (12.6. ended 17:33, lista klo 19:24 näytti vain 30.4.–27.5.). Todennäköisesti sama insertion-järjestysjuuri (computeRecentSessionsForMovement "5 viimeisintä" ilman aikasorttia) — verifioitava OBS-042-handoffin yhteydessä.
