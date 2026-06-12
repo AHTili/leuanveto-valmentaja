@@ -108,13 +108,16 @@ Ei sovellu (scope-expansion, ei block-tuning). Atleettikonteksti: ks. §5 verifi
 
 ---
 
-## 7. Session-tulos *(Claude Code täyttää)*
+## 7. Session-tulos — VAIHE A (2026-06-12, read-only)
 
 | Kenttä | Arvo |
 | --- | --- |
-| Sessio päättyi | — |
-| Muuttuneet tiedostot | — |
-| Tehdyt päätökset | — |
-| Validointi | — |
-| Jäi auki | — |
-| Seuraava askel | — |
+| Sessio päättyi | 2026-06-12 (VAIHE A valmis → STOP-gate; ei peruutusankkuria — read-only, ei koodimuutoksia) |
+| Muuttuneet tiedostot | HANDOFF.md (siirto e869ca5 + tämä §7) — ei muuta |
+| **A1-INTEGRAATIOKARTTA** | **(1) breakAnalysis:** funktio engine.js:1394–1450 (porrastus <7→0 · 7–13→−5 % · 14–27→−10 %+volume · ≥28→−15 %+volume); **YKSI kutsupiste** recommend():3964, syöte = GLOBAALI `lastSession.dateISO` (mikä tahansa liike) → liike-tason tauko ei laukaise (premissi vahvistettu). Modifier applioidaan deltaPct-tasolla (RETURN_FROM_BREAK-trace). **VAARA-ALUE:** breakDays ≥ 14 + skippedWeeks ≥ 2 → `mesocycle = createDefaultMesocycle()` — koko meson nollaus (3975–3983); liike-reload EI saa kytkeytyä tähän polkuun. **(2) Target-synty:** Branch A (4929–4974: primary + same-liike backoff/secondary vReps-polulla sessionEffectiveE1RM:stä) · computeProgressionTarget (2040–2158: plan-floor + hardCap + regain) · accessoryt eri ketju (15c + accessoryProgression). **(3) K1-periytyminen ✓:** back-off-preview projisoi pään NÄYTETYSTÄ → reload-kevennys periytyy automaattisesti, ei lisätyötä. **(4) 2c-banneri:** sama ≥14 pv gap-laskenta (skipped-suodatettu allSets) → A6-laajennus luonteva. **(5) getFutureWorkouts:** ei kuormia → hybrid/recommend kantaa reloadin. **(6) Pilot:** EI tauko-skenaariota → VAIHE B lisää (A7-portti edellyttää). |
+| **DATAN SAATAVUUS + LÖYDÖS** | Per-liike viimeisin suoritus laskettavissa allSets:stä — **MUTTA naiivi "viimeisin ei-skipattu" on ANSA:** dipin viimeisin rivi on 0 kg BW-accessory (31.5.) → **ankkuriresoluutio RAJATTAVA: setRole="top" + externalLoadKg>0** (tauon-edeltävä TYÖkuorma). `movementSubstitutions.reason` = rakenteellinen K2-lähde (ensisijainen); skip-tagin exerciseNote-parsinta hauras → sekundäärinen. Vanha meso ilman substituutio-kenttää → defensive read ✓. |
+| **KNOWN-POS (dippi, Akselin data, aritmetiikka käsin)** | (i) Tauon-edeltävä top-työkuorma: **27.5. — 4 settiä @ 75 kg** (viim. 75×3 V1). (ii) **Nyky-engine paluussa 16.6. (gap 20 pv): 80,6 kg** = 75 × (1 + 2,5 %×3 vk) — engine tarjoaisi ENEMMÄN kuin tauon-edeltävä, rintalastavaivasta palaavalle (premissi vahvistettu omalla datalla). (iii) **Spec-kevennys: 65,6 kg** (−12,5 %) / **vaiva-pää 63,8 kg** (−15 %, A5 → Akselin tapaus). **KNOWN-NEG:** kyykky gap 11 pv / leuka 12 pv (backup-snapshot) → < 14 pv → reload ei laukea ✓. |
+| **§6-EHDOTUKSET (gate-päätettäväksi)** | **§6.1 precedence:** konservatiivisin target voittaa — `min(globaali-break-target, liike-reload-target)`, EI kumulointia; liike-reload EI koske mesocycleBreakReset-polkuun. **§6.2 slot-roolit v1:** reload kohdistuu **primary-ketjuun** (Branch A) → same-liike backoff/secondary seuraavat automaattisesti sessionEffectiveE1RM:n kautta; **accessoryt ULOS v1:stä** (eri ehdotusketju; prioriteettilinjaus: kavenna paluuta). **§6.3 ramppimuoto:** lineaarinen interpolaatio toteumasta tauon-edeltävään ~2 vk:ssa (2–3 sessiota), toteuma-ankkuroituna; hardCap-yhteensopiva. |
+| Validointi | Read-only: pilot ei ajettu uudelleen (ei muutoksia; pohja fa89e41 vihreä). Runtime-ajot: computeProgressionTarget + ankkuridata Akselin backupista (10.6.), aritmetiikka käsin yllä. |
+| Jäi auki | VAIHE B -scope-valkolista (plan-mode gate-vahvistuksen jälkeen); pilot-tauko-skenaarion muoto; riskikuva EI muuttunut → ratifioitu mekanismi (liike-tason breakAnalysis) pitää, ei vaihtoehto-pivotia. |
+| Seuraava askel | **STOP-gate: Akseli ratifioi §6.1–6.3-ehdotukset** → VAIHE B (plan-mode design → toteutus rubriikki-loopilla A2–A8 + M3-verifier). EI pushia ilman lupaa (lokaalit commitit e869ca5 + tämä). |
