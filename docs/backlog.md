@@ -323,3 +323,49 @@ Workout-flow'n pysyvä kaikki-liikkeet-sarjaloki (kaikki liikkeet + rivit aina
 näkyvissä, ei nykyistä yksi-liike-kerrallaan-näkymää). STOP-raportin vaihtoehto
 D — EI ratifioitu A+B+C-kierrokseen (10.6.); arvioidaan jos A:n löydettävyys-
 kerros ei riitä puhelinkäytössä.
+# OBS-040 + OBS-041 — backlog-draft (Cowork 2026-06-12)
+
+> Liitettäväksi repon docs/backlog.md:hen (Code-sessio tai Windows-natiivi-editointi).
+> Lähde: Akselin puhelinhavainto 12.6. (Hor. työntö -liikenäkymä) + H-015 §7b jäi-auki-kohta 4.
+> EI kuulu H-016- eikä H-017-scopeen — molemmat pidetään kapeina (prioriteettilinjaus 12.6.).
+
+---
+
+### OBS-040 · 2026-06-12 · puhelinhavainto (KAPEA PENKKI -treenihistoria, kategoria Hor. työntö) · AVOIN
+
+**E1RM (EXT.) -kortti 82,0 (▼ −61 kg · 3 vk) ILMAN LÄHDETTÄ näkyvässä historiassa + sisäinen ristiriita VX-trendin kanssa**
+
+Havainto (Akselin täsmennys 12.6.: näkymä on kapean penkin treenihistoria):
+1. E1RM (EXT.) 82,0 kg, trendi ▼ −61,0 kg · 3 vk. Historia: 27.5. 4×5 @ 110 (V3/V4·t3), 21.5. 3×6 @ 110 (V3), 14.5. … — kaikki accessory-roolilla ("skill / volume"); Primary-laskuri 0, Accessory 5.
+2. Aritmetiikka (Cowork-verifioitu): edellinen referenssi 82,0 + 61,0 = 143,0 = **täsmälleen** Epley-V 110 kg -sarjoista (110 × (1+(6+3)/30) = 143,0; sama 5×V4:stä) → edellinen arvo oli oikein laskettu tästä historiasta.
+3. **82,0:lla ei ole lähdettä näkyvässä datassa:** 110 kg ei tuota 82:ta millään reps/V-yhdistelmällä; listassa ei ole 27.5. uudempaa sessiota; Primary = 0. 82,0 vastaisi ~60 kg -luokan kirjausta (esim. 60 × (1+(8+3)/30) = 82,0).
+4. **Sisäinen ristiriita:** VX-trendi samassa näkymässä sanoo V3 → V4 "Helpottuu · sama kuorma, enemmän varaa" samalla kun e1RM-kortti väittää −43 % romahdusta — kaksi korttia, kaksi eri totuuslähdettä = fragmentaatioluokka (MEMORY oppi 3 / F-3).
+5. Ajoituskonteksti: kapea penkki on dipin H-015-korvaaja (substituutio ~10.6.) — pudotus ilmestyi korvausjakson käynnistyttyä.
+
+Hypoteesit (confirm-then-fix, EI korjausta ennen A1:tä):
+- (a) **Substituutio-vuoto:** H-015-korvausmekanismin kuormaprojektio tai korvausjakson kirjaus syöttää kapean penkin e1RM-laskentaa ilman että se näkyy treenihistoriassa (näyttö suodattaa, laskenta ei — display/calc-eriparisuus).
+- (b) **F-3-luokan lähdevirhe:** e1RM-kortti lukee muuta kuin kanonista computeMovementE1RMBest-polkua (last-set / stale store / väärä liike kategorian "Hor. työntö" kautta).
+- (c) **Ikkuna-/roolisuodatus:** laskenta pudottaa 110 kg "skill/volume"-sarjat pois (rooli- tai ikkunaehto) → laskee jostain muusta. Heikoin hypoteesi: ei selitä mistä 82,0 tulee.
+
+A1 (read-only): dumppaa kapean penkin KAIKKI setit (ml. suodatetut/substituoidut/virtuaaliset) + e1RM-kortin laskentapolku + VX-trendin lähde → osoita mistä 82,0 syntyy. Known-pos/neg per hypoteesi. Vaikutus: trendikortti valehtelee atleetille korvausjakson aikana + mahdollinen H-016-ankkuririski (reload-ankkuri lukee liikkeen viimeisintä toteumaa — jos näkymätön kirjaus kontaminoi, sama voi osua ankkuriin; H-016 A3:n top-rooli + kuorma > 0 -rajaus suojaa osittain).
+
+Liittyy: OBS-041 (kirjauskitka samassa korvausjaksossa), F-3/VALUE_RESOLUTION_AUDIT (näyttöpolku), H-015 C1 (movementSubstitutions), H-016 A3-ankkuri, F-5-luokka (display vs laskenta -eriparisuus).
+
+---
+
+### OBS-041 · 2026-06-12 · puhelinhavainto + H-015 §7b kohta 4 · AVOIN
+
+**Käsipainopenkki (flätti) ei löydy liikepankista — custom-luonti ei persistoidu / katalogikattavuus**
+
+Havainto:
+1. Akseli loi Käsipainopenkin custom-liikkeenä 10.6. (H-015 heti-ohje). 12.6. flätti käsipainopenkki ei löydy liikepankista → kirjauskitka korvausjakson keskellä.
+2. Tunnettu aukko (H-015 §7b jäi auki, kohta 4): legacy ei-slot-polun liikelisäys jää in-memoryyn — ei persistoidu pankkiin. Tämä havainto on todennäköisesti saman aukon käyttäjälle näkyvä oire (verifioitava).
+
+Design-linjaus (Akselin kysymys 12.6. + Coworkin suositus):
+- Yleiset perusliikkeet (ml. käsipainopenkki flätti/vino) kuuluvat katalogiin valmiina.
+- Custom-luonti: kitkaton JA **pysyvä liike-identiteetti** (persistoituu pankkiin, oma e1RM-historia).
+- **EI vapaatekstikenttää ("jokin muu")** — ilman pysyvää identiteettiä kirjaukset sekoittuvat olemassa oleviin historioihin (OBS-040 on tästä mahdollinen esimerkki).
+
+A1 (read-only): toistuuko in-memory-katoaminen (luo custom → sulje → avaa → onko pankissa); katalogin työntöliike-kattavuuden gap-lista. Korjaus omana handoffina (persistenssi + katalogitäydennys), EI H-016/H-017-scopeen.
+
+Liittyy: OBS-040, H-015 §7b kohta 4 (legacy-swap in-memory), H-015 VAIHE B C1 (movementSubstitutions).
