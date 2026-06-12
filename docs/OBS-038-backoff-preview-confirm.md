@@ -33,3 +33,15 @@
 | K3 | DESIGN-D1: intra-session re-resolve (kirjauksen jälkeen back-off-target lasketaan uudelleen tehdystä) | engine-muutos, oma handoff | KAPSTONI-pilari 1; kytkeytyy paluuramppi-handoffiin |
 
 **Suositus:** K1 erillisenä pikakorjauksena (oppi 8 -porteilla); K3 omaksi design-handoffiksi Cowork-kierroksen kautta.
+
+---
+
+## PÄÄTÖKSET (Akseli, ratifioitu 2026-06-10/11)
+
+**K1 TOTEUTETTU** (commit `7659d50`, 4.52.38): suhde-projektio sys-tietoisena + async-kattavuus (OBS-038 + OBS-039 kiinni display-tasolla).
+
+**DESIGN-D1-LINJAUS (kirjaus — EI speksi; Cowork laatii handoffin erikseen leve-handoff-laadinnalla):**
+
+1. **PÄÄTÖS:** intra-session-autoregulaatio TOTEUTETAAN. **v1 = VAIN ALASPÄIN** — heikko päivä (kirjattu kevyempi pääsuoritus) keventää saman session back-offia; nostosuunta kulkee VAIN normaalin seuraavan-treenin progression kautta. Kaksisuuntaisuus (vahva päivä nostaa back-offia) = **v2-arvio kisan 22.8.2026 jälkeen**.
+2. **AJOITUSINVARIANTTI:** D1 toteutetaan ja verifioidaan **ennen vaiheen 20 (γ-peaking, ~11.7.) alkua TAI siirtyy kisan yli** — engineä EI muuteta peaking-blokin aikana. Järjestys: **paluuramppi-handoff ensin, D1 sen jälkeen** Fable-ikkunassa.
+3. **KYTKENNÄT:** KAPSTONI pilari 1 (reaaliaikainen autoregulaatio) — D1-v1 on pilarin ensimmäinen konkreettinen toteutusaskel; ROADMAP vaihe 21 -merkintä päivitetty viittaamaan tähän linjaukseen.

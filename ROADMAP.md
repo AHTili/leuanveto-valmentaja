@@ -77,7 +77,7 @@ Nämä eivät saa kadota missään vaiheessa.
 | 19 | Pohja-puhtaus 8/8 -verifiointi | SEURAAVA | reunaehto (a) -gate; edellyttää vaiheen 14b sulkua |
 | 19b | **Kerros 3 (L3a/L3b/L3c)** — ml. L3b-audit + Wizard-eliittiarvio | AVOIN (palautettu sekvenssiin 2026-06-10) | mullistava-määritelmän 3. komponentti (v4 FINAL §7); pudonnut sekvenssistä goal-driftissä — palautettu |
 | 20 | Round B-γ — peaking | LYKÄTTY | VL-cap 20→15→10 %; aktivoidaan ~6 vk ennen kisaa |
-| 21 | **KAPSTONI — eliittiverdikti 3 pilarissa** | AVOIN (palautettu sekvenssiin 2026-06-10) | mullistava-määritelmän 4. komponentti (v4 FINAL §13); pilari 1 = reaaliaikainen autoregulaatio (vrt. DESIGN-D1, docs/OBS-038); verdikti annetaan vasta kun M1 ∧ M2 ∧ Kerros 3 pystyssä |
+| 21 | **KAPSTONI — eliittiverdikti 3 pilarissa** | AVOIN (palautettu sekvenssiin 2026-06-10) | mullistava-määritelmän 4. komponentti (v4 FINAL §13); pilari 1 = reaaliaikainen autoregulaatio — **D1-LINJAUS RATIFIOITU** (docs/OBS-038 PÄÄTÖKSET: v1 vain alaspäin; ennen γ:aa TAI kisan yli; paluuramppi-handoff ensin); verdikti annetaan vasta kun M1 ∧ M2 ∧ Kerros 3 pystyssä |
 
 **Vaihe 17 (VALMIS, 2026-05-28)** toteutettu kapeammin kuin alkuperäinen ROADMAP-spec: H-006b A1 liike-spesifi primer-rajaus (tankoliikkeet + Lisäpainoleuanveto primerEnabled=true; Dippi+MU false atletti-realismin pohjalta), A2 yksipisteinen primer @ ~60% + sys-1RM-päivitys baseline-vertailusta ±2.5/5% (EI 3-pisteen LV-regressio), A3 K-β-1/2/4/5 audit-engine.mjs, A4 measurements-store type='primer'. 5-vaiheinen validointi: 4 K-β-flagia + LV-r²-tarkistus computeLoadVelocityProfile:ssa (engine.js:2437) — kanoninen 5-vaiheinen. Cal-pohjainen LV-regressio aktiivinen recommend():ssa (engine.js:2735, 4224).
 
