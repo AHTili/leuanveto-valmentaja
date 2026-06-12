@@ -8287,12 +8287,39 @@ function renderMesocycle() {
         const _p4PrimaryMov = (fw.slots.find(s => s.role === "primary") || {}).defaultMovementName || null;
         const _p4Hy = _syHybrid && _syHybrid.get(`${fw.weekNum}:${fw.dayOfWeek}`);
         const _p4CachePrimaryKg = (_p4Hy && typeof _p4Hy.load === "number" && _p4Hy.load > 0) ? _p4Hy.load : null;
+        // OBS-038 K1 (2026-06-10): same-liike non-primaryn ~-luku johdetaan pään
+        // NÄYTETYSTÄ luvusta SUHDE-PROJEKTIONA enginen omalla vReps-käyrällä
+        // (pct_bo/pct_pää, esim. 81,1/85,7 = 94,6 %) → rate-limit/regain-suppressio
+        // periytyy back-offiin eikä kahden totuuslähteen inversiota (I1: 58 > 55,5)
+        // synny. Display-only — kuormalaskenta (engine Branch A) ei muutu.
+        // Cold-start (ei cachea): flat + Math.min-clamp ei sido — async-polku
+        // (applySykliHybridToDOM, data-sy-bo-cell) korjaa kun pään totuus saapuu.
+        const _p4PrimarySlotDesign = fw.slots.find(s => s.role === "primary");
+        const _p4PctOf = (slot) => {
+          if (!slot || slot.reps == null || slot.targetVx == null) return null;
+          return vRepsToExpectedPct(slot.reps + slot.targetVx);
+        };
+        const _p4PrimaryPct = _p4PctOf(_p4PrimarySlotDesign);
+        const _p4Ratio = (slot) => {
+          const sp = _p4PctOf(slot);
+          return (sp !== null && _p4PrimaryPct !== null && _p4PrimaryPct > 0) ? sp / _p4PrimaryPct : null;
+        };
+        // Preview=live (F-1-invariantti): suhde pätee SYSTEEMIKUORMAAN. BW-ankkuroiduilla
+        // (leuka/dippi) projektio tehdään sys-tasolla ((näytetty+BW)×r−BW) — suora ulkoisten
+        // suhde yliarvioisi back-offin (~52,5 vs enginen 47,6 @ pää 55,5). Barbell: suora r.
+        const _p4MovObj = _p4PrimaryMov ? (state.movements || []).find(m => m.name === _p4PrimaryMov) : null;
+        const _p4IsSysLoad = _p4MovObj ? isSystemLoadMovement(_p4MovObj) : false;
+        const _p4Project = (primaryKg, r) => _p4IsSysLoad
+          ? Math.max(0, Math.round((((primaryKg + _syRenderBW) * r) - _syRenderBW) * 2) / 2)
+          : Math.round(primaryKg * r * 2) / 2;
         const _p4ClampSameMov = (slot, flatKg) => {
-          if (_p4CachePrimaryKg === null) return flatKg;                 // ei cache (cold-start) → flat
           if (typeof flatKg !== "number" || flatKg <= 0) return flatKg;  // BW/null/0 → ennallaan
           if (slot.role === "primary" || slot.role === "calibration") return flatKg; // pää + cal pl.
           if (!_p4PrimaryMov || slot.defaultMovementName !== _p4PrimaryMov) return flatKg; // vain same-liike
-          return Math.min(flatKg, _p4CachePrimaryKg);
+          if (_p4CachePrimaryKg === null) return flatKg;                 // ei cache (cold-start) → flat; async korjaa
+          const r = _p4Ratio(slot);
+          if (r !== null) return _p4Project(_p4CachePrimaryKg, r);      // suhde-projektio (enginen käyrä, sys-tietoinen)
+          return Math.min(flatKg, _p4CachePrimaryKg);                    // fallback: vanha clamp
         };
         // F-5 (OBS-034): done-status helperin kautta (sama sääntö kuin "Tämä viikko"
         // -kortti + "Tulevat treenit" Koti-dashboard). Pään (primary) suoritus viikon
@@ -8322,7 +8349,13 @@ function renderMesocycle() {
               : (hy && hy.load === 0 ? ` · BW` : fallbackInfo);
             loadHTML = `<span data-sy-cell="${key}">${info}</span>`;
           } else {
-            loadHTML = fallbackInfo;
+            // OBS-038 K1: same-liike non-primary saa data-sy-bo-cell-ankkurin + suhteen →
+            // applySykliHybridToDOM projektoi pään totuudesta myös async-populaatiossa
+            // (sulkee OBS-039:n järjestysraon: cold-startin flat korjautuu kun cache saapuu).
+            const _boRatio = (_p4PrimaryMov && s.defaultMovementName === _p4PrimaryMov && s.role !== "calibration") ? _p4Ratio(s) : null;
+            loadHTML = _boRatio !== null
+              ? `<span data-sy-bo-cell="${fw.weekNum}:${fw.dayOfWeek}" data-sy-bo-ratio="${_boRatio.toFixed(4)}" data-sy-bo-sys="${_p4IsSysLoad ? 1 : 0}">${fallbackInfo}</span>`
+              : fallbackInfo;
           }
           return `<div class="flex-between" style="padding:2px 0;font-size:12px">
             <span class="muted">${icon} ${s.defaultMovementName}</span>
@@ -8730,11 +8763,27 @@ function applySykliHybridToDOM(meso) {
   if (!hy) return;
   for (const [key, v] of hy.entries()) {
     const el = document.querySelector(`[data-sy-cell="${key}"]`);
-    if (!el) continue;
+    if (el) {
+      if (v.load != null && v.load > 0) {
+        el.textContent = ` · ${v.projected ? "~" : ""}${v.load} kg`;
+      } else if (v.load === 0) {
+        el.textContent = ` · BW`;
+      }
+    }
+    // OBS-038 K1: projektoi same-liike non-primaryjen ~-luvut pään totuudesta
+    // (ratio = vReps_bo% / vReps_pää%, render-aikana laskettu) — suppressio
+    // periytyy myös async-polussa, OBS-039:n cold-start-rako kiinni.
     if (v.load != null && v.load > 0) {
-      el.textContent = ` · ${v.projected ? "~" : ""}${v.load} kg`;
-    } else if (v.load === 0) {
-      el.textContent = ` · BW`;
+      const _bw = state.settings?.bodyweightKg || 91;
+      document.querySelectorAll(`[data-sy-bo-cell="${key}"]`).forEach(boEl => {
+        const ratio = parseFloat(boEl.dataset.syBoRatio);
+        if (!isFinite(ratio) || ratio <= 0) return;
+        const isSys = boEl.dataset.syBoSys === "1";
+        const kg = isSys
+          ? Math.max(0, Math.round((((v.load + _bw) * ratio) - _bw) * 2) / 2)
+          : Math.round(v.load * ratio * 2) / 2;
+        boEl.textContent = ` · ~${kg} kg`;
+      });
     }
   }
 }
