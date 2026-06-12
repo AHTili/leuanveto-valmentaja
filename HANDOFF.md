@@ -99,12 +99,13 @@ Ei sovellu (scope-expansion, ei block-tuning). Atleettikonteksti: ks. §5 verifi
 
 **Huom (atletti = valmentaja, ei nanny):** kevennys on suositus — atletti voi aina ylikirjata kuorman; ylikirjaus syöttää toteuma-ankkuroinnin kautta seuraavaa porrasta.
 
-## 6. Avoimet kysymykset
+## 6. Avoimet kysymykset — KAIKKI RATKAISTU (gate-ratifiointi Akseli 2026-06-12; Cowork-auditti vahvisti aritmetiikan: 75 × 1,025³ ≈ 80,8 ≈ 80,6 ✓ · 65,6/63,8 ✓ · 20 pv = R1-solu "2–3 vk × korvaava olemassa")
 
-1. **Precedence-sääntö:** kun globaali breakAnalysis (koko treeni tauolla) JA liike-tason reload osuvat päällekkäin — ehdotus: konservatiivisin target voittaa, kevennyksiä EI kumuloida. A1 selvittää nykykytkennät → Code esittää säännön gate-raportissa, Akseli ratifioi.
-2. **Slot-roolien rajaus v1:** primary/secondary/backoff (kuormaresoluutio-polut) vs accessoryt (eri ehdotusketju) — A1 rajaa, gate vahvistaa.
-3. **Ramppiportaiden muoto:** lineaarinen interpolaatio tauon-edeltävään vs plan-%-polkua pitkin (R1 ei erottele — käytäntösynteesi). Code ehdottaa A1:n pohjalta.
-4. ~~Handoff-id~~ ✏️ RATKAISTU: **H-016** (seuraava vapaa, arkisto päättyy H-015:een).
+1. **§6.1 Precedence — RATKAISTU:** konservatiivisin voittaa (**min-target**), kevennyksiä EI kumuloida. Liike-tason reload **täysin erillään meson nollauspolusta** (mesocycleBreakReset) — reload ei koskaan nollaa ohjelmaa.
+2. **§6.2 Roolirajaus v1 — RATKAISTU:** vain **pääliikeketju**; back-off/secondary seuraavat samasta lähteestä (sessionEffectiveE1RM) automaattisesti; **apuliikkeet ulos v1:stä**.
+3. **§6.3 Rampin muoto — RATKAISTU:** **lineaarinen, toteumaan ankkuroitu** — ~2 vk / 2–3 sessiota kevennyksestä takaisin tauon-edeltävälle tasolle; skipattu/vajaa paluusessio pysäyttää portaan (kipu-gate-mekanismi).
+4. ~~Handoff-id~~ ✏️ RATKAISTU: **H-016**.
+5. **A3-ankkuritäsmennys (A1-löydös, ratifioitu):** kevennysankkuri = oikeat työsarjat (**top-rooli + kuorma > 0**) — BW 0 kg -kirjaukset eivät kelpaa ankkuriksi.
 
 ---
 
