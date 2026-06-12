@@ -83,4 +83,6 @@
 
 | 2026-06-10 | H-015 confirm + retro + ABC-korjauskierros (oppi 8 ratifioitu) | 1 korjausbatch (A+B+C; confirm-kierros read-only edellä) | 1 / 0 hylkäystä (verifier AJOI polut e2e: PASS P1–P4) | 2 (poikkeama-relay → STOP-raportti → ABC-ratifiointi+push-lupa) | 0 | *(Akseli täyttää — huom: confirm-poikkeama oli edellisen batchin acceptance-virhe, kirjattu oppi 8:aan)* |
 
+| 2026-06-12 | H-016 batch=2 (VAIHE A confirm + VAIHE B paluuramppi-toteutus) | 2 batch-vaihetta (H-016-milestone) | 1 / 0 hylkäystä (VAIHE A -verifier Cowork-auditissa; VAIHE B -verifier VAHVISTETTU 17/17 + 2 kosmeettista huomautusta) | 2 (VAIHE A STOP-gate → ratifiointi → VAIHE B STOP push-portille) | 0 | *(Akseli täyttää)* |
+
 > **Arkistointi-TODO (H-015, puhelinverifioinnin jälkeen):** korjaa HANDOFF §7b:n commit-luku ("8 lokaalia committia f0e9c61..712678d" → oikein: f0e9c61..2ed2e3e pushattiin gate-ratifioinnissa, af5ed9c..dc9b201 push-ratifioinnissa) arkistointikommitin yhteydessä — Akselin ohje 2026-06-10.
