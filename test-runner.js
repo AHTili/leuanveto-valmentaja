@@ -77,6 +77,9 @@ import {
   // v4.52.16 H-007: HRV-baseline + drift-detection
   computeHrvBaseline,
   computeHrvBaselineDrift,
+  // H-018 OSA 1 (OBS-040): e1RM-kortin kanoninen lähde-lukko
+  computeMovementE1RMBest,
+  computeMovementE1RMHistory,
 } from "./engine.js";
 
 import {
@@ -792,6 +795,53 @@ function testMovementReload() {
   // Known-neg: ei top-settejä lainkaan → null (uusi liike)
   assert(computeMovementReload([], "Uusi liike", "x", {}, "2026-06-16") === null,
     "H016-T8 (neg): ei ankkurisettejä → null");
+}
+
+// H-018 OSA 1 (OBS-040, 2026-06-13): e1RM-kortin kanoninen lähde-lukko.
+// Juuri: computeMovementE1RMHistory EI lajittele → history[viimeinen] = set-
+// insertion-järjestyksen satunnainen pää (CGB-data: vanhin sessio 30.4. 60×6V5
+// → Epley-V 82,0 päätyi "viimeiseksi"). Kortti luki history[last]:ia. Fix:
+// kortti → computeMovementE1RMBest (VALUE_RESOLUTION_AUDIT §0, kanoninen näyttö).
+// Lock: Best on insertion-järjestyksestä riippumaton eikä romahda yksittäiseen
+// kevyeen vanhaan settiin. (OBS-042 = Best-fallback-medianin kevyt-RECENT-
+// vinouma = ERI handoff, kanonisen funktion muutos → ei tässä scopessa.)
+function testE1rmCardCanonicalSource() {
+  const cgb = { name: "Close-grip bench", category: "horisontaalityöntö", isPrimary: false, tier: 2 };
+  const mk = (sid, day, kg, reps, vx) => ({ movementId: "cgb", sessionId: sid, setRole: "accessory", externalLoadKg: kg, reps, actualVx: vx, targetVx: vx, timestamp: day + "T10:00:00Z" });
+  const sessions = [
+    { sessionId: "s-old", dateISO: "2026-04-30" },
+    { sessionId: "s-mid", dateISO: "2026-05-14" },
+    { sessionId: "s-new", dateISO: "2026-05-27" },
+  ];
+  // Todellinen CGB-muoto: vanha kevyt sessio (Epley-V 60×6V5 = 82,0) + tuoreet
+  // raskaat dominoivat (110×6V3 = 143,0). ≤6 settiä → median-fallback slice(-6)
+  // kattaa kaikki → order-riippumaton (OBS-042:n slice-vinouma EI sekaannu testiin).
+  const oldLight = [mk("s-old", "2026-04-30", 60, 6, 5), mk("s-old", "2026-04-30", 60, 6, 5)];
+  const recentHeavy = [
+    mk("s-new", "2026-05-27", 110, 6, 3), mk("s-new", "2026-05-27", 110, 6, 3),
+    mk("s-mid", "2026-05-14", 110, 6, 3), mk("s-mid", "2026-05-14", 110, 6, 3),
+  ];
+
+  // KNOWN-POS (bug-reprodusointi): vanha kevyt setti arrayn LOPUSSA → history[last] = 82,0
+  const orderBuggy = [...recentHeavy, ...oldLight];
+  const hist = computeMovementE1RMHistory(orderBuggy, sessions, cgb, 91);
+  assert(Math.abs(hist[hist.length - 1].e1rm - 82.0) < 0.5,
+    `H018-T1 (bug-repro): computeMovementE1RMHistory[viimeinen] = ${hist[hist.length - 1].e1rm?.toFixed(1)} ≈ 82,0 (insertion-järjestys, EI aikajärjestys) — tätä kortti EI saa enää lukea`);
+
+  // FIX: kortin uusi lähde (Best) ei romahda vanhaan kevyeen settiin
+  const bestBuggy = computeMovementE1RMBest(orderBuggy, sessions, null, cgb, 91);
+  assert(bestBuggy.value > 130,
+    `H018-T1 (fix): computeMovementE1RMBest = ${bestBuggy.value?.toFixed(1)} > 130 (kortti näyttää ~143-tason, ei 82)`);
+
+  // ORDER-INDEPENDENCE: sama liike, eri set-järjestys → Best identtinen (history[last] ei olisi)
+  const bestClean = computeMovementE1RMBest([...oldLight, ...recentHeavy], sessions, null, cgb, 91);
+  assert(Math.abs(bestClean.value - bestBuggy.value) < 0.01,
+    "H018-T2 (order-independence): Best riippumaton set-insertion-järjestyksestä");
+
+  // KNOWN-NEG: kaikki sessiot raskaita (viimeisin = paras) → Best korkea, kortti ennallaan
+  const bestHeavy = computeMovementE1RMBest(recentHeavy, sessions, null, cgb, 91);
+  assert(bestHeavy.value > 130,
+    `H018-T3 (known-neg): kaikki raskaita → Best ${bestHeavy.value?.toFixed(1)} > 130 (ei näyttömuutosta terveellä datalla)`);
 }
 
 function testCalibration() {
@@ -3952,6 +4002,8 @@ export async function runTests() {
   testMovementSubstitutions();
   // H-016: liike-tason paluuramppi (detektio + kevennys + toteuma-ramppi + dormantti)
   testMovementReload();
+  // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
+  testE1rmCardCanonicalSource();
   testCalibration();
   testBackupReminderLogic();
   testMaintenanceStatus();
