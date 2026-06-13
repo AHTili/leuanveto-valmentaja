@@ -357,6 +357,10 @@ const PRESET_MOVEMENTS = [
   //     dippi-päivän pushAccPrehab-tukiliikepaketissa kuormituksen nosto ennen voima-blokkia.
   { name: "Tempo pause dippi",      category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   { name: "Incline dumbbell press", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  // H-018 OSA 2 (OBS-041, 2026-06-13): käsipainopenkki flätti — yleinen perus-
+  // työntöliike puuttui katalogista (vino oli jo "Incline dumbbell press").
+  // Surface'aa olemassa oleviin asennuksiin ensureNewPresetMovements:in kautta.
+  { name: "Käsipainopenkki",        category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   { name: "Dumbbell pullover",      category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   { name: "Incline deficit pushup", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   // v4.28.0: dip-eccentric-bw (LA skill-vaihe) ja Nordic curl (hamstring-isolation strength/intensity)
@@ -485,6 +489,7 @@ const MOVEMENT_DESCRIPTIONS = {
   // Green & Comfort 2007 pec-tear-riski dipissä, Durall 2001 pec-major-insertion.
   "Tempo pause dippi": { howTo: "Lisäpainodippi 3 s:n kontrolloidulla eksentrisellä ja 1–2 s pysähdyksellä alapositiossa (olkapää kyynärpään alla, ei ylemmäs kuin mitä liikkuvuus sallii kivuttomasti). Nouse sujuvasti. Kuorma ~60–70 % normaalista dipistä — tämä on kudoskapasiteettia, ei voimaa.", cue: "Laskeudu kolme sekuntia, pysähdy alhaalla — ÄLÄ pomppaa" },
   "Incline dumbbell press": { howTo: "Vinopenkki 30–45°, käsipainot rinnan sivuilla, työnnä ylös. Ylärinta + etudelta ja kevyempi GH-nivelen stressi kuin tasopenkissä. Täysi ROM, kontrolloitu eksentri.", cue: "Käsipainot koskettavat melkein yläpisteessä — älä lukitse kyynärpäitä täysin" },
+  "Käsipainopenkki": { howTo: "Vaakapenkillä makuulla, käsipainot rinnan sivuilla (~kyynärpää 45° vartalosta), työnnä ylös ja yhteen. Suurempi ROM ja itsenäinen puolittainen liike kuin tankopenkissä → rinta + etudelta, hartialle ystävällisempi. Kontrolloitu eksentri rintalastaa säästäen.", cue: "Käsipainot koskettavat melkein yläpisteessä — älä anna kyynärpäiden valua liian alas jos rintalasta arka" },
   "Dumbbell pullover": { howTo: "Vaakapenkillä makuulla, yksi käsipaino molemmin käsin pidellen, lantio alempana kuin hartiat. Laske paino pään taakse suorin/melkein suorin kyynärvarsin täyteen pec+lats-venytykseen, palauta rintakehän päälle. Stretch-hypertrofian priimusliike pecille.", cue: "Kyynärpäät pehmeässä kulmassa koko ajan — jos kipeää rintalastassa, lyhennä ROMia" },
   "Incline deficit pushup": { howTo: "Punnerrus kahvoilla tai käsipainoilla korokkeena, kädet korokkeilla niin että rintakehä laskeutuu käsien alapuolelle. Täysi ROM alhaalla, taukopysähdys 1 s, ylös kontrolloidusti. Korkea reps (15–35) matalalla kuormalla = kudoksen verenkierto + ROM-kapasiteetti.", cue: "Alas kunnes olkapäät ovat kyynärpäiden alapuolella — nosta itsesi korkealla volyymilla, ei intensiteetillä" },
   "Dippilaite (plate-loaded)": { howTo: "Vipuvarsilaite levypainoilla. Istu/asetu laitteen mukaiseen asentoon, paina kahvat alas hallitusti (eccentric 2–3 s), nosta ylös kontrolloidusti. ROM rajattu laitteen mukaan → alkukulman riski (kylmä RC + pec extended) on pienempi kuin tankodipissä. Hyvä volyymi-accessory päädippiin tai turvallisempi vaihtoehto kun olkapää on herkillä.", cue: "Älä jätä alapositioon roikkumaan — kontrolloitu lasku ja kontrolloitu nousu" },

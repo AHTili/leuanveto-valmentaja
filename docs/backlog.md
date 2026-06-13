@@ -375,3 +375,6 @@ Liittyy: OBS-040, H-015 §7b kohta 4 (legacy-swap in-memory), H-015 VAIHE B C1 (
 
 ### OBS-043 · 2026-06-12 · puhelinhavainto · AVOIN
 **Tuore sessio ei näy liikehistoria-listalla heti** (12.6. ended 17:33, lista klo 19:24 näytti vain 30.4.–27.5.). Todennäköisesti sama insertion-järjestysjuuri (computeRecentSessionsForMovement "5 viimeisintä" ilman aikasorttia) — verifioitava OBS-042-handoffin yhteydessä.
+
+### OBS-044 · 2026-06-13 · H-018 OSA 2 -löydös · AVOIN
+**2 eksaktia duplikaattia PRESET_MOVEMENTS:issa** (data.js): "Hollow body hold" ×2 ja "L-sit hold" ×2 (identtiset rivit, core/tier 3). Koska `seedPresets`/`ensureNewPresetMovements` luo `uid()`:n per entry, nämä tuottavat **kaksoiskappaleen liikepankkiin** (sama nimi, eri id) sekä first-installissa että surfacing-migraatiossa. Akselin 12.6.-backup: 143 liikettä (sis. todennäköisesti nämä duplikaatit). Vaikutus: kosmeettinen (liikelistassa sama nimi kahdesti) + e1RM-historia hajoaa jos käyttäjä tekee liikettä kummallakin id:llä. Korjaus: poista 2 dup-riviä data.js:stä + globaali nimien-uniikkius-lukko (testE1rmCatalog T3 → assertoi 0 dupia). EI kuulu OBS-041:een (eri liikkeet, eri juuri). Pieni, matala riski — soveltuu pikakorjaukseksi. Löydös: H-018 OSA 2 -katalogityö, testE1rmCatalog-lukko nappasi. Regressio-vartija jo paikallaan (T3 assertoi tasan 2 → uudet dupit jäisivät kiinni).

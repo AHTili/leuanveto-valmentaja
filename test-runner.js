@@ -93,6 +93,8 @@ import {
   // v4.34.45: mesosykli-historia + uudelleen-aktivointi
   saveMesocycle, getAllMesocycles, getActiveMesocycle, setActiveMesocycle,
   cleanupOrphanMesocycles, getAppMeta,
+  // H-018 OSA 2 (OBS-041): katalogi-lukko
+  PRESET_MOVEMENTS,
 } from "./data.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -842,6 +844,33 @@ function testE1rmCardCanonicalSource() {
   const bestHeavy = computeMovementE1RMBest(recentHeavy, sessions, null, cgb, 91);
   assert(bestHeavy.value > 130,
     `H018-T3 (known-neg): kaikki raskaita → Best ${bestHeavy.value?.toFixed(1)} > 130 (ei näyttömuutosta terveellä datalla)`);
+}
+
+// H-018 OSA 2 (OBS-041, 2026-06-13): katalogi-lukko — käsipainopenkki flätti
+// lisätty PRESET_MOVEMENTS:iin. ensureNewPresetMovements surface'aa sen
+// olemassa oleviin asennuksiin nimi-pohjaisella dedupilla → nimien uniikkius
+// on invariantti (duplikaattinimi rikkoisi surfacingin).
+function testCatalogKasipainopenkki() {
+  const flat = PRESET_MOVEMENTS.filter(m => m.name === "Käsipainopenkki");
+  assertEqual(flat.length, 1, "H018-OSA2-T1: Käsipainopenkki katalogissa täsmälleen kerran (ei duplikaattia)");
+  assertEqual(flat[0]?.category, "horisontaalityöntö", "H018-OSA2-T1: kategoria horisontaalityöntö");
+  assert(flat[0]?.isPreset === true, "H018-OSA2-T1: isPreset=true (ensureNewPresetMovements surface)");
+  // Known-neg: vino oli jo olemassa → EI korvattu/duplikoitu
+  assert(PRESET_MOVEMENTS.some(m => m.name === "Incline dumbbell press"),
+    "H018-OSA2-T2 (known-neg): vino (Incline dumbbell press) yhä katalogissa, ei duplikoitu");
+  assertEqual(PRESET_MOVEMENTS.filter(m => m.name === "Incline dumbbell press").length, 1,
+    "H018-OSA2-T2: vino täsmälleen kerran");
+  // T3: oma lisäys ei tuonut UUTTA duplikaattinimeä. HUOM: katalogissa on 2
+  // pre-existing eksaktia duplikaattia (Hollow body hold, L-sit hold) → globaalia
+  // uniikkius-invarianttia EI voi vielä asserttaa (OBS-044, eri handoff). Lukitaan
+  // sen sijaan että Käsipainopenkki ei lisää dup-määrää baselinen yli.
+  const dupNames = Object.entries(
+    PRESET_MOVEMENTS.reduce((acc, m) => { acc[m.name] = (acc[m.name] || 0) + 1; return acc; }, {})
+  ).filter(([, c]) => c > 1).map(([n]) => n);
+  assert(!dupNames.includes("Käsipainopenkki"),
+    "H018-OSA2-T3: Käsipainopenkki ei ole duplikoitu (oma lisäys integriteetti-puhdas)");
+  assertEqual(dupNames.length, 2,
+    "H018-OSA2-T3 (pre-existing-lukko): tasan 2 pre-existing dup-nimeä (Hollow body hold, L-sit hold → OBS-044); regressio-vartija ettei uusia synny");
 }
 
 function testCalibration() {
@@ -4004,6 +4033,8 @@ export async function runTests() {
   testMovementReload();
   // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
   testE1rmCardCanonicalSource();
+  // H-018 OSA 2: katalogi — käsipainopenkki flätti lisätty, ei duplikaattia
+  testCatalogKasipainopenkki();
   testCalibration();
   testBackupReminderLogic();
   testMaintenanceStatus();
