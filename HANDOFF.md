@@ -1,7 +1,7 @@
 # HANDOFF.md — aktiivinen Cowork → Code -toimeksianto (H-017 D1)
 
 > Siirretty Cowork-draftista (`HANDOFF_H-017_D1-intra-session-alaspain_DRAFT-COWORK.md`, RATIFIOITU Akseli 2026-06-12) → repon HANDOFF.md 2026-06-13 (kanava b:n akti).
-> **Tila: H-017 — `AKTIIVINEN` (VAIHE A CONFIRM käynnissä).** PRE-FLIGHT ✏️: HEAD = origin = `48d5a64` = §0 pohja-HEAD ✓, työpuu puhdas, APP_VERSION 4.52.41 ✓.
+> **Tila: H-017 — `AKTIIVINEN` (VAIHE A gate RATIFIOITU 2026-06-12 → VAIHE B plan-mode).** PRE-FLIGHT ✏️: HEAD = origin = `48d5a64` = §0 pohja-HEAD ✓, työpuu puhdas, APP_VERSION 4.52.41 ✓. Gate-päätökset §6:ssa, VAIHE A -raportti §7:ssä.
 > Pohja: docs/OBS-038 PÄÄTÖKSET (DESIGN-D1-linjaus, ratifioitu 10.6.) + I3-mekanismiverdikti (runtime-verifioitu) + R1-EVIDENSSIPOHJA OSA 3 + Akselin design-ratifioinnit 12.6. (§5). **Älä laadi uutta — substanssi ratifioitu.**
 >
 > ✏️ **H-016-TÄSMENNYS (repo voittaa):** H-016 reload on **toteutettu + pushattu + dormantti + PARKISSA** (`git show 3bad610:HANDOFF.md`) — **EI vielä arkistoitu** (odottaa vk 25 dippipaluun live-porttia). Draftin "suljettu" = toteutus valmis; reload-koodi (RELOAD_CONFIG / computeMovementReload) on repossa → D1:n A1-precedence-tarkistus on mahdollinen.
@@ -87,12 +87,15 @@ Ei sovellu (scope-expansion, ei block-tuning). Live-known-positive: I3-tapaus (k
 
 **Huom (atletti = valmentaja, ei nanny):** D1 seuraa atletin omaa kevennystä — se ei koskaan estä atlettia ylikirjaamasta tarjottua kuormaa ylöspäin kesken session.
 
-## 6. Avoimet kysymykset
+## 6. Avoimet kysymykset → VAIHE A GATE: RATIFIOIDUT PÄÄTÖKSET (Akseli 2026-06-12)
 
-1. **Trigger-kynnyksen tarkkuus:** mikä alitus laukaisee — ehdotus: alitus > pienin levyporras tai ≥ ~2 % targetista (pyöristyskohina ei laukaise). A1 ehdottaa datan pohjalta, Akseli ratifioi gate-raportissa.
-2. **UI-merkinnän muoto:** miten "seuraa päivän toteumaa" näytetään rivillä (merkki/teksti) — Code ehdottaa VAIHE B plan-modessa.
-3. **H-016-yhteensovitus:** precedence-aritmetiikka reload-kevennetyn session sisällä (A1 raportoi toteutuneesta koodista).
+1. ~~**Trigger-kynnys**~~ ✏️ **RATIFIOITU (gate 3):** laukaisukynnys = **≥ ~2 % TAI 1 levyporras, kumpi suurempi. Konfiguroitava.** Known-negative-testi levypyöristys-erolle (A2-mitattu).
+2. ~~**UI-merkinnän muoto**~~ → **Code ehdottaa VAIHE B plan-modessa** (ei tutkijanimiä; merkki/teksti "luku seuraa päivän toteumaa").
+3. ~~**H-016-yhteensovitus**~~ ✏️ **RATKAISTU VAIHE A:ssa** (§7): reload = suunniteltu katto (ennen sessiota), D1 = toteumajohdettu → puhdas `min()`-kompositio. D1:n min()-"suunniteltu"-syöte = startWorkoutin cachettu (reload-heijastettu) back-off-loadKg.
 4. ~~Handoff-id~~ ✏️ RATKAISTU: **H-017** (pre-varattu D1:lle).
+5. ~~**Suunniteltu-ref-tallennus**~~ ✏️ **RATIFIOITU (gate 1):** tallenna suunniteltu pohja-arvo treenin alkaessa. **Tarkka mekanismi = Coden valinta plan-modessa — mieluiten olemassa olevasta `sessionEffectiveE1RM`-lukosta, ettei tilaa duplikoida (esitä kumpi plan-modessa).**
+6. ~~**Toteuma-mittari**~~ ✏️ **RATIFIOITU (gate 2):** **mediaani pääsarjojen toteutuneista kuormista.**
+7. ~~**Near-failure-suhde**~~ ✏️ **RATIFIOITU (gate 4):** **rinnakkaiselo, ei ohitusta.** VAIHE B -testin on katettava skenaario jossa molemmat laukeavat (D1 back-off + near-failure pääliike) → varmista ettei back-off saa **tuplakevennystä** (D1 lukee toteumaa joka jo heijastaa near-failuren).
 
 ---
 
