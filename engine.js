@@ -302,9 +302,7 @@ function vRepsToExpectedPct(maxReps) {
  * @param {number[]} p.actualLoads            — valmiiden pääsarjojen toteutuneet ulkokuormat
  * @param {number[]} p.actualReps             — vastaavat toteutuneet toistot
  * @param {number[]} p.actualVx               — vastaavat Vx-arvot (handler resolvoi actualVx??targetVx??1)
- * @param {number}   p.slotReps               — kohde-slotin tavoitetoistot
- * @param {number}   p.slotTargetVx           — kohde-slotin tavoite-Vx
- * @param {boolean}  p.slotIsBarbell          — kohde-slot barbell?
+ * @param {boolean}  p.slotIsBarbell          — kohde-slot barbell? (pct johdetaan plannedLoadKg:sta)
  * @param {boolean}  p.primaryIsBarbell       — primary barbell? (e1RM-johdon BW-haara)
  * @param {number}   p.canonicalE1RMSystem    — lukittu sessionEffectiveE1RM (A4-lattian ankkuri)
  * @param {number}   p.bodyweightKg
@@ -319,19 +317,22 @@ function resolveIntraSessionAdjustedLoad(p) {
   const {
     plannedLoadKg, plannedPrimaryMedianKg,
     actualLoads = [], actualReps = [], actualVx = [],
-    slotReps, slotTargetVx, slotIsBarbell, primaryIsBarbell,
+    slotIsBarbell, primaryIsBarbell,
     canonicalE1RMSystem, bodyweightKg,
     triggerPct = 0.02, plateStepKg = 2.5, floorPct = 0.75,
   } = p || {};
 
-  const loads = actualLoads.filter((x) => typeof x === "number" && x > 0);
+  const loads = actualLoads.filter((x) => Number.isFinite(x) && x > 0);
   if (!loads.length) return { adjusted: false, reason: "no-completed-work-sets" };
   if (!(plannedLoadKg > 0)) return { adjusted: false, reason: "no-planned-load" };
   if (!(canonicalE1RMSystem > 0)) return { adjusted: false, reason: "no-canonical-e1rm" };
 
   const medianLoad = median(loads);
-  const medReps = actualReps.length ? median(actualReps) : 3;
-  const medVx = actualVx.length ? median(actualVx) : 1;
+  // Suodata reps/Vx samalla äärellisyysehdolla kuin kuormat (NaN/null ei vääristä mediaania).
+  const repsArr = actualReps.filter(Number.isFinite);
+  const vxArr = actualVx.filter(Number.isFinite);
+  const medReps = repsArr.length ? median(repsArr) : 3;
+  const medVx = vxArr.length ? median(vxArr) : 1;
 
   // Gate 3 — laukaisukynnys KUORMA-avaruudessa (primaryn suunniteltu vs toteutunut).
   const planRef = (typeof plannedPrimaryMedianKg === "number" && plannedPrimaryMedianKg > 0)
@@ -346,10 +347,14 @@ function resolveIntraSessionAdjustedLoad(p) {
     ? medianLoad * (1 + (medReps + medVx) / 30)
     : (bodyweightKg + medianLoad) * (1 + (medReps + medVx) / 30);
 
-  // Branch A — kohde-slotin kuorma toteuma-e1RM:stä.
-  const pct = vRepsToExpectedPct((slotReps ?? 0) + (slotTargetVx ?? 0));
-  if (pct === null) return { adjusted: false, reason: "invalid-slot-reps" };
-  let derived = roundToHalf(Math.max(0, slotIsBarbell ? e1rmActual * pct : e1rmActual * pct - bodyweightKg));
+  // Branch A — kohde-slotin kuorma toteuma-e1RM:stä. Pct johdetaan SUUNNITELLUSTA
+  // back-off-kuormasta (enginePct = planned[+BW] / canonical), EI vRepsToExpectedPct:stä
+  // suoraan → tämä peilaa täsmälleen enginen oman Branch A -resoluution suhteen riippumatta
+  // siitä käyttikö engine vReps-pct:tä (tier 1/2/3) vai raakaa slot.loadPct:tä (special/tierless).
+  // Pariteetti kaikilla tier-tasoilla; tier 1/2/3:lla identtinen vReps-tulokseen.
+  const planExt = slotIsBarbell ? plannedLoadKg : plannedLoadKg + bodyweightKg;
+  const enginePct = planExt / canonicalE1RMSystem;
+  let derived = roundToHalf(Math.max(0, slotIsBarbell ? e1rmActual * enginePct : e1rmActual * enginePct - bodyweightKg));
 
   // A4 — ärsykelattia KANONISESTA e1RM:stä (ei toteumasta → ei liu'u toteuman mukana).
   const floor = roundToHalf(Math.max(0, slotIsBarbell

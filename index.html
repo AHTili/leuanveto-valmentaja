@@ -12530,9 +12530,13 @@ function bind() {
     state.settings.maxDelta = parseNumericInput($("#set-maxdelta")?.value) || 0.25;
     state.settings.vlStopPercent = parseNumericInput($("#set-vlstop")?.value) || 20;
     // H-017 D1: intra-session-alaspäin-säädön kynnys (% pääsarjan suunnitellusta) + pienin
-    // levyporras (kg). Kumpi suurempi laukaisee. Tyhjä → engine-default (2 % / 2,5 kg).
-    state.settings.intraSessionTriggerPct = parseNumericInput($("#set-intra-triggerpct")?.value) || 2;
-    state.settings.intraSessionPlateStepKg = parseNumericInput($("#set-intra-platestep")?.value) || 2.5;
+    // levyporras (kg). Kumpi suurempi laukaisee. Tyhjä/negatiivinen → engine-default (2 % / 2,5 kg).
+    // 0 % sallittu (atletti=valmentaja: laukaise minkä tahansa levyportaan ylittävällä alituksella);
+    // levyporras vaatii > 0 (0 ei mielekäs). parseNumericInput sallii '-', joten clamp eksplisiittisesti.
+    const _d1Trig = parseNumericInput($("#set-intra-triggerpct")?.value);
+    state.settings.intraSessionTriggerPct = (_d1Trig != null && _d1Trig >= 0) ? _d1Trig : 2;
+    const _d1Plate = parseNumericInput($("#set-intra-platestep")?.value);
+    state.settings.intraSessionPlateStepKg = (_d1Plate != null && _d1Plate > 0) ? _d1Plate : 2.5;
     // v4.38.1 (Phase 2): blokkikohtaiset VL-cap-arvot. Tallennetaan numeerisina;
     // tyhjä → null → engine fallback default-arvoon (VL_CAP_PER_BLOCK).
     state.settings.vlCapFoundation = parseNumericInput($("#set-vlcap-foundation")?.value) ?? 30;
@@ -13186,7 +13190,9 @@ async function startWorkout(backfillDateISO = null) {
         velocityStop: slot.velocityStop ?? null,
         // H-017 D1: barbell-lippu snapshotataan exerciselle jotta intra-session-
         // re-resolve valitsee oikean BW-haaran (barbell ? ×pct : ×pct−BW) ilman
-        // hauraaa runtime slot-lookupia (robusti varianttien/substituutioiden yli).
+        // hauraaa runtime slot-lookupia. HUOM: in-workout-substituutio EI päivitä tätä
+        // lippua, mutta D1-suoja tulee sameMov-portista (substituutio muuttaa name/
+        // movementId → sameMov=false → D1 ei laukea korvatulle liikkeelle).
         isBarbell: slot.isBarbell === true,
         // v4.27.15: AMRAP-kalibrointi-slotin metadata UI:n renderöintiä varten
         isCalibration: slot.isCalibration === true || slot.role === "calibration",
@@ -13733,8 +13739,14 @@ function bindWorkoutEvents() {
           for (let xi = w.currentExerciseIdx + 1; xi < w.exercises.length; xi++) {
             const tx = w.exercises[xi];
             if (!tx || tx === primEx) continue;
-            const sameMov = (primEx.movementId && tx.movementId === primEx.movementId) || tx.name === primEx.name;
-            if (!sameMov || tx.role !== "backoff") continue;
+            if (tx.role !== "backoff") continue;
+            // sameMov: movementId-osuma TAI nimi-osuma TAI fallback-back-offin "(back-off)"-suffiksi
+            // (generateDefaultDayPlan: back-off "X (back-off)" vs primary "X", movementId null → suffiksimatch).
+            const sameMov = (primEx.movementId && tx.movementId === primEx.movementId)
+              || tx.name === primEx.name
+              || (tx.name && primEx.name && tx.name.startsWith(primEx.name + " ("));
+            if (!sameMov) continue;
+            if (tx._intraAdjusted != null) continue; // idempotenssi: ei toista re-resolvea/tracea/toastia
             const txWork = tx.sets.filter(s => !s.isWarmup);
             if (!txWork.length || txWork.some(s => s.completed)) continue; // ei jo aloitettua back-offia
             const refSet = txWork[0];
@@ -13742,7 +13754,6 @@ function bindWorkoutEvents() {
               plannedLoadKg: refSet.plannedLoadKg ?? refSet.loadKg,
               plannedPrimaryMedianKg,
               actualLoads, actualReps, actualVx,
-              slotReps: refSet.targetReps, slotTargetVx: refSet.targetVx,
               slotIsBarbell: tx.isBarbell === true,
               primaryIsBarbell: primEx.isBarbell === true,
               canonicalE1RMSystem: w.sessionEffectiveE1RM,
@@ -13756,6 +13767,7 @@ function bindWorkoutEvents() {
               // A8 trace (KAPSTONI pilari 1 -evidenssi) → decisionTraces-store (fire-and-forget)
               saveDecisionTrace({
                 traceId: uid(),
+                recId: null,
                 kind: "INTRA_SESSION_ADJUST",
                 createdAtISO: new Date().toISOString(),
                 summary: `${tx.name} back-off seuraa päivän toteumaa: ${plannedRef} → ${res.finalLoadKg} kg (toteumamediaani ${res.medianLoad} kg)${res.floorClamped ? " · ärsykelattia" : ""}`,
