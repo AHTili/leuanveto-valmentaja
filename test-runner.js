@@ -15,6 +15,8 @@ import {
   applyMovementSubstitutions,
   // H-016 (2026-06-12): liike-tason paluuramppi
   computeMovementReload,
+  // H-017 D1 (2026-06-14): intra-session-alaspäin-re-resolve (puhdas funktio)
+  resolveIntraSessionAdjustedLoad,
   calibrateMesocycle,
   varaFeedback, varaTrendCorrection,
   // v4.34.34
@@ -797,6 +799,70 @@ function testMovementReload() {
   // Known-neg: ei top-settejä lainkaan → null (uusi liike)
   assert(computeMovementReload([], "Uusi liike", "x", {}, "2026-06-16") === null,
     "H016-T8 (neg): ei ankkurisettejä → null");
+}
+
+// H-017 D1 (intra-session-autoregulaatio v1, VAIN alaspäin): resolveIntraSessionAdjustedLoad.
+// Mittari-ensin (oppi 8): puhdas re-resolve-funktio testataan ENNEN UI-kytkentää.
+// I3-pohja (kyykky 10.6.): pää tehty itse kevennettynä 155×3 V1, back-off tarjosi 158,5×4 V2.
+// Aritmetiikka identtinen recommend()-polun kanssa (e1rmAccessory barbell / e1rmSystem non-barbell
+// + Branch A pct × e1RM [−BW]). Lattia A4 = 0,75 × kanoninen sessionEffectiveE1RM (ratifioitu).
+function testIntraSessionReResolve() {
+  const base = {
+    bodyweightKg: 91, triggerPct: 0.02, plateStepKg: 2.5, floorPct: 0.75,
+    canonicalE1RMSystem: 190.2, slotReps: 4, slotTargetVx: 2,
+    slotIsBarbell: true, primaryIsBarbell: true,
+  };
+  // T1 — I3 known-positive: pää med 155×3V1, back-off 4×V2 → e1RM 175,67 → ×0,8333 = 146,5.
+  //   min(158,5; 146,5) = 146,5 (lattia 142,5 alle → ei clamp).
+  const t1 = resolveIntraSessionAdjustedLoad({ ...base, plannedLoadKg: 158.5, plannedPrimaryMedianKg: 162.5, actualLoads: [155, 155, 155], actualReps: [3, 3, 3], actualVx: [1, 1, 1] });
+  assertEqual(t1.adjusted, true, "H017-T1: I3 → säätö laukeaa (alaspäin)");
+  assertClose(t1.finalLoadKg, 146.5, 0.01, "H017-T1: back-off 158,5 → 146,5 (re-resolve toteumasta)");
+  assertEqual(t1.minBranch, "derived", "H017-T1: min-haara = toteumajohdettu (< suunniteltu)");
+  assertEqual(t1.floorClamped, false, "H017-T1: 146,5 > lattia 142,5 → ei clamp");
+  assert(t1.finalLoadKg <= 155, "H017-T1: back-off ≤ tehty pää (toteumaa seuraava)");
+
+  // T2 — known-negative (A5): toteuma = suunniteltu → ei muutosta.
+  const t2 = resolveIntraSessionAdjustedLoad({ ...base, plannedLoadKg: 158.5, plannedPrimaryMedianKg: 162.5, actualLoads: [162.5], actualReps: [3], actualVx: [1] });
+  assertEqual(t2.adjusted, false, "H017-T2 (neg): toteuma = suunniteltu → ei säätöä");
+
+  // T3 — A3/A5: vahva päivä (toteuma > suunniteltu) → suunniteltu pysyy, ei nostoa.
+  const t3 = resolveIntraSessionAdjustedLoad({ ...base, plannedLoadKg: 158.5, plannedPrimaryMedianKg: 162.5, actualLoads: [167.5], actualReps: [3], actualVx: [1] });
+  assertEqual(t3.adjusted, false, "H017-T3 (A3): vahva päivä → ei nosteta, suunniteltu pysyy");
+
+  // T4 — A4 ärsykelattia: syvä kevennys → derived < lattia → clamp 0,75×190,2 = 142,5 + lippu.
+  const t4 = resolveIntraSessionAdjustedLoad({ ...base, plannedLoadKg: 158.5, plannedPrimaryMedianKg: 162.5, actualLoads: [120], actualReps: [3], actualVx: [0] });
+  assertEqual(t4.floorClamped, true, "H017-T4 (A4): derived < lattia → clamp-lippu");
+  assertClose(t4.finalLoadKg, 142.5, 0.01, "H017-T4 (A4): lattia = 0,75 × kanoninen e1RM = 142,5");
+
+  // T5 — gate 3: levypyöristys-ero (0,5 kg) EI laukaise (kynnys max(planned×2%, 2,5 kg) = 3,17).
+  const t5 = resolveIntraSessionAdjustedLoad({ ...base, plannedLoadKg: 158.5, plannedPrimaryMedianKg: 158.5, actualLoads: [158], actualReps: [4], actualVx: [2] });
+  assertEqual(t5.adjusted, false, "H017-T5 (gate 3): 0,5 kg levypyöristys ei laukaise");
+
+  // T6 — gate 4 anti-tuplakevennys: tulos = min(suunniteltu, re-resolve), EI re-resolve × 0,95.
+  assertClose(t1.finalLoadKg, Math.min(158.5, t1.derivedTarget), 0.01, "H017-T6 (gate 4): tulos = min(suunniteltu, re-resolve)");
+  assert(Math.abs(t1.finalLoadKg - roundToHalf(t1.derivedTarget * 0.95)) > 0.5, "H017-T6 (gate 4): EI near-failure-kerrointa (0,95) toteuman päällä");
+
+  // T7 — H-016-yhteensovitus: reload-kevennetty suunniteltu (135) → min(135; 146,5) = 135,
+  //   D1 ei kumuloi reloadin päälle (minBranch = planned, ei lisäkevennystä).
+  const t7 = resolveIntraSessionAdjustedLoad({ ...base, plannedLoadKg: 135, plannedPrimaryMedianKg: 162.5, actualLoads: [155, 155, 155], actualReps: [3, 3, 3], actualVx: [1, 1, 1] });
+  assertEqual(t7.adjusted, false, "H017-T7 (H-016): reload-suunniteltu jo matalampi → ei lisäkevennystä");
+  assertEqual(t7.minBranch, "planned", "H017-T7 (H-016): min-haara = reload-suunniteltu (ei kumuloidu)");
+
+  // T8 — non-barbell-haara (lisäpainoleuka): e1RM = (BW+load)×(...), derived = e1RM×pct − BW,
+  //   lattia = sysE1RM×0,75 − BW. Varmistaa BW-haaran (engine.js:4156/4199).
+  const t8 = resolveIntraSessionAdjustedLoad({
+    ...base, slotIsBarbell: false, primaryIsBarbell: false,
+    canonicalE1RMSystem: 91 + 85, plannedLoadKg: 50, plannedPrimaryMedianKg: 60,
+    actualLoads: [40], actualReps: [3], actualVx: [1],
+  });
+  // e1RM = (91+40)×(1+4/30)=131×1,1333=148,47; derived=148,47×0,8333−91=123,7−91=32,7→32,5;
+  //   lattia=(176)×0,75−91=132−91=41 → 32,5<41 → clamp 41; min(50;41)=41.
+  assertEqual(t8.floorClamped, true, "H017-T8 (non-barbell): lattia-clamp BW-avaruudessa");
+  assertClose(t8.finalLoadKg, 41, 0.01, "H017-T8 (non-barbell): floor = sysE1RM×0,75 − BW = 41");
+
+  // T9 — esiehto: ei valmiita pääsarjoja → ei säätöä (no-op).
+  const t9 = resolveIntraSessionAdjustedLoad({ ...base, plannedLoadKg: 158.5, plannedPrimaryMedianKg: 162.5, actualLoads: [], actualReps: [], actualVx: [] });
+  assertEqual(t9.adjusted, false, "H017-T9 (esiehto): ei pääsarjoja → no-op");
 }
 
 // H-018 OSA 1 (OBS-040, 2026-06-13): e1RM-kortin kanoninen lähde-lukko.
@@ -4031,6 +4097,8 @@ export async function runTests() {
   testMovementSubstitutions();
   // H-016: liike-tason paluuramppi (detektio + kevennys + toteuma-ramppi + dormantti)
   testMovementReload();
+  // H-017 D1: intra-session-alaspäin-re-resolve (puhdas funktio, mittari-ensin)
+  testIntraSessionReResolve();
   // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
   testE1rmCardCanonicalSource();
   // H-018 OSA 2: katalogi — käsipainopenkki flätti lisätty, ei duplikaattia
