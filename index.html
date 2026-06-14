@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.41" />
+  <meta name="app-version" content="4.52.42" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -1146,6 +1146,8 @@ import {
   failureReaction,
   // v4.34.41
   intraSessionLoadAdjustSuggestion,
+  // H-017 D1: intra-session-alaspäin-re-resolve (puhdas engine-funktio, handler kutsuu)
+  resolveIntraSessionAdjustedLoad,
   accessoryProgression, updateMovementProgressFromSets, initialWeightFrom1RM,
   velocityLossPercent,
   // v4.38.0 (Phase 1C): per-rep MV-grid Behrmann 2025 -caveatille (low-velocity-alue)
@@ -6784,6 +6786,15 @@ function renderActiveWorkout() {
         <span class="vals">${targetReps} ${repsUnit} · ${targetVxStr}</span>
       </div>${vxExplainerHTML}`;
 
+  // H-017 D1: rivitagi kun tämän liikkeen back-off-kuorma on re-resolvoitu seuraamaan
+  // päivän toteumaa (kevyemmät pääsarjat). exercise._intraAdjusted asetetaan btn-next-set-
+  // handlerissa. Ei tutkijanimiä — selkokielinen merkintä atletille.
+  const intraTagHTML = (exercise._intraAdjusted != null && !isWarmupSet)
+    ? `<div class="target-row" style="margin-top:4px">
+        <span class="vals" style="font-size:11px;color:var(--muted)">↓ seuraa päivän toteumaa</span>
+      </div>`
+    : "";
+
   // v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion -kortit primary-työsarjalle.
   // Kortit näkyvät vain primary-roolissa työsarjojen aikana (ei warmupissa). Backward
   // compat: jos rec.suggestions puuttuu (esim. fallback-tilassa), suggCardsHTML on
@@ -6806,6 +6817,7 @@ function renderActiveWorkout() {
     <div class="load-edit-hint">Napauta lukua muokataksesi painoa</div>
     ${prevGhostHTML}
     ${targetRowHTML}
+    ${intraTagHTML}
     ${suggCardsHTML}
   </div>`;
 
@@ -8010,7 +8022,7 @@ function renderMesocycle() {
   // β Round B-α-1.9: näkyvä versio-indikaattori + bullet-merkki fallback-seedissä
   // jotta voidaan visuaalisesti erottaa "vanha cached koodi" vs "uusi koodi + null
   // fallback" tilanteet. Sync MANUAALISESTI sw.js:n APP_VERSION:in kanssa.
-  const _syRenderAppVersion = "4.52.41";
+  const _syRenderAppVersion = "4.52.42";
   const _syRenderBW = state.settings?.bodyweightKg || 91;
   const _syRenderE1rmCache = new Map();
   const _syRenderComputeKg = (slot) => {
@@ -10954,6 +10966,16 @@ function renderSettingsView() {
           <input type="number" id="set-hrvwindow" value="${s.readinessHrvWindowN || 14}">
         </div>
       </div>
+      <div class="row">
+        <div>
+          <label>Back-off-seuranta (%)</label>
+          <input type="number" inputmode="decimal" step="0.5" id="set-intra-triggerpct" value="${s.intraSessionTriggerPct ?? 2}">
+        </div>
+        <div>
+          <label>Levyporras (kg)</label>
+          <input type="number" inputmode="decimal" step="0.5" id="set-intra-platestep" value="${s.intraSessionPlateStepKg ?? 2.5}">
+        </div>
+      </div>
       <div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:6px">
         <label style="margin-top:0;display:flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="set-velocity-enabled" ${s.velocityEnabled ? "checked" : ""} style="width:18px;height:18px">
@@ -12507,6 +12529,10 @@ function bind() {
     state.settings.bodyweightKg = bw || 91;
     state.settings.maxDelta = parseNumericInput($("#set-maxdelta")?.value) || 0.25;
     state.settings.vlStopPercent = parseNumericInput($("#set-vlstop")?.value) || 20;
+    // H-017 D1: intra-session-alaspäin-säädön kynnys (% pääsarjan suunnitellusta) + pienin
+    // levyporras (kg). Kumpi suurempi laukaisee. Tyhjä → engine-default (2 % / 2,5 kg).
+    state.settings.intraSessionTriggerPct = parseNumericInput($("#set-intra-triggerpct")?.value) || 2;
+    state.settings.intraSessionPlateStepKg = parseNumericInput($("#set-intra-platestep")?.value) || 2.5;
     // v4.38.1 (Phase 2): blokkikohtaiset VL-cap-arvot. Tallennetaan numeerisina;
     // tyhjä → null → engine fallback default-arvoon (VL_CAP_PER_BLOCK).
     state.settings.vlCapFoundation = parseNumericInput($("#set-vlcap-foundation")?.value) ?? 30;
@@ -13116,6 +13142,9 @@ async function startWorkout(backfillDateISO = null) {
           targetReps: slot.reps,
           targetVx: setTargetVx,
           loadKg: setLoad,
+          // H-017 D1 gate 1: lukitse suunniteltu kuorma ENNEN kuin manuaalimuokkaus
+          // (#btn-edit-load) voi ylikirjoittaa loadKg:n → D1:n alituksen referenssi + A3 min().
+          plannedLoadKg: setLoad,
           reps: null,
           actualVx: null,
           velocity: null,
@@ -13155,6 +13184,10 @@ async function startWorkout(backfillDateISO = null) {
         // v4.25.1 (Enode): velocity-ankkuripisteet ja zone-kynnys
         allowVelocityInput: slot.allowVelocityInput === true,
         velocityStop: slot.velocityStop ?? null,
+        // H-017 D1: barbell-lippu snapshotataan exerciselle jotta intra-session-
+        // re-resolve valitsee oikean BW-haaran (barbell ? ×pct : ×pct−BW) ilman
+        // hauraaa runtime slot-lookupia (robusti varianttien/substituutioiden yli).
+        isBarbell: slot.isBarbell === true,
         // v4.27.15: AMRAP-kalibrointi-slotin metadata UI:n renderöintiä varten
         isCalibration: slot.isCalibration === true || slot.role === "calibration",
         amrapTargetRange: slot.amrapTargetRange || null,
@@ -13177,6 +13210,7 @@ async function startWorkout(backfillDateISO = null) {
         targetReps: rec?.targetReps || 3,
         targetVx: rec?.targetVx || 2,
         loadKg: rec?.targetExternalLoad,
+        plannedLoadKg: rec?.targetExternalLoad, // H-017 D1 (yhtenäisyys; fallbackilla ei back-offia)
         reps: null,
         actualVx: null,
         velocity: null,
@@ -13218,6 +13252,18 @@ async function startWorkout(backfillDateISO = null) {
         targetVx: sugg.targetVx,
         deltaPct: sugg.deltaPct,
       };
+    })(),
+    // H-017 D1 gate 1: snapshotataan kanoninen sessionEffectiveE1RM (engine.js:5026-5028)
+    // SAMALLA lock-gatella kuin engine (primaryHasLoadPct && targetExternalLoad && e1rmSystem)
+    // → D1 ei laukea kun engine ei lukinnut. Persistoituu savePendingWorkoutLocal-kautta ja
+    // selviää recoverysta (state.recommendation EI restauroidu → REUSE olisi stale).
+    // (Ei e1RM-historiapolku, F-3: vain live-re-resolven ankkuri.)
+    sessionEffectiveE1RM: (() => {
+      const pSlot = rec?.dayPlan?.slots?.find(s => s.role === "primary");
+      const hasLoadPct = pSlot?.loadPct != null && pSlot.loadPct > 0;
+      return (hasLoadPct && rec?.targetExternalLoad != null && rec?.e1rmSystem != null)
+        ? rec.e1rmSystem
+        : null;
     })(),
   };
 
@@ -13659,6 +13705,81 @@ function bindWorkoutEvents() {
         "warn", 4500
       );
     }
+
+    // ── H-017 D1: intra-session-alaspäin-autoregulaatio (VAIN alaspäin) ──
+    // Kun PRIMARYn kaikki työsarjat on kirjattu ja toteutunut mediaanikuorma alittaa
+    // suunnitellun (gate 3 kynnys), saman liikkeen jäljellä olevat back-off-slotit
+    // (ERI exercise-objektit) re-resolvoidaan TOTEUMASTA. Laskenta = puhdas engine-
+    // funktio (resolveIntraSessionAdjustedLoad); tässä kerätään syötteet + sovelletaan
+    // + tracataan. SYNKRONINEN ennen render():iä → näytetty kuorma päivittyy heti.
+    // Gate 4: EI kutsuta near-failure-/failure-logiikkaa back-offille → ei tuplakevennystä
+    // (back-offin OMA near-failure toimii erikseen sen omasta Vx-signaalista).
+    // Scope (prioriteettilinjaus): vain role "backoff" saman liikkeen sisällä —
+    // raskaita openereita (secondary/calibration) ei kosketa.
+    try {
+      const primEx = exercise;
+      if (primEx.role === "primary" && w.sessionEffectiveE1RM != null) {
+        const workSets = primEx.sets.filter(s => !s.isWarmup);
+        const doneWork = workSets.filter(s => s.completed && (s.loadKg ?? 0) > 0);
+        const allWorkDone = workSets.length > 0 && workSets.every(s => s.completed);
+        if (allWorkDone && doneWork.length > 0) {
+          const actualLoads = doneWork.map(s => s.loadKg);
+          const actualReps = doneWork.map(s => s.reps ?? s.targetReps ?? 3);
+          const actualVx = doneWork.map(s => s.actualVx ?? s.targetVx ?? 1);
+          const plannedPrimaryMedianKg = median(doneWork.map(s => s.plannedLoadKg ?? s.loadKg));
+          const bwKg = state.latestBodyweight || state.settings?.bodyweightKg || 91;
+          const triggerPct = (state.settings?.intraSessionTriggerPct ?? 2) / 100;
+          const plateStepKg = state.settings?.intraSessionPlateStepKg ?? 2.5;
+          for (let xi = w.currentExerciseIdx + 1; xi < w.exercises.length; xi++) {
+            const tx = w.exercises[xi];
+            if (!tx || tx === primEx) continue;
+            const sameMov = (primEx.movementId && tx.movementId === primEx.movementId) || tx.name === primEx.name;
+            if (!sameMov || tx.role !== "backoff") continue;
+            const txWork = tx.sets.filter(s => !s.isWarmup);
+            if (!txWork.length || txWork.some(s => s.completed)) continue; // ei jo aloitettua back-offia
+            const refSet = txWork[0];
+            const res = resolveIntraSessionAdjustedLoad({
+              plannedLoadKg: refSet.plannedLoadKg ?? refSet.loadKg,
+              plannedPrimaryMedianKg,
+              actualLoads, actualReps, actualVx,
+              slotReps: refSet.targetReps, slotTargetVx: refSet.targetVx,
+              slotIsBarbell: tx.isBarbell === true,
+              primaryIsBarbell: primEx.isBarbell === true,
+              canonicalE1RMSystem: w.sessionEffectiveE1RM,
+              bodyweightKg: bwKg,
+              triggerPct, plateStepKg, floorPct: 0.75,
+            });
+            if (res.adjusted) {
+              const plannedRef = refSet.plannedLoadKg ?? refSet.loadKg;
+              tx.sets.forEach(s => { if (!s.isWarmup && !s.completed) s.loadKg = res.finalLoadKg; });
+              tx._intraAdjusted = res.finalLoadKg; // C5: rivitagi "↓ seuraa toteumaa"
+              // A8 trace (KAPSTONI pilari 1 -evidenssi) → decisionTraces-store (fire-and-forget)
+              saveDecisionTrace({
+                traceId: uid(),
+                kind: "INTRA_SESSION_ADJUST",
+                createdAtISO: new Date().toISOString(),
+                summary: `${tx.name} back-off seuraa päivän toteumaa: ${plannedRef} → ${res.finalLoadKg} kg (toteumamediaani ${res.medianLoad} kg)${res.floorClamped ? " · ärsykelattia" : ""}`,
+                data: {
+                  movement: tx.name, role: tx.role,
+                  plannedLoadKg: plannedRef,
+                  primaryPlannedMedianKg: plannedPrimaryMedianKg,
+                  primaryActualMedianKg: res.medianLoad,
+                  e1rmActual: res.e1rmActual != null ? Number(res.e1rmActual.toFixed(1)) : null,
+                  derivedTarget: res.derivedTarget,
+                  floorClamped: res.floorClamped,
+                  floorRefE1RM: w.sessionEffectiveE1RM,
+                  floorPct: 0.75,
+                  minBranch: res.minBranch,
+                  finalLoadKg: res.finalLoadKg,
+                  thresholdKg: res.thresholdKg,
+                },
+              }).catch(e => console.warn("[INTRA_SESSION_ADJUST] trace save failed:", e));
+              showToast(`${tx.name}: kuorma seuraa päivän toteumaa ${res.finalLoadKg} kg`, "ok", 3000);
+            }
+          }
+        }
+      }
+    } catch (e) { console.warn("H-017 D1 intra-session-adjust failed:", e); }
 
     // Start rest timer
     startRestTimer();
