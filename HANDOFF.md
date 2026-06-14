@@ -1,7 +1,7 @@
 # HANDOFF.md — aktiivinen Cowork → Code -toimeksianto (H-017 D1)
 
 > Siirretty Cowork-draftista (`HANDOFF_H-017_D1-intra-session-alaspain_DRAFT-COWORK.md`, RATIFIOITU Akseli 2026-06-12) → repon HANDOFF.md 2026-06-13 (kanava b:n akti).
-> **Tila: H-017 — `AKTIIVINEN` (VAIHE A gate RATIFIOITU 2026-06-12 → VAIHE B plan-mode).** PRE-FLIGHT ✏️: HEAD = origin = `48d5a64` = §0 pohja-HEAD ✓, työpuu puhdas, APP_VERSION 4.52.41 ✓. Gate-päätökset §6:ssa, VAIHE A -raportti §7:ssä.
+> **Tila: H-017 — `TOTEUTETTU + PUSHATTU` (VAIHE A+B valmis 2026-06-14, origin `bd79443`, APP_VERSION 4.52.42). Odottaa A6-puhelinverifiointia ennen sulkua+arkistointia.** Gate-päätökset §6:ssa, VAIHE A -raportti + VAIHE B -toteutusraportti §7:ssä. Latentit → OBS-045/046/047.
 > Pohja: docs/OBS-038 PÄÄTÖKSET (DESIGN-D1-linjaus, ratifioitu 10.6.) + I3-mekanismiverdikti (runtime-verifioitu) + R1-EVIDENSSIPOHJA OSA 3 + Akselin design-ratifioinnit 12.6. (§5). **Älä laadi uutta — substanssi ratifioitu.**
 >
 > ✏️ **H-016-TÄSMENNYS (repo voittaa):** H-016 reload on **toteutettu + pushattu + dormantti + PARKISSA** (`git show 3bad610:HANDOFF.md`) — **EI vielä arkistoitu** (odottaa vk 25 dippipaluun live-porttia). Draftin "suljettu" = toteutus valmis; reload-koodi (RELOAD_CONFIG / computeMovementReload) on repossa → D1:n A1-precedence-tarkistus on mahdollinen.
@@ -142,7 +142,7 @@ Annettu (kyykky 10.6., barbell → e1RM ilman BW:tä): pääsarja tehty **155 kg
 
 ### VAIHE B — TOTEUTUS (2026-06-14, ratifioitu plan → toteutus)
 
-**Tila: TOTEUTETTU + automaattisesti verifioitu. Odottaa A6-puhelinverifiointia + push-lupaa.** APP_VERSION 4.52.42. Pohja `48d5a64` → HEAD `d75e208` (5 commitia, EI pushattu). Backup-tagi `backup-pre-h017-3eccdae`.
+**Tila: TOTEUTETTU + PUSHATTU (origin `bd79443`, 2026-06-14). Odottaa A6-puhelinverifiointia ennen sulkua+arkistointia** (analogia: H-016 odottaa vk 25 -liveä). APP_VERSION 4.52.42. Pohja `48d5a64` → `bd79443` (6 commitia pushattu). Backup-tagi `backup-pre-h017-3eccdae`. Latentit → OBS-045/046/047 (backlog). *Distill-opit docs/MEMORY.md:hen vasta A6-kuittauksen jälkeen.*
 
 **Toteutus (per-commit):**
 - `c9424c4` C1+C0 — `resolveIntraSessionAdjustedLoad` (puhdas engine-funktio) + `testIntraSessionReResolve` (T1–T9, mittari-ensin).
@@ -165,6 +165,6 @@ Annettu (kyykky 10.6., barbell → e1RM ilman BW:tä): pääsarja tehty **155 kg
 **Skooppaus + tietoiset rajaukset (v1):**
 - Kohde = vain saman liikkeen role **"backoff"** (handoffin "back-off + volyymislotit"; raskaita openereita secondary/calibration EI kosketa — prioriteettilinjaus "kavenna D1:tä").
 - Laukaisuhetki = primaryn KAIKKI työsarjat valmiit; jos back-off aloitetaan ennen (H-015 järjestysmuutos), D1 no-op (turvallinen).
-- Latentit (eliittiprofiilille tavoittamattomat, A3/A5 absorboi): cold-start-lattia → 0 kun e1RM ≤ BW; floor käyttää live-BW:tä recommend()-BW:n sijaan (sama-session-painomuutos); variant-swap-alas-attribuutio (lopullinen kuorma silti oikea). Ei v1-korjausta.
+- Latentit (eliittiprofiilille tavoittamattomat, A3/A5 absorboi) → **backlogiin OBS-045/046/047** (Akselin ratifiointi 2026-06-14, ei v1-korjausta): **OBS-045** cold-start-lattia → 0 kun e1RM ≤ BW; **OBS-046** floor käyttää live-BW:tä recommend()-BW:n sijaan (sama-session-painomuutos); **OBS-047** variant-swap-alas-attribuutio (lopullinen kuorma silti oikea).
 
 **Seuraava askel:** Akselin (1) puhelinverifiointi A6 — back-off-rivin päivitys + tagi + toast kun pääsarjat tehty kevyemmällä; (2) push-lupa (5 commitia origin/main). **STOP — ei pushia ilman lupaa.**
