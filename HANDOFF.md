@@ -137,3 +137,34 @@ Annettu (kyykky 10.6., barbell → e1RM ilman BW:tä): pääsarja tehty **155 kg
 - **Tulos:** D1 tarjoaisi back-offin **146,5 kg** (oli 158,5; −12 kg), ja 146,5 ≤ 155 (tehty pää) ✓ — back-off seuraa päivän toteumaa.
 
 **A1.5 — KNOWN-NEGATIVE:** atletti tekee suunnitellun täsmälleen (esim. 168×3 V1, target 168) → e1RM_toteuma = 168×1,1333 = 190,4 ≈ suunniteltu 190,2 → back-off re-resolve 158,6 ≈ 158,5 → `min(158,5; 158,6) = 158,5` → **ei muutosta.** A2-kynnys (≥ ~2 % / > pienin levyporras) estää pyöristyskohinan laukaisun.
+
+---
+
+### VAIHE B — TOTEUTUS (2026-06-14, ratifioitu plan → toteutus)
+
+**Tila: TOTEUTETTU + automaattisesti verifioitu. Odottaa A6-puhelinverifiointia + push-lupaa.** APP_VERSION 4.52.42. Pohja `48d5a64` → HEAD `d75e208` (5 commitia, EI pushattu). Backup-tagi `backup-pre-h017-3eccdae`.
+
+**Toteutus (per-commit):**
+- `c9424c4` C1+C0 — `resolveIntraSessionAdjustedLoad` (puhdas engine-funktio) + `testIntraSessionReResolve` (T1–T9, mittari-ensin).
+- `b62db9f` C2–C7 — snapshot (`set.plannedLoadKg` + `state.workout.sessionEffectiveE1RM` + `exercise.isBarbell`) · handler btn-next-set (cross-exercise re-resolve, vain role "backoff") · A8-trace · UI-tagi+toast · config (Asetukset) · APP_VERSION 4.52.42.
+- `d75e208` adversariaalisen review'n korjaukset (4 lensiä, 0 blokkeria).
+
+**Acceptance criteria -tulokset:**
+- **A2 triggeri** ✓ KUORMA-avaruudessa: `(plannedPrimaryMedian − actualMedian) ≥ max(planned×triggerPct, plateStepKg)`. T1/T5.
+- **A3 min()** ✓ `min(plannedLoadKg-snapshot, johdettu)` — ei koskaan nosteta. T1/T3.
+- **A4 lattia** ✓ 0,75 × kanoninen `sessionEffectiveE1RM` (EI toteumasta) + clamp-lippu. T4 = 142,5.
+- **A5 vain alaspäin** ✓ T2/T3 no-op; pilot bittitarkka ei-trigger-poluille.
+- **A6 näkyvyys** ⏳ rivitagi "↓ seuraa päivän toteumaa" + toast — *Akselin puhelinverifiointi* (live-DOM ei CLI:stä, CLAUDE.md §4).
+- **A7 regressio** ✓ pilot 64/64 bittitarkka (recommend() koskematon — D1 vain live-polulla); selaintestit 802/806 (4 ennestään VBT/T9-SAFE, EI H017-regressiota); 17/17 H017-assertiota vihreä.
+- **A8 trace** ✓ `INTRA_SESSION_ADJUST` → decisionTraces (suunniteltu/toteuma/johdettu/lattia/min-haara/kynnys).
+
+**LOAD-DIFF-SWEEP (push-ehto):** D1 ei ole recommend()-input (operoi vain live-workout-tilassa btn-next-set-handlerissa) → rakenteellinen kuorma-neutraalius; pilot pre/post identtinen (71 audit-flagia ennen ja jälkeen). Diffit sallittu vain live-alitus-skenaarioissa joita pilot ei aja.
+
+**Review-korjaukset (d75e208):** pct-agnostinen derived (pariteetti enginen Branch A:n kanssa kaikilla tier-tasoilla) · sameMov-robustius "(back-off)"-suffiksille · idempotenssi-vartija · NaN-suodatus · settings-clamp · trace recId · isBarbell-kommentti.
+
+**Skooppaus + tietoiset rajaukset (v1):**
+- Kohde = vain saman liikkeen role **"backoff"** (handoffin "back-off + volyymislotit"; raskaita openereita secondary/calibration EI kosketa — prioriteettilinjaus "kavenna D1:tä").
+- Laukaisuhetki = primaryn KAIKKI työsarjat valmiit; jos back-off aloitetaan ennen (H-015 järjestysmuutos), D1 no-op (turvallinen).
+- Latentit (eliittiprofiilille tavoittamattomat, A3/A5 absorboi): cold-start-lattia → 0 kun e1RM ≤ BW; floor käyttää live-BW:tä recommend()-BW:n sijaan (sama-session-painomuutos); variant-swap-alas-attribuutio (lopullinen kuorma silti oikea). Ei v1-korjausta.
+
+**Seuraava askel:** Akselin (1) puhelinverifiointi A6 — back-off-rivin päivitys + tagi + toast kun pääsarjat tehty kevyemmällä; (2) push-lupa (5 commitia origin/main). **STOP — ei pushia ilman lupaa.**
