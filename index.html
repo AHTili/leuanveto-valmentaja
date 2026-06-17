@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.42" />
+  <meta name="app-version" content="4.52.43" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -8022,7 +8022,7 @@ function renderMesocycle() {
   // β Round B-α-1.9: näkyvä versio-indikaattori + bullet-merkki fallback-seedissä
   // jotta voidaan visuaalisesti erottaa "vanha cached koodi" vs "uusi koodi + null
   // fallback" tilanteet. Sync MANUAALISESTI sw.js:n APP_VERSION:in kanssa.
-  const _syRenderAppVersion = "4.52.42";
+  const _syRenderAppVersion = "4.52.43";
   const _syRenderBW = state.settings?.bodyweightKg || 91;
   const _syRenderE1rmCache = new Map();
   const _syRenderComputeKg = (slot) => {
