@@ -97,6 +97,8 @@ import {
   cleanupOrphanMesocycles, getAppMeta,
   // H-018 OSA 2 (OBS-041): katalogi-lukko
   PRESET_MOVEMENTS,
+  // OBS-048/049 (2026-06-17): cal-base + top-single-ramppi recommend-pohjainen acceptance
+  createStreetlifting16WMesocycle,
 } from "./data.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -937,6 +939,52 @@ function testCatalogKasipainopenkki() {
     "H018-OSA2-T3: Käsipainopenkki ei ole duplikoitu (oma lisäys integriteetti-puhdas)");
   assertEqual(dupNames.length, 2,
     "H018-OSA2-T3 (pre-existing-lukko): tasan 2 pre-existing dup-nimeä (Hollow body hold, L-sit hold → OBS-044); regressio-vartija ettei uusia synny");
+}
+
+// OBS-048 + OBS-049 (2026-06-17): kuorman-johdon VALMENNUKSELLINEN oikeellisuus.
+// recommend-pohjainen acceptance TIER-TIETOISELLA katalogilla (Takakyykky tier=1 →
+// vReps-override laukeaisi ilman OBS-049-fixiä). HUOM: pilot on SOKEA molemmille
+// (deriveMovementCatalog ei kopioi tieriä → tier=null → override ei laukea) → tämä
+// yksikkötesti on AINOA positiivinen todistus invarianteille (a)/(b).
+async function testLoadDerivationCorrectness() {
+  const meso = createStreetlifting16WMesocycle("2026-01-05");
+  if (meso.streetliftingConfig?.calibration) meso.streetliftingConfig.calibration.kyykkyExtKg = 185; // PR-cap ei sido
+  const byName = {}; for (const m of PRESET_MOVEMENTS) byName[m.name] = m;
+  const seen = new Set(); const catalog = [];
+  for (const wp of meso.weekPlans) for (const d of wp.days) for (const s of d.slots) {
+    const n = s.movementName || s.defaultMovementName; if (!n || seen.has(n)) continue; seen.add(n);
+    const p = byName[n] || {};
+    catalog.push({ movementId: n, name: n, category: p.category || s.category, isPrimary: s.role === "primary", isPreset: true, isCompetitionLift: !!s.competitionLift, loadType: p.loadType || "external", tier: p.tier });
+  }
+  const mkSet = (kg, day) => ({ movementId: "Takakyykky", setRole: "top", externalLoadKg: kg, reps: 3, actualVx: 1, targetVx: 1, timestamp: day + "T18:00:00Z" });
+  async function squatSlots(wk, e1kg) {
+    const sets = [mkSet(e1kg, "2026-02-01"), mkSet(e1kg, "2026-02-08"), mkSet(e1kg, "2026-02-15")];
+    for (let dow = 1; dow <= 7; dow++) {
+      const prim = getTodayPlan(meso, wk, dow)?.slots?.find(s => s.role === "primary");
+      if (!prim || (prim.defaultMovementName || "") !== "Takakyykky") continue;
+      const start = new Date("2026-01-05"); start.setDate(start.getDate() + (wk - 1) * 7 + (dow - 1));
+      const ctx = { settings: { bodyweightKg: 91, e1rmExternalSetting: 185 }, bodyweightKg: 91, dateISO: start.toISOString().slice(0, 10), mesocycle: meso, allMovements: catalog, allSets: sets, sessions: [], readiness: { combined: "GREEN", capLevel: 0, channels: {} }, primaryMovementId: "Takakyykky", dryRun: true };
+      const rec = await recommend(ctx);
+      return (rec.dayPlan?.slots || []).filter(s => (s.defaultMovementName || "") === "Takakyykky");
+    }
+    return [];
+  }
+  // OBS-048 (invariantti a/known-pos): cal-base = kanoninen e1RM (computeMovementE1RMBest),
+  // EI inflatoitu currentE1RMExternal. 165×3V1 → kanoninen 187.0 → cal 187×0.92 = 172.0.
+  assertClose((await squatSlots(8, 165)).find(s => s.role === "calibration")?.resolvedLoadKg, 172.0, 0.01,
+    "OBS-048-T2: vk8 cal-base kanoninen → 187×0.92 = 172.0 (ei inflatoitu 180.5)");
+  assertClose((await squatSlots(8, 160)).find(s => s.role === "calibration")?.resolvedLoadKg, 167.0, 0.01,
+    "OBS-048-T2b: 181.3×0.92 = 167.0 (ei 175)");
+  // OBS-049 (invariantti b): top-single-ramppi materialisoituu — vk10 (loadPct 0.92) ≠ vk11 (0.95).
+  const s10 = (await squatSlots(10, 165)).find(s => s.role === "secondary");
+  const s11 = (await squatSlots(11, 165)).find(s => s.role === "secondary");
+  assert(s10 && s11 && s10.resolvedLoadKg !== s11.resolvedLoadKg,
+    `OBS-049-T4: top-single-ramppi materialisoituu (vk10 ${s10?.resolvedLoadKg} ≠ vk11 ${s11?.resolvedLoadKg}, ei molemmat vReps(2)-litistys)`);
+  assert(s11 && s10 && s11.resolvedLoadKg > s10.resolvedLoadKg,
+    "OBS-049-T4: ramppi NOUSEE loadPct 0.92 → 0.95 mukaisesti");
+  // Known-neg (invariantti d): back-off (reps≥3) säilyy vReps-reitillä (ei loadPct-poikkeusta).
+  assert((await squatSlots(11, 165)).some(s => s.role === "backoff" && s.reps >= 3),
+    "OBS-049-T6 (known-neg): back-off reps≥3 säilyy (vReps-reitti, ei top-single-poikkeus)");
 }
 
 function testCalibration() {
@@ -4157,6 +4205,8 @@ export async function runTests() {
   await testSp2SlotLoadInvariant();
   // F-3 Koti=live -guard (value-resolution-audit A2): apuliike live = preview (kanoninen e1RM × loadPct)
   await testKotiEqualsLiveAccessory();
+  // OBS-048/049: cal-base kanoninen + top-single-ramppi (kuorman valmennuksellinen oikeellisuus)
+  await testLoadDerivationCorrectness();
   await testBackupRoundtrip();
   // v4.34.45: mesosykli-historia + uudelleen-aktivointi
   await testMesocycleHistoryActivation();
