@@ -5142,10 +5142,12 @@ async function recommend(options = {}) {
       if (slot.loadPct === undefined || slot.loadPct === null || slot.loadPct <= 0) continue;
 
       // v4.34.15 FIX #2: CALIBRATION-SLOT RESOLVER + PR-CAP.
-      // Cal-päivissä ei ole primary-slottia (kaikki role:"calibration"), joten Haara A ei laukea.
-      // Cal-load = pct × currentE1RMExternal (jos sama liike) JA capattu PR × 1.025 (turva).
-      // Fix #1 (e1RM-inflaatiocap) on jo rajoittanut currentE1RMExternalia, joten cal-load
-      // on luonnollisesti turvarajoissa, mutta lisätään silti eksplisiittinen PR-cap defenseksi.
+      // HUOM (OBS-048-korjaus 2026-06-17): aiempi premissi "cal-päivissä ei ole primarya"
+      // oli VANHENTUNUT ja piilotti OBS-048:n: vk4 puhdas cal-päivä = ei primarya
+      // (config-PR-fallback), MUTTA vk8/vk12 cal-päivä rakentaa primaryn + cal-slotin
+      // SAMALLA liikkeellä (tiDay/maDay/toDay) → primaryMovementName===calMovName.
+      // Cal-load = loadPct × KANONINEN e1RM (computeMovementE1RMBest, sama kuin kortti) JA
+      // capattu PR × 1.025 (turva). Kanoninen base eliminoi streak/ceiling/PLAN_BASED-inflaation.
       if (slot.role === "calibration" &&
           !slot.loadPctReferenceMovementName &&
           slot.defaultMovementName) {
@@ -5156,13 +5158,37 @@ async function recommend(options = {}) {
                         : calMovName === "Lisäpainodippi"     ? cfg.dippiExtKg
                         : calMovName === "Takakyykky"          ? cfg.kyykkyExtKg
                         : null;
-        // Jos cal-liike == primary-liike (joka ohjaa currentE1RMExternalia), käytä sitä
+        // OBS-048 (2026-06-17): cal-base = KANONINEN e1RM (computeMovementE1RMBest),
+        // SAMA funktio + SAMA set-suodatin kuin e1RM-kortti (index.html:5910). Kalibrointi
+        // MITTAA e1RM:ää → se ei saa kantaa progressio-bonusta. Aiempi calBaseE1RM =
+        // currentE1RMExternal saattoi divergoida kanonisesta 7 inflaatiolähteellä
+        // (PLAN_BASED, ceiling/streak-bonus, cal-derived ×1,05, floor, cfg-drift, VBT, primer)
+        // → suunniteltu 0,92 cal resolvoitui jopa 0,966:een (Akselin vk8: 187×1,05×0,92=180,5).
+        // Kanoninen lähde eliminoi KAIKKI 7 yhdellä yhtäsuuruudella + poistaa F-3-display-
+        // epäsuhdan (cal-base ≡ kortti). Cal-scope B: kaikki cal-liikkeet kanoniseen; config-PR
+        // vain Best===null -fallbackina (ei historiaa). Streak-bonus säilyy normaalissa
+        // autoregulaatiossa (työsarjat, Branch A) — vain cal-base puhdistuu.
         let calBaseE1RM = null;
-        if (primaryMovementName === calMovName && currentE1RMExternal !== null) {
-          calBaseE1RM = currentE1RMExternal;
-        } else if (initialPR && initialPR > 0) {
-          // Muuten käytä konfiguroitu PR (cal-liike voi olla eri kuin primary tällä päivällä)
+        let calBaseSource = null;
+        const calMovObj = (primaryMovementName === calMovName && primaryMovement)
+          ? primaryMovement
+          : allMovementsForTier.find(m => m.name === calMovName);
+        if (calMovObj && calMovObj.movementId) {
+          // Kortin (index.html:5910) tarkka suodatin → bittitarkka invariantti cal-base ≡ kortti.
+          const calMovSets = allSets.filter(s =>
+            s.movementId === calMovObj.movementId && (s.externalLoadKg || 0) > 0 && s.reps >= 1);
+          const canon = computeMovementE1RMBest(calMovSets, sessions, mesocycle, calMovObj, bodyweightKg);
+          if (canon && canon.value != null && canon.value > 0) {
+            // computeMovementE1RMBest: barbell→ext, system-load→system(+BW). Cal-kaava (alla)
+            // odottaa EXTERNAL-yksikköä → system-load-liikkeelle vähennä BW.
+            calBaseE1RM = isSystemLoadMovement(calMovObj) ? Math.max(0, canon.value - bodyweightKg) : canon.value;
+            calBaseSource = "canonical-best:" + canon.source;
+          }
+        }
+        if (calBaseE1RM === null && initialPR && initialPR > 0) {
+          // Fallback (ei historiaa / liikettä ei löydy): konfiguroitu PR. EI kanna streak-bonusta.
           calBaseE1RM = initialPR;
+          calBaseSource = "config-PR";
         }
         if (calBaseE1RM !== null) {
           // v4.51.x loadpct-fix: cal-load lasketaan system-pohjaisesti non-barbellille
@@ -5181,7 +5207,7 @@ async function recommend(options = {}) {
           trace("SLOT_LOAD_RESOLVED_CAL",
             { slotRole: slot.role, slotMovement: calMovName },
             { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct,
-              baseE1RM: calBaseE1RM.toFixed(1), PR: initialPR, prCapped, isBarbell: slotIsBarbell },
+              baseE1RM: calBaseE1RM.toFixed(1), baseSource: calBaseSource, PR: initialPR, prCapped, isBarbell: slotIsBarbell },
             `${calMovName} cal: ${(slot.loadPct*100).toFixed(0)}% × ${calBaseE1RM.toFixed(1)} kg = ${slot.resolvedLoadKg} kg${prCapped ? ` (PR-cap = ${initialPR}×1.025)` : ""}`);
           continue;
         }
@@ -5206,7 +5232,17 @@ async function recommend(options = {}) {
         }
         let slotPctForResolveA = slot.loadPct;
         let slotResolveSourceA = "loadPct";
-        if (typeof slotTierA === "number" && (slotTierA === 1 || slotTierA === 2 || slotTierA === 3)) {
+        // OBS-049 (2026-06-17): TOP SINGLE / OPENER (reps===1) säilyttää OHJELMOIDUN
+        // slot.loadPct:n — vReps-override koskee VAIN multi-rep back-offia (reps≥3).
+        // Aiemmin vReps(reps+Vx) korvasi loadPct:n KAIKILLE tier-1/2/3 same-liike-sloteille
+        // → top single 1×1@V1 → vReps(2)=0,9375 KAIKILLE → ohjelmoitu loadPct-ramppi
+        // (vk10 0,92 → vk11 0,95) katosi jokaisella tier-1-atleetilla (sweep: squat/leuka/dippi).
+        // Top singlen loadPct ON jo reps-appropriaatti (1-rep intensiteetti) → respektoidaan se.
+        // !attemptsPct suojaa tulevat kisa-attempt-slotit (supra-maksimaaliset openerit).
+        // Verifioitu: kaikki back-offit reps≥3, kaikki top singlet/openerit reps===1.
+        const isTopSingle = slot.reps === 1 && !slot.attemptsPct;
+        if (!isTopSingle &&
+            typeof slotTierA === "number" && (slotTierA === 1 || slotTierA === 2 || slotTierA === 3)) {
           const slotMaxReps = (slot.reps ?? 0) + (slot.targetVx ?? 0);
           const slotExpectedPct = vRepsToExpectedPct(slotMaxReps);
           if (slotExpectedPct !== null) {
