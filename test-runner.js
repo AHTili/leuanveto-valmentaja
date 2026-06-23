@@ -914,6 +914,31 @@ function testE1rmCardCanonicalSource() {
     `H018-T3 (known-neg): kaikki raskaita → Best ${bestHeavy.value?.toFixed(1)} > 130 (ei näyttömuutosta terveellä datalla)`);
 }
 
+// OBS-051: kortti-funktion (computeMovementE1RMBest) PLAN_BASED-gate. Inkonsistentti
+// loadPct (volyymi-label 0.58 « vReps(7)=0.81) EI saa inflatoida korttia (140/0.58=241)
+// → median-fallback. Estää kortti-vs-live-divergenssin (F-3) + cal-base-re-inflaation.
+function testE1rmCardPlanBasedGate() {
+  const mov = { name: "Takakyykky", category: "alaraaja", loadType: "external", isPrimary: true, tier: 1 };
+  const sessions = [{ sessionId: "s1", dateISO: "2026-04-20" }];
+  const build = (loadPct, reps, vx, load) => ({
+    meso: {
+      mesocycleId: "m", type: "streetlifting_16w", startDateISO: "2026-04-20", weekCount: 16,
+      weekPlans: [{ week: 1, days: [{ dayOfWeek: 1, slots: [{ role: "primary", defaultMovementName: "Takakyykky", sets: 3, reps, targetVx: vx, loadPct }] }] }],
+    },
+    sets: Array.from({ length: 3 }, (_, i) => ({ setId: "x" + i, sessionId: "s1", movementId: "sq", movementName: "Takakyykky", setRole: "top", externalLoadKg: load, reps, actualVx: vx, targetVx: vx, targetReps: reps, timestamp: "2026-04-20T17:00:00Z" })),
+  });
+  // GATE: inkonsistentti 0.58 (3×3@V4, vReps(7)=0.811) → median, EI plan-based 241
+  const inc = build(0.58, 3, 4, 140);
+  const bestInc = computeMovementE1RMBest(inc.sets, sessions, inc.meso, mov, 89);
+  assert(bestInc.source === "median" && bestInc.value < 200,
+    `OBS-051 kortti-gate: inkonsistentti loadPct 0.58 → source=median (~172.7), EI plan-based 241 — got ${bestInc.source} ${bestInc.value?.toFixed(1)}`);
+  // KNOWN-NEG: consistent 0.85 (4×3@V2, vReps(5)=0.857) → PLAN_BASED laukeaa edelleen
+  const con = build(0.85, 3, 2, 150);
+  const bestCon = computeMovementE1RMBest(con.sets, sessions, con.meso, mov, 89);
+  assert(bestCon.source === "plan-based",
+    `OBS-051 kortti-gate known-neg: consistent loadPct 0.85 → PLAN_BASED laukeaa (150/0.85=176.5) — got ${bestCon.source}`);
+}
+
 // H-018 OSA 2 (OBS-041, 2026-06-13): katalogi-lukko — käsipainopenkki flätti
 // lisätty PRESET_MOVEMENTS:iin. ensureNewPresetMovements surface'aa sen
 // olemassa oleviin asennuksiin nimi-pohjaisella dedupilla → nimien uniikkius
@@ -4192,6 +4217,7 @@ export async function runTests() {
   testIntraSessionReResolve();
   // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
   testE1rmCardCanonicalSource();
+  testE1rmCardPlanBasedGate();
   // H-018 OSA 2: katalogi — käsipainopenkki flätti lisätty, ei duplikaattia
   testCatalogKasipainopenkki();
   testCalibration();

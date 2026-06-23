@@ -282,6 +282,20 @@ function vRepsToExpectedPct(maxReps) {
 // 0.71/0.78 (alitus 7–8 % < 15 %). Deflatoiva loadPct > vReps saa edetä (konservatiivinen).
 const PLAN_BASED_VX_TOL = 0.15;
 
+// OBS-051: jaettu loadPct-Vx-johdonmukaisuus-tarkistus. Sovelletaan KAIKISSA kolmessa
+// PLAN_BASED-sijainnissa (recommend() inline, computeMovementE1RMBest-kortti,
+// computePerfectStreakCeilingBonus) ettei kortti/live/streak divergoi (F-3).
+// true = loadPct on Vx-johdonmukainen (kelpaa tosi-%1RM-ankkuriksi PLAN_BASED:ille);
+// false = volyymi-/back-off-label joka ALITTAA Vx-intensiteetin → load/loadPct inflatoisi.
+// Yksisuuntainen: deflatoiva loadPct (> vReps) palauttaa true (saa edetä, konservatiivinen).
+// null reps/Vx (esim. Wendler 5/3/1, Muscle-up skill-vaihe) → true (fail-open; set-tason
+// perfect-execution-esiehto vaatii targetVx!==null jokaiselta lokisetiltä erikseen).
+function isLoadPctVxConsistent(loadPct, slotReps, slotVx) {
+  const vxImplied = (slotReps != null && slotVx != null)
+    ? vRepsToExpectedPct(slotReps + slotVx) : null;
+  return vxImplied === null || loadPct >= vxImplied * (1 - PLAN_BASED_VX_TOL);
+}
+
 /**
  * H-017 D1 — intra-session-autoregulaatio v1 (VAIN alaspäin).
  *
@@ -551,6 +565,9 @@ function computePerfectStreakCeilingBonus(topSets, sessions, mesocycle, isBarbel
     const primarySlot = dayPlan?.slots?.find(s => s.role === 'primary');
     const loadPct = primarySlot?.loadPct;
     if (!loadPct || loadPct <= 0 || loadPct > 1.0) break;
+    // OBS-051: inkonsistentti loadPct (volyymi-label joka alittaa Vx-intensiteetin) ei
+    // kelpaa kasvun todisteeksi → streak päättyy (ei väärää ceiling-bonusta).
+    if (!isLoadPctVxConsistent(loadPct, primarySlot?.reps, primarySlot?.targetVx)) break;
 
     // PLAN_BASED-e1RM tämän session medianloadista
     const loads = sets.map(x => x.externalLoadKg).filter(v => v > 0);
@@ -721,8 +738,11 @@ function computeCfgDrift(topSets, sessions, mesocycle, isBarbell, bodyweightKg, 
     const wk = getMesocycleWeek(mesocycle, dateISOSess);
     const dow = new Date(dateISOSess).getDay() || 7;
     const dayPlan = (wk != null) ? mesocycle.weekPlans?.[wk - 1]?.days?.find(d => d.dayOfWeek === dow) : null;
-    const loadPct = dayPlan?.slots?.find(s => s.role === 'primary')?.loadPct;
+    const primSlotDrift = dayPlan?.slots?.find(s => s.role === 'primary');
+    const loadPct = primSlotDrift?.loadPct;
     if (!loadPct || loadPct <= 0 || loadPct > 1.0) break;
+    // OBS-051: inkonsistentti loadPct (volyymi-label) ei kelpaa cfg-drift-todisteeksi.
+    if (!isLoadPctVxConsistent(loadPct, primSlotDrift?.reps, primSlotDrift?.targetVx)) break;
 
     // PLAN_BASED-e1RM
     const loads = sets.map(x => x.externalLoadKg).filter(v => v > 0);
@@ -4428,17 +4448,14 @@ async function recommend(options = {}) {
         const lastLoadPct = lastPrimarySlot?.loadPct;
 
         // OBS-051: PLAN_BASED luottaa loadPct:hen tosi-%1RM-ankkurina. Hyväksy vain
-        // Vx-johdonmukainen loadPct; alittava (volyymi-/back-off-label) → skippaa → Epley-Vara säilyy.
-        const vxImpliedPct = (lastPrimarySlot?.reps != null && lastPrimarySlot?.targetVx != null)
-          ? vRepsToExpectedPct(lastPrimarySlot.reps + lastPrimarySlot.targetVx)
-          : null;
-        const loadPctVxConsistent = vxImpliedPct === null
-          || lastLoadPct >= vxImpliedPct * (1 - PLAN_BASED_VX_TOL);
+        // Vx-johdonmukainen loadPct (jaettu helper); alittava volyymi-label → skippaa.
+        const loadPctVxConsistent = isLoadPctVxConsistent(lastLoadPct, lastPrimarySlot?.reps, lastPrimarySlot?.targetVx);
         if (lastLoadPct && lastLoadPct > 0 && lastLoadPct <= 1.0 && !loadPctVxConsistent) {
+          const vxImpliedPct = vRepsToExpectedPct((lastPrimarySlot?.reps ?? 0) + (lastPrimarySlot?.targetVx ?? 0));
           trace("PLAN_BASED_VX_GATED",
             { e1rmExternal: currentE1RMExternal?.toFixed(1), source: "epley-vara" },
             { lastLoadPct, vxImpliedPct: vxImpliedPct?.toFixed(3), reps: lastPrimarySlot.reps, targetVx: lastPrimarySlot.targetVx },
-            `PLAN_BASED ohitettu: loadPct ${lastLoadPct} alittaa Vx-intensiteetin ${(vxImpliedPct*100).toFixed(0)}% (volyymi-label, ei tosi-%1RM) → Epley-Vara ${currentE1RMExternal?.toFixed(1)} kg säilyy`);
+            `PLAN_BASED ohitettu: loadPct ${lastLoadPct} alittaa Vx-intensiteetin ${((vxImpliedPct ?? 0)*100).toFixed(0)}% (volyymi-label, ei tosi-%1RM) → Epley-Vara ${currentE1RMExternal?.toFixed(1)} kg säilyy`);
         }
 
         if (lastLoadPct && lastLoadPct > 0 && lastLoadPct <= 1.0 && loadPctVxConsistent) {
@@ -6650,14 +6667,21 @@ function computeMovementE1RMBest(movementSets, sessions, mesocycle, movement, bo
             const lastDayPlan = (lastWk !== null) && mesocycle.weekPlans?.[lastWk - 1]?.days?.find(d => d.dayOfWeek === lastDow);
             // Etsi slot joka match-aa tämän liikkeen — primary VAI cross-ref
             let lastLoadPct = null;
+            let lastSlotReps = null, lastSlotVx = null;
             if (lastDayPlan?.slots) {
               const matchSlot = lastDayPlan.slots.find(s =>
                 s.defaultMovementName === movement.name
                 || s.loadPctReferenceMovementName === movement.name
               );
               lastLoadPct = matchSlot?.loadPct;
+              lastSlotReps = matchSlot?.reps;
+              lastSlotVx = matchSlot?.targetVx;
             }
-            if (lastLoadPct && lastLoadPct > 0 && lastLoadPct <= 1.0) {
+            // OBS-051: sama loadPct-Vx-gate kuin recommend()/streak — kortti EI saa
+            // inflatoitua eri tavalla kuin live (F-3). Inkonsistentti loadPct (volyymi-label
+            // joka alittaa Vx-intensiteetin) → median-fallback (= sama kuin gatattu live).
+            if (lastLoadPct && lastLoadPct > 0 && lastLoadPct <= 1.0
+                && isLoadPctVxConsistent(lastLoadPct, lastSlotReps, lastSlotVx)) {
               const lastMedianLoad = median(lastSessionSets.map(s => s.externalLoadKg).filter(v => v > 0));
               if (lastMedianLoad && lastMedianLoad > 0) {
                 // Vx-overshoot bonus (sama kuin recommend():ssa)
