@@ -296,6 +296,31 @@ function isLoadPctVxConsistent(loadPct, slotReps, slotVx) {
   return vxImplied === null || loadPct >= vxImplied * (1 - PLAN_BASED_VX_TOL);
 }
 
+// OBS-052 (2026-06-18): SESSIO-tasoinen cal-tunnistus = rakenteellinen periaate "luotettavin
+// signaali ohjaa". Cal AJAA e1RM:ää (ei jää lattiarooliin) kun se on VIIMEISIMMÄSSÄ sessiossa —
+// riippumatta montako työsarjaa tehdään sen JÄLKEEN samassa sessiossa. Korvaa hauraan
+// "cal viim. 3 SARJAN joukossa" -ikkunan (kukistuu cal-ensin-järjestyksestä → deload-sarjat
+// ajavat mediaanin → cal 187 jää lattiaksi ×0,95 → Vx-epäjohdonmukainen kuorma).
+// Liike-agnostinen. Jaettu recommend() + computeMovementE1RMBest (kortti) → F-3-koherenssi.
+// ORDER-IMMUUNI: etsii sessio jonka uusin set (MAX timestamp) on suurin — EI taulukon häntää.
+// Kriittinen: kortti-kutsujat (index.html state.allSets) syöttävät LAJITTELEMATTOMAN datan
+// (IndexedDB getAll = satunnainen crypto.randomUUID-avainjärjestys) → taulukon-häntä-skannaus
+// olisi epädeterministinen (rikkoisi F-3 kortti==live + H018-T2 insertion-order-robustin).
+function mostRecentSessionCalibSets(sets) {
+  if (!sets || sets.length === 0) return [];
+  let lastSessionId = null, lastTime = -Infinity;
+  for (const s of sets) {
+    if (s.sessionId == null || !s.timestamp) continue;
+    const t = new Date(s.timestamp).getTime();
+    if (t > lastTime) { lastTime = t; lastSessionId = s.sessionId; }
+  }
+  if (lastSessionId == null) {
+    return [...sets].sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""))
+      .slice(-3).filter(s => s.setRole === "calibration");
+  }
+  return sets.filter(s => s.sessionId === lastSessionId && s.setRole === "calibration");
+}
+
 /**
  * H-017 D1 — intra-session-autoregulaatio v1 (VAIN alaspäin).
  *
@@ -1684,6 +1709,19 @@ function computeMovementReload(allSets, movementName, movementId, mesocycle, dat
   // TILA 2: ramppi käynnissä — tauko löytyi historiasta ja paluusessioita on
   // tehty vähemmän kuin rampSessions → seuraava porras TOTEUMASTA (§6.3).
   if (breakIdx >= 0) {
+    // OBS-052 KERROS 2: tuore CAL paluujaksolla = re-entry-testi (luotettavin signaali,
+    // DiStasio ±2.7 kg) → OHITTAA break-rampin. Jos atletti on kalibroinut tauon JÄLKEEN,
+    // hän on jo mitannut nykykapasiteetin → graduaali ramppi (kohti vanhaa tauon-edeltävää
+    // kuormaa) on väärä ja sekoittava; cal ajaa (KERROS 1) ja normaali progressio jatkuu.
+    // Liike-agnostinen. Reunaehto: ei avaa velocity-raakaa — vain cal-setRole ohittaa.
+    // Vertaa cal-aikaleimaa tauon-EDELTÄVÄN session aikaan (preBreak): kattaa myös cal-ONLY-
+    // paluusession (jossa ei top-sarjaa → ei sessTimes:issä). preBreak < cal (vaikka cal tehdään
+    // sessiossa ennen topeja, se on silti tauon jälkeen) → robusti molemmille.
+    const preBreakTime = sessTimes[breakIdx - 1].t;
+    const hasCalSinceBreak = allSets.some(s => s.movementId === movementId
+      && s.setRole === "calibration" && s.timestamp
+      && new Date(s.timestamp).getTime() > preBreakTime);
+    if (hasCalSinceBreak) return null; // cal re-entry → ei rampppia, cal-ajava progressio
     const returnSessions = sessTimes.length - breakIdx; // tauon jälkeen toteutuneet
     if (returnSessions < RELOAD_CONFIG.rampSessions) {
       const anchorKg = sessTimes[breakIdx - 1].medianLoad; // tauon-edeltävä
@@ -4302,15 +4340,14 @@ async function recommend(options = {}) {
   //   - CNS-kuorma matalampi → deload-viikolla turvallisempi
   //   - actualVx-fallback: ?? targetVx ?? 1 (yhdenmukainen e1RM-laskennan kanssa)
   //
-  // Ikkunat:
-  //   • Kalibrointi viim. 3 topissa → override (tuore kalibrointi hallitsee)
-  //   • Vanhempi kalibrointi       → takaisin mediaaniin (strength changes
-  //                                   drift + uutta data kertyy)
+  // Ikkunat (OBS-052):
+  //   • Kalibrointi VIIM. SESSIOSSA → override (tuore kalibrointi hallitsee, ei
+  //     työnny ulos vaikka jälkeen tehtäisiin ≥3 työsarjaa samassa sessiossa)
+  //   • Vanhempi kalibrointi (ei viim. sessiossa) → takaisin mediaaniin
   //
   // Backward compat: vanhat V0-AMRAP-kalibroinnit toimivat edelleen
   //   (s.actualVx === 0 → vara = 0 → puhdas Epley).
-  const last3Sets = recentTopSets.slice(-3);
-  const recentCalibSets = last3Sets.filter(s => s.setRole === "calibration");
+  const recentCalibSets = mostRecentSessionCalibSets(recentTopSets);
   let currentE1RMSystem;
   let e1rmSource = "median";
   if (recentCalibSets.length > 0) {
@@ -6608,8 +6645,9 @@ function computeMovementE1RMBest(movementSets, sessions, mesocycle, movement, bo
   // v4.35.3: yksikkö-yhteensopivuus — palauta SAMA yksikkö kuin computeMovementE1RM:
   //   barbell → ext (e1rmAccessory output)
   //   system-load → system (e1rmSystem output, sis. bodyweight)
-  const calSets = movementSets.filter(s => s.setRole === "calibration");
-  const recentCalSets = calSets.slice(-3);
+  // OBS-052: SESSIO-tasoinen cal-tunnistus (sama helper kuin recommend → F-3-koherenssi).
+  // Aiemmin calSets.slice(-3) laukesi MILLE TAHANSA cal-historialle; nyt vain viim. sessio ajaa.
+  const recentCalSets = mostRecentSessionCalibSets(movementSets);
   if (recentCalSets.length > 0) {
     const calE1RMs = recentCalSets.map(s => {
       const vara = s.actualVx ?? s.targetVx ?? 1;
@@ -7167,8 +7205,10 @@ async function recommendPeaking(options = {}) {
     .filter(v => v !== null);
 
   // v4.27.15: Calibration override — ks. recommend()-pääpolun kommentti.
-  const peakingLast3Sets = recentTopSets.slice(-3);
-  const peakingCalibSets = peakingLast3Sets.filter(s => s.setRole === "calibration");
+  // OBS-052: SESSIO-tasoinen cal-tunnistus (3. LIVE-e1RM-source-sijainti, sama helper kuin
+  // recommend() + kortti → F-3-koherenssi peaking-mesosyklissä). Aiemmin slice(-3) kukistui
+  // cal-ensin-järjestyksestä kuten pääpolussa.
+  const peakingCalibSets = mostRecentSessionCalibSets(recentTopSets);
   let currentE1RMSystem;
   if (peakingCalibSets.length > 0) {
     const calibE1rms = peakingCalibSets.map(s => {

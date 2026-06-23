@@ -939,6 +939,49 @@ function testE1rmCardPlanBasedGate() {
     `OBS-051 kortti-gate known-neg: consistent loadPct 0.85 → PLAN_BASED laukeaa (150/0.85=176.5) — got ${bestCon.source}`);
 }
 
+// OBS-052 KERROS 1: cal AJAA e1RM:ää kun se on VIIM. SESSIOSSA (vaikka jälkeen ≥3 työsarjaa
+// samassa sessiossa) + ORDER-IMMUUNI (kortti saa lajittelemattoman state.allSets:in → ei saa
+// olla järjestys-riippuvainen, lukitsee H018-T2). Aiemmin slice(-3) pudotti cal:in → median.
+function testE1rmCardCalDriverOrderIndep() {
+  const mov = { name: "Takakyykky", category: "alaraaja", loadType: "external", isPrimary: true, tier: 1 };
+  const sessions = [{ sessionId: "s-old", dateISO: "2026-05-30" }, { sessionId: "s-cal", dateISO: "2026-06-16" }];
+  // Viim. sessio (s-cal, 06-16): cal 165×3@V1 (e1RM 187) ENSIN + 4× työsarja 140×3@V4 (e1RM 172.7) jälkeen.
+  const calSet = { setId: "c1", sessionId: "s-cal", movementId: "sq", movementName: "Takakyykky", setRole: "calibration", externalLoadKg: 165, reps: 3, actualVx: 1, targetVx: 1, timestamp: "2026-06-16T17:00:00Z" };
+  const workSets = Array.from({ length: 4 }, (_, i) => ({ setId: "w" + i, sessionId: "s-cal", movementId: "sq", movementName: "Takakyykky", setRole: "top", externalLoadKg: 140, reps: 3, actualVx: 4, targetVx: 4, targetReps: 3, timestamp: `2026-06-16T17:${10 + i}:00Z` }));
+  const oldSet = { setId: "o1", sessionId: "s-old", movementId: "sq", movementName: "Takakyykky", setRole: "top", externalLoadKg: 155, reps: 4, actualVx: 2, targetVx: 2, timestamp: "2026-05-30T17:00:00Z" };
+  const sorted = [oldSet, calSet, ...workSets];
+  const best = computeMovementE1RMBest(sorted, sessions, null, mov, 89);
+  // Cal ajaa (187), EI mediaani (172.7) — cal viim. sessiossa vaikka 4 työsarjaa jälkeen
+  assert(best.source === "cal" && Math.abs(best.value - 187) < 0.5,
+    `OBS-052: cal AJAA e1RM:ää viim. sessiosta (165×3@V1=187), ei mediaani — got ${best.source} ${best.value?.toFixed(1)}`);
+  // ORDER-IMMUUNI: sekoitettu + käännetty syöte → SAMA tulos (kortti saa lajittelemattoman datan)
+  const reversed = [...sorted].reverse();
+  const shuffled = [workSets[2], oldSet, calSet, workSets[0], workSets[3], workSets[1]];
+  const bR = computeMovementE1RMBest(reversed, sessions, null, mov, 89);
+  const bU = computeMovementE1RMBest(shuffled, sessions, null, mov, 89);
+  assert(bR.value === best.value && bU.value === best.value && bR.source === "cal" && bU.source === "cal",
+    `OBS-052: kortti ORDER-IMMUUNI (H018-T2) — sorted/reversed/shuffled = ${best.value?.toFixed(1)}/${bR.value?.toFixed(1)}/${bU.value?.toFixed(1)}`);
+}
+
+// OBS-052 KERROS 2: tuore cal paluujaksolla ohittaa break-rampin (computeMovementReload → null).
+function testReloadCalOverride() {
+  // Tauko: 05-25 → 06-16 (22 pv ≥ threshold). 06-16 = paluusessio jossa cal + top.
+  const sets = [
+    { setId: "a", sessionId: "s1", movementId: "sq", setRole: "top", externalLoadKg: 150, reps: 4, actualVx: 2, timestamp: "2026-05-25T17:00:00Z" },
+    { setId: "cal", sessionId: "s2", movementId: "sq", setRole: "calibration", externalLoadKg: 165, reps: 3, actualVx: 1, timestamp: "2026-06-16T17:00:00Z" },
+    { setId: "b", sessionId: "s2", movementId: "sq", setRole: "top", externalLoadKg: 140, reps: 3, actualVx: 4, timestamp: "2026-06-16T17:10:00Z" },
+  ];
+  const sessions = [{ sessionId: "s1", dateISO: "2026-05-25" }, { sessionId: "s2", dateISO: "2026-06-16" }];
+  // KNOWN-POS: cal paluujaksolla → null (ei rampppia)
+  const withCal = computeMovementReload(sets, "Takakyykky", "sq", { weekPlans: [] }, "2026-06-20");
+  assert(withCal === null,
+    `OBS-052 KERROS 2: cal paluujaksolla → computeMovementReload null (ei break-ramppia) — got ${JSON.stringify(withCal)?.slice(0, 60)}`);
+  // KNOWN-NEG: sama ilman calia → ramppi laukeaa (ei null)
+  const noCal = computeMovementReload(sets.filter(s => s.setRole !== "calibration"), "Takakyykky", "sq", { weekPlans: [] }, "2026-06-20");
+  assert(noCal !== null && noCal.phase === "ramp",
+    `OBS-052 KERROS 2 known-neg: ilman calia ramppi laukeaa — got ${noCal === null ? "null" : noCal.phase}`);
+}
+
 // H-018 OSA 2 (OBS-041, 2026-06-13): katalogi-lukko — käsipainopenkki flätti
 // lisätty PRESET_MOVEMENTS:iin. ensureNewPresetMovements surface'aa sen
 // olemassa oleviin asennuksiin nimi-pohjaisella dedupilla → nimien uniikkius
@@ -4218,6 +4261,8 @@ export async function runTests() {
   // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
   testE1rmCardCanonicalSource();
   testE1rmCardPlanBasedGate();
+  testE1rmCardCalDriverOrderIndep();
+  testReloadCalOverride();
   // H-018 OSA 2: katalogi — käsipainopenkki flätti lisätty, ei duplikaattia
   testCatalogKasipainopenkki();
   testCalibration();
