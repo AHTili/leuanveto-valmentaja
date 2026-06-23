@@ -1260,6 +1260,49 @@ async function testRecommendScenarios() {
     }
   });
 
+  // OBS-051: PLAN_BASED loadPct-Vx-consistency gate. Volyymi-label-loadPct (0.58 «
+  // vReps(reps+Vx)=0.81) EI saa inflatoida e1RM:ää (140/0.58=241). Gate skippaa →
+  // Epley-Vara säilyy. S10 (loadPct 0.686, consistent) on tämän known-negative.
+  await scenario("OBS-051 PLAN_BASED_VX_GATED — inkonsistentti loadPct ei inflatoi", async () => {
+    const movId = PRIMARY_MOV_ID;
+    // Mesocycle: vk 1 primary 3×3 @ V4, loadPct 0.58 (volyymi-label, EI tosi-%1RM).
+    const customMeso = {
+      mesocycleId: 'mock-obs051', type: 'streetlifting_16w',
+      startDateISO: '2026-04-20', weekCount: 16,
+      weekDefs: [{ week: 1, deltaPctBase: 0, label: 'vk 1' }, { week: 2, deltaPctBase: 0.025, label: 'vk 2' }],
+      weekPlans: [
+        { week: 1, days: [{
+          dayOfWeek: 1, dayType: 'heavy', label: 'MA 3×3 @58%',
+          slots: [{ role: 'primary', category: 'vertikaaliveto', defaultMovementName: 'Lisäpainoleuanveto',
+            sets: 3, reps: 3, targetVx: 4, loadPct: 0.58, suggestedLoadKg: 130 }],
+        }]},
+        { week: 2, days: [{
+          dayOfWeek: 1, dayType: 'heavy', label: 'MA 3×3 @60%',
+          slots: [{ role: 'primary', category: 'vertikaaliveto', defaultMovementName: 'Lisäpainoleuanveto',
+            sets: 3, reps: 3, targetVx: 4, loadPct: 0.60, suggestedLoadKg: 135 }],
+        }]},
+      ],
+    };
+    // Perfect execution vk 1: 3×3 @ V4 @ 140 kg (actualVx === targetVx)
+    const oldSession = { sessionId: 'sess-051', dateISO: '2026-04-20', completed: true };
+    const oldSets = Array.from({ length: 3 }, (_, i) => ({
+      setId: `s051-${i}`, sessionId: 'sess-051', movementId: movId, movementName: 'Lisäpainoleuanveto',
+      externalLoadKg: 140, reps: 3, actualVx: 4, targetVx: 4, targetReps: 3,
+      setRole: 'top', isWarmup: false, completed: true, timestamp: '2026-04-20T17:00:00Z',
+    }));
+    const ctx = makeRecommendCtx({ dateISO: '2026-04-27', mesocycle: customMeso, sessions: [oldSession], allSets: oldSets });
+    const rec = await recommend(ctx);
+    assert(!rec.error, 'OBS-051: ei error');
+    // Gate laukesi (loadPct 0.58 < vReps(7)=0.811 × 0.85 = 0.689):
+    assert(hasTrace(rec, 'PLAN_BASED_VX_GATED'),
+      'OBS-051: PLAN_BASED_VX_GATED-trace olemassa (gate skippasi inflaation)');
+    assert(!hasTrace(rec, 'PLAN_BASED_E1RM'),
+      'OBS-051: PLAN_BASED_E1RM EI laukennut (gatattu)');
+    // e1RM = Epley-Vara (~194), EI inflatoitu 140/0.58 = 241:
+    assert(rec.e1rmExternal !== null && rec.e1rmExternal < 220,
+      `OBS-051: e1RM Epley-Vara-pohjainen, ei inflatoitu 241 (= 140/0.58) — got ${rec.e1rmExternal}`);
+  });
+
   // S6: Tauko 14 pv ennen tätä päivää → BREAK-tyyppinen modifier
   await scenario("tauko 14 pv → BREAK_MODIFIER", async () => {
     // Luodaan yksi sessio 14 pv sitten, ei muuta

@@ -272,6 +272,16 @@ function vRepsToExpectedPct(maxReps) {
   return 1 / (1 + maxReps / 30);
 }
 
+// OBS-051 (2026-06-17): PLAN_BASED-e1RM:n loadPct-Vx-johdonmukaisuus-toleranssi.
+// PLAN_BASED (plan_e1rm = load / loadPct) luottaa slotin loadPct:hen tosi-%1RM-ankkurina.
+// Jos slotin loadPct ALITTAA Vx-implikoidun intensiteetin (vReps(reps+Vx)) yli tämän
+// toleranssin (= volyymi-/back-off-label kuten 0.58 vs vReps(7)=0.81), load/loadPct
+// inflatoi e1RM:n (esim. 140/0.58 = 241). Yksisuuntainen gate: vain alittava
+// epäjohdonmukaisuus skippaa PLAN_BASED:in → Epley-Vara säilyy (Vx-johdonmukainen).
+// Verifioitu Akselin datasta: gataa loadPct 0.55/0.58 (alitus 28–40 %), säilyttää
+// 0.71/0.78 (alitus 7–8 % < 15 %). Deflatoiva loadPct > vReps saa edetä (konservatiivinen).
+const PLAN_BASED_VX_TOL = 0.15;
+
 /**
  * H-017 D1 — intra-session-autoregulaatio v1 (VAIN alaspäin).
  *
@@ -4417,7 +4427,21 @@ async function recommend(options = {}) {
         const lastPrimarySlot = lastDayPlan?.slots?.find(s => s.role === "primary");
         const lastLoadPct = lastPrimarySlot?.loadPct;
 
-        if (lastLoadPct && lastLoadPct > 0 && lastLoadPct <= 1.0) {
+        // OBS-051: PLAN_BASED luottaa loadPct:hen tosi-%1RM-ankkurina. Hyväksy vain
+        // Vx-johdonmukainen loadPct; alittava (volyymi-/back-off-label) → skippaa → Epley-Vara säilyy.
+        const vxImpliedPct = (lastPrimarySlot?.reps != null && lastPrimarySlot?.targetVx != null)
+          ? vRepsToExpectedPct(lastPrimarySlot.reps + lastPrimarySlot.targetVx)
+          : null;
+        const loadPctVxConsistent = vxImpliedPct === null
+          || lastLoadPct >= vxImpliedPct * (1 - PLAN_BASED_VX_TOL);
+        if (lastLoadPct && lastLoadPct > 0 && lastLoadPct <= 1.0 && !loadPctVxConsistent) {
+          trace("PLAN_BASED_VX_GATED",
+            { e1rmExternal: currentE1RMExternal?.toFixed(1), source: "epley-vara" },
+            { lastLoadPct, vxImpliedPct: vxImpliedPct?.toFixed(3), reps: lastPrimarySlot.reps, targetVx: lastPrimarySlot.targetVx },
+            `PLAN_BASED ohitettu: loadPct ${lastLoadPct} alittaa Vx-intensiteetin ${(vxImpliedPct*100).toFixed(0)}% (volyymi-label, ei tosi-%1RM) → Epley-Vara ${currentE1RMExternal?.toFixed(1)} kg säilyy`);
+        }
+
+        if (lastLoadPct && lastLoadPct > 0 && lastLoadPct <= 1.0 && loadPctVxConsistent) {
           const lastMedianLoad = median(lastSessionSets.map(s => s.externalLoadKg).filter(v => v > 0));
           if (lastMedianLoad && lastMedianLoad > 0) {
             // v4.34.32: Vx-overshoot-bonus PLAN_BASED-laskennassa.
