@@ -296,29 +296,47 @@ function isLoadPctVxConsistent(loadPct, slotReps, slotVx) {
   return vxImplied === null || loadPct >= vxImplied * (1 - PLAN_BASED_VX_TOL);
 }
 
-// OBS-052 (2026-06-18): SESSIO-tasoinen cal-tunnistus = rakenteellinen periaate "luotettavin
-// signaali ohjaa". Cal AJAA e1RM:ää (ei jää lattiarooliin) kun se on VIIMEISIMMÄSSÄ sessiossa —
-// riippumatta montako työsarjaa tehdään sen JÄLKEEN samassa sessiossa. Korvaa hauraan
-// "cal viim. 3 SARJAN joukossa" -ikkunan (kukistuu cal-ensin-järjestyksestä → deload-sarjat
-// ajavat mediaanin → cal 187 jää lattiaksi ×0,95 → Vx-epäjohdonmukainen kuorma).
-// Liike-agnostinen. Jaettu recommend() + computeMovementE1RMBest (kortti) → F-3-koherenssi.
-// ORDER-IMMUUNI: etsii sessio jonka uusin set (MAX timestamp) on suurin — EI taulukon häntää.
-// Kriittinen: kortti-kutsujat (index.html state.allSets) syöttävät LAJITTELEMATTOMAN datan
-// (IndexedDB getAll = satunnainen crypto.randomUUID-avainjärjestys) → taulukon-häntä-skannaus
-// olisi epädeterministinen (rikkoisi F-3 kortti==live + H018-T2 insertion-order-robustin).
-function mostRecentSessionCalibSets(sets) {
+// OBS-052 v2: tuoreusikkuna cal-ajurille. ~1,5 mesosykliä — kattaa kanonisen cal-välin
+// (vk4→vk8 = 28 pv) + puskuri jos seuraava cal viivästyy/skipataan. Yli tämän cal vanhenee
+// AJURINA (currentE1RM ei enää saa cal-arvoa), mutta DEFLATION-lattia (cal-min/cfg-PR ×0,95)
+// pitää kuorman silti ~−5 %:ssa. Ainoa säädettävä tuoreusparametri.
+const CAL_FRESHNESS_DAYS = 42;
+
+// OBS-052 v2 (2026-06-23, TUOREUSIKKUNA): cal AJAA e1RM:ää niin kauan kuin tuorein cal-sarja on
+// ≤ CAL_FRESHNESS_DAYS päivää tuoreimmasta lokisetistä — RIIPPUMATTA siitä onko viimeisin sessio
+// sattumalta cal-sessio. Toteuttaa lukitun periaatteen "luotettavin signaali ohjaa AINA" myös
+// kuukausikadenssin TYÖ-ONLY-viikoilla (kanoninen ohjelma kalibroi vain vk4/8/12 = ~kerran kuussa).
+// Korvaa v1:n "viimeisin sessio ajaa" -logiikan, joka oli INERTTI vk2-4: työ-only-sessio →
+// helper palautti [] → cal jäi vain lattiaksi ×0,95 (= ei ajuri vaan raja). Premissi vahvistettu
+// kadenssi-workflow'lla (data.js cal-slotit vain vk4/8/12) + node-probella.
+// Lukee TÄYDEN historian (EI slice(-6)) jotta kuukauden vanha cal näkyy ajurina. Liike-agnostinen.
+// Jaettu recommend() + recommendPeaking() + computeMovementE1RMBest (kortti) → F-3-koherenssi.
+// ORDER-IMMUUNI: max-timestamp (EI taulukon häntää) → kortti-kutsujat (index.html state.allSets,
+// lajittelematon IndexedDB getAll) saavat deterministisen tuloksen (H018-T2 insertion-order-robusti).
+// Tuoreusreferenssi = tuorein LOKISET (datalähtöinen, EI Date.now() → deterministinen/testattava).
+function freshCalibSets(sets) {
   if (!sets || sets.length === 0) return [];
-  let lastSessionId = null, lastTime = -Infinity;
+  const cals = sets.filter(s => s.setRole === "calibration" && s.timestamp);
+  if (cals.length === 0) return [];
+  // Referenssi "nyt" = tuorein lokiset (mikä tahansa rooli) → kuinka monta TREENIPÄIVÄÄ cal:sta.
+  let latest = -Infinity;
   for (const s of sets) {
-    if (s.sessionId == null || !s.timestamp) continue;
+    if (!s.timestamp) continue;
     const t = new Date(s.timestamp).getTime();
-    if (t > lastTime) { lastTime = t; lastSessionId = s.sessionId; }
+    if (t > latest) latest = t;
   }
-  if (lastSessionId == null) {
-    return [...sets].sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""))
-      .slice(-3).filter(s => s.setRole === "calibration");
+  // Tuorein cal-sessio: max cal-timestamp → sen sessionId-ryhmä.
+  let calTime = -Infinity, calSessionId = null;
+  for (const c of cals) {
+    const t = new Date(c.timestamp).getTime();
+    if (t > calTime) { calTime = t; calSessionId = c.sessionId; }
   }
-  return sets.filter(s => s.sessionId === lastSessionId && s.setRole === "calibration");
+  // Tuoreusportti: yli ikkunan vanha cal ei enää AJA (DEFLATION-lattia hoitaa −5 %).
+  if (latest - calTime > CAL_FRESHNESS_DAYS * 86400000) return [];
+  if (calSessionId != null) return cals.filter(c => c.sessionId === calSessionId);
+  // Ei sessionId:tä (vanha data) → ryhmitä tuoreimman cal-setin PÄIVÄÄN (sama-timestamp olisi liian tiukka).
+  const calDay = (cals.find(c => new Date(c.timestamp).getTime() === calTime)?.timestamp || "").slice(0, 10);
+  return cals.filter(c => (c.timestamp || "").slice(0, 10) === calDay);
 }
 
 /**
@@ -4340,14 +4358,16 @@ async function recommend(options = {}) {
   //   - CNS-kuorma matalampi → deload-viikolla turvallisempi
   //   - actualVx-fallback: ?? targetVx ?? 1 (yhdenmukainen e1RM-laskennan kanssa)
   //
-  // Ikkunat (OBS-052):
-  //   • Kalibrointi VIIM. SESSIOSSA → override (tuore kalibrointi hallitsee, ei
-  //     työnny ulos vaikka jälkeen tehtäisiin ≥3 työsarjaa samassa sessiossa)
-  //   • Vanhempi kalibrointi (ei viim. sessiossa) → takaisin mediaaniin
+  // Ikkunat (OBS-052 v2 — TUOREUSIKKUNA, ei "viim. sessio"):
+  //   • Tuorein cal ≤ CAL_FRESHNESS_DAYS (42 pv) → cal AJAA (myös työ-only-viikoilla vk2-4,
+  //     koska kanoninen ohjelma kalibroi vain vk4/8/12 ≈ kerran kuussa — v1 oli inertti tässä)
+  //   • Vanhentunut cal (> 42 pv) → takaisin mediaaniin (DEFLATION-lattia pitää −5 %)
+  //   HUOM: lukee TÄYDEN topSets-historian (EI recentTopSets/slice-6) jotta kuukauden
+  //   vanha cal ei putoa input-ikkunan ulkopuolelle ennen tuoreusporttia.
   //
   // Backward compat: vanhat V0-AMRAP-kalibroinnit toimivat edelleen
   //   (s.actualVx === 0 → vara = 0 → puhdas Epley).
-  const recentCalibSets = mostRecentSessionCalibSets(recentTopSets);
+  const recentCalibSets = freshCalibSets(topSets);
   let currentE1RMSystem;
   let e1rmSource = "median";
   if (recentCalibSets.length > 0) {
@@ -6645,9 +6665,10 @@ function computeMovementE1RMBest(movementSets, sessions, mesocycle, movement, bo
   // v4.35.3: yksikkö-yhteensopivuus — palauta SAMA yksikkö kuin computeMovementE1RM:
   //   barbell → ext (e1rmAccessory output)
   //   system-load → system (e1rmSystem output, sis. bodyweight)
-  // OBS-052: SESSIO-tasoinen cal-tunnistus (sama helper kuin recommend → F-3-koherenssi).
-  // Aiemmin calSets.slice(-3) laukesi MILLE TAHANSA cal-historialle; nyt vain viim. sessio ajaa.
-  const recentCalSets = mostRecentSessionCalibSets(movementSets);
+  // OBS-052 v2: tuoreusikkuna (sama helper kuin recommend → F-3-koherenssi). movementSets on jo
+  // täysi liike-historia → cal ajaa korttia niin kauan kuin tuorein cal ≤ 42 pv (kuukauden yli),
+  // ei vain cal-session jälkeisessä sessiossa kuten v1:ssä.
+  const recentCalSets = freshCalibSets(movementSets);
   if (recentCalSets.length > 0) {
     const calE1RMs = recentCalSets.map(s => {
       const vara = s.actualVx ?? s.targetVx ?? 1;
@@ -6751,6 +6772,44 @@ function computeMovementE1RMBest(movementSets, sessions, mesocycle, movement, bo
   // (computeMovementE1RM palauttaa ext barbell:lle, system system-load:lle)
   const fallback = computeMovementE1RM(movementSets, movement, bodyweightKg);
   if (fallback === null) return { value: null, source: null, details: {} };
+
+  // F-3 (OBS-052 v2): kortti tarvitsee SAMAN DEFLATION-lattian kuin live (recommend:n
+  // E1RM_DEFLATION_CAP). Ilman tätä kortti regressoi Epley-aliarvioon kun cal on vanhentunut/
+  // puuttuu MUTTA cfg-PR on olemassa → kortti (esim. 172,7) ≠ live (cfg-PR×0,95 = 175,75) =
+  // F-3-rikko (jäi piiloon OBS-051:ssä koska testifixtureissa ei ollut cfg:tä). Lattia kortin
+  // yksikössä (fallback: ext barbell:lle, system system-load:lle):
+  //   • cal-historia → min(cal-e1RM external) × 0,95  (sessio-agnostinen kuten live)
+  //   • muuten cfg-PR (external) × 0,95
+  // KRITIITTINEN (adversariaali-blokkaaja): lattia lasketaan EXTERNAL-yksikössä ja BW lisätään
+  // VASTA ×0,95 jälkeen (system-load) — täsmälleen kuten live (engine.js:4708-4744:
+  // floor_ext = ext × 0,95; currentE1RMSystem = floor_ext + BW). ×0,95 BW-INKLUSIIVISEEN
+  // systeemiarvoon antaisi 0,05×BW liian matalan lattian (~4,5 kg) → kortti < live (F-3-rikko).
+  // HUOM: kortti ei laske cfg-driftiä → un-drifted cfg (approks.; merkitsevä vain stale-
+  // tapauksessa jossa cal ei aja — tuoreusikkunan sisällä cal ajaa molempia → kortti=live).
+  let floorVal = null;
+  const calForFloor = movementSets.filter(s => s.setRole === "calibration").slice(-3);
+  if (calForFloor.length > 0) {
+    const calFloorsExt = calForFloor.map(s => {
+      const cv = s.actualVx ?? s.targetVx ?? 1;
+      const sys = isBarbell ? e1rmAccessory(s.externalLoadKg || 0, s.reps || 1, cv)
+                            : e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || 1, cv);
+      return isBarbell ? sys : (sys - bodyweightKg); // external
+    }).filter(v => v !== null);
+    if (calFloorsExt.length > 0) {
+      const floorExt = Math.min(...calFloorsExt) * 0.95;
+      floorVal = isBarbell ? floorExt : (floorExt + bodyweightKg);
+    }
+  }
+  if (floorVal === null && mesocycle && movement?.name) {
+    const cfgInfo = getCfgBaselineForMovement(mesocycle, { defaultMovementName: movement.name });
+    if (cfgInfo.value && cfgInfo.value > 0) {
+      const floorExt = cfgInfo.value * 0.95; // cfg on external
+      floorVal = isBarbell ? floorExt : (floorExt + bodyweightKg);
+    }
+  }
+  if (floorVal !== null && fallback < floorVal) {
+    return { value: floorVal, source: "median-floored", details: { raw: fallback, floor: floorVal } };
+  }
   return { value: fallback, source: "median", details: { raw: fallback } };
 }
 
@@ -7205,10 +7264,10 @@ async function recommendPeaking(options = {}) {
     .filter(v => v !== null);
 
   // v4.27.15: Calibration override — ks. recommend()-pääpolun kommentti.
-  // OBS-052: SESSIO-tasoinen cal-tunnistus (3. LIVE-e1RM-source-sijainti, sama helper kuin
-  // recommend() + kortti → F-3-koherenssi peaking-mesosyklissä). Aiemmin slice(-3) kukistui
-  // cal-ensin-järjestyksestä kuten pääpolussa.
-  const peakingCalibSets = mostRecentSessionCalibSets(recentTopSets);
+  // OBS-052 v2: tuoreusikkuna (3. LIVE-e1RM-source-sijainti, sama helper kuin recommend() +
+  // kortti → F-3-koherenssi peaking-mesosyklissä). Lukee TÄYDEN topSets-historian (ei slice-6)
+  // jotta kuukauden vanha cal näkyy ajurina tuoreusportin sisällä.
+  const peakingCalibSets = freshCalibSets(topSets);
   let currentE1RMSystem;
   if (peakingCalibSets.length > 0) {
     const calibE1rms = peakingCalibSets.map(s => {

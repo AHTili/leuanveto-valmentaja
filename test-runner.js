@@ -982,6 +982,65 @@ function testReloadCalOverride() {
     `OBS-052 KERROS 2 known-neg: ilman calia ramppi laukeaa — got ${noCal === null ? "null" : noCal.phase}`);
 }
 
+// OBS-052 v2 (TUOREUSIKKUNA): cal AJAA e1RM:ää TYÖ-only-viikoilla niin kauan kuin tuorein cal
+// ≤ CAL_FRESHNESS_DAYS (42 pv) — EI vain cal-session jälkeisessä sessiossa kuten v1 (joka oli
+// INERTTI vk2-4: kanoninen ohjelma kalibroi vain vk4/8/12 ≈ kerran kuussa → tuorein sessio
+// työ-only → v1-helper palautti [] → cal jäi lattiaksi). Premissi vahvistettu kadenssi-workflow'lla.
+function testE1rmCalFreshnessWindow() {
+  const mov = { name: "Takakyykky", category: "alaraaja", loadType: "external", isPrimary: true, tier: 1 };
+  const calSet = (ts) => ({ setId: "c", sessionId: "s-cal", movementId: "sq", movementName: "Takakyykky", setRole: "calibration", externalLoadKg: 165, reps: 3, actualVx: 1, targetVx: 1, timestamp: ts });
+  const workSets = (ts) => Array.from({ length: 4 }, (_, i) => ({ setId: "w" + i, sessionId: "s-work", movementId: "sq", movementName: "Takakyykky", setRole: "top", externalLoadKg: 140, reps: 3, actualVx: 4, targetVx: 4, targetReps: 3, timestamp: ts }));
+  // FRESH (21 pv): cal 165×3@V1 (187) sessiossa 05-01, sitten TYÖ-only-sessio 05-22 (140×3@V4=172.7).
+  // Cal EI viim. sessiossa → v1 olisi palauttanut [] → median 172.7. v2: cal 21pv ≤ 42 → AJAA 187.
+  const fresh = [calSet("2026-05-01T17:00:00Z"), ...workSets("2026-05-22T17:00:00Z")];
+  const bFresh = computeMovementE1RMBest(fresh, null, null, mov, 89);
+  assert(bFresh.source === "cal" && Math.abs(bFresh.value - 187) < 0.5,
+    `OBS-052 v2 tuoreusikkuna: cal AJAA 21pv vanhana TYÖ-only-session jälkeen (165×3@V1=187, EI median 172.7) — got ${bFresh.source} ${bFresh.value?.toFixed(1)}`);
+  // STALE (50 pv > 42): cal ei enää AJA (ei "cal"). Cal-historia LATTIOI silti (187×0.95=177.65,
+  // sessio-agnostinen kuten live E1RM_DEFLATION_CAP) → source "median-floored", EI raaka 172.7, EI cal 187.
+  const stale = [calSet("2026-05-01T17:00:00Z"), ...workSets("2026-06-20T17:00:00Z")];
+  const bStale = computeMovementE1RMBest(stale, null, null, mov, 89);
+  assert(bStale.source !== "cal" && Math.abs(bStale.value - 177.65) < 0.5,
+    `OBS-052 v2: cal >42pv ei AJA mutta LATTIOI (177.65, ei median 172.7, ei cal 187) — got ${bStale.source} ${bStale.value?.toFixed(1)}`);
+}
+
+// OBS-052 v2 (F-3 kortti=live): kun cal puuttuu/vanhentunut MUTTA cfg-PR on olemassa, kortti
+// tarvitsee SAMAN lattian kuin live (E1RM_DEFLATION_CAP cfg-PR×0.95). Ilman tätä kortti regressoi
+// raakaan mediaaniin → kortti≠live (F-3). Jäi piiloon OBS-051:ssä koska fixtureissa ei ollut cfg:tä.
+function testE1rmCardFloorEqualsLive() {
+  const mov = { name: "Takakyykky", category: "alaraaja", loadType: "external", isPrimary: true, tier: 1 };
+  const meso = { mesocycleId: "m", type: "streetlifting_16w", streetliftingConfig: { calibration: { kyykkyExtKg: 185 } } };
+  // EI cal-settejä, työ-only median alle cfg-lattian: 140×3@V4 → e1rmAccessory = 172.7 < 185×0.95=175.75.
+  const sets = Array.from({ length: 4 }, (_, i) => ({ setId: "w" + i, sessionId: "s1", movementId: "sq", movementName: "Takakyykky", setRole: "top", externalLoadKg: 140, reps: 3, actualVx: 4, targetVx: 4, targetReps: 3, timestamp: `2026-06-01T17:0${i}:00Z` }));
+  const best = computeMovementE1RMBest(sets, [{ sessionId: "s1", dateISO: "2026-06-01" }], meso, mov, 89);
+  // Kortti = cfg-PR × 0.95 = 175.75 = live:n DEFLATION-lattia → kortti=live (F-3-koherenssi).
+  assert(best.source === "median-floored" && Math.abs(best.value - 175.75) < 0.5,
+    `OBS-052 v2 F-3: kortti floorautuu cfg-PR×0.95=175.75 (= live DEFLATION) kun cal puuttuu — got ${best.source} ${best.value?.toFixed(1)}`);
+}
+
+// OBS-052 v2 (SYSTEM-LOAD F-3, adversariaali-blokkaaja-lukko): kortti-lattia EXTERNAL-yksikössä
+// + BW VASTA ×0.95 jälkeen — täsmälleen kuten live. Bugi-versio (×0.95 BW-inklusiiviseen) antoi
+// 0.05×BW liian matalan → kortti < live (F-3-rikko) CKC-liikkeillä (leuka/dippi/MU). Barbell-testit
+// missasivat tämän (ei BW-termiä). Peilaa Akselin oikeaan cal-tulokseen: leuka 73×3@V1.
+function testE1rmCalSystemLoadLeuka() {
+  const mov = { name: "Lisäpainoleuanveto", category: "vertikaaliveto", loadType: "system", isPrimary: true, tier: 1 };
+  const BW = 89;
+  // (1) FRESH-DRIVE: Akselin cal leuka 73×3@V1 → e1rmSystem(89,73,3,1) = 183.6 (ext 94.6 ≈ kisaleuka 94).
+  // cal 05-01, työ-only sessio 05-22 (21pv ≤ 42) → cal AJAA kortin.
+  const calSet = { setId: "c", sessionId: "s-cal", movementId: "lk", movementName: "Lisäpainoleuanveto", setRole: "calibration", externalLoadKg: 73, reps: 3, actualVx: 1, targetVx: 1, timestamp: "2026-05-01T17:00:00Z" };
+  const workFresh = Array.from({ length: 4 }, (_, i) => ({ setId: "w" + i, sessionId: "s-work", movementId: "lk", movementName: "Lisäpainoleuanveto", setRole: "top", externalLoadKg: 40, reps: 5, actualVx: 3, targetVx: 3, targetReps: 5, timestamp: "2026-05-22T17:00:00Z" }));
+  const bFresh = computeMovementE1RMBest([calSet, ...workFresh], null, null, mov, BW);
+  assert(bFresh.source === "cal" && Math.abs(bFresh.value - 183.6) < 0.5,
+    `OBS-052 v2 leuka FRESH: cal 73×3@V1 AJAA e1RM system 183.6 (ext 94.6) — got ${bFresh.source} ${bFresh.value?.toFixed(1)}`);
+  // (2) CFG-LATTIA system-load (LUKITSEE blokkaajan): cfg leukaExtKg 85, EI cal, matala median.
+  // Oikea lattia = 85×0.95 + 89 = 169.75 system. Bugi olisi antanut (85+89)×0.95 = 165.3 (4.45 liian matala).
+  const meso = { mesocycleId: "m", type: "streetlifting_16w", streetliftingConfig: { calibration: { leukaExtKg: 85 } } };
+  const lowSets = Array.from({ length: 4 }, (_, i) => ({ setId: "x" + i, sessionId: "s2", movementId: "lk", movementName: "Lisäpainoleuanveto", setRole: "top", externalLoadKg: 35, reps: 3, actualVx: 4, targetVx: 4, targetReps: 3, timestamp: `2026-06-01T17:0${i}:00Z` }));
+  const bFloor = computeMovementE1RMBest(lowSets, [{ sessionId: "s2", dateISO: "2026-06-01" }], meso, mov, BW);
+  assert(bFloor.source === "median-floored" && Math.abs(bFloor.value - 169.75) < 0.3,
+    `OBS-052 v2 leuka CFG-LATTIA: 85×0.95+89=169.75 system (= live, EI bugi-165.3) — got ${bFloor.source} ${bFloor.value?.toFixed(1)}`);
+}
+
 // H-018 OSA 2 (OBS-041, 2026-06-13): katalogi-lukko — käsipainopenkki flätti
 // lisätty PRESET_MOVEMENTS:iin. ensureNewPresetMovements surface'aa sen
 // olemassa oleviin asennuksiin nimi-pohjaisella dedupilla → nimien uniikkius
@@ -4263,6 +4322,9 @@ export async function runTests() {
   testE1rmCardPlanBasedGate();
   testE1rmCardCalDriverOrderIndep();
   testReloadCalOverride();
+  testE1rmCalFreshnessWindow();
+  testE1rmCardFloorEqualsLive();
+  testE1rmCalSystemLoadLeuka();
   // H-018 OSA 2: katalogi — käsipainopenkki flätti lisätty, ei duplikaattia
   testCatalogKasipainopenkki();
   testCalibration();
