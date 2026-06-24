@@ -129,6 +129,7 @@ export function simulateSet({
     rep1Velocity: Math.round(rep1Velocity * 1000) / 1000,
     velocityLoss: Math.round(velocityLoss * 10) / 10,
     completedAtISO: null, // täytetään scenario-runneri:lla
+    timestamp: null, // täytetään scenario-runneri:lla (OBS-052 v2: freshCalibSets vaatii timestamp:in)
   };
 }
 

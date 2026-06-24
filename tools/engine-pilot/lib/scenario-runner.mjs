@@ -248,6 +248,12 @@ export async function runScenario({ profile, scenario, mesocycle }) {
           rngFn: dayRng,
         });
         simSet.completedAtISO = dateISO + "T18:00:00Z";
+        // OBS-052 v2: anna setille TIMESTAMP (johdettu päivästä) jotta freshCalibSets ei suodata
+        // pois (vaatii s.timestamp). Ilman tätä pilot ei harjoita cal-ajuria lainkaan (adversariaali-
+        // blokkaaja). Per-set minuutti-offset → max-timestamp-logiikka realistinen; sama päivä →
+        // freshCalibSets ryhmittää saman päivän cal-setit (sessionId pysyy nullina = päivä-fallback).
+        const mm = String(setCounter % 60).padStart(2, "0");
+        simSet.timestamp = `${dateISO}T18:${mm}:00Z`;
         simulatedSets.push(simSet);
       }
     }
