@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.46" />
+  <meta name="app-version" content="4.52.47" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -3645,6 +3645,14 @@ function showGeneratorPreviewModal(mapped, opts = {}) {
         </div>`
       : "";
 
+    // Pilari 3 C4: rehellinen tavoite-ristiriita / resurssirajoite -advisory.
+    // Surfacea _wizardMeta.goalConflictAdvisory:n (laskettu mapperissa, kuorma-neutraali).
+    const goalConflictAdvisory = mapped._wizardMeta?.goalConflictAdvisory
+      ? `<div style="margin-top:10px;padding:10px;background:rgba(245,158,11,0.05);border-left:3px solid rgba(245,158,11,0.6);font-size:12px;color:var(--muted)">
+          ℹ ${escapeHtml(mapped._wizardMeta.goalConflictAdvisory)}
+        </div>`
+      : "";
+
     // 2B-γ: Cut-banneri jos cut + suuri vaje aktivoi recoveryCapacity-säädön
     const cutBlock = cutInfo
       ? `<div style="margin-top:14px;padding:12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.3);border-radius:8px">
@@ -3754,6 +3762,7 @@ function showGeneratorPreviewModal(mapped, opts = {}) {
           </div>
           ${candidatesBlock}
           ${targetDateWarning}
+          ${goalConflictAdvisory}
           ${blockTimeline}
           ${cutBlock}
           <div style="margin-top:14px">
@@ -8031,7 +8040,7 @@ function renderMesocycle() {
   // β Round B-α-1.9: näkyvä versio-indikaattori + bullet-merkki fallback-seedissä
   // jotta voidaan visuaalisesti erottaa "vanha cached koodi" vs "uusi koodi + null
   // fallback" tilanteet. Sync MANUAALISESTI sw.js:n APP_VERSION:in kanssa.
-  const _syRenderAppVersion = "4.52.46";
+  const _syRenderAppVersion = "4.52.47";
   const _syRenderBW = state.settings?.bodyweightKg || 91;
   const _syRenderE1rmCache = new Map();
   const _syRenderComputeKg = (slot) => {
