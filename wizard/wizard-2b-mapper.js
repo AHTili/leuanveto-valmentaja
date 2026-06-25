@@ -1031,12 +1031,15 @@ export function validateMappingInput(wizardConfig, mainAppState) {
 //
 // Output: "hypertrofia" | "maksimivoima" | "yhdistelma" | "undulating"
 //         (vastaa GOAL_SKELETONS-avaimia pää-app:issa)
+// Pilari 3 C1: MAX_GOALS moduulitasolle (jaettu pickStartingBlock + goal→primary-resolveri,
+// yhtenäinen tavoiteluokitus — single-sourced).
+const MAX_GOALS = new Set([
+  "max_1RM",
+  "powerlifting",
+  "streetlifting_with_explosive_components",
+]);
+
 export function pickStartingBlock(q29_recentBlock, q12_primaryGoal) {
-  const MAX_GOALS = new Set([
-    "max_1RM",
-    "powerlifting",
-    "streetlifting_with_explosive_components",
-  ]);
   const isMaxGoal = MAX_GOALS.has(q12_primaryGoal);
 
   switch (q29_recentBlock) {
@@ -1155,6 +1158,36 @@ const _SPORT_DEFAULTS = Object.freeze({
   hybrid:      [{ name: "Lisäpainoleuanveto", category: "vertikaaliveto", requires: ["pullup_bar"] }],
 });
 
+// Pilari 3 C1 (FIX-A): tavoite-spesifit primaari-setit epäspesifeille lajeille
+// (q09_sport ∈ {hypertrophy, sport, hybrid}). Ratifioitu 2026-06-18 (W1-standardista):
+//   max     → tanko-big-3 (1RM-spesifisyys vaatii liikkeen harjoittelun)
+//   general → full-body compound: alaraaja + työntö + veto (päälihasryhmät katettu)
+//   hyp     → push + pull + legs (VOL-1: ≥10 settiä/lihasryhmä)
+// Periaate: tavoite-spesifinen + päälihasryhmät katettu + ALARAAJA AINA mukana (#4-takuu setissä).
+const _GOAL_PRIMARY_SETS = Object.freeze({
+  max: [
+    { name: "Takakyykky",      category: "alaraaja",           requires: ["barbell_rack"] },
+    { name: "Penkkipunnerrus", category: "horisontaalityöntö", requires: ["barbell_rack"] },
+    { name: "Maastaveto",      category: "lonkkahingaus",      requires: ["barbell_rack"] },
+  ],
+  general: [
+    { name: "Takakyykky",         category: "alaraaja",           requires: ["barbell_rack"] },
+    { name: "Penkkipunnerrus",    category: "horisontaalityöntö", requires: ["barbell_rack"] },
+    { name: "Lisäpainoleuanveto", category: "vertikaaliveto",     requires: ["pullup_bar"] },
+  ],
+  hypertrophy: [
+    { name: "Lisäpainoleuanveto", category: "vertikaaliveto",     requires: ["pullup_bar"] },
+    { name: "Penkkipunnerrus",    category: "horisontaalityöntö", requires: ["barbell_rack"] },
+    { name: "Takakyykky",         category: "alaraaja",           requires: ["barbell_rack"] },
+  ],
+});
+function _goalPrimarySet(q12_primaryGoal) {
+  const key = MAX_GOALS.has(q12_primaryGoal) ? "max"
+            : (q12_primaryGoal === "hypertrophy" ? "hypertrophy" : "general");
+  return _GOAL_PRIMARY_SETS[key].map(p => ({ ...p }));
+}
+const _NON_SPECIFIC_SPORTS = new Set(["hypertrophy", "sport", "hybrid"]);
+
 // Injury-keyword → liike-keyword -mapping. // HEURISTIC.
 const _INJURY_BLOCKLIST = [
   { injuryKeywords: ["olka", "olkapää", "shoulder"], movementKeywords: ["dippi", "punnerrus", "press"] },
@@ -1228,7 +1261,15 @@ export function isMovementPerformable(name, loadType, category, eqSet) {
 }
 
 export function pickPrimaries(answers) {
-  let primaries = _SPORT_DEFAULTS[answers.q09_sport] || _SPORT_DEFAULTS.hybrid;
+  // Pilari 3 C1 (FIX-A): spesifit lajit (streetlifting/powerlifting) → _SPORT_DEFAULTS (ennallaan).
+  // Epäspesifit (hypertrophy/sport/hybrid) → tavoite-spesifi setti q12_primaryGoal:n mukaan
+  // (EI enää default-leuanveto). q12 saavuu nyt resolveriin — A1-juuri #1.
+  let primaries;
+  if (_NON_SPECIFIC_SPORTS.has(answers.q09_sport)) {
+    primaries = _goalPrimarySet(answers.q12_primaryGoal);
+  } else {
+    primaries = _SPORT_DEFAULTS[answers.q09_sport] || _SPORT_DEFAULTS.hybrid;
+  }
   primaries = primaries.map(p => ({ ...p })); // shallow copy jotta original ei muutu
 
   // 1. q11_injuries (absolute) → poista
@@ -2572,6 +2613,26 @@ export function selfTestMapper() {
   ck("C0: Ylätalja EI performable kotona (vain pullup_bar)", !isMovementPerformable("Ylätalja", "external", "vertikaaliveto", eqHome));
   ck("C0: Lisäpainoleuanveto performable kotona", isMovementPerformable("Lisäpainoleuanveto", "system", "vertikaaliveto", eqHome));
   ck("C0: Takakyykky performable täyskalustolla", isMovementPerformable("Takakyykky", "external", "alaraaja", eqAll));
+
+  // ─── 5c. Pilari 3 C1: goal-aware pickPrimaries (FIX-A) ──────────────
+  const eqFull = ["barbell_rack", "pullup_bar", "dip_station", "cable_machine", "machines", "dumbbells"];
+  const hasCat = (prims, cat) => prims.some(p => p.category === cat);
+  const hasName = (prims, name) => prims.some(p => p.name === name);
+  // hypertrophy → push/pull/legs (3 primaaria, alaraaja mukana, EI default-leuanveto-monokulttuuri)
+  const hyp = pickPrimaries({ q09_sport: "hypertrophy", q12_primaryGoal: "hypertrophy", q17_equipment: eqFull });
+  ck("C1: hypertrophy → 3 primaaria", hyp.length === 3);
+  ck("C1: hypertrophy sis. alaraaja (#4)", hasCat(hyp, "alaraaja"));
+  ck("C1: hypertrophy sis. push + pull", hasName(hyp, "Penkkipunnerrus") && hasName(hyp, "Lisäpainoleuanveto"));
+  // general_strength → kyykky + penkki + leuka
+  const gen = pickPrimaries({ q09_sport: "hybrid", q12_primaryGoal: "general_strength", q17_equipment: eqFull });
+  ck("C1: general_strength → kyykky+penkki+leuka", hasName(gen, "Takakyykky") && hasName(gen, "Penkkipunnerrus") && hasName(gen, "Lisäpainoleuanveto"));
+  ck("C1: general_strength sis. alaraaja (#4)", hasCat(gen, "alaraaja"));
+  // max_1RM → tanko-big-3
+  const mx = pickPrimaries({ q09_sport: "sport", q12_primaryGoal: "max_1RM", q17_equipment: eqFull });
+  ck("C1: max_1RM → big-3 (kyykky+penkki+maave)", hasName(mx, "Takakyykky") && hasName(mx, "Penkkipunnerrus") && hasName(mx, "Maastaveto"));
+  // KNOWN-NEG: streetlifting (spesifi) säilyy ennallaan (4-liikkeen setti, EI goal-haara)
+  const str = pickPrimaries({ q09_sport: "streetlifting", q12_primaryGoal: "max_1RM", q17_equipment: eqFull });
+  ck("C1 known-neg: streetlifting ennallaan (sis. Muscle-up)", hasName(str, "Muscle-up") && hasName(str, "Lisäpainoleuanveto"));
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",

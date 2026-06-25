@@ -5240,18 +5240,47 @@ function substitutePrimarySlot(orig, primaryName, primaryCategory) {
   };
 }
 
-// Kloonaa päivä uudella päälikkeellä + remapatuilla accessoryilla.
+// Kloonaa päivä päälikkeillä + remapatuilla accessoryilla.
 // v4.27.2: weekIndex välitetään rotaatiokaavaan jotta variantit kiertävät viikoittain.
-function cloneDayWithPrimary(origDay, primaryName, primaryCategory, dayIndex, weekIndex = 0) {
+// Pilari 3 C1 (K, kategoria-slot-täyttö): täytä päivän primary-slotit primaari-SETISTÄ.
+//   - single-slot-päivä  → lead (rotaatio päivien yli; säilyttää streetlifting/default-käytöksen
+//                          BITTITARKKANA — leadit = primaries[dIdx % n] kuten ennen).
+//   - monislot-päivä     → kategoria-osuma per slot (käyttämätön ensin) → useita distinct primaareja
+//                          samaan sessioon = aito full_body, korjaa #3 (volyymi ei kasaudu yhdelle).
+//   - backoff            → seuraa edeltävää primarya (sama lift kevyempänä).
+// primaries = [{name,category}]; leadPrimary = tämän päivän emphasis (accessory-remap + single-slot).
+function cloneDayWithPrimary(origDay, primaries, leadPrimary, dayIndex, weekIndex = 0) {
+  // Ryhmittele DISTINCT alkuperäisten primary-slottien KATEGORIOIDEN mukaan (EI per slot) —
+  // näin Madcow-ramppi (5 perättäistä alaraaja-slottia) pysyy YHTENÄ liikkeenä eikä scramblaudu.
+  const primaryCats = [...new Set(origDay.slots.filter(s => s.role === "primary").map(s => s.category))];
+  const multiSlot = primaryCats.length > 1; // useita distinct kategorioita = aito multi-lift -päivä
+  const catToPrimary = {};
+  if (multiSlot) {
+    const used = new Set();
+    for (const cat of primaryCats) {
+      // kategoria-osuma (käyttämätön) → seuraava käyttämätön → lead. Yksi primaari per kategoria-ryhmä.
+      const prim = primaries.find(p => p.category === cat && !used.has(p.name))
+                || primaries.find(p => !used.has(p.name))
+                || leadPrimary;
+      used.add(prim.name);
+      catToPrimary[cat] = prim;
+    }
+  }
+  let lastPrimary = leadPrimary;
   const newSlots = [];
   let slotIdx = 0;
   for (const s of origDay.slots) {
-    if (s.role === "primary" || s.role === "backoff") {
-      newSlots.push(substitutePrimarySlot(s, primaryName, primaryCategory));
+    if (s.role === "primary") {
+      // multiSlot → kategoria-ryhmän primaari (ramppi säilyy); single-slot → lead (rotaatio).
+      const prim = multiSlot ? (catToPrimary[s.category] || leadPrimary) : leadPrimary;
+      lastPrimary = prim;
+      newSlots.push(substitutePrimarySlot(s, prim.name, prim.category));
+    } else if (s.role === "backoff") {
+      newSlots.push(substitutePrimarySlot(s, lastPrimary.name, lastPrimary.category));
     } else if (s.role === "accessory") {
-      newSlots.push(remapAccessorySlot(s, primaryCategory, primaryName, dayIndex, slotIdx, weekIndex));
+      newSlots.push(remapAccessorySlot(s, leadPrimary.category, leadPrimary.name, dayIndex, slotIdx, weekIndex));
     } else {
-      // warmup/opener/attempt — kopioi sellaisenaan (eivät esiinny perusskelete-presseteissä)
+      // warmup/opener/attempt — kopioi sellaisenaan
       newSlots.push({ ...s });
     }
     slotIdx++;
@@ -5283,21 +5312,17 @@ function applyRecoveryScalar(weekPlans, scalar) {
 function distributePrimariesToDays(weekPlans, primaries) {
   // primaries = [{ name, category }]
   if (primaries.length === 0) return weekPlans;
-  // v4.27.2: viikko-indeksi (0-based wp.week-1) välitetään cloneDayWithPrimary-funktioon
-  // → remapAccessorySlot-rotaatio kiertää variantteja viikosta toiseen.
-  if (primaries.length === 1) {
-    // Kaikki päivät saavat saman päälikkeen
-    return weekPlans.map(wp => ({
-      ...wp,
-      days: wp.days.map((d, dIdx) => cloneDayWithPrimary(d, primaries[0].name, primaries[0].category, dIdx, (wp.week || 1) - 1)),
-    }));
-  }
-  // Useita päälikkeitä: rotaatio päivien yli
+  // v4.27.2: viikko-indeksi (0-based wp.week-1) → cloneDayWithPrimary → remapAccessorySlot-rotaatio
+  // kiertää variantteja viikosta toiseen.
+  // Pilari 3 C1 (K): lead = primaries[dIdx % n] = päivän emphasis (rotaatio päivien yli).
+  //   - 1 primaari → lead aina sama → single-slot kaikki sama (ennallaan).
+  //   - useita → lead rotatoituu; cloneDayWithPrimary täyttää monislot-päivän kategoria-osumalla
+  //     (aito full_body) ja single-slot-päivän leadilla (rotaatio, backward-compat).
   return weekPlans.map(wp => ({
     ...wp,
     days: wp.days.map((d, dIdx) => {
-      const primary = primaries[dIdx % primaries.length];
-      return cloneDayWithPrimary(d, primary.name, primary.category, dIdx, (wp.week || 1) - 1);
+      const lead = primaries[dIdx % primaries.length];
+      return cloneDayWithPrimary(d, primaries, lead, dIdx, (wp.week || 1) - 1);
     }),
   }));
 }
