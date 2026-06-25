@@ -333,6 +333,8 @@ export const WIZARD_QUESTIONS = [
       { value: "machines",       labelFi: "Erilliset kuntosalilaitteet (leg press, smith, hack squat, hauislaite ym.)" },
       { value: "dumbbells",      labelFi: "Käsipainot" },
       { value: "rings",          labelFi: "Renkaat / TRX" },
+      // Pilari 3 C4: kehonpaino-only (koti, ei välineitä) ilmaistavissa — ei enää kova reject.
+      { value: "bodyweight",     labelFi: "Ei välineitä / pelkkä kehonpaino (koti)" },
     ],
     required: true,
   },

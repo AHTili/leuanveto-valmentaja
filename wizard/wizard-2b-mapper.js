@@ -1042,6 +1042,34 @@ const MAX_GOALS = new Set([
   "streetlifting_with_explosive_components",
 ]);
 
+// Pilari 3 C4: rehellinen tavoite-ristiriita / resurssirajoite -advisory (kuorma-neutraali).
+// Eliittitason rehellisyys: jos tavoitevektoria ei voi maksimoida annetuilla resursseilla,
+// kerro se eksplisiittisesti + mikä priorisoitiin. Ei UI-tutkijanimiä (CLAUDE.md §6).
+function _buildGoalConflictAdvisory(a) {
+  if (!a) return null;
+  const isMaxGoal = MAX_GOALS.has(a.q12_primaryGoal);
+  const secondaryHyp = a.q13_secondaryGoal === "hypertrophy";
+  const sessionMin = Number(a.q24_frequency?.sessionLengthMinutes);
+  const daysPerWeek = Number(a.q24_frequency?.daysPerWeek);
+  const eq = Array.isArray(a.q17_equipment) ? a.q17_equipment : [];
+  const minimalEquipment = eq.length === 0 || eq.includes("bodyweight") || (eq.length === 1 && eq[0] === "pullup_bar");
+  const goalConflict = isMaxGoal && secondaryHyp;
+  const resourceLimited = (!Number.isNaN(sessionMin) && sessionMin > 0 && sessionMin <= 30)
+                       || (!Number.isNaN(daysPerWeek) && daysPerWeek > 0 && daysPerWeek <= 2);
+  if (!goalConflict && !(resourceLimited && minimalEquipment)) return null;
+  const parts = [];
+  if (goalConflict) {
+    parts.push("Maksimivoimaa ja maksimaalista lihasmassaa ei voi optimoida samanaikaisesti. Ohjelma priorisoi maksimivoiman; hypertrofia tukee toissijaisesti.");
+  }
+  if (resourceLimited) {
+    parts.push("Käytettävissä oleva aika, treenipäivät tai kalusto rajoittavat tavoitteen täyttä saavuttamista — ohjelma on tiivistetty toteutettavaan minimiin.");
+  }
+  if (minimalEquipment && !goalConflict) {
+    parts.push("Vähäisellä kalustolla painopiste on kehonpainoliikkeissä; lisävälineet (leukatanko, tanko) avaisivat lisää liikevalikoimaa.");
+  }
+  return parts.join(" ");
+}
+
 export function pickStartingBlock(q29_recentBlock, q12_primaryGoal) {
   const isMaxGoal = MAX_GOALS.has(q12_primaryGoal);
 
@@ -1312,15 +1340,16 @@ export function pickPrimaries(answers) {
     return p.requires.every(req => eq.has(req));
   });
 
-  // 4. Fallback: jos kaikki poistettu, turvallinen yksi liike
-  // (Lisäpainoleuanveto ei vaadi tankoa/dippitelinettä — toimii bodyweightina
-  // jos pullup_bar löytyy. Jos sekään ei löydy, palautetaan Leuanveto.)
+  // 4. Fallback: jos kaikki poistettu (esim. kehonpaino-only / minimaalinen kalusto) →
+  // Pilari 3 C4: MONILIIKE kehonpaino-setti (EI yksi leuka). Pull (jos leukatanko) +
+  // push (jos dippiteline) + ALARAAJA AINA (Bulgarian split = kehonpaino, #4-takuu).
+  // Näin kotikuntoilija saa tasapainoisen ohjelman eikä monokulttuuria.
   if (primaries.length === 0) {
-    if (eq.has("pullup_bar")) {
-      primaries = [{ name: "Lisäpainoleuanveto", category: "vertikaaliveto" }];
-    } else {
-      primaries = [{ name: "Leuanveto (kehonpaino)", category: "vertikaaliveto" }];
-    }
+    const bw = [];
+    if (eq.has("pullup_bar")) bw.push({ name: "Leuanveto (kehonpaino)", category: "vertikaaliveto" });
+    if (eq.has("dip_station")) bw.push({ name: "Dippi (kehonpaino)", category: "horisontaalityöntö" });
+    bw.push({ name: "Bulgarian split squat", category: "alaraaja" }); // kehonpaino-jalka, aina suoritettavissa
+    primaries = bw;
   }
 
   // Palauta vain name+category (generateCustomMesocycle:n vaatima rakenne)
@@ -2193,6 +2222,8 @@ export function mapWizardToMesocycle(wizardConfig, mainAppState, opts = {}) {
       targetDateAnchored: anchorResult.anchored,
       targetDateWarning: anchorResult.warning,
       rules: collectAppliedRules(a, goal, weekCount, recoveryCapacity, sexModifierApplied, anchorResult.anchored, opts.selectedStyleId),
+      // Pilari 3 C4: rehellinen ristiriita-advisory (kuorma-neutraali metadata) — UI surfacea sen.
+      goalConflictAdvisory: _buildGoalConflictAdvisory(a),
     },
   };
 }
@@ -2663,8 +2694,12 @@ export function selfTestMapper() {
 
   const allRemoved = pickPrimaries({ q09_sport: "streetlifting",
     q17_equipment: [], q11_injuries: [], q22_avoidedExercises: [] });
-  ck("pickPrimaries: ei kalustoa → fallback Leuanveto (kehonpaino)",
-     allRemoved.length === 1 && allRemoved[0].name === "Leuanveto (kehonpaino)");
+  // Pilari 3 C4: ei kalustoa (ei edes leukatankoa) → fallback = KEHONPAINO-SUORITETTAVA.
+  // (Vanha [Leuanveto (kehonpaino)] oli väärä: leuanveto vaatii leukatangon → ei suoritettavissa
+  //  ilman välineitä. Uusi fallback antaa apparaattivapaan alaraajaliikkeen.)
+  ck("pickPrimaries: ei kalustoa → fallback kehonpaino-suoritettava + alaraaja",
+     allRemoved.length >= 1 && allRemoved.some(p => p.category === "alaraaja")
+     && allRemoved.every(p => isMovementPerformable(p.name, null, p.category, new Set())));
 
   const avoided = pickPrimaries({ q09_sport: "powerlifting",
     q17_equipment: ["barbell_rack"], q11_injuries: [],
@@ -2757,6 +2792,28 @@ export function selfTestMapper() {
   const fixedHome = ensureLowerBody(legBlank, ["pullup_bar"]);
   const injHome = fixedHome[0].days[0].slots.find(s => s._lowerBodyGuaranteed);
   ck("C3: kehonpaino-ympäristö → injektoitu alaraaja suoritettavissa", !!injHome && isMovementPerformable(injHome.defaultMovementName, null, injHome.category, new Set(["pullup_bar"])));
+
+  // ─── 5f. Pilari 3 C4: P8 kehonpaino-fallback + ristiriita-advisory ──
+  // Kehonpaino-only → goal-setti cullataan equipmentilla → moniliike-kehonpaino-fallback + jalat
+  const bwOnly = pickPrimaries({ q09_sport: "hybrid", q12_primaryGoal: "general_strength", q17_equipment: ["bodyweight"] });
+  ck("C4: bodyweight-only → ei tyhjä (fallback)", bwOnly.length >= 1);
+  ck("C4: bodyweight-only → sis. alaraaja (#4)", bwOnly.some(p => p.category === "alaraaja"));
+  ck("C4: bodyweight-only → ei barbell-liikkeitä", !bwOnly.some(p => ["Takakyykky", "Penkkipunnerrus", "Maastaveto"].includes(p.name)));
+  // pullup_bar-only: hypertrofian pull (Lisäpainoleuanveto) SÄILYY equipment-filtteristä →
+  // ei fallbackia; jalat tulevat ensureLowerBody-backstopista materialisaatiossa (C3).
+  const bwBar = pickPrimaries({ q09_sport: "hybrid", q12_primaryGoal: "hypertrophy", q17_equipment: ["pullup_bar"] });
+  ck("C4: pullup_bar-only → pull säilyy (Lisäpainoleuanveto), suoritettava", bwBar.some(p => p.name === "Lisäpainoleuanveto")
+     && bwBar.every(p => isMovementPerformable(p.name, null, p.category, new Set(["pullup_bar"]))));
+  // dip_station-only (ei pullup_bar/barbell) → koko goal-setti cullataan → fallback: push + jalat
+  const bwDip = pickPrimaries({ q09_sport: "hybrid", q12_primaryGoal: "hypertrophy", q17_equipment: ["dip_station"] });
+  ck("C4: dip_station-only fallback → Dippi + alaraaja", bwDip.some(p => p.name === "Dippi (kehonpaino)") && bwDip.some(p => p.category === "alaraaja"));
+  // Advisory: max + hypertrofia toissijainen → ristiriita-viesti
+  const adv1 = _buildGoalConflictAdvisory({ q12_primaryGoal: "max_1RM", q13_secondaryGoal: "hypertrophy", q17_equipment: ["barbell_rack"], q24_frequency: { sessionLengthMinutes: 90, daysPerWeek: 4 } });
+  ck("C4: max+hyp → advisory annettu", typeof adv1 === "string" && adv1.length > 20);
+  ck("C4: advisory ilman UI-tutkijanimiä", !/Helms|Pareja|Jukic|Issurin|Petré|Latella/.test(adv1 || ""));
+  // Tasapainoinen tavoite + hyvät resurssit → ei advisorya
+  const adv2 = _buildGoalConflictAdvisory({ q12_primaryGoal: "general_strength", q13_secondaryGoal: null, q17_equipment: ["barbell_rack", "pullup_bar", "dumbbells"], q24_frequency: { sessionLengthMinutes: 90, daysPerWeek: 4 } });
+  ck("C4: tasapainoinen → ei advisorya (null)", adv2 === null);
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
