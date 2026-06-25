@@ -1999,6 +1999,41 @@ export function applyEquipmentFilter(weekPlans, q17Equipment, movementBank = FAL
   }));
 }
 
+// ─── Pilari 3 C3: ensureLowerBody — rakenteellinen alaraaja-invariantti ──
+// A1-juuri #4: "kattavat" skeletonit (createDefaultMesocycle) ovat alaraaja-tyhjiä
+// (kategoria alaraaja vain liikepankissa, ei skeleton-sloteissa). FIX-A:n goal-setit
+// sisältävät aina alaraajan, MUTTA equipment-cull voi poistaa sen → turvaverkko tarvitaan.
+// Ratifioitu (Akseli "ei vaikka mistä"): materialisoitu ohjelma EI KOSKAAN ilman ≥1
+// alaraaja/lonkkahingaus-liikettä, riippumatta goal-setistä/skeletonista. Jos puuttuu →
+// injektoi suoritettavissa oleva alaraaja-accessory (kehonpaino-fallback aina mahdollinen).
+// No-op kun jalat jo mukana (yleisin tapaus FIX-A:n jälkeen).
+export function ensureLowerBody(weekPlans, q17Equipment, movementBank = FALLBACK_MOVEMENT_BANK) {
+  const isLeg = c => c === "alaraaja" || c === "lonkkahingaus";
+  const hasLeg = weekPlans.some(wp => wp.days?.some(d => d.slots?.some(s => isLeg(s.category))));
+  if (hasLeg) return weekPlans; // jalat jo mukana → ei tehdä mitään
+  const eqSet = new Set(Array.isArray(q17Equipment) ? q17Equipment : []);
+  const bank = (Array.isArray(movementBank) && movementBank.length) ? movementBank : FALLBACK_MOVEMENT_BANK;
+  const legCands = bank.filter(m => m && isLeg(m.category) && m.id !== "fb_custom_other"
+    && isMovementPerformable(m.name, m.loadType, m.category, eqSet));
+  legCands.sort((a, b) => _eqCost(a, eqSet) - _eqCost(b, eqSet)); // kehonpaino ensin
+  // Kehonpaino-fallback (aina suoritettavissa) jos pankki ei tarjoa suoritettavaa.
+  const leg = legCands[0] || { name: "Bulgarian split squat", category: "alaraaja" };
+  // Injektoi alaraaja-accessory jokaisen viikon ensimmäiseen päivään → jalat joka viikko.
+  return weekPlans.map(wp => {
+    if (!wp.days || wp.days.length === 0) return wp;
+    return {
+      ...wp,
+      days: wp.days.map((d, i) => i !== 0 ? d : ({
+        ...d,
+        slots: [...(d.slots || []), {
+          role: "accessory", category: leg.category, defaultMovementName: leg.name,
+          sets: 3, reps: 8, targetVx: 3, variantName: null, _lowerBodyGuaranteed: true,
+        }],
+      })),
+    };
+  });
+}
+
 // ─── 2C-β: Session-fokus per päivä ─────────────────────────────────────
 //
 // Pää-app:in skeleton-factoryt antavat päiväkorteille yleisiä labeleita
@@ -2702,6 +2737,26 @@ export function selfTestMapper() {
      wpHome[0].days[0].slots.some(s => s.role === "primary" && s.defaultMovementName === "Takakyykky"));
   // Korvaus säilyttää sarja/toistot
   ck("C2: korvaus säilyttää sets/reps", homeAcc.length === 0 || (homeAcc[0].sets === 3 && homeAcc[0].reps === 10));
+
+  // ─── 5e. Pilari 3 C3: ensureLowerBody (alaraaja-invariantti) ────────
+  const isLegCat = c => c === "alaraaja" || c === "lonkkahingaus";
+  const legCount = wp => wp.reduce((n, w) => n + w.days.reduce((m, d) => m + d.slots.filter(s => isLegCat(s.category)).length, 0), 0);
+  // Jalaton ohjelma (vain vertikaaliveto) → injektoidaan alaraaja
+  const legBlank = [{ week: 1, days: [{ slots: [
+    { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 3 },
+    { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 8 },
+  ] }] }];
+  const fixed = ensureLowerBody(legBlank, eqFull);
+  ck("C3: jalaton ohjelma → alaraaja injektoitu", legCount(fixed) >= 1);
+  ck("C3: injektoitu liike on accessory + _lowerBodyGuaranteed",
+     fixed[0].days[0].slots.some(s => s._lowerBodyGuaranteed && isLegCat(s.category)));
+  // Jalat jo mukana → no-op (ei lisätä toista)
+  const hasLegs = [{ week: 1, days: [{ slots: [{ role: "primary", category: "alaraaja", defaultMovementName: "Takakyykky", sets: 5, reps: 3 }] }] }];
+  ck("C3: jalat jo mukana → no-op (ei tuplaa)", legCount(ensureLowerBody(hasLegs, eqFull)) === 1);
+  // Kehonpaino-only: injektoitu alaraaja suoritettavissa ilman välineitä
+  const fixedHome = ensureLowerBody(legBlank, ["pullup_bar"]);
+  const injHome = fixedHome[0].days[0].slots.find(s => s._lowerBodyGuaranteed);
+  ck("C3: kehonpaino-ympäristö → injektoitu alaraaja suoritettavissa", !!injHome && isMovementPerformable(injHome.defaultMovementName, null, injHome.category, new Set(["pullup_bar"])));
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
