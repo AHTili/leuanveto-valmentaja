@@ -1125,6 +1125,8 @@ import {
   applySessionFocusLabels,
   // v4.44.0 (Track B Vaihe 2C-β2): split-filter + volyymi-cap post-process
   applySplitFilter, applyVolumeCap,
+  // Pilari 3 C2 (FIX-B): kalusto-suodatin (apuliikkeiden q17-korvaus)
+  applyEquipmentFilter,
   // v4.45.0 (Track B Vaihe 2C-γ): tier-pohjainen kg/vk-progressiokerroin
   applyTierProgression,
   // v4.46.0 (Track B Vaihe 2C-δ): isometric-pitojen e1RM-mallinnus
@@ -4110,6 +4112,9 @@ async function handleGenerateProgram() {
       newMeso.weekPlans = applySplitFilter(newMeso.weekPlans, splitPref);
       newMeso.weekPlans = applyVolumeCap(newMeso.weekPlans, mapped.goal);
     }
+    // Pilari 3 C2 (FIX-B): suodata kalusto — kelvottomat apuliikkeet (q17 ei kata) korvataan
+    // sama-kategoria-ekvivalentilla / pudotetaan. No-op täyskalustolle + kun q17 puuttuu.
+    newMeso.weekPlans = applyEquipmentFilter(newMeso.weekPlans, wizardConfig.answers?.q17_equipment);
     newMeso.weekPlans = applySessionFocusLabels(newMeso.weekPlans);
     // 2C-γ: Tier-pohjainen progressiokerroin weekDef.deltaPctBase:lle.
     // Säätää vk 2-3 progressionopeutta (vk 1 akklimatisaatio + vk 4 deload

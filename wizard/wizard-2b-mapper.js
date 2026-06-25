@@ -30,6 +30,9 @@
 // importoi tämän mapperin ja syöttää output:n generateCustomMesocycle:lle.
 
 import { SCHEMA_INVARIANTS } from "./wizard-schema.js";
+// Pilari 3 C2: liikepankki substituutiopooliksi (kalusto-suodatuksen korvaajat — oikeat
+// katalogi-liikkeet, ei keksittyjä nimiä).
+import { FALLBACK_MOVEMENT_BANK } from "./wizard-movement-bank.js";
 
 export const MAPPER_VERSION = "2D-gamma-v1.0";
 
@@ -1952,6 +1955,50 @@ export function applyVolumeCap(weekPlans, blockGoal) {
   });
 }
 
+// ─── Pilari 3 C2 (FIX-B): kalusto-suodatin ─────────────────────────────
+// A1-juuri #2: materialisaatiokerros (data.js) on kalustosokea → apuliikkeet vuotavat
+// ohi q17:n (kaapeli/laite/penkki vaikka atletilla ei ole). Tämä post-process-vaihe
+// suodattaa KOKO materialisoidun apuliikejoukon yli (yksi suodatin, ei per-stage):
+//   - kelvoton apuliike → KORVATAAN sama-kategoria-ekvivalentilla (suoritettavissa q17:llä,
+//     kehonpaino preferoituna) → säilyttää volyymin + treenitavoitteen (ratifioitu).
+//   - jos substituuttia ei ole → pudota slot (ratifioitu: pudota vain viimeisenä keinona).
+// No-op täyskalustolle JA kun q17 puuttuu/tyhjä (turvallinen — ei strippaa vahingossa).
+// Primaarit on jo suodatettu pickPrimaries:ssä (requires) → tässä vain accessory-slotit.
+function _eqCost(m, eqSet) {
+  const { requires, any } = movementRequiredEquipment(m.name, m.loadType, m.category);
+  let cost = any ? 1 : requires.length; // 0 = kehonpaino (preferoitu), 1 = yksi väline
+  if (m.isCompetitionLift) cost += 0.5; // preferoi ei-kisaliike apuliike-korvaajaksi (Leuanveto > Lisäpainoleuanveto)
+  return cost;
+}
+export function applyEquipmentFilter(weekPlans, q17Equipment, movementBank = FALLBACK_MOVEMENT_BANK) {
+  if (!Array.isArray(q17Equipment) || q17Equipment.length === 0) return weekPlans; // ei q17 → no-op
+  const eqSet = new Set(q17Equipment);
+  const bank = (Array.isArray(movementBank) && movementBank.length) ? movementBank : FALLBACK_MOVEMENT_BANK;
+  const subCache = {};
+  const findSub = (category) => {
+    if (category in subCache) return subCache[category];
+    const cands = bank.filter(m => m && m.category === category && m.id !== "fb_custom_other"
+      && isMovementPerformable(m.name, m.loadType, m.category, eqSet));
+    cands.sort((a, b) => _eqCost(a, eqSet) - _eqCost(b, eqSet)); // kehonpaino ensin (inklusiivisin)
+    subCache[category] = cands[0] || null;
+    return subCache[category];
+  };
+  return weekPlans.map(wp => ({
+    ...wp,
+    days: wp.days.map(d => ({
+      ...d,
+      slots: d.slots.reduce((acc, s) => {
+        if (s.role !== "accessory") { acc.push(s); return acc; }
+        if (isMovementPerformable(s.defaultMovementName, null, s.category, eqSet)) { acc.push(s); return acc; }
+        const sub = findSub(s.category);
+        if (sub) acc.push({ ...s, defaultMovementName: sub.name, variantName: null, _equipmentSubstituted: true });
+        // ei substituuttia → pudota slot (viimeinen keino)
+        return acc;
+      }, []),
+    })),
+  }));
+}
+
 // ─── 2C-β: Session-fokus per päivä ─────────────────────────────────────
 //
 // Pää-app:in skeleton-factoryt antavat päiväkorteille yleisiä labeleita
@@ -2633,6 +2680,28 @@ export function selfTestMapper() {
   // KNOWN-NEG: streetlifting (spesifi) säilyy ennallaan (4-liikkeen setti, EI goal-haara)
   const str = pickPrimaries({ q09_sport: "streetlifting", q12_primaryGoal: "max_1RM", q17_equipment: eqFull });
   ck("C1 known-neg: streetlifting ennallaan (sis. Muscle-up)", hasName(str, "Muscle-up") && hasName(str, "Lisäpainoleuanveto"));
+
+  // ─── 5d. Pilari 3 C2: applyEquipmentFilter (FIX-B) ──────────────────
+  const mkWP = (accName, accCat) => [{ week: 1, days: [{ slots: [
+    { role: "primary",   category: "alaraaja", defaultMovementName: "Takakyykky", sets: 5, reps: 3 },
+    { role: "accessory", category: accCat,     defaultMovementName: accName,      sets: 3, reps: 10 },
+  ] }] }];
+  const accOf = wp => wp[0].days[0].slots.filter(s => s.role === "accessory");
+  // No-op täyskalustolla: Ylätalja säilyy
+  ck("C2: täyskalusto → Ylätalja säilyy (no-op)",
+     accOf(applyEquipmentFilter(mkWP("Ylätalja", "vertikaaliveto"), eqFull)).some(s => s.defaultMovementName === "Ylätalja"));
+  // q17 puuttuu → no-op (ei strippaa vahingossa)
+  ck("C2: q17 puuttuu → no-op",
+     accOf(applyEquipmentFilter(mkWP("Ylätalja", "vertikaaliveto"), null)).some(s => s.defaultMovementName === "Ylätalja"));
+  // pullup_bar-only: Ylätalja (cable) EI jää → korvattu/pudotettu, korvaaja suoritettavissa
+  const wpHome = applyEquipmentFilter(mkWP("Ylätalja", "vertikaaliveto"), ["pullup_bar"]);
+  const homeAcc = accOf(wpHome);
+  ck("C2: pullup_bar-only → Ylätalja EI jää", !homeAcc.some(s => s.defaultMovementName === "Ylätalja"));
+  ck("C2: korvaaja suoritettavissa q17:llä", homeAcc.every(s => isMovementPerformable(s.defaultMovementName, null, s.category, new Set(["pullup_bar"]))));
+  ck("C2: primaari Takakyykky EI kosketa (vain accessory)",
+     wpHome[0].days[0].slots.some(s => s.role === "primary" && s.defaultMovementName === "Takakyykky"));
+  // Korvaus säilyttää sarja/toistot
+  ck("C2: korvaus säilyttää sets/reps", homeAcc.length === 0 || (homeAcc[0].sets === 3 && homeAcc[0].reps === 10));
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
