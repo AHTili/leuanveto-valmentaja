@@ -1,4 +1,4 @@
-# Wizard-dumppi — 8 profiilia (KAPSTONI pilari 3, W1-standardi)
+# Wizard-dumppi — 11 profiilia (KAPSTONI pilari 3, W1-standardi)
 
 > **POST-FIX RE-DUMPPI** (pilari 3 -materialisaatiokorjaus C0-C4 mukana). Generoitu 2026-06-14.
 > Ajettu repon oikealla Wizard-mapperilla (`wizard/wizard-2b-mapper.js` `mapWizardToProgram`) +
@@ -8,7 +8,7 @@
 > Korjaus: goal-aware primaarit + K kategoria-slot-täyttö + kalusto-suodatin + alaraaja-takuu + P8 kehonpaino/advisory.
 > mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
 >
-> **Tulos: 8/8 profiilia generoitui onnistuneesti.**
+> **Tulos: 11/11 profiilia generoitui onnistuneesti.** (P1–P8 W2-perusprofiilit + P9–P11 pilari 3 (b) kalusto-kattavuuslisäys.)
 >
 > ## ⚠️ SOKKOUTUSOHJE W2-ARVIOIJALLE
 > Tämä dumppi on **kolmessa erillisessä lohkossa**. Lue järjestyksessä:
@@ -69,7 +69,7 @@
 ### P2
 > Mies 32 v, 2–3 v, hypertrofia, koti (käsipainot ≤32 kg, leuanvetotanko, kuminauhat; ei penkkiä/tankoa), 4 pv/vk.
 
-- **Liikevalinta (primaryt):** Lisäpainoleuanveto
+- **Liikevalinta (primaryt):** Lisäpainoleuanveto + Käsipainopenkki + Bulgarian split squat
 - **Frekvenssi:** 4 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
 - **Periodisaatio:** 4 vk (materialisoitu)
 
@@ -85,34 +85,40 @@
       · primary: Lisäpainoleuanveto — 2×10 @ V1 (vertikaaliveto)
       · accessory: Dumbbell fly — 2×10 @ V1 (horisontaalityöntö)
       · accessory: Handstand push-up (HSPU) — 2×15 @ V1 (vertikaalityöntö)
-      · accessory: Glute-Ham Raise — 3×8 @ V3 (alaraaja)
-    Päivä (dow 2, volume) — fokus: Lisäpainoleuanveto:
-      · primary: Lisäpainoleuanveto — 2×10 @ V1 (vertikaaliveto)
-      · accessory: Dumbbell fly — 2×10 @ V1 (horisontaalityöntö)
-      · accessory: Handstand push-up (HSPU) — 2×15 @ V1 (vertikaalityöntö)
-    Päivä (dow 4, volume) — fokus: Lisäpainoleuanveto:
-      · primary: Lisäpainoleuanveto — 2×8 @ V1 (vertikaaliveto)
-      · accessory: Pystypunnerrus käsipainot — 2×15 @ V1 (vertikaalityöntö)
-      · accessory: Hauiskääntö tanko — 2×12 @ V1 (hauisfleksio)
+    Päivä (dow 2, volume) — fokus: Käsipainopenkki:
+      · primary: Käsipainopenkki — 2×10 @ V1 (horisontaalityöntö)
+      · accessory: Leuanveto (kehonpaino) — 2×10 @ V1 (vertikaaliveto)
+      · accessory: Lisäpainoleuanveto — 2×15 @ V1 (horisontaaliveto)
+      · accessory: Hammer curl — 2×12 @ V1 (hauisfleksio)
+    Päivä (dow 4, volume) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 2×8 @ V1 (alaraaja)
+      · accessory: Glute-Ham Raise — 2×10 @ V1 (alaraaja)
+      · accessory: Glute-Ham Raise — 2×12 @ V1 (alaraaja)
     Päivä (dow 5, volume) — fokus: Lisäpainoleuanveto:
       · primary: Lisäpainoleuanveto — 2×8 @ V1 (vertikaaliveto)
+      · accessory: Lisäpainoleuanveto — 2×10 @ V1 (horisontaaliveto)
+      · accessory: Lisäpainoleuanveto — 2×10 @ V1 (horisontaaliveto)
+      · accessory: Lisäpainoleuanveto — 2×15 @ V1 (horisontaaliveto)
       · accessory: Hanging leg raise — 2×12 @ — (core)
   **Viikko 4:**
     Päivä (dow 1, volume) — fokus: Lisäpainoleuanveto:
       · primary: Lisäpainoleuanveto — 1×10 @ V4 (vertikaaliveto)
       · accessory: Dumbbell fly — 1×10 @ V4 (horisontaalityöntö)
       · accessory: Handstand push-up (HSPU) — 1×15 @ V4 (vertikaalityöntö)
-      · accessory: Glute-Ham Raise — 3×8 @ V3 (alaraaja)
-    Päivä (dow 2, volume) — fokus: Lisäpainoleuanveto:
-      · primary: Lisäpainoleuanveto — 1×10 @ V4 (vertikaaliveto)
-      · accessory: Dumbbell fly — 1×10 @ V4 (horisontaalityöntö)
-      · accessory: Handstand push-up (HSPU) — 1×15 @ V4 (vertikaalityöntö)
-    Päivä (dow 4, volume) — fokus: Lisäpainoleuanveto:
-      · primary: Lisäpainoleuanveto — 1×8 @ V4 (vertikaaliveto)
-      · accessory: Pystypunnerrus käsipainot — 1×15 @ V4 (vertikaalityöntö)
+    Päivä (dow 2, volume) — fokus: Käsipainopenkki:
+      · primary: Käsipainopenkki — 1×10 @ V4 (horisontaalityöntö)
+      · accessory: Leuanveto (kehonpaino) — 1×10 @ V4 (vertikaaliveto)
+      · accessory: Lisäpainoleuanveto — 1×15 @ V4 (horisontaaliveto)
       · accessory: Hauiskääntö tanko — 1×12 @ V4 (hauisfleksio)
+    Päivä (dow 4, volume) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 1×8 @ V4 (alaraaja)
+      · accessory: Glute-Ham Raise — 1×10 @ V4 (alaraaja)
+      · accessory: Pohjenosto — 1×12 @ V4 (alaraaja)
     Päivä (dow 5, volume) — fokus: Lisäpainoleuanveto:
       · primary: Lisäpainoleuanveto — 1×8 @ V4 (vertikaaliveto)
+      · accessory: Lisäpainoleuanveto — 1×10 @ V4 (horisontaaliveto)
+      · accessory: Lisäpainoleuanveto — 1×10 @ V4 (horisontaaliveto)
+      · accessory: Lisäpainoleuanveto — 1×15 @ V4 (horisontaaliveto)
       · accessory: Hanging leg raise — 1×12 @ — (core)
   *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
 
@@ -555,7 +561,7 @@
 ### P8
 > (known-negative B) Nainen 41 v / 70 kg, <1 v, ristiriitainen vektori: SEKÄ kilpailutason maksimivoima ETTÄ maksimaalinen lihaskasvu nopeasti; 2 pv/vk × 30 min; ei välineitä (koti); heikko palautuminen.
 
-- **Liikevalinta (primaryt):** Leuanveto (kehonpaino) + Bulgarian split squat
+- **Liikevalinta (primaryt):** Bulgarian split squat + Handstand push-up (HSPU)
 - **Frekvenssi:** 2 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
 - **Periodisaatio:** 4 vk (materialisoitu) · mapper-aikomus 6 vk · ⚠ deklaroitu weekCount=6 ≠ materialisoitu 4
 
@@ -567,19 +573,240 @@
 
 **Viikko-ohjelmat (liikkeet · volyymi sets×reps · intensiteetti V):**
   **Viikko 1:**
-    Päivä (dow 1, heavy) — fokus: Leuanveto (kehonpaino):
-      · primary: Leuanveto (kehonpaino) — 5×3 @ V2 (vertikaaliveto)
-      · backoff: Leuanveto (kehonpaino) — 3×5 @ V3 (vertikaaliveto)
-    Päivä (dow 4, volume) — fokus: Bulgarian split squat:
-      · primary: Bulgarian split squat — 5×5 @ V3 (alaraaja)
-      · accessory: Glute-Ham Raise — 3×8 @ V3 (alaraaja)
+    Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 5×3 @ V2 (alaraaja)
+      · backoff: Bulgarian split squat — 3×5 @ V3 (alaraaja)
+      · accessory: Glute-Ham Raise — 3×6 @ V3 (alaraaja)
+      · accessory: Lisäpainoleuanveto — 3×8 @ V3 (horisontaaliveto)
+      · accessory: Pohjenosto — 3×10 @ — (alaraaja)
+    Päivä (dow 4, volume) — fokus: Handstand push-up (HSPU):
+      · primary: Handstand push-up (HSPU) — 5×5 @ V3 (vertikaalityöntö)
+      · accessory: Handstand push-up (HSPU) — 3×8 @ V3 (vertikaalityöntö)
+      · accessory: Lisäpainoleuanveto — 3×8 @ V3 (horisontaaliveto)
       · accessory: Hanging leg raise — 3×10 @ — (core)
   **Viikko 4:**
-    Päivä (dow 1, heavy) — fokus: Leuanveto (kehonpaino):
-      · primary: Leuanveto (kehonpaino) — 3×3 @ V4 (vertikaaliveto)
-    Päivä (dow 4, volume) — fokus: Bulgarian split squat:
-      · primary: Bulgarian split squat — 3×5 @ V4 (alaraaja)
+    Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 3×3 @ V4 (alaraaja)
       · accessory: Glute-Ham Raise — 3×8 @ V4 (alaraaja)
+      · accessory: Glute-Ham Raise — 2×10 @ — (alaraaja)
+    Päivä (dow 4, volume) — fokus: Handstand push-up (HSPU):
+      · primary: Handstand push-up (HSPU) — 3×5 @ V4 (vertikaalityöntö)
+      · accessory: Handstand push-up (HSPU) — 3×8 @ V4 (vertikaalityöntö)
+      · accessory: Lisäpainoleuanveto — 2×8 @ V4 (horisontaaliveto)
+  *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
+
+---
+
+### P9
+> Mies 30 v / 85 kg, 2 v, hypertrofia, KOTI vain käsipainot (ei leukatankoa/tankoa), 4 pv/vk.
+
+- **Liikevalinta (primaryt):** Käsipainopenkki + Bulgarian split squat
+- **Frekvenssi:** 4 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
+- **Periodisaatio:** 4 vk (materialisoitu)
+
+**Viikkomääritykset (periodisaatio/progressio — numeerinen, sokko):**
+  - vk 1: ΔPct 0% · pää 8 × V2
+  - vk 2: ΔPct 0.01% · pää 8 × V2
+  - vk 3: ΔPct 0.02% · pää 8 × V1
+  - vk 4: ΔPct -0.25% · pää 6 × V4
+
+**Viikko-ohjelmat (liikkeet · volyymi sets×reps · intensiteetti V):**
+  **Viikko 1:**
+    Päivä (dow 1, volume) — fokus: Käsipainopenkki:
+      · primary: Käsipainopenkki — 2×10 @ V1 (horisontaalityöntö)
+      · accessory: Hammer curl — 2×12 @ V1 (hauisfleksio)
+    Päivä (dow 2, volume) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 2×10 @ V1 (alaraaja)
+    Päivä (dow 4, volume) — fokus: Käsipainopenkki:
+      · primary: Käsipainopenkki — 2×8 @ V1 (horisontaalityöntö)
+      · accessory: Handstand push-up (HSPU) — 2×10 @ V1 (vertikaalityöntö)
+      · accessory: Skull crusher — 2×12 @ V1 (ojentajaekstensio)
+    Päivä (dow 5, volume) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 2×8 @ V1 (alaraaja)
+      · accessory: Walking lunge — 2×10 @ V1 (alaraaja)
+      · accessory: Glute-Ham Raise — 2×10 @ V1 (alaraaja)
+      · accessory: Glute-Ham Raise — 2×15 @ V1 (alaraaja)
+      · accessory: Hanging leg raise — 2×12 @ — (core)
+  **Viikko 4:**
+    Päivä (dow 1, volume) — fokus: Käsipainopenkki:
+      · primary: Käsipainopenkki — 1×10 @ V4 (horisontaalityöntö)
+      · accessory: Hauiskääntö tanko — 1×12 @ V4 (hauisfleksio)
+    Päivä (dow 2, volume) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 1×10 @ V4 (alaraaja)
+    Päivä (dow 4, volume) — fokus: Käsipainopenkki:
+      · primary: Käsipainopenkki — 1×8 @ V4 (horisontaalityöntö)
+      · accessory: Pystypunnerrus käsipainot — 1×10 @ V4 (vertikaalityöntö)
+    Päivä (dow 5, volume) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 1×8 @ V4 (alaraaja)
+      · accessory: Glute-Ham Raise — 1×10 @ V4 (alaraaja)
+      · accessory: Glute-Ham Raise — 1×10 @ V4 (alaraaja)
+      · accessory: Glute-Ham Raise — 1×15 @ V4 (alaraaja)
+      · accessory: Hanging leg raise — 1×12 @ — (core)
+  *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
+
+---
+
+### P10
+> Nainen 34 v / 64 kg, 3 v, yleisvoima, KOTI vain renkaat/TRX, 3 pv/vk.
+
+- **Liikevalinta (primaryt):** Bulgarian split squat + Handstand push-up (HSPU)
+- **Frekvenssi:** 3 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
+- **Periodisaatio:** 5 vk (materialisoitu)
+
+**Viikkomääritykset (periodisaatio/progressio — numeerinen, sokko):**
+  - vk 1: ΔPct -0.07499999999999996% · pää 5 × V2
+  - vk 2: ΔPct -0.050000000000000044% · pää 5 × V2
+  - vk 3: ΔPct -0.025000000000000022% · pää 5 × V2
+  - vk 4: ΔPct 0% · pää 5 × V1
+  - vk 5: ΔPct 0.005% · pää 3 × V1
+
+**Viikko-ohjelmat (liikkeet · volyymi sets×reps · intensiteetti V):**
+  **Viikko 1:**
+    Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V2 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V1 (alaraaja)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V4 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V2 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V1 (vertikaalityöntö)
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V2 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V1 (alaraaja)
+      · accessory: Ab wheel rollout — 2×10 @ V3 (core)
+      · accessory: Hanging leg raise — 3×10 @ — (core)
+    Päivä (dow 3, volume) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V4 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V4 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · accessory: Hanging leg raise — 3×10 @ — (core)
+    Päivä (dow 5, heavy) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V2 (alaraaja)
+      · primary: Bulgarian split squat — 1×3 @ V1 (alaraaja)
+      · backoff: Bulgarian split squat — 1×8 @ V3 (alaraaja)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V4 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V2 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×3 @ V1 (vertikaalityöntö)
+      · backoff: Handstand push-up (HSPU) — 1×8 @ V3 (vertikaalityöntö)
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V2 (alaraaja)
+      · primary: Bulgarian split squat — 1×3 @ V1 (alaraaja)
+      · backoff: Bulgarian split squat — 1×8 @ V3 (alaraaja)
+      · accessory: Glute-Ham Raise — 3×10 @ — (alaraaja)
+  **Viikko 5:**
+    Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V2 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V1 (alaraaja)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V4 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V2 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V1 (vertikaalityöntö)
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V2 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V1 (alaraaja)
+      · accessory: Ab wheel rollout — 2×10 @ V3 (core)
+      · accessory: Hanging leg raise — 3×10 @ — (core)
+    Päivä (dow 3, volume) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V4 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V4 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · accessory: Hanging leg raise — 3×10 @ — (core)
+    Päivä (dow 5, heavy) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V2 (alaraaja)
+      · primary: Bulgarian split squat — 1×3 @ V1 (alaraaja)
+      · backoff: Bulgarian split squat — 1×8 @ V3 (alaraaja)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V4 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×5 @ V2 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 1×3 @ V1 (vertikaalityöntö)
+      · backoff: Handstand push-up (HSPU) — 1×8 @ V3 (vertikaalityöntö)
+      · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
+      · primary: Bulgarian split squat — 1×5 @ V2 (alaraaja)
+      · primary: Bulgarian split squat — 1×3 @ V1 (alaraaja)
+      · backoff: Bulgarian split squat — 1×8 @ V3 (alaraaja)
+      · accessory: Glute-Ham Raise — 3×10 @ — (alaraaja)
+  *(vk 2…4 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 5)*
+
+---
+
+### P11
+> Mies 25 v / 78 kg, <1 v, yleiskunto, KOTI ei välineitä (pelkkä kehonpaino), 3 pv/vk.
+
+- **Liikevalinta (primaryt):** Bulgarian split squat + Handstand push-up (HSPU)
+- **Frekvenssi:** 3 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
+- **Periodisaatio:** 4 vk (materialisoitu) · mapper-aikomus 6 vk · ⚠ deklaroitu weekCount=6 ≠ materialisoitu 4
+
+**Viikkomääritykset (periodisaatio/progressio — numeerinen, sokko):**
+  - vk 1: ΔPct 0% · pää 3 × V2
+  - vk 2: ΔPct 0.025% · pää 3 × V1
+  - vk 3: ΔPct 0.035% · pää 2 × V1
+  - vk 4: ΔPct -0.25% · pää 3 × V4
+
+**Viikko-ohjelmat (liikkeet · volyymi sets×reps · intensiteetti V):**
+  **Viikko 1:**
+    Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 5×3 @ V2 (alaraaja)
+      · backoff: Bulgarian split squat — 3×5 @ V3 (alaraaja)
+      · accessory: Glute-Ham Raise — 3×6 @ V3 (alaraaja)
+      · accessory: Pohjenosto — 3×10 @ — (alaraaja)
+    Päivä (dow 3, volume) — fokus: Handstand push-up (HSPU):
+      · primary: Handstand push-up (HSPU) — 5×5 @ V3 (vertikaalityöntö)
+      · accessory: Handstand push-up (HSPU) — 3×8 @ V3 (vertikaalityöntö)
+      · accessory: Hanging leg raise — 3×10 @ — (core)
+    Päivä (dow 5, speed) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 6×2 @ V4 (alaraaja)
+      · accessory: Glute-Ham Raise — 3×10 @ — (alaraaja)
+      · accessory: Pohjenosto — 3×10 @ — (alaraaja)
+  **Viikko 4:**
+    Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
+      · primary: Bulgarian split squat — 3×3 @ V4 (alaraaja)
+      · accessory: Glute-Ham Raise — 3×8 @ V4 (alaraaja)
+      · accessory: Glute-Ham Raise — 2×10 @ — (alaraaja)
+    Päivä (dow 3, volume) — fokus: Handstand push-up (HSPU):
+      · primary: Handstand push-up (HSPU) — 3×5 @ V4 (vertikaalityöntö)
+      · accessory: Handstand push-up (HSPU) — 3×8 @ V4 (vertikaalityöntö)
   *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
 
 
@@ -689,6 +916,45 @@
         rationale: Tulet pois ohjelmattomasta vaiheesta → GPP rakentaa pohjan ennen voima/hypertrofiablokkia; Aloittelijalle GPP on koulutuksellisesti hyvä pohja
     3. `single-madcow-5x5` (Madcow 5×5) — **conf 40**
         rationale: Aloittelija → Madcow toimii LP-ohjelmana, mutta StrongLifts/Starting Strength on yleensä parempi alkuun; Voima/yleinen voima → Madcow:n 5×5-ramp tukee voimakasvua; Tulet pois ohjelmattomasta/deloadista → Madcow:n lineaarinen progressio palauttaa pohjan
+- **Viikko-labelit:** vk1: Adaptaatio · vk2: Loading · vk3: Overreach · vk4: Deload
+
+
+### P9 — Mies 30 v / 85 kg
+- **VALITTU TYYLI:** `single-minimalist-rp` — Minimalist RP (Israetel)
+- **goal:** minimalistRP · **skeleton:** createMinimalistRPMesocycle · **weekCount:** 4
+- **Top-3 kandidaatit (confidence):**
+    1. `single-minimalist-rp` (Minimalist RP (Israetel)) — **conf 40**
+        rationale: Hypertrofia-tavoite → RP volume landmarks suoraan kohdistettu
+    2. `single-hypertrofia` (Hypertrofiajakso) — **conf 35**
+        rationale: Päätavoite hypertrofia → hypertrofia-blokki suoraan kohdistettu; Edellinen blokki oli jo hypertrofia → seuraava luonteva askel on voima
+    3. `single-dup` (DUP — undulating) — **conf 35**
+        rationale: Keskitaso+ pystyy hyödyntämään päivittäin vaihtuvaa intensiteettiä; Yleinen voima / hypertrofia → DUP sopii kun haluat varioida ärsykettä; Aiempi perinteinen blokki → DUP voi tarjota variointia
+- **Viikko-labelit:** vk1: RP Min vk1 (MEV) · vk2: RP Min vk2 (MEV+2 sets) · vk3: RP Min vk3 (lähellä MAV) · vk4: RP Min vk4 (deload)
+
+
+### P10 — Nainen 34 v / 64 kg
+- **VALITTU TYYLI:** `single-madcow-5x5` — Madcow 5×5
+- **goal:** madcow5x5 · **skeleton:** createMadcow5x5Mesocycle · **weekCount:** 5
+- **Top-3 kandidaatit (confidence):**
+    1. `single-madcow-5x5` (Madcow 5×5) — **conf 70**
+        rationale: Keskitaso (1-3 v) → Madcow 5×5 on kohdistettu intermediate-LP:lle; Voima/yleinen voima → Madcow:n 5×5-ramp tukee voimakasvua; Tulet pois ohjelmattomasta/deloadista → Madcow:n lineaarinen progressio palauttaa pohjan; 3 päivää/vk → sopii suoraan Madcow:n Ma/Ke/Pe-rakenteeseen
+    2. `single-gzcl-jt20` (GZCL Jacked & Tan 2.0) — **conf 60**
+        rationale: Voima/yleinen voima + 12 vk strukturoitu T1/T2/T3-tier-rakenne tukee progressiota; Keskitaso+ pystyy hyödyntämään LSAMRAP-progressiota tarkasti; Tulet pois ohjelmattomasta/deloadista → J&T 2.0:n RM-target 10→1 antaa hyvän progressioväylän
+    3. `single-yhdistelma` (Perusjakso (Ma/Pe/No)) — **conf 55**
+        rationale: Yleinen voima ja terveys → perusjakso kattaa kaikki ominaisuudet; Keskitaso+ saa silti pohjarakennukseen perusjaksosta arvoa; Tulet pois ohjelmattomasta vaiheesta → laajapohjainen yhdistelmäjakso rakentaa kaiken pohjan
+- **Viikko-labelit:** vk1: Vk1 (92.5% 5RM) · vk2: Vk2 (95.0% 5RM) · vk3: Vk3 (97.5% 5RM) · vk4: Vk4 (100% 5RM) · vk5: Vk5 PR-yritys (102.5%+ 5RM)
+
+
+### P11 — Mies 25 v / 78 kg
+- **VALITTU TYYLI:** `single-yhdistelma` — Perusjakso (Ma/Pe/No)
+- **goal:** yhdistelma · **skeleton:** createDefaultMesocycle · **weekCount:** 6
+- **Top-3 kandidaatit (confidence):**
+    1. `single-yhdistelma` (Perusjakso (Ma/Pe/No)) — **conf 65**
+        rationale: Yleinen voima ja terveys → perusjakso kattaa kaikki ominaisuudet; Aloittelijalle perusjakso on koulutuksellisesti paras (kaikki ominaisuudet kosketuksissa); Tulet pois ohjelmattomasta vaiheesta → laajapohjainen yhdistelmäjakso rakentaa kaiken pohjan
+    2. `single-madcow-5x5` (Madcow 5×5) — **conf 45**
+        rationale: Aloittelija → Madcow toimii LP-ohjelmana, mutta StrongLifts/Starting Strength on yleensä parempi alkuun; Voima/yleinen voima → Madcow:n 5×5-ramp tukee voimakasvua; Tulet pois ohjelmattomasta/deloadista → Madcow:n lineaarinen progressio palauttaa pohjan; 3 päivää/vk → sopii suoraan Madcow:n Ma/Ke/Pe-rakenteeseen
+    3. `single-siirtyma` (Siirtymäjakso (GPP)) — **conf 40**
+        rationale: Tulet pois ohjelmattomasta vaiheesta → GPP rakentaa pohjan ennen voima/hypertrofiablokkia; Aloittelijalle GPP on koulutuksellisesti hyvä pohja
 - **Viikko-labelit:** vk1: Adaptaatio · vk2: Loading · vk3: Overreach · vk4: Deload
 
 
@@ -1143,4 +1409,142 @@
 - q24: 2 pv × 30 min (annettu)
 - q21 fullbody (2 pv); q23 auto, q25 vara_loose, q33 balanced: neutraali
 - ★ KNOWN-NEGATIVE: 'heikko palautuminen' EI ole suoraan syötettävissä (ei 32Q-kysymystä). 2×30 min/vk + ei välineitä + beginner + ristiriitainen max+hypertrofia 'nopeasti' = realistisesti mahdoton tavoiteyhdistelmä. W2 arvioi tunnistaako/käsitteleekö wizard ristiriidan + resurssirajat.
+
+---
+
+### P9
+> Mies 30 v / 85 kg, 2 v, hypertrofia, KOTI vain käsipainot (ei leukatankoa/tankoa), 4 pv/vk.
+
+**32Q-vektori:**
+```json
+{
+ "q01_age": 30,
+ "q02_sex": "male",
+ "q03_weight": 85,
+ "q06_yearsTraining": 2,
+ "q07_autoregYears": 0,
+ "q08_selfLevel": "intermediate",
+ "q09_sport": "hypertrophy",
+ "q29_recentBlock": "hypertrophy",
+ "q10_trainingBreakMonths": 0,
+ "q11_injuries": [],
+ "q26_personalRecords": [],
+ "q12_primaryGoal": "hypertrophy",
+ "q13_secondaryGoal": "none",
+ "q14_cutting": "no",
+ "q15_aerobicModality": "none",
+ "q17_equipment": [
+  "dumbbells"
+ ],
+ "q18_hrvDevice": "none",
+ "q19_vbtDevice": "none",
+ "q20_sleepTracker": "none",
+ "q21_splitPreference": "upper_lower",
+ "q22_avoidedExercises": [],
+ "q23_volumePref": "auto",
+ "q24_frequency": {
+  "daysPerWeek": 4,
+  "sessionLengthMinutes": 60
+ },
+ "q31_preferredDays": [],
+ "q25_rpePrecision": "vara_loose",
+ "q33_aggressivenessDefault": "balanced"
+}
+```
+**Neutraalivalinnat (persona ei määritä → neutraali/tyypillinen):**
+- ★ KATTAVUUSLISÄYS (b): vain käsipainot — aiemmin ylävartalo-pyyhkiytyminen (0 push/pull). Odotus: push (käsipainopenkki) + legs (Bulgarian); veto rajoittunut → rehellinen advisory.
+- q17 ['dumbbells']: ei leukatankoa eikä tankoa → veto vaatii leukatangon/renkaat (katalogissa ei käsipaino-soutua, OBS-053)
+- q08 intermediate (2 v); q29 hypertrophy; q21 upper_lower; muut neutraali
+
+---
+
+### P10
+> Nainen 34 v / 64 kg, 3 v, yleisvoima, KOTI vain renkaat/TRX, 3 pv/vk.
+
+**32Q-vektori:**
+```json
+{
+ "q01_age": 34,
+ "q02_sex": "female",
+ "q03_weight": 64,
+ "q06_yearsTraining": 3,
+ "q07_autoregYears": 0,
+ "q08_selfLevel": "intermediate",
+ "q09_sport": "hybrid",
+ "q29_recentBlock": "off_program",
+ "q10_trainingBreakMonths": 0,
+ "q11_injuries": [],
+ "q26_personalRecords": [],
+ "q12_primaryGoal": "general_strength",
+ "q13_secondaryGoal": "none",
+ "q14_cutting": "no",
+ "q15_aerobicModality": "none",
+ "q17_equipment": [
+  "rings"
+ ],
+ "q18_hrvDevice": "none",
+ "q19_vbtDevice": "none",
+ "q20_sleepTracker": "none",
+ "q21_splitPreference": "fullbody",
+ "q22_avoidedExercises": [],
+ "q23_volumePref": "auto",
+ "q24_frequency": {
+  "daysPerWeek": 3,
+  "sessionLengthMinutes": 50
+ },
+ "q31_preferredDays": [],
+ "q25_rpePrecision": "vara_loose",
+ "q33_aggressivenessDefault": "balanced"
+}
+```
+**Neutraalivalinnat (persona ei määritä → neutraali/tyypillinen):**
+- ★ KATTAVUUSLISÄYS (b): vain renkaat — renkaat mahdollistaisivat veto/työnnön, mutta katalogissa ei rengasliikkeitä (OBS-053). Degradoituu kehonpaino-push (HSPU) + legs + advisory. EI keksittyä liikettä.
+- q17 ['rings']: aito kalusto-vuoto-tapaus jonka adversariaali löysi
+- q12 general_strength; q21 fullbody (3 pv); muut neutraali
+
+---
+
+### P11
+> Mies 25 v / 78 kg, <1 v, yleiskunto, KOTI ei välineitä (pelkkä kehonpaino), 3 pv/vk.
+
+**32Q-vektori:**
+```json
+{
+ "q01_age": 25,
+ "q02_sex": "male",
+ "q03_weight": 78,
+ "q06_yearsTraining": 0.5,
+ "q07_autoregYears": 0,
+ "q08_selfLevel": "beginner",
+ "q09_sport": "hybrid",
+ "q29_recentBlock": "off_program",
+ "q10_trainingBreakMonths": 0,
+ "q11_injuries": [],
+ "q26_personalRecords": [],
+ "q12_primaryGoal": "general_strength",
+ "q13_secondaryGoal": "none",
+ "q14_cutting": "no",
+ "q15_aerobicModality": "none",
+ "q17_equipment": [
+  "bodyweight"
+ ],
+ "q18_hrvDevice": "none",
+ "q19_vbtDevice": "none",
+ "q20_sleepTracker": "none",
+ "q21_splitPreference": "fullbody",
+ "q22_avoidedExercises": [],
+ "q23_volumePref": "auto",
+ "q24_frequency": {
+  "daysPerWeek": 3,
+  "sessionLengthMinutes": 45
+ },
+ "q31_preferredDays": [],
+ "q25_rpePrecision": "vara_loose",
+ "q33_aggressivenessDefault": "balanced"
+}
+```
+**Neutraalivalinnat (persona ei määritä → neutraali/tyypillinen):**
+- ★ KATTAVUUSLISÄYS (b): 'bodyweight' (C4:n lisäämä arvo) kanonisessa käytössään — aiemmin pyyhki ylävartalon. Odotus: push (HSPU) + legs (Bulgarian) + advisory ettei veto onnistu ilman leukatankoa/renkaita.
+- q17 ['bodyweight']: ei välineitä → veto vaatii leukatangon/renkaat (rehellinen advisory)
+- q08 beginner (<1 v); q21 fullbody (3 pv); muut neutraali
 

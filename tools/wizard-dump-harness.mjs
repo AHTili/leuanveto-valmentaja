@@ -231,6 +231,72 @@ const profiles = [
       "★ KNOWN-NEGATIVE: 'heikko palautuminen' EI ole suoraan syötettävissä (ei 32Q-kysymystä). 2×30 min/vk + ei välineitä + beginner + ristiriitainen max+hypertrofia 'nopeasti' = realistisesti mahdoton tavoiteyhdistelmä. W2 arvioi tunnistaako/käsitteleekö wizard ristiriidan + resurssirajat.",
     ],
   },
+  // ─── Pilari 3 (b) KATTAVUUSLISÄYS: adversariaalin paljastamat kalusto-osajoukot ───
+  // Aiemmin nämä pyyhkivät ylävartalon (0 push/pull, vain jalat). Todistavat että korjaus
+  // tuottaa tasapainoisen push+legs-ohjelman + rehellisen veto-rajoite-advisoryn.
+  {
+    id: "P9", persona: "Mies 30 v / 85 kg, 2 v, hypertrofia, KOTI vain käsipainot (ei leukatankoa/tankoa), 4 pv/vk.",
+    answers: {
+      q01_age: 30, q02_sex: "male", q03_weight: 85,
+      q06_yearsTraining: 2, q07_autoregYears: 0, q08_selfLevel: "intermediate",
+      q09_sport: "hypertrophy", q29_recentBlock: "hypertrophy",
+      q10_trainingBreakMonths: 0, q11_injuries: [], q26_personalRecords: [],
+      q12_primaryGoal: "hypertrophy", q13_secondaryGoal: "none", q14_cutting: "no",
+      q15_aerobicModality: "none",
+      q17_equipment: ["dumbbells"],
+      q18_hrvDevice: "none", q19_vbtDevice: "none", q20_sleepTracker: "none",
+      q21_splitPreference: "upper_lower", q22_avoidedExercises: [], q23_volumePref: "auto",
+      q24_frequency: { daysPerWeek: 4, sessionLengthMinutes: 60 },
+      q31_preferredDays: [], q25_rpePrecision: "vara_loose", q33_aggressivenessDefault: "balanced",
+    },
+    neutralNotes: [
+      "★ KATTAVUUSLISÄYS (b): vain käsipainot — aiemmin ylävartalo-pyyhkiytyminen (0 push/pull). Odotus: push (käsipainopenkki) + legs (Bulgarian); veto rajoittunut → rehellinen advisory.",
+      "q17 ['dumbbells']: ei leukatankoa eikä tankoa → veto vaatii leukatangon/renkaat (katalogissa ei käsipaino-soutua, OBS-053)",
+      "q08 intermediate (2 v); q29 hypertrophy; q21 upper_lower; muut neutraali",
+    ],
+  },
+  {
+    id: "P10", persona: "Nainen 34 v / 64 kg, 3 v, yleisvoima, KOTI vain renkaat/TRX, 3 pv/vk.",
+    answers: {
+      q01_age: 34, q02_sex: "female", q03_weight: 64,
+      q06_yearsTraining: 3, q07_autoregYears: 0, q08_selfLevel: "intermediate",
+      q09_sport: "hybrid", q29_recentBlock: "off_program",
+      q10_trainingBreakMonths: 0, q11_injuries: [], q26_personalRecords: [],
+      q12_primaryGoal: "general_strength", q13_secondaryGoal: "none", q14_cutting: "no",
+      q15_aerobicModality: "none",
+      q17_equipment: ["rings"],
+      q18_hrvDevice: "none", q19_vbtDevice: "none", q20_sleepTracker: "none",
+      q21_splitPreference: "fullbody", q22_avoidedExercises: [], q23_volumePref: "auto",
+      q24_frequency: { daysPerWeek: 3, sessionLengthMinutes: 50 },
+      q31_preferredDays: [], q25_rpePrecision: "vara_loose", q33_aggressivenessDefault: "balanced",
+    },
+    neutralNotes: [
+      "★ KATTAVUUSLISÄYS (b): vain renkaat — renkaat mahdollistaisivat veto/työnnön, mutta katalogissa ei rengasliikkeitä (OBS-053). Degradoituu kehonpaino-push (HSPU) + legs + advisory. EI keksittyä liikettä.",
+      "q17 ['rings']: aito kalusto-vuoto-tapaus jonka adversariaali löysi",
+      "q12 general_strength; q21 fullbody (3 pv); muut neutraali",
+    ],
+  },
+  {
+    id: "P11", persona: "Mies 25 v / 78 kg, <1 v, yleiskunto, KOTI ei välineitä (pelkkä kehonpaino), 3 pv/vk.",
+    answers: {
+      q01_age: 25, q02_sex: "male", q03_weight: 78,
+      q06_yearsTraining: 0.5, q07_autoregYears: 0, q08_selfLevel: "beginner",
+      q09_sport: "hybrid", q29_recentBlock: "off_program",
+      q10_trainingBreakMonths: 0, q11_injuries: [], q26_personalRecords: [],
+      q12_primaryGoal: "general_strength", q13_secondaryGoal: "none", q14_cutting: "no",
+      q15_aerobicModality: "none",
+      q17_equipment: ["bodyweight"],
+      q18_hrvDevice: "none", q19_vbtDevice: "none", q20_sleepTracker: "none",
+      q21_splitPreference: "fullbody", q22_avoidedExercises: [], q23_volumePref: "auto",
+      q24_frequency: { daysPerWeek: 3, sessionLengthMinutes: 45 },
+      q31_preferredDays: [], q25_rpePrecision: "vara_loose", q33_aggressivenessDefault: "balanced",
+    },
+    neutralNotes: [
+      "★ KATTAVUUSLISÄYS (b): 'bodyweight' (C4:n lisäämä arvo) kanonisessa käytössään — aiemmin pyyhki ylävartalon. Odotus: push (HSPU) + legs (Bulgarian) + advisory ettei veto onnistu ilman leukatankoa/renkaita.",
+      "q17 ['bodyweight']: ei välineitä → veto vaatii leukatangon/renkaat (rehellinen advisory)",
+      "q08 beginner (<1 v); q21 fullbody (3 pv); muut neutraali",
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -346,7 +412,7 @@ function fmtVector(r) {
 }
 
 const okCount = results.filter(r => !r.error).length;
-let md = `# Wizard-dumppi — 8 profiilia (KAPSTONI pilari 3, W1-standardi)
+let md = `# Wizard-dumppi — ${profiles.length} profiilia (KAPSTONI pilari 3, W1-standardi)
 
 > **POST-FIX RE-DUMPPI** (pilari 3 -materialisaatiokorjaus C0-C4 mukana). Generoitu ${GEN_DATE}.
 > Ajettu repon oikealla Wizard-mapperilla (\`wizard/wizard-2b-mapper.js\` \`mapWizardToProgram\`) +
@@ -356,7 +422,7 @@ let md = `# Wizard-dumppi — 8 profiilia (KAPSTONI pilari 3, W1-standardi)
 > Korjaus: goal-aware primaarit + K kategoria-slot-täyttö + kalusto-suodatin + alaraaja-takuu + P8 kehonpaino/advisory.
 > mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
 >
-> **Tulos: ${okCount}/8 profiilia generoitui onnistuneesti.**
+> **Tulos: ${okCount}/${profiles.length} profiilia generoitui onnistuneesti.** (P1–P8 W2-perusprofiilit + P9–P11 pilari 3 (b) kalusto-kattavuuslisäys.)
 >
 > ## ⚠️ SOKKOUTUSOHJE W2-ARVIOIJALLE
 > Tämä dumppi on **kolmessa erillisessä lohkossa**. Lue järjestyksessä:
@@ -388,7 +454,7 @@ ${results.map(fmtVector).join("\n---\n\n")}
 `;
 
 writeFileSync(new URL("../docs/wizard-dump-8profiles.md", import.meta.url), md, "utf8");
-console.log(`DUMP VALMIS: ${okCount}/8 onnistui → docs/wizard-dump-8profiles.md (${md.length} merkkiä)`);
+console.log(`DUMP VALMIS: ${okCount}/${profiles.length} onnistui → docs/wizard-dump-8profiles.md (${md.length} merkkiä)`);
 for (const r of results) {
   if (r.error) console.log(`  ${r.id}: ❌ ${r.error.split("\n")[0]}`);
   else console.log(`  ${r.id}: ✓ style=${(r.meso.customConfig._wizardMeta||r.mapped._wizardMeta).chosenStyleId} goal=${r.mapped.goal} weeks=${r.meso.weekCount} days=${r.mapped.daysPerWeek}${r.mapped.isMultiBlock?" MULTI":""}`);
