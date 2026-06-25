@@ -1047,27 +1047,33 @@ const MAX_GOALS = new Set([
 // kerro se eksplisiittisesti + mikä priorisoitiin. Ei UI-tutkijanimiä (CLAUDE.md §6).
 function _buildGoalConflictAdvisory(a) {
   if (!a) return null;
+  const parts = [];
   const isMaxGoal = MAX_GOALS.has(a.q12_primaryGoal);
   const secondaryHyp = a.q13_secondaryGoal === "hypertrophy";
   const sessionMin = Number(a.q24_frequency?.sessionLengthMinutes);
   const daysPerWeek = Number(a.q24_frequency?.daysPerWeek);
-  const eq = Array.isArray(a.q17_equipment) ? a.q17_equipment : [];
-  const minimalEquipment = eq.length === 0 || eq.includes("bodyweight") || (eq.length === 1 && eq[0] === "pullup_bar");
+  const eqSet = new Set(Array.isArray(a.q17_equipment) ? a.q17_equipment : []);
+  const minimalEquipment = eqSet.size === 0 || eqSet.has("bodyweight") || (eqSet.size === 1 && eqSet.has("pullup_bar"));
   const goalConflict = isMaxGoal && secondaryHyp;
   const resourceLimited = (!Number.isNaN(sessionMin) && sessionMin > 0 && sessionMin <= 30)
                        || (!Number.isNaN(daysPerWeek) && daysPerWeek > 0 && daysPerWeek <= 2);
-  if (!goalConflict && !(resourceLimited && minimalEquipment)) return null;
-  const parts = [];
   if (goalConflict) {
     parts.push("Maksimivoimaa ja maksimaalista lihasmassaa ei voi optimoida samanaikaisesti. Ohjelma priorisoi maksimivoiman; hypertrofia tukee toissijaisesti.");
   }
-  if (resourceLimited) {
+  if (resourceLimited && minimalEquipment) {
     parts.push("Käytettävissä oleva aika, treenipäivät tai kalusto rajoittavat tavoitteen täyttä saavuttamista — ohjelma on tiivistetty toteutettavaan minimiin.");
   }
-  if (minimalEquipment && !goalConflict) {
-    parts.push("Vähäisellä kalustolla painopiste on kehonpainoliikkeissä; lisävälineet (leukatanko, tanko) avaisivat lisää liikevalikoimaa.");
+  // Pilari 3 (b): rehellinen kalusto-rajoite-advisory (fysiikka, ei bugi) — kun veto/työntö ei ole
+  // mahdollinen valitulla kalustolla, kerro se eksplisiittisesti (ei keksitä liikettä).
+  if (eqSet.size > 0) {
+    if (!_availableMovementForFunction("pull", eqSet)) {
+      parts.push("Vetoliikkeet vaativat leukatangon, vaijerilaitteen tai tangon — valitulla kalustolla ohjelma painottuu työntö- ja jalkaliikkeisiin.");
+    }
+    if (!_availableMovementForFunction("push", eqSet)) {
+      parts.push("Työntöliikkeisiin ei löytynyt sopivaa liikettä valitulla kalustolla.");
+    }
   }
-  return parts.join(" ");
+  return parts.length ? parts.join(" ") : null;
 }
 
 export function pickStartingBlock(q29_recentBlock, q12_primaryGoal) {
@@ -1219,6 +1225,48 @@ function _goalPrimarySet(q12_primaryGoal) {
 }
 const _NON_SPECIFIC_SPORTS = new Set(["hypertrophy", "sport", "hybrid"]);
 
+// Pilari 3 (b, ratifioitu 2026-06-18): primaari-substituutio kalusto-osajoukoille.
+// Kun goal-primaari cullataan kaluston puutteen vuoksi → KORVATAAN funktion (push/pull/legs)
+// ekvivalentilla saatavilla olevasta KATALOGI-liikkeestä, ei pudoteta → tasapainoinen ohjelma
+// jokaiselle kalusto-osajoukolle (korjaa ylävartalo-pyyhkiytymisen + P2-aukon).
+// Lista = katalogissa OIKEASTI olevat liikkeet, paras (spesifisin) ensin, kehonpaino viimeisenä.
+// HUOM (b): EI keksittyjä liikkeitä. Jos funktiolle ei löydy katalogi-liikettä (esim. käsipaino-
+// veto / rengasliikkeet puuttuvat katalogista) → funktio jää pois + rehellinen advisory (fysiikka,
+// ei bugi). Täysi tuki (käsipaino-soutu, rengasliikkeet) = backlog OBS-053 (a).
+const _FUNCTION_MOVEMENTS = Object.freeze({
+  legs: [
+    { name: "Takakyykky",            category: "alaraaja",           requires: ["barbell_rack"] },
+    { name: "Jalkaprässi",           category: "alaraaja",           requires: ["machines"] },
+    { name: "Bulgarian split squat", category: "alaraaja",           requires: [] }, // kehonpaino
+  ],
+  push: [
+    { name: "Penkkipunnerrus",          category: "horisontaalityöntö", requires: ["barbell_rack"] },
+    { name: "Käsipainopenkki",          category: "horisontaalityöntö", requires: ["dumbbells"] },
+    { name: "Chest press",              category: "horisontaalityöntö", requires: ["machines"] },
+    { name: "Dippi (kehonpaino)",       category: "horisontaalityöntö", requires: ["dip_station"] },
+    { name: "Handstand push-up (HSPU)", category: "vertikaalityöntö",   requires: [] }, // kehonpaino
+  ],
+  pull: [
+    { name: "Lisäpainoleuanveto",     category: "vertikaaliveto",     requires: ["pullup_bar"] },
+    { name: "Ylätalja",               category: "vertikaaliveto",     requires: ["cable_machine"] },
+    { name: "Lat pulldown",           category: "vertikaaliveto",     requires: ["machines"] },
+    { name: "Penkkiveto",             category: "horisontaaliveto",   requires: ["barbell_rack"] },
+    { name: "Leuanveto (kehonpaino)", category: "vertikaaliveto",     requires: ["pullup_bar"] },
+    // EI käsipaino-/rengas-vetoa katalogissa → dumbbells/rings/bodyweight ilman leukatankoa → ei vetoa (advisory).
+  ],
+});
+function _categoryFunction(cat) {
+  if (cat === "alaraaja" || cat === "lonkkahingaus") return "legs";
+  if (cat === "horisontaalityöntö" || cat === "vertikaalityöntö") return "push";
+  if (cat === "vertikaaliveto" || cat === "horisontaaliveto") return "pull";
+  return null;
+}
+// Paras saatavilla oleva katalogi-liike funktiolle annetulla kalustolla (tai null).
+function _availableMovementForFunction(fn, eqSet) {
+  const list = _FUNCTION_MOVEMENTS[fn] || [];
+  return list.find(m => isMovementPerformable(m.name, m.requires.length ? "external" : "system", m.category, eqSet)) || null;
+}
+
 // Injury-keyword → liike-keyword -mapping. // HEURISTIC.
 const _INJURY_BLOCKLIST = [
   { injuryKeywords: ["olka", "olkapää", "shoulder"], movementKeywords: ["dippi", "punnerrus", "press"] },
@@ -1333,23 +1381,26 @@ export function pickPrimaries(answers) {
     }
   }
 
-  // 3. q17_equipment → poista jos vaadittu kalusto puuttuu
+  // 3. q17_equipment → Pilari 3 (b, ratifioitu): KORVAA kelvoton primaari funktion ekvivalentilla
+  //    (käsipaino/keho katalogista), EI pudota → tasapainoinen push/pull/legs jokaiselle kalusto-
+  //    osajoukolle (korjaa ylävartalo-pyyhkiytymisen + P2-aukon). Jos funktiolle ei ole saatavilla
+  //    katalogi-liikettä (esim. käsipaino-veto puuttuu) → jätä pois; rehellinen advisory hoitaa.
   const eq = new Set(Array.isArray(answers.q17_equipment) ? answers.q17_equipment : []);
-  primaries = primaries.filter(p => {
-    if (!Array.isArray(p.requires) || p.requires.length === 0) return true;
-    return p.requires.every(req => eq.has(req));
-  });
+  primaries = primaries.map(p => {
+    if (isMovementPerformable(p.name, null, p.category, eq)) return p; // suoritettavissa → pidä
+    const sub = _availableMovementForFunction(_categoryFunction(p.category), eq);
+    return sub ? { name: sub.name, category: sub.category } : null; // korvaa / pudota
+  }).filter(Boolean);
+  // Dedup: substituutio voi tuottaa duplikaatteja (kaksi culledia → sama kehonpaino-liike).
+  const _seenP = new Set();
+  primaries = primaries.filter(p => (_seenP.has(p.name) ? false : (_seenP.add(p.name), true)));
 
-  // 4. Fallback: jos kaikki poistettu (esim. kehonpaino-only / minimaalinen kalusto) →
-  // Pilari 3 C4: MONILIIKE kehonpaino-setti (EI yksi leuka). Pull (jos leukatanko) +
-  // push (jos dippiteline) + ALARAAJA AINA (Bulgarian split = kehonpaino, #4-takuu).
-  // Näin kotikuntoilija saa tasapainoisen ohjelman eikä monokulttuuria.
+  // 4. Safety-fallback: jos kaikki silti pois (esim. injury+avoided tyhjensi setin) → kehonpaino-
+  //    perussetti (legs aina + push jos saatavilla). Alaraaja-takuu (#4) myös ensureLowerBodyssa.
   if (primaries.length === 0) {
-    const bw = [];
-    if (eq.has("pullup_bar")) bw.push({ name: "Leuanveto (kehonpaino)", category: "vertikaaliveto" });
-    if (eq.has("dip_station")) bw.push({ name: "Dippi (kehonpaino)", category: "horisontaalityöntö" });
-    bw.push({ name: "Bulgarian split squat", category: "alaraaja" }); // kehonpaino-jalka, aina suoritettavissa
-    primaries = bw;
+    const push = _availableMovementForFunction("push", eq);
+    primaries = [{ name: "Bulgarian split squat", category: "alaraaja" }];
+    if (push) primaries.unshift({ name: push.name, category: push.category });
   }
 
   // Palauta vain name+category (generateCustomMesocycle:n vaatima rakenne)
@@ -2006,10 +2057,19 @@ export function applyEquipmentFilter(weekPlans, q17Equipment, movementBank = FAL
   const subCache = {};
   const findSub = (category) => {
     if (category in subCache) return subCache[category];
+    // 1. sama kategoria (paras: säilyttää liikemallin)
     const cands = bank.filter(m => m && m.category === category && m.id !== "fb_custom_other"
       && isMovementPerformable(m.name, m.loadType, m.category, eqSet));
     cands.sort((a, b) => _eqCost(a, eqSet) - _eqCost(b, eqSet)); // kehonpaino ensin (inklusiivisin)
-    subCache[category] = cands[0] || null;
+    let sub = cands[0] || null;
+    // 2. Pilari 3 (b): cross-category — jos samaa kategoriaa ei ole katalogissa kalustolla, kokeile
+    //    funktionaalista ekvivalenttia (soutu → mikä tahansa veto) ennen pudotusta.
+    if (!sub) {
+      const fn = _categoryFunction(category);
+      const fnMove = fn ? _availableMovementForFunction(fn, eqSet) : null;
+      if (fnMove) sub = { name: fnMove.name, category: fnMove.category, loadType: null };
+    }
+    subCache[category] = sub;
     return subCache[category];
   };
   return weekPlans.map(wp => ({
@@ -2815,6 +2875,30 @@ export function selfTestMapper() {
   const adv2 = _buildGoalConflictAdvisory({ q12_primaryGoal: "general_strength", q13_secondaryGoal: null, q17_equipment: ["barbell_rack", "pullup_bar", "dumbbells"], q24_frequency: { sessionLengthMinutes: 90, daysPerWeek: 4 } });
   ck("C4: tasapainoinen → ei advisorya (null)", adv2 === null);
 
+  // ─── 5g. Pilari 3 (b): primaari-substituutio — ei ylävartalo-pyyhkiytymistä ──
+  const subPrim = (eq) => pickPrimaries({ q09_sport: "hybrid", q12_primaryGoal: "hypertrophy", q17_equipment: eq });
+  const hasPush = ps => ps.some(p => p.category === "horisontaalityöntö" || p.category === "vertikaalityöntö");
+  const hasLegsP = ps => ps.some(p => p.category === "alaraaja" || p.category === "lonkkahingaus");
+  // dumbbells-only: push (Käsipainopenkki) + legs — EI pelkkä Bulgarian (pyyhkiytyminen korjattu)
+  const db = subPrim(["dumbbells"]);
+  ck("b: dumbbells → push + legs (ei pyyhkiytymistä)", hasPush(db) && hasLegsP(db) && db.length >= 2);
+  ck("b: dumbbells push = käsipaino-liike", db.some(p => /käsipaino/i.test(p.name)));
+  // rings/bodyweight-only: push (HSPU) + legs
+  const bw2 = subPrim(["bodyweight"]);
+  ck("b: bodyweight → push + legs", hasPush(bw2) && hasLegsP(bw2));
+  // machines-only: push (Chest press) + legs (Jalkaprässi)
+  const mc = subPrim(["machines"]);
+  ck("b: machines → push + legs", hasPush(mc) && hasLegsP(mc));
+  // P2 (dumbbells + pullup_bar): TÄYSI pull+push+legs (P2-aukko korjattu)
+  const p2 = subPrim(["dumbbells", "pullup_bar"]);
+  ck("b: P2 (DB+leukatanko) → pull+push+legs täysi",
+     p2.some(p => p.category === "vertikaaliveto") && hasPush(p2) && hasLegsP(p2) && p2.length === 3);
+  // Kaikki substituutit suoritettavissa kalustolla
+  ck("b: dumbbells-setti suoritettavissa", db.every(p => isMovementPerformable(p.name, null, p.category, new Set(["dumbbells"]))));
+  // Advisory: dumbbells-only → veto-rajoite kerrottu (ei keksittyä liikettä, rehellinen)
+  const advDb = _buildGoalConflictAdvisory({ q12_primaryGoal: "hypertrophy", q17_equipment: ["dumbbells"], q24_frequency: { sessionLengthMinutes: 60, daysPerWeek: 4 } });
+  ck("b: dumbbells-only → veto-rajoite-advisory", typeof advDb === "string" && /veto/i.test(advDb));
+
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
      JSON.stringify(pickPreferredDaysOfWeek({ daysPerWeek: 3 })) === JSON.stringify([1, 3, 5]));
@@ -2924,8 +3008,12 @@ export function selfTestMapper() {
      newUserResult.goal === "hypertrofia");
   ck("Uusi käyttäjä mapping: weekCount === 8 (beginner-tier)",
      newUserResult.weekCount === 8);
-  ck("Uusi käyttäjä mapping: 1 primary (vain pullup_bar)",
-     newUserResult.primaries.length === 1);
+  // Pilari 3 (b): pullup_bar-only hypertrofia → EI enää yksi leuka, vaan tasapainoinen substituoitu
+  // setti (pull säilyy, push→HSPU, legs→Bulgarian). Kaikki suoritettavissa pullup_bar:lla + alaraaja mukana.
+  ck("Uusi käyttäjä mapping: tasapainoinen setti (pull+push+legs), ei monokulttuuri",
+     newUserResult.primaries.length >= 2
+     && newUserResult.primaries.some(p => p.category === "alaraaja")
+     && newUserResult.primaries.every(p => isMovementPerformable(p.name, null, p.category, new Set(["pullup_bar"]))));
   ck("Uusi käyttäjä mapping: recoveryCapacity === keski (default)",
      newUserResult.recoveryCapacity === "keski");
 
