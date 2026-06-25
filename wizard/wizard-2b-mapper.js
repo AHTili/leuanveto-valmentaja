@@ -1162,6 +1162,71 @@ const _INJURY_BLOCKLIST = [
   { injuryKeywords: ["selk", "alaselk", "back"],     movementKeywords: ["maavet", "deadlift"] },
 ];
 
+// ─── Pilari 3 FIX-B (C0): liike → VÄHIMMÄISkalustovaatimus ──────────────────
+// A1 paljasti: liikepankissa EI ole kalustometatietoa (vain loadType+category),
+// joten q17_equipment ei suodata apuliikkeitä → kalusto-vuoto (P2/P8). Tämä on
+// se puuttuva kanoninen artefakti. Periaate (ratifioitu 2026-06-18):
+// kalustovaatimus = liikkeen VÄHIMMÄISvaatimus.
+//   requires:[...]     → KAIKKI tarvitaan (AND).
+//   requiresAny:[[..]] → mikä tahansa ali-setti riittää (OR) — "lisäpaino vaaditaan
+//                        mutta DB tai tanko käy".
+//   [] / ei taulukossa → aina suoritettavissa (kehonpaino / ei välinettä).
+// Tuntematon liike → movementRequiredEquipment-heuristiikka; EPÄVARMA → [] (älä
+// suodata pois — inklusiivinen default, ratifioitu).
+const _EQ_GROUPS = {
+  pullup_bar:    ["Lisäpainoleuanveto", "Leuanveto (kehonpaino)", "Muscle-up", "Vastaote-leuat", "Yksikätinen leuanveto", "Archer pull-up", "L-sit pull-up", "Front Lever (hold)", "Planche (hold)", "Human Flag (hold)"],
+  dip_station:   ["Lisäpainodippi", "Dippi (kehonpaino)", "Dippi"],
+  barbell_rack:  ["Takakyykky", "Kyykky", "Etukyykky", "Penkkipunnerrus", "Maastaveto", "Pystypunnerrus", "Penkkiveto", "Vinopenkkipunnerrus", "Close-grip bench", "Floor press", "Pin press", "JM press", "Rack pull", "Romanialainen maastaveto (RDL)", "Romanian DL", "Paused squat", "Front squat", "Deficit DL", "Pin squat", "Box squat", "Safety bar squat", "Paused DL", "Block pull", "Snatch-grip DL", "Good morning", "Paused bench press", "Spoto press", "Larsen press", "Board press", "Push press", "Seated OHP", "Z-press", "T-bar row", "Seal row", "Hip thrust"],
+  cable_machine: ["Ylätalja", "Lat pulldown", "Ylätalja neutraaliote", "Alatalja", "Cable row", "Seated row", "Tricep pushdown", "Face pull", "Cable crunch", "Cable curl", "Pallof press"],
+  machines:      ["Jalkaprässi", "Yhden jalan jalkaprässi", "Leg extension", "Leg curl", "Chest press", "Shoulder press laite", "Pullover kone", "Chest-supported row", "Front-foot elevated split squat"],
+  dumbbells:     ["Pystypunnerrus käsipainot", "Hauiskääntö käsipainot", "Hammer curl", "Preacher curl", "Incline curl", "Spider curl", "Sivunosto", "Dumbbell fly", "Skull crusher", "Overhead tricep ext", "French press", "Kickback"],
+};
+const MOVEMENT_EQUIPMENT = Object.freeze((() => {
+  const m = {};
+  for (const [eq, names] of Object.entries(_EQ_GROUPS)) for (const n of names) m[n] = [eq];
+  return m;
+})());
+// "lisäpaino vaaditaan" mutta DB TAI tanko riittää (ratifioitu).
+const MOVEMENT_EQUIPMENT_ANY = Object.freeze({
+  "Hauiskääntö tanko": [["barbell_rack"], ["dumbbells"]],
+  "Hauiskääntö":       [["dumbbells"], ["barbell_rack"]],
+  "Power shrug":       [["barbell_rack"], ["dumbbells"]],
+});
+// Eksplisiittisesti kehonpaino (vähimmäisvaatimus = ei välinettä — ratifioitu:
+// Bulgarian/lunge/pohjenosto/GHR → bodyweight).
+const BODYWEIGHT_MOVEMENTS = new Set([
+  "Handstand push-up (HSPU)", "Bulgarian split squat", "Walking lunge", "Pohjenosto",
+  "Glute-Ham Raise", "Hyperextensio", "Vatsalihakset (yleinen)", "L-sit (hold)",
+  "Hanging leg raise", "Ab wheel rollout",
+]);
+
+// Palauta liikkeen vähimmäiskalustovaatimus: { requires: [...]|null, any: [[...]]|null }.
+export function movementRequiredEquipment(name, loadType, category) {
+  if (!name || typeof name !== "string") return { requires: [], any: null };
+  if (MOVEMENT_EQUIPMENT[name])     return { requires: MOVEMENT_EQUIPMENT[name], any: null };
+  if (MOVEMENT_EQUIPMENT_ANY[name]) return { requires: null, any: MOVEMENT_EQUIPMENT_ANY[name] };
+  if (BODYWEIGHT_MOVEMENTS.has(name)) return { requires: [], any: null };
+  const n = name.toLowerCase();
+  if (/talja|cable|pulldown|pushdown|pallof/.test(n))                                   return { requires: ["cable_machine"], any: null };
+  if (/laite|kone|prässi|leg extension|leg curl|machine|smith|hack|chest press|chest-supported/.test(n)) return { requires: ["machines"], any: null };
+  if (/käsipaino|dumbbell|hammer|preacher|incline curl|spider|skull|kickback|\bfly\b|sivunosto/.test(n)) return { requires: ["dumbbells"], any: null };
+  if (loadType === "isometric_hold") return { requires: [], any: null };
+  if (loadType === "system") {
+    if (category === "vertikaaliveto")     return { requires: ["pullup_bar"], any: null };
+    if (category === "horisontaalityöntö") return { requires: ["dip_station"], any: null };
+    return { requires: [], any: null }; // muu kehonpaino (esim. HSPU)
+  }
+  // loadType external, ei avainsana-osumaa → EPÄVARMA → [] (älä suodata, inklusiivinen)
+  return { requires: [], any: null };
+}
+
+// Onko liike suoritettavissa annetulla kalustolla (Set q17-arvoja)?
+export function isMovementPerformable(name, loadType, category, eqSet) {
+  const { requires, any } = movementRequiredEquipment(name, loadType, category);
+  if (any) return any.some(opt => opt.every(req => eqSet.has(req)));
+  return requires.every(req => eqSet.has(req));
+}
+
 export function pickPrimaries(answers) {
   let primaries = _SPORT_DEFAULTS[answers.q09_sport] || _SPORT_DEFAULTS.hybrid;
   primaries = primaries.map(p => ({ ...p })); // shallow copy jotta original ei muutu
@@ -2483,6 +2548,30 @@ export function selfTestMapper() {
     q22_avoidedExercises: ["maastaveto"] });
   ck("pickPrimaries: q22 'maastaveto' poistaa Maastaveto",
      !avoided.some(p => p.name === "Maastaveto"));
+
+  // ─── 5b. Pilari 3 C0: MOVEMENT_EQUIPMENT-taulukko + heuristiikka ────
+  const eqAll = new Set(["barbell_rack", "pullup_bar", "dip_station", "cable_machine", "machines", "dumbbells", "rings"]);
+  const eqHome = new Set(["pullup_bar"]); // kotikuntoilija: vain leukatanko
+  // Kisaliikkeet + selkeät rivit
+  ck("C0: Takakyykky → barbell_rack", movementRequiredEquipment("Takakyykky").requires[0] === "barbell_rack");
+  ck("C0: Lisäpainoleuanveto → pullup_bar", movementRequiredEquipment("Lisäpainoleuanveto").requires[0] === "pullup_bar");
+  ck("C0: Lisäpainodippi → dip_station", movementRequiredEquipment("Lisäpainodippi").requires[0] === "dip_station");
+  ck("C0: Ylätalja → cable_machine", movementRequiredEquipment("Ylätalja").requires[0] === "cable_machine");
+  ck("C0: Jalkaprässi → machines", movementRequiredEquipment("Jalkaprässi").requires[0] === "machines");
+  // Heuristiikka (tuntematon nimi avainsanalla)
+  ck("C0 heur: 'Cable fly' → cable_machine", movementRequiredEquipment("Cable fly", "external", "horisontaalityöntö").requires[0] === "cable_machine");
+  ck("C0 heur: 'Leg press kone' → machines", movementRequiredEquipment("Leg press kone", "external", "alaraaja").requires[0] === "machines");
+  // requiresAny: lisäpaino DB TAI tanko
+  ck("C0: Hauiskääntö = requiresAny (DB tai tanko)", movementRequiredEquipment("Hauiskääntö").any !== null);
+  ck("C0: Hauiskääntö suoritettavissa pelkällä tangolla", isMovementPerformable("Hauiskääntö", "external", "hauisfleksio", new Set(["barbell_rack"])));
+  // bodyweight = aina suoritettavissa (vähimmäisvaatimus ei välinettä)
+  ck("C0: Bulgarian split squat = bodyweight (aina performable)", isMovementPerformable("Bulgarian split squat", "external", "alaraaja", new Set()));
+  // EPÄVARMA tuntematon external → ei suodateta (inklusiivinen)
+  ck("C0: tuntematon external (ei avainsanaa) → [] (älä suodata)", movementRequiredEquipment("Jokin oudoliike", "external", "muu").requires.length === 0);
+  // Performability täyskalustolla = kaikki performable; kotona = Ylätalja EI performable
+  ck("C0: Ylätalja EI performable kotona (vain pullup_bar)", !isMovementPerformable("Ylätalja", "external", "vertikaaliveto", eqHome));
+  ck("C0: Lisäpainoleuanveto performable kotona", isMovementPerformable("Lisäpainoleuanveto", "system", "vertikaaliveto", eqHome));
+  ck("C0: Takakyykky performable täyskalustolla", isMovementPerformable("Takakyykky", "external", "alaraaja", eqAll));
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
