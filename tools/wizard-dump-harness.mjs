@@ -8,6 +8,8 @@ globalThis.self = globalThis; // data.js IDB-tarkistus (engine-bridge-malli)
 import {
   mapWizardToProgram,
   applySplitFilter, applyVolumeCap, applySessionFocusLabels, applyTierProgression,
+  // Pilari 3 C2/C3: kalusto-suodatin + alaraaja-guarantor (osa index.html finalize-ketjua)
+  applyEquipmentFilter, ensureLowerBody,
 } from "../wizard/wizard-2b-mapper.js";
 import { generateCustomMesocycle, generateMultiBlockMesocycle } from "../data.js";
 
@@ -257,6 +259,9 @@ function runProfile(p) {
       meso.weekPlans = applySplitFilter(meso.weekPlans, splitPref);
       meso.weekPlans = applyVolumeCap(meso.weekPlans, mapped.goal);
     }
+    // Pilari 3 C2/C3: kalusto-suodatin + alaraaja-takuu (index.html finalize-ketju)
+    meso.weekPlans = applyEquipmentFilter(meso.weekPlans, cfg.answers.q17_equipment);
+    meso.weekPlans = ensureLowerBody(meso.weekPlans, cfg.answers.q17_equipment);
     meso.weekPlans = applySessionFocusLabels(meso.weekPlans);
     if (Array.isArray(meso.weekDefs)) {
       meso.weekDefs = applyTierProgression(meso.weekDefs, cfg.answers.q08_selfLevel, cfg.answers.q02_sex);
@@ -343,12 +348,13 @@ function fmtVector(r) {
 const okCount = results.filter(r => !r.error).length;
 let md = `# Wizard-dumppi — 8 profiilia (KAPSTONI pilari 3, W1-standardi)
 
-> **Read-only diagnostiikka-ajo.** Generoitu ${GEN_DATE}. Ajettu repon oikealla Wizard-mapperilla
-> (\`wizard/wizard-2b-mapper.js\` \`mapWizardToProgram\`) + mesosykligeneraattorilla
-> (\`data.js\` \`generateCustomMesocycle\`/\`generateMultiBlockMesocycle\`) + post-process-pipelinella
-> (\`applySplitFilter\` → \`applyVolumeCap\` → \`applySessionFocusLabels\` → \`applyTierProgression\`),
-> joka replikoi index.html:n finalize-ketjun (rivit 4019→4122). EI engine-muutoksia.
-> APP_VERSION 4.52.42. mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
+> **POST-FIX RE-DUMPPI** (pilari 3 -materialisaatiokorjaus C0-C4 mukana). Generoitu ${GEN_DATE}.
+> Ajettu repon oikealla Wizard-mapperilla (\`wizard/wizard-2b-mapper.js\` \`mapWizardToProgram\`) +
+> mesosykligeneraattorilla (\`data.js\`) + KORJATULLA post-process-pipelinella
+> (\`applySplitFilter\` → \`applyVolumeCap\` → \`applyEquipmentFilter\` → \`ensureLowerBody\` →
+> \`applySessionFocusLabels\` → \`applyTierProgression\`), joka replikoi index.html:n päivitetyn finalize-ketjun.
+> Korjaus: goal-aware primaarit + K kategoria-slot-täyttö + kalusto-suodatin + alaraaja-takuu + P8 kehonpaino/advisory.
+> mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
 >
 > **Tulos: ${okCount}/8 profiilia generoitui onnistuneesti.**
 >
