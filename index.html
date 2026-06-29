@@ -1129,6 +1129,8 @@ import {
   applyEquipmentFilter,
   // Pilari 3 C3: alaraaja-invariantti-guarantor
   ensureLowerBody,
+  // Pilari 3 R2 (B): aikabudjetti rajaa työsarjat (sessionLengthMinutes)
+  applyTimeBudgetCap,
   // v4.45.0 (Track B Vaihe 2C-γ): tier-pohjainen kg/vk-progressiokerroin
   applyTierProgression,
   // Pilari 3 R2 (A+C): aloitus-kapasiteetti-intensiteetti-degradaatio (aloittelija/palautumisrajoite)
@@ -4130,6 +4132,9 @@ async function handleGenerateProgram() {
     newMeso.weekPlans = applyEquipmentFilter(newMeso.weekPlans, wizardConfig.answers?.q17_equipment);
     // Pilari 3 C3: rakenteellinen alaraaja-takuu (jos ohjelma jäi jalattomaksi → injektoi).
     newMeso.weekPlans = ensureLowerBody(newMeso.weekPlans, wizardConfig.answers?.q17_equipment);
+    // Pilari 3 R2 (B): aikabudjetti rajaa työsarjat (~3 min/sarja, säädettävissä tavoitteella).
+    // Primaryt + alaraaja-takuu suojattu. No-op kun päivä mahtuu / ei sessionLengthMinutes:iä.
+    newMeso.weekPlans = applyTimeBudgetCap(newMeso.weekPlans, wizardConfig.answers?.q24_frequency, mapped.goal);
     newMeso.weekPlans = applySessionFocusLabels(newMeso.weekPlans);
     // 2C-γ: Tier-pohjainen progressiokerroin weekDef.deltaPctBase:lle.
     // Säätää vk 2-3 progressionopeutta (vk 1 akklimatisaatio + vk 4 deload

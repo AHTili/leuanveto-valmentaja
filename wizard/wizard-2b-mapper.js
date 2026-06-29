@@ -2170,6 +2170,45 @@ export function ensureLowerBody(weekPlans, q17Equipment, movementBank = FALLBACK
   });
 }
 
+// ─── Pilari 3 R2 (B): applyTimeBudgetCap — aikabudjetti rajaa työsarjat ──
+// A1-juuri (P8): sessionLengthMinutes ei vaikuttanut päivän sarjamäärään → 30 min sessio
+// sai 18+ sarjan päiviä (mahdoton aikabudjetissa). Ratifioitu: ~3 min/työsarja → ~8-10
+// sarjaa/30min (säädettävissä tavoitteella — raskaat sarjat tarvitsevat pidemmät tauot).
+// Trimaa accessory-sarjat lopusta kun päivä ylittää budjetin; PRIMARYT + alaraaja-takuu
+// suojattu (atletin valitsema ydintyö ei katoa, vaikka venyttäisi sessiota). No-op kun mahtuu.
+function _perSetMinutes(goal) {
+  if (goal === "maksimivoima" || goal === "voima") return 4;   // raskaat sarjat, pitkät tauot
+  if (goal === "hypertrofia") return 2.75;                     // lyhyemmät tauot
+  return 3;                                                    // yhdistelmä/oletus
+}
+function _capDaySets(day, maxSets) {
+  const slots = day.slots || [];
+  const total = slots.reduce((s, x) => s + (Number(x.sets) || 0), 0);
+  if (total <= maxSets) return day;
+  let over = total - maxSets;
+  const newSlots = slots.map(s => ({ ...s }));
+  // Trimaa accessory-sarjat lopusta (vähiten prioriteettista ensin); primaryt + alaraaja-takuu suojattu.
+  for (let i = newSlots.length - 1; i >= 0 && over > 0; i--) {
+    const s = newSlots[i];
+    if (s.role === "primary" || s._lowerBodyGuaranteed) continue;
+    const cur = Number(s.sets) || 0;
+    const cut = Math.min(cur, over);
+    if (cut > 0) { s.sets = cur - cut; over -= cut; s._timeBudgetTrimmed = true; }
+  }
+  // Pudota accessory-slotit joiden sarjat trimmautui 0:aan.
+  const kept = newSlots.filter(s => s.role === "primary" || s._lowerBodyGuaranteed || (Number(s.sets) || 0) > 0);
+  return { ...day, slots: kept };
+}
+export function applyTimeBudgetCap(weekPlans, q24_frequency, goal) {
+  const minutes = Number(q24_frequency?.sessionLengthMinutes);
+  if (!minutes || minutes <= 0) return weekPlans; // ei aikabudjettia → no-op
+  const maxSets = Math.max(1, Math.floor(minutes / _perSetMinutes(goal)));
+  return weekPlans.map(wp => ({
+    ...wp,
+    days: (wp.days || []).map(d => _capDaySets(d, maxSets)),
+  }));
+}
+
 // ─── 2C-β: Session-fokus per päivä ─────────────────────────────────────
 //
 // Pää-app:in skeleton-factoryt antavat päiväkorteille yleisiä labeleita
@@ -2987,6 +3026,24 @@ export function selfTestMapper() {
   ck("C: q34='heikko' → recoveryLimited-laukaisin (jaettu applikaattori)",
      _capacityTriggers({ q34_recoveryStatus: "heikko", q24_frequency: { daysPerWeek: 3 } }, "heikko").recoveryLimited === true);
   ck("C: SCHEMA_INVARIANTS.totalQuestions === 33", SCHEMA_INVARIANTS.totalQuestions === 33);
+
+  // ─── 5k. Pilari 3 R2 (B): applyTimeBudgetCap — aikabudjetti rajaa työsarjat ──
+  const bWP = [{ week: 1, days: [{ slots: [
+    { role: "primary",   category: "vertikaaliveto",     defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 3 },
+    { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Dippi", sets: 4, reps: 8 },
+    { role: "accessory", category: "alaraaja",           defaultMovementName: "Bulgarian split squat", sets: 4, reps: 8, _lowerBodyGuaranteed: true },
+    { role: "accessory", category: "hauis",              defaultMovementName: "Hauiskääntö", sets: 4, reps: 10 },
+    { role: "accessory", category: "ojentaja",           defaultMovementName: "Ojennus", sets: 4, reps: 10 },
+  ] }] }]; // yht. 21 työsarjaa
+  const bDay = applyTimeBudgetCap(bWP, { sessionLengthMinutes: 30 }, "hypertrofia")[0].days[0].slots; // 30/2.75 → 10
+  ck("B: 30min hypertrofia → ≤10 työsarjaa", bDay.reduce((s, x) => s + (Number(x.sets) || 0), 0) <= 10);
+  ck("B: primary suojattu (5 sarjaa säilyy)", bDay.find(s => s.role === "primary")?.sets === 5);
+  ck("B: alaraaja-takuu suojattu (ei trimmaudu)", bDay.find(s => s._lowerBodyGuaranteed)?.sets === 4);
+  ck("B: pitkä sessio (90min) → no-op", applyTimeBudgetCap(bWP, { sessionLengthMinutes: 90 }, "hypertrofia")[0].days[0].slots.length === 5);
+  ck("B: ei sessionLengthMinutes → no-op (bit-exact)", applyTimeBudgetCap(bWP, {}, "hypertrofia")[0].days[0].slots.length === 5);
+  ck("B: maksimivoima pidempi tauko → vähemmän sarjoja kuin hypertrofia",
+     applyTimeBudgetCap(bWP, { sessionLengthMinutes: 30 }, "maksimivoima")[0].days[0].slots.reduce((s, x) => s + (Number(x.sets) || 0), 0)
+     <= applyTimeBudgetCap(bWP, { sessionLengthMinutes: 30 }, "hypertrofia")[0].days[0].slots.reduce((s, x) => s + (Number(x.sets) || 0), 0));
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
