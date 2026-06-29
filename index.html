@@ -1137,6 +1137,8 @@ import {
   applyTierProgression,
   // Pilari 3 R2 (A+C): aloitus-kapasiteetti-intensiteetti-degradaatio (aloittelija/palautumisrajoite)
   applyStartingCapacityDegradation,
+  // Pilari 3 R2 (Cowork AUKKO 2): sama degradaatio sessiotason slot.targetVx:ään (näyttö = live)
+  applyStartingCapacityToSlots,
   // v4.46.0 (Track B Vaihe 2C-δ): isometric-pitojen e1RM-mallinnus
   estimateIsometricE1RM,
   // v4.47.0 (Track B Vaihe 2D-α): adaptive multi-suggestion (top-3 style picker)
@@ -4140,6 +4142,9 @@ async function handleGenerateProgram() {
     // Pilari 3 R2 (B): aikabudjetti rajaa työsarjat (~3 min/sarja, säädettävissä tavoitteella).
     // Primaryt + alaraaja-takuu suojattu. No-op kun päivä mahtuu / ei sessionLengthMinutes:iä.
     newMeso.weekPlans = applyTimeBudgetCap(newMeso.weekPlans, wizardConfig.answers?.q24_frequency, mapped.goal);
+    // Pilari 3 R2 (Cowork AUKKO 2): propagoi aloitus-intensiteetti-degradaatio sessiotason
+    // slot.targetVx:ään (vk1-2 primaarit) → materialisoitu sessio = degradoitu weekDef = live.
+    newMeso.weekPlans = applyStartingCapacityToSlots(newMeso.weekPlans, mapped._wizardMeta?._capacityTriggers);
     newMeso.weekPlans = applySessionFocusLabels(newMeso.weekPlans);
     // 2C-γ: Tier-pohjainen progressiokerroin weekDef.deltaPctBase:lle.
     // Säätää vk 2-3 progressionopeutta (vk 1 akklimatisaatio + vk 4 deload

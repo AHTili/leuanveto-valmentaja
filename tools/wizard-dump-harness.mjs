@@ -12,6 +12,8 @@ import {
   applyEquipmentFilter, ensureLowerBody,
   // Pilari 3 R2 (A+C): aloitus-kapasiteetti-intensiteetti-degradaatio
   applyStartingCapacityDegradation,
+  // Pilari 3 R2 (Cowork AUKKO 2): sessiotason slot.targetVx-propagaatio
+  applyStartingCapacityToSlots,
   // Pilari 3 R2 (B): aikabudjetti rajaa työsarjat
   applyTimeBudgetCap,
   // Pilari 3 R2 (F): apuliike-tason vamma-suodatin
@@ -338,6 +340,8 @@ function runProfile(p) {
     meso.weekPlans = ensureLowerBody(meso.weekPlans, cfg.answers.q17_equipment);
     // Pilari 3 R2 (B): aikabudjetti rajaa työsarjat (index.html finalize-ketju)
     meso.weekPlans = applyTimeBudgetCap(meso.weekPlans, cfg.answers.q24_frequency, mapped.goal);
+    // Pilari 3 R2 (Cowork AUKKO 2): sessiotason slot.targetVx-propagaatio (näyttö = live)
+    meso.weekPlans = applyStartingCapacityToSlots(meso.weekPlans, mapped._wizardMeta?._capacityTriggers);
     meso.weekPlans = applySessionFocusLabels(meso.weekPlans);
     if (Array.isArray(meso.weekDefs)) {
       meso.weekDefs = applyTierProgression(meso.weekDefs, cfg.answers.q08_selfLevel, cfg.answers.q02_sex);

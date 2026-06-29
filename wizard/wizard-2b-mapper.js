@@ -1114,6 +1114,32 @@ export function applyStartingCapacityDegradation(weekDefs, triggers) {
     return { ...wd, heavyTargetVx: newVx, _startingCapacityDegraded: true, _originalHeavyTargetVx: wd.heavyTargetVx };
   });
 }
+// SESSIOTASON propagaatio (Cowork R2 AUKKO 2): slot.targetVx ja weekDef.heavyTargetVx ovat
+// kaksi RINNAKKAISTA intensiteetti-esitystä joita ei sovitella (skeleton-literaalit, esim.
+// data.js vk1 heavy primary targetVx:2). applyStartingCapacityDegradation muutti vain weekDef:n
+// → LIVE-engine (recommend() lukee weekDef.heavyTargetVx) degradoi jo, MUTTA materialisoitu
+// slot.targetVx (dump + slot-trusted-engine-polut) jäi V2:een. Tämä applikaattori nostaa vk1-2
+// primaari-slottien targetVx:n samaan tasoon → näyttö = live. Sama korjaus kantaa A:n JA C:n
+// intensiteetin sessiotasolle. Operoi weekPlans:iin (kuten applyRecoveryScalar).
+export function applyStartingCapacityToSlots(weekPlans, triggers) {
+  if (!Array.isArray(weekPlans) || !triggers || (!triggers.beginnerSafety && !triggers.recoveryLimited)) return weekPlans;
+  return weekPlans.map(wp => {
+    if (typeof wp.week !== "number" || wp.week > 2) return wp;        // vain aloitusviikot
+    return {
+      ...wp,
+      days: (wp.days || []).map(d => ({
+        ...d,
+        slots: (d.slots || []).map(s => {
+          if (s.role !== "primary" || typeof s.targetVx !== "number") return s;  // vain raskas primaarityö
+          const targetMin = triggers.beginnerSafety ? 3 : s.targetVx + 1;        // V3 aloittelijalle
+          const newVx = Math.min(5, Math.max(s.targetVx, targetMin));
+          if (newVx === s.targetVx) return s;
+          return { ...s, targetVx: newVx, _startingCapacityDegraded: true, _originalTargetVx: s.targetVx };
+        }),
+      })),
+    };
+  });
+}
 
 export function pickStartingBlock(q29_recentBlock, q12_primaryGoal) {
   const isMaxGoal = MAX_GOALS.has(q12_primaryGoal);
@@ -3047,6 +3073,12 @@ export function selfTestMapper() {
   ck("A: aloittelija 3pv (ei ≥5) → ei beginnerSafety", _capacityTriggers({ q06_yearsTraining: 0.2, q08_selfLevel: "beginner", q24_frequency: { daysPerWeek: 3 } }, "keski").beginnerSafety === false);
   ck("A: edistynyt(5v) 6pv → ei beginnerSafety (yli 6kk)", _capacityTriggers({ q06_yearsTraining: 5, q08_selfLevel: "advanced", q24_frequency: { daysPerWeek: 6 } }, "hyva").beginnerSafety === false);
   ck("A: degradaatio-viesti (beginnerSafety) sisältää 'turvallisemmaksi'", /turvallisemmaksi/.test(_buildSafetyAdvisory({ beginnerSafety: true }) || ""));
+  // Sessiotason propagaatio (Cowork AUKKO 2): slot.targetVx, ei vain weekDef
+  const slotWP = [{ week: 1, days: [{ slots: [{ role: "primary", targetVx: 2 }, { role: "accessory", targetVx: 4 }] }] }];
+  ck("A: sessio-propagaatio — vk1 primaari slot.targetVx V2→V3", applyStartingCapacityToSlots(slotWP, { beginnerSafety: true })[0].days[0].slots[0].targetVx === 3);
+  ck("A: sessio-propagaatio — accessory koskematon", applyStartingCapacityToSlots(slotWP, { beginnerSafety: true })[0].days[0].slots[1].targetVx === 4);
+  ck("A: sessio-propagaatio — vk3 koskematon (vain aloitusviikot)", applyStartingCapacityToSlots([{ week: 3, days: [{ slots: [{ role: "primary", targetVx: 2 }] }] }], { beginnerSafety: true })[0].days[0].slots[0].targetVx === 2);
+  ck("A: sessio-propagaatio — ei laukaisinta → no-op (bit-exact)", applyStartingCapacityToSlots(slotWP, { beginnerSafety: false, recoveryLimited: false })[0].days[0].slots[0].targetVx === 2);
 
   // ─── 5j. Pilari 3 R2 (C): q34 palautumisraportti → recoveryLimited ──
   ck("C: q34='heikko' → pickRecoveryCapacity 'heikko'", pickRecoveryCapacity({ q34_recoveryStatus: "heikko", q23_volumePref: "auto", q08_selfLevel: "intermediate" }) === "heikko");
