@@ -2080,7 +2080,10 @@ export function applyEquipmentFilter(weekPlans, q17Equipment, movementBank = FAL
         if (s.role !== "accessory") { acc.push(s); return acc; }
         if (isMovementPerformable(s.defaultMovementName, null, s.category, eqSet)) { acc.push(s); return acc; }
         const sub = findSub(s.category);
-        if (sub) acc.push({ ...s, defaultMovementName: sub.name, variantName: null, _equipmentSubstituted: true });
+        // Pilari 3 R2 (E): substituutti saa OMAN kategoriansa (sub.category) — EI slotin vanhaa leimaa.
+        // Korjaa (b)-regression: cross-category-substituutti merkittiin väärin slotin kategorialla
+        // (esim. Lisäpainoleuanveto@horisontaaliveto). Same-category-tapaus: sub.category === s.category.
+        if (sub) acc.push({ ...s, defaultMovementName: sub.name, category: sub.category, variantName: null, _equipmentSubstituted: true });
         // ei substituuttia → pudota slot (viimeinen keino)
         return acc;
       }, []),
@@ -2898,6 +2901,23 @@ export function selfTestMapper() {
   // Advisory: dumbbells-only → veto-rajoite kerrottu (ei keksittyä liikettä, rehellinen)
   const advDb = _buildGoalConflictAdvisory({ q12_primaryGoal: "hypertrophy", q17_equipment: ["dumbbells"], q24_frequency: { sessionLengthMinutes: 60, daysPerWeek: 4 } });
   ck("b: dumbbells-only → veto-rajoite-advisory", typeof advDb === "string" && /veto/i.test(advDb));
+
+  // ─── 5h. Pilari 3 R2 (E): substituutio same-category-first + oikea leima ──
+  const rowWP = [{ week: 1, days: [{ slots: [
+    { role: "primary",   category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 3 },
+    { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 8 },
+  ] }] }];
+  // P2 (käsipainot+leukatanko): horisontaaliveto-accessory (Penkkiveto/tanko culled) → Käsipainosoutu
+  // (same-category aito soutu katalogista), EI Lisäpainoleuanveto@horisontaaliveto (mislabel poistunut).
+  const eRowP2 = applyEquipmentFilter(rowWP, ["dumbbells", "pullup_bar"])[0].days[0].slots.filter(s => s.role === "accessory");
+  ck("E: P2 horisontaaliveto → Käsipainosoutu (same-category aito soutu)",
+     eRowP2.some(s => s.defaultMovementName === "Käsipainosoutu" && s.category === "horisontaaliveto"));
+  ck("E: ei mislabel (vetoliike ei horisontaaliveto-slotissa väärällä leimalla)",
+     !eRowP2.some(s => s.category === "horisontaaliveto" && /leuanveto|leuka|muscle/i.test(s.defaultMovementName)));
+  // Cross-category viimeinen keino: substituutti saa OMAN kategoriansa (P8-tyyli, vain leukatanko)
+  const eRowP8 = applyEquipmentFilter(rowWP, ["pullup_bar"])[0].days[0].slots.filter(s => s._equipmentSubstituted);
+  ck("E: substituutti oikealla leimalla (liike-kategoria = slot-kategoria, suoritettavissa)",
+     eRowP8.every(s => isMovementPerformable(s.defaultMovementName, null, s.category, new Set(["pullup_bar"]))));
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",

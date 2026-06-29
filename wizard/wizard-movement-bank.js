@@ -54,6 +54,8 @@ export const FALLBACK_MOVEMENT_BANK = [
   { id: "fb_lat_pulldown",          name: "Ylätalja",               category: "vertikaaliveto",     loadType: "external" },
   { id: "fb_barbell_row",           name: "Penkkiveto",             category: "horisontaaliveto",   loadType: "external" },
   { id: "fb_cable_row",             name: "Alatalja",               category: "horisontaaliveto",   loadType: "external" },
+  // Pilari 3 R2 (OBS-053): käsipaino-soutu — käsipaino-kotikuntoilijan (P2) pätevä horisontaaliveto.
+  { id: "fb_db_row",                name: "Käsipainosoutu",         category: "horisontaaliveto",   loadType: "external" },
   { id: "fb_chinup",                name: "Vastaote-leuat",         category: "vertikaaliveto",     loadType: "system" },
 
   // ─── Push-variaatiot (4) ───
