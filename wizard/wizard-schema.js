@@ -466,6 +466,19 @@ export const WIZARD_QUESTIONS = [
     smartDefault: "balanced",
     required: false,
   },
+  {
+    // Pilari 3 R2 (C): atletin oma palautumis-/uni-/stressi-raportti → pickRecoveryCapacity "heikko"
+    // → aloitusvolyymi (applyRecoveryScalar) + aloitusintensiteetti (applyStartingCapacityDegradation).
+    id: "q34_recoveryStatus", stage: "loading", dimension: "D13",
+    type: "radio", labelFi: "Miten palautuminen, uni ja stressi ovat tällä hetkellä?",
+    options: [
+      { value: "hyva",   labelFi: "Hyvä — nukun riittävästi, matala stressi, palaudun treenien välillä" },
+      { value: "keski",  labelFi: "Kohtalainen — vaihtelevaa unta tai jonkin verran kuormitusta arjessa" },
+      { value: "heikko", labelFi: "Heikko — univelkaa, korkea stressi tai hidas palautuminen juuri nyt" },
+    ],
+    smartDefault: "keski",
+    required: false,
+  },
 ];
 
 // ── Verifioidut menetelmäreferenssit (D10 SWC-kehys) ─────────────────
@@ -523,11 +536,11 @@ export function getStageByOrder(order) {
   return WIZARD_STAGES.find(s => s.order === order) || null;
 }
 
-// Yht. 32 kysymystä (30 alkuperäistä + q33_aggressivenessDefault v4.51.0 +
-// q31_preferredDays v4.51.6), 8 vaihetta, 18 dimensiota (D1–D18).
-// q31 + q33 lukeutuvat D14/D15:n alle (loading-vaiheen frekvenssi+valintatyyli).
+// Yht. 33 kysymystä (30 alkuperäistä + q33_aggressivenessDefault v4.51.0 +
+// q31_preferredDays v4.51.6 + q34_recoveryStatus Pilari 3 R2), 8 vaihetta, 18 dimensiota (D1–D18).
+// q31 + q33 → D14/D15 (loading: frekvenssi+valintatyyli); q34 → D13 (loading: palautumiskapasiteetti).
 export const SCHEMA_INVARIANTS = {
-  totalQuestions: 32,
+  totalQuestions: 33,
   totalStages: 8,
   totalDimensions: 18,
   schemaVersion: WIZARD_SCHEMA_VERSION,

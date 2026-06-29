@@ -563,14 +563,14 @@ async function runPendingWizardMigration() {
 }
 
 // ── Smoke-test apuri (Phase 1A + 1D hyväksymiskriteeri) ──
-// Palauttaa true jos: 30 kysymystä, 8 vaihetta, IDB v4 avautuu, save/get
+// Palauttaa true jos: 33 kysymystä, 8 vaihetta, IDB v4 avautuu, save/get
 // roundtrip toimii, v2→v3.2 + v3.2→v3.3 migraatiot tuottavat valideja objekteja
 // ja pr-list-validointi havaitsee virheelliset itemit.
 export async function selfTest() {
   const report = { ok: true, checks: [], errors: [] };
   const ck = (label, cond) => { report.checks.push({ label, ok: !!cond }); if (!cond) { report.ok = false; report.errors.push(label); } };
 
-  ck("30 kysymystä", WIZARD_QUESTIONS.length === SCHEMA_INVARIANTS.totalQuestions);
+  ck("33 kysymystä", WIZARD_QUESTIONS.length === SCHEMA_INVARIANTS.totalQuestions);
   ck("8 vaihetta",   WIZARD_STAGES.length    === SCHEMA_INVARIANTS.totalStages);
   ck("schemaVersion = 3.3", WIZARD_SCHEMA_VERSION === "3.3");
   ck("IDB v4", WIZARD_DB_VERSION === 4);

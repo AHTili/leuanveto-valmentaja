@@ -2076,10 +2076,11 @@ export async function uiSelfTest() {
   );
   store.setAnswer("q01_age", 30);
 
-  // ─── 1D: schema-invariantit (30 kysymystä, 8 vaihetta) ──────────
-  ck("WIZARD_QUESTIONS.length = 30", WIZARD_QUESTIONS.length === 30);
+  // ─── 1D: schema-invariantit (33 kysymystä, 8 vaihetta) ──────────
+  // Pilari 3 R2 (C): q34_recoveryStatus → 33 (oli stale 30 jo q31/q33-lisäysten jäljiltä).
+  ck("WIZARD_QUESTIONS.length = 33", WIZARD_QUESTIONS.length === 33);
   ck("WIZARD_STAGES.length = 8", WIZARD_STAGES.length === 8);
-  ck("SCHEMA_INVARIANTS.totalQuestions = 30", SCHEMA_INVARIANTS.totalQuestions === 30);
+  ck("SCHEMA_INVARIANTS.totalQuestions = 33", SCHEMA_INVARIANTS.totalQuestions === 33);
   ck("SCHEMA_INVARIANTS.schemaVersion = 3.3", SCHEMA_INVARIANTS.schemaVersion === "3.3");
 
   goToStep(store.state, 3);

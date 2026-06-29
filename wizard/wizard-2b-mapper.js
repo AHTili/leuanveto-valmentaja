@@ -1200,6 +1200,11 @@ export function pickRecoveryCapacity(answers) {
     return "heikko";
   }
 
+  // 2b. Pilari 3 R2 (C): atletin oma palautumis-/uni-/stressi-raportti (q34) → heikko.
+  // Laukaisee aloitusvolyymin (applyRecoveryScalar) + aloitusintensiteetin
+  // (applyStartingCapacityDegradation recoveryLimited-haaran). Fysiologiset rajat (1-2) voittavat.
+  if (answers.q34_recoveryStatus === "heikko") return "heikko";
+
   // 3-5. q23 primary signaali → tier-default → keski-fallback
   if (volumePref === "MEV") return "heikko";
   if (volumePref === "MRV") return "hyva";
@@ -2975,6 +2980,14 @@ export function selfTestMapper() {
   ck("A: edistynyt(5v) 6pv → ei beginnerSafety (yli 6kk)", _capacityTriggers({ q06_yearsTraining: 5, q08_selfLevel: "advanced", q24_frequency: { daysPerWeek: 6 } }, "hyva").beginnerSafety === false);
   ck("A: degradaatio-viesti (beginnerSafety) sisältää 'turvallisemmaksi'", /turvallisemmaksi/.test(_buildSafetyAdvisory({ beginnerSafety: true }) || ""));
 
+  // ─── 5j. Pilari 3 R2 (C): q34 palautumisraportti → recoveryLimited ──
+  ck("C: q34='heikko' → pickRecoveryCapacity 'heikko'", pickRecoveryCapacity({ q34_recoveryStatus: "heikko", q23_volumePref: "auto", q08_selfLevel: "intermediate" }) === "heikko");
+  ck("C: q34 puuttuu → ei pakota heikko (bit-exact)", pickRecoveryCapacity({ q23_volumePref: "auto", q08_selfLevel: "intermediate" }) === "keski");
+  ck("C: fysiologinen heikko (cut) voittaa q34='hyva'", pickRecoveryCapacity({ q34_recoveryStatus: "hyva", q14_cutting: "yes", q30_energyBudget: { deficitKcal: 600 }, q23_volumePref: "auto" }) === "heikko");
+  ck("C: q34='heikko' → recoveryLimited-laukaisin (jaettu applikaattori)",
+     _capacityTriggers({ q34_recoveryStatus: "heikko", q24_frequency: { daysPerWeek: 3 } }, "heikko").recoveryLimited === true);
+  ck("C: SCHEMA_INVARIANTS.totalQuestions === 33", SCHEMA_INVARIANTS.totalQuestions === 33);
+
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
      JSON.stringify(pickPreferredDaysOfWeek({ daysPerWeek: 3 })) === JSON.stringify([1, 3, 5]));
@@ -3138,7 +3151,7 @@ export function selfTestMapper() {
   // ─── 15. Schema-invariantit (1A:n säilytys + v4.51.0 q33 lisäys) ───
   // v4.51.0 (Track B 2D-δ-C): q33_aggressivenessDefault lisätty loading-stageen
   // → totalQuestions 30 → 31. v4.51.6: q31_preferredDays → 32.
-  ck("SCHEMA_INVARIANTS.totalQuestions === 32", SCHEMA_INVARIANTS.totalQuestions === 32);
+  ck("SCHEMA_INVARIANTS.totalQuestions === 33", SCHEMA_INVARIANTS.totalQuestions === 33);
   ck("SCHEMA_INVARIANTS.totalStages === 8",     SCHEMA_INVARIANTS.totalStages === 8);
 
   // ════════════════════════════════════════════════════════════════
