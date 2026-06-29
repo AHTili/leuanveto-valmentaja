@@ -2187,16 +2187,17 @@ function _capDaySets(day, maxSets) {
   if (total <= maxSets) return day;
   let over = total - maxSets;
   const newSlots = slots.map(s => ({ ...s }));
-  // Trimaa accessory-sarjat lopusta (vähiten prioriteettista ensin); primaryt + alaraaja-takuu suojattu.
+  // Trimaa accessory-sarjat lopusta (vähiten prioriteettista ensin); primaryt + alaraaja-takuu +
+  // demotattu primaari (D-takuu: ilmoitettu primaari ei katoa) suojattu.
   for (let i = newSlots.length - 1; i >= 0 && over > 0; i--) {
     const s = newSlots[i];
-    if (s.role === "primary" || s._lowerBodyGuaranteed) continue;
+    if (s.role === "primary" || s._lowerBodyGuaranteed || s._demotedPrimary) continue;
     const cur = Number(s.sets) || 0;
     const cut = Math.min(cur, over);
     if (cut > 0) { s.sets = cur - cut; over -= cut; s._timeBudgetTrimmed = true; }
   }
   // Pudota accessory-slotit joiden sarjat trimmautui 0:aan.
-  const kept = newSlots.filter(s => s.role === "primary" || s._lowerBodyGuaranteed || (Number(s.sets) || 0) > 0);
+  const kept = newSlots.filter(s => s.role === "primary" || s._lowerBodyGuaranteed || s._demotedPrimary || (Number(s.sets) || 0) > 0);
   return { ...day, slots: kept };
 }
 export function applyTimeBudgetCap(weekPlans, q24_frequency, goal) {

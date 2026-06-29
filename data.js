@@ -5323,13 +5323,40 @@ function distributePrimariesToDays(weekPlans, primaries) {
   //   - 1 primaari → lead aina sama → single-slot kaikki sama (ennallaan).
   //   - useita → lead rotatoituu; cloneDayWithPrimary täyttää monislot-päivän kategoria-osumalla
   //     (aito full_body) ja single-slot-päivän leadilla (rotaatio, backward-compat).
-  return weekPlans.map(wp => ({
+  let result = weekPlans.map(wp => ({
     ...wp,
     days: wp.days.map((d, dIdx) => {
       const lead = primaries[dIdx % primaries.length];
       return cloneDayWithPrimary(d, primaries, lead, dIdx, (wp.week || 1) - 1);
     }),
   }));
+  // Pilari 3 R2 (D): kun #primaries > #days, lead-rotaatio kattaa vain primaries[0..days-1] →
+  // ekstra-primaarit (primaries[days..]) eivät saa primary-slottia → KATOAISIVAT. Ratifioitu:
+  // demotaan ne accessory:ksi (EI hard-cap) → jokainen atletin ilmoittama primaari esiintyy
+  // ohjelmassa joka viikko (primaarina TAI apuliikkeenä). No-op kun #primaries ≤ #days (bit-exact).
+  result = result.map(wp => {
+    const present = new Set();
+    (wp.days || []).forEach(d => (d.slots || []).forEach(s => {
+      if (s.role === "primary" && s.defaultMovementName) present.add(s.defaultMovementName);
+    }));
+    const missing = primaries.filter(p => p && p.name && !present.has(p.name));
+    if (missing.length === 0) return wp;
+    const days = wp.days.map(d => ({ ...d, slots: [...(d.slots || [])] }));
+    missing.forEach(p => {
+      // Injektoi vähiten kuormitettuun päivään (työsarjojen tasaus).
+      let target = days[0], min = Infinity;
+      for (const d of days) {
+        const sets = d.slots.reduce((s, x) => s + (Number(x.sets) || 0), 0);
+        if (sets < min) { min = sets; target = d; }
+      }
+      if (target) target.slots.push({
+        role: "accessory", category: p.category, defaultMovementName: p.name,
+        sets: 3, reps: 6, targetVx: 3, variantName: null, _demotedPrimary: true,
+      });
+    });
+    return { ...wp, days };
+  });
+  return result;
 }
 
 // Skaalaa daysPerWeek: 3 → 4 tai 3 → 2.
