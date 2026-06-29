@@ -1131,6 +1131,8 @@ import {
   ensureLowerBody,
   // v4.45.0 (Track B Vaihe 2C-γ): tier-pohjainen kg/vk-progressiokerroin
   applyTierProgression,
+  // Pilari 3 R2 (A+C): aloitus-kapasiteetti-intensiteetti-degradaatio (aloittelija/palautumisrajoite)
+  applyStartingCapacityDegradation,
   // v4.46.0 (Track B Vaihe 2C-δ): isometric-pitojen e1RM-mallinnus
   estimateIsometricE1RM,
   // v4.47.0 (Track B Vaihe 2D-α): adaptive multi-suggestion (top-3 style picker)
@@ -4137,6 +4139,9 @@ async function handleGenerateProgram() {
     const sex = wizardConfig.answers?.q02_sex;
     if (Array.isArray(newMeso.weekDefs)) {
       newMeso.weekDefs = applyTierProgression(newMeso.weekDefs, tier, sex);
+      // Pilari 3 R2 (A+C): nosta vk1-2 heavyTargetVx (submaks. aloitus) aloittelija-turvalle /
+      // palautumisrajoitteelle. No-op kun ei laukaisinta.
+      newMeso.weekDefs = applyStartingCapacityDegradation(newMeso.weekDefs, mapped._wizardMeta?._capacityTriggers);
     }
   } catch (e) {
     showToast(`Ohjelman generointi epäonnistui: ${e.message}`, "bad");

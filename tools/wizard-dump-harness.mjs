@@ -10,6 +10,8 @@ import {
   applySplitFilter, applyVolumeCap, applySessionFocusLabels, applyTierProgression,
   // Pilari 3 C2/C3: kalusto-suodatin + alaraaja-guarantor (osa index.html finalize-ketjua)
   applyEquipmentFilter, ensureLowerBody,
+  // Pilari 3 R2 (A+C): aloitus-kapasiteetti-intensiteetti-degradaatio
+  applyStartingCapacityDegradation,
 } from "../wizard/wizard-2b-mapper.js";
 import { generateCustomMesocycle, generateMultiBlockMesocycle } from "../data.js";
 
@@ -331,6 +333,8 @@ function runProfile(p) {
     meso.weekPlans = applySessionFocusLabels(meso.weekPlans);
     if (Array.isArray(meso.weekDefs)) {
       meso.weekDefs = applyTierProgression(meso.weekDefs, cfg.answers.q08_selfLevel, cfg.answers.q02_sex);
+      // Pilari 3 R2 (A+C): aloitus-kapasiteetti-intensiteetti-degradaatio (index.html finalize-ketju)
+      meso.weekDefs = applyStartingCapacityDegradation(meso.weekDefs, mapped._wizardMeta?._capacityTriggers);
     }
     out.mapped = mapped;
     out.meso = meso;

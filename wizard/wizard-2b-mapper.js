@@ -1076,6 +1076,45 @@ function _buildGoalConflictAdvisory(a) {
   return parts.length ? parts.join(" ") : null;
 }
 
+// ─── Pilari 3 R2 (A+C): aloitus-kapasiteetti-degradaatio (jaettu, 2 laukaisinta) ──
+// DRY: yksi intensiteetti-applikaattori, kaksi laukaisinta:
+//   A (beginnerSafety) = harjoitusikä < 6 kk JA pyydetty frekvenssi ≥5 pv/vk → tekniikkapaino.
+//   C (recoveryLimited) = q34-palautumiskysymys → recoveryCapacity "heikko" (C wiraa).
+// Nostaa vk1-2 heavyTargetVx:ää (enemmän varaa = submaksimaalinen aloitus). Frekvenssi-cap +
+// volyymi (applyRecoveryScalar) hoidetaan erikseen. Akseli voi yliajaa arvot.
+function _capacityTriggers(a, recoveryCapacity) {
+  const yrs = Number(a.q06_yearsTraining);
+  const isNovice = !Number.isNaN(yrs) ? yrs < 0.5 : a.q08_selfLevel === "beginner";
+  const requestedDays = Number(a.q24_frequency?.daysPerWeek) || 0;
+  return {
+    beginnerSafety: isNovice && requestedDays >= 5,   // A
+    recoveryLimited: recoveryCapacity === "heikko",   // C (q34 → heikko)
+  };
+}
+function _buildSafetyAdvisory(triggers) {
+  if (!triggers) return null;
+  const parts = [];
+  if (triggers.beginnerSafety) {
+    parts.push("Ohjelma on muokattu turvallisemmaksi: treenitausta alle 6 kk + korkea pyydetty frekvenssi → treenipäivät rajattu ja aloitusintensiteetti submaksimaalinen (tekniikka ja kudoskapasiteetti ensin, kuorma nousee asteittain).");
+  } else if (triggers.recoveryLimited) {
+    parts.push("Ohjelman aloitusintensiteetti ja -volyymi on madallettu raportoidun palautumisrajoitteen vuoksi — autoregulaatio nostaa kuormaa kun palautuminen sallii.");
+  }
+  return parts.length ? parts.join(" ") : null;
+}
+// Nostaa vk1-2 heavyTargetVx:ää (V2→V3 aloittelijalle; +1 vara palautumisrajoitteiselle).
+// Operoi weekDefs:iin — applyTierProgression koskee vain deltaPctBase:a → ei konfliktia.
+export function applyStartingCapacityDegradation(weekDefs, triggers) {
+  if (!Array.isArray(weekDefs) || !triggers || (!triggers.beginnerSafety && !triggers.recoveryLimited)) return weekDefs;
+  return weekDefs.map(wd => {
+    if (typeof wd.week !== "number" || wd.week > 2) return wd;        // vain aloitusviikot
+    if (typeof wd.heavyTargetVx !== "number") return wd;
+    const targetMin = triggers.beginnerSafety ? 3 : wd.heavyTargetVx + 1; // V3 aloittelijalle
+    const newVx = Math.min(5, Math.max(wd.heavyTargetVx, targetMin));
+    if (newVx === wd.heavyTargetVx) return wd;
+    return { ...wd, heavyTargetVx: newVx, _startingCapacityDegraded: true, _originalHeavyTargetVx: wd.heavyTargetVx };
+  });
+}
+
 export function pickStartingBlock(q29_recentBlock, q12_primaryGoal) {
   const isMaxGoal = MAX_GOALS.has(q12_primaryGoal);
 
@@ -2251,9 +2290,13 @@ export function mapWizardToMesocycle(wizardConfig, mainAppState, opts = {}) {
 
   const recoveryCapacity = pickRecoveryCapacity(a);
   const primaries = pickPrimaries(a);
-  // v4.51.6: lue q31_preferredDays (atletin oma valinta) jos annettu
-  const preferredDaysOfWeek = pickPreferredDaysOfWeek(a.q24_frequency, a.q31_preferredDays);
-  const daysPerWeek = Number(a.q24_frequency?.daysPerWeek) || 3;
+  // Pilari 3 R2 (A): aloitus-kapasiteetti-laukaisimet + frekvenssi-cap (aloittelija <6kk + pyydetty
+  // ≥5 pv → cap 3 pv, W1 P7 PASS-ehto). Akseli voi yliajaa. (Vain single-block; P3 multi-block koskematon.)
+  const _capTriggers = _capacityTriggers(a, recoveryCapacity);
+  const requestedDays = Number(a.q24_frequency?.daysPerWeek) || 3;
+  const daysPerWeek = _capTriggers.beginnerSafety ? Math.min(requestedDays, 3) : requestedDays;
+  // v4.51.6: lue q31_preferredDays (atletin oma valinta) jos annettu — capatulla daysPerWeek:llä
+  const preferredDaysOfWeek = pickPreferredDaysOfWeek({ ...a.q24_frequency, daysPerWeek }, a.q31_preferredDays);
 
   const sexModifierApplied =
     a.q15_aerobicModality !== "none" &&
@@ -2285,8 +2328,9 @@ export function mapWizardToMesocycle(wizardConfig, mainAppState, opts = {}) {
       targetDateAnchored: anchorResult.anchored,
       targetDateWarning: anchorResult.warning,
       rules: collectAppliedRules(a, goal, weekCount, recoveryCapacity, sexModifierApplied, anchorResult.anchored, opts.selectedStyleId),
-      // Pilari 3 C4: rehellinen ristiriita-advisory (kuorma-neutraali metadata) — UI surfacea sen.
-      goalConflictAdvisory: _buildGoalConflictAdvisory(a),
+      // Pilari 3 C4 + R2 (A): ristiriita- + aloitusturvallisuus-advisory (kuorma-neutraali) — UI surfacea.
+      goalConflictAdvisory: [_buildGoalConflictAdvisory(a), _buildSafetyAdvisory(_capTriggers)].filter(Boolean).join(" ") || null,
+      _capacityTriggers: _capTriggers, // R2 (A+C): intensiteetti-applikaattorin laukaisimet (index.html hook)
     },
   };
 }
@@ -2918,6 +2962,18 @@ export function selfTestMapper() {
   const eRowP8 = applyEquipmentFilter(rowWP, ["pullup_bar"])[0].days[0].slots.filter(s => s._equipmentSubstituted);
   ck("E: substituutti oikealla leimalla (liike-kategoria = slot-kategoria, suoritettavissa)",
      eRowP8.every(s => isMovementPerformable(s.defaultMovementName, null, s.category, new Set(["pullup_bar"]))));
+
+  // ─── 5i. Pilari 3 R2 (A): aloitus-kapasiteetti-degradaatio + frekvenssi-cap ──
+  const wdS = [{ week: 1, heavyTargetVx: 2, deltaPctBase: 0 }, { week: 2, heavyTargetVx: 2, deltaPctBase: 2.5 }, { week: 3, heavyTargetVx: 2, deltaPctBase: 5 }];
+  const degBeg = applyStartingCapacityDegradation(wdS, { beginnerSafety: true });
+  ck("A: beginnerSafety → vk1-2 heavyTargetVx ≥3 (submaks. aloitus)", degBeg[0].heavyTargetVx >= 3 && degBeg[1].heavyTargetVx >= 3);
+  ck("A: vk3 EI degradoidu (vain aloitusviikot)", degBeg[2].heavyTargetVx === 2);
+  ck("A: ei laukaisinta → no-op", applyStartingCapacityDegradation(wdS, { beginnerSafety: false, recoveryLimited: false })[0].heavyTargetVx === 2);
+  ck("A: recoveryLimited → +1 vara aloitukseen (C-laukaisin)", applyStartingCapacityDegradation(wdS, { recoveryLimited: true })[0].heavyTargetVx === 3);
+  ck("A: aloittelija <6kk + 6pv → beginnerSafety", _capacityTriggers({ q06_yearsTraining: 0.2, q08_selfLevel: "beginner", q24_frequency: { daysPerWeek: 6 } }, "keski").beginnerSafety === true);
+  ck("A: aloittelija 3pv (ei ≥5) → ei beginnerSafety", _capacityTriggers({ q06_yearsTraining: 0.2, q08_selfLevel: "beginner", q24_frequency: { daysPerWeek: 3 } }, "keski").beginnerSafety === false);
+  ck("A: edistynyt(5v) 6pv → ei beginnerSafety (yli 6kk)", _capacityTriggers({ q06_yearsTraining: 5, q08_selfLevel: "advanced", q24_frequency: { daysPerWeek: 6 } }, "hyva").beginnerSafety === false);
+  ck("A: degradaatio-viesti (beginnerSafety) sisältää 'turvallisemmaksi'", /turvallisemmaksi/.test(_buildSafetyAdvisory({ beginnerSafety: true }) || ""));
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
