@@ -731,7 +731,10 @@
 // v4.52.47: Pilari 3 — wizard-generaattorin preview surfacea nyt
 //           _wizardMeta.goalConflictAdvisory:n (rehellinen tavoite-ristiriita /
 //           resurssirajoite -advisory, aiemmin laskettu mutta ei näytetty).
-const APP_VERSION = "4.52.47";
+// v4.52.48: Pilari 3 R2 — 6 materialisaatio-korjausta (A aloittelija-turvaraja,
+//           B aikabudjetti-cap, C q34-palautuminen, D primaari-demote, E soutu-
+//           substituutio, F vamma-modified) + Käsipainosoutu katalogiin (OBS-053).
+const APP_VERSION = "4.52.48";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.

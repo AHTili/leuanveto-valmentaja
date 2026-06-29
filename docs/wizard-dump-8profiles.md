@@ -58,6 +58,7 @@
       · primary: Takakyykky — 3×3 @ V4 (alaraaja)
       · accessory: Hip thrust — 3×8 @ V4 (alaraaja)
       · accessory: Leg curl — 2×10 @ — (alaraaja)
+      · accessory: Lisäpainoleuanveto — 3×6 @ V3 (vertikaaliveto)
     Päivä (dow 3, volume) — fokus: Penkkipunnerrus:
       · primary: Penkkipunnerrus — 3×5 @ V4 (horisontaalityöntö)
       · accessory: Spoto press — 3×8 @ V4 (horisontaalityöntö)
@@ -88,7 +89,7 @@
     Päivä (dow 2, volume) — fokus: Käsipainopenkki:
       · primary: Käsipainopenkki — 2×10 @ V1 (horisontaalityöntö)
       · accessory: Leuanveto (kehonpaino) — 2×10 @ V1 (vertikaaliveto)
-      · accessory: Lisäpainoleuanveto — 2×15 @ V1 (horisontaaliveto)
+      · accessory: Käsipainosoutu — 2×15 @ V1 (horisontaaliveto)
       · accessory: Hammer curl — 2×12 @ V1 (hauisfleksio)
     Päivä (dow 4, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 2×8 @ V1 (alaraaja)
@@ -96,9 +97,9 @@
       · accessory: Glute-Ham Raise — 2×12 @ V1 (alaraaja)
     Päivä (dow 5, volume) — fokus: Lisäpainoleuanveto:
       · primary: Lisäpainoleuanveto — 2×8 @ V1 (vertikaaliveto)
-      · accessory: Lisäpainoleuanveto — 2×10 @ V1 (horisontaaliveto)
-      · accessory: Lisäpainoleuanveto — 2×10 @ V1 (horisontaaliveto)
-      · accessory: Lisäpainoleuanveto — 2×15 @ V1 (horisontaaliveto)
+      · accessory: Käsipainosoutu — 2×10 @ V1 (horisontaaliveto)
+      · accessory: Käsipainosoutu — 2×10 @ V1 (horisontaaliveto)
+      · accessory: Käsipainosoutu — 2×15 @ V1 (horisontaaliveto)
       · accessory: Hanging leg raise — 2×12 @ — (core)
   **Viikko 4:**
     Päivä (dow 1, volume) — fokus: Lisäpainoleuanveto:
@@ -108,7 +109,7 @@
     Päivä (dow 2, volume) — fokus: Käsipainopenkki:
       · primary: Käsipainopenkki — 1×10 @ V4 (horisontaalityöntö)
       · accessory: Leuanveto (kehonpaino) — 1×10 @ V4 (vertikaaliveto)
-      · accessory: Lisäpainoleuanveto — 1×15 @ V4 (horisontaaliveto)
+      · accessory: Käsipainosoutu — 1×15 @ V4 (horisontaaliveto)
       · accessory: Hauiskääntö tanko — 1×12 @ V4 (hauisfleksio)
     Päivä (dow 4, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 1×8 @ V4 (alaraaja)
@@ -116,9 +117,9 @@
       · accessory: Pohjenosto — 1×12 @ V4 (alaraaja)
     Päivä (dow 5, volume) — fokus: Lisäpainoleuanveto:
       · primary: Lisäpainoleuanveto — 1×8 @ V4 (vertikaaliveto)
-      · accessory: Lisäpainoleuanveto — 1×10 @ V4 (horisontaaliveto)
-      · accessory: Lisäpainoleuanveto — 1×10 @ V4 (horisontaaliveto)
-      · accessory: Lisäpainoleuanveto — 1×15 @ V4 (horisontaaliveto)
+      · accessory: Käsipainosoutu — 1×10 @ V4 (horisontaaliveto)
+      · accessory: Käsipainosoutu — 1×10 @ V4 (horisontaaliveto)
+      · accessory: Käsipainosoutu — 1×15 @ V4 (horisontaaliveto)
       · accessory: Hanging leg raise — 1×12 @ — (core)
   *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
 
@@ -159,6 +160,7 @@
       · primary: Lisäpainoleuanveto — 2×2 @ V1 (vertikaaliveto)
     Päivä (dow 2, speed) — fokus: Lisäpainodippi:
       · primary: Lisäpainodippi — 1×2 @ V4 (horisontaalityöntö)
+      · accessory: Muscle-up — 3×6 @ V3 (vertikaaliveto)
     Päivä (dow 4, speed) — fokus: Takakyykky:
       · primary: Takakyykky — 1×2 @ V4 (alaraaja)
   *(vk 2…5 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 6)*
@@ -339,6 +341,7 @@
       · accessory: Hip thrust — 3×6 @ V3 (alaraaja)
       · accessory: Chest-supported row — 3×8 @ V3 (horisontaaliveto)
       · accessory: Pohjenosto — 3×10 @ — (alaraaja)
+      · accessory: Lisäpainoleuanveto — 3×6 @ V3 (vertikaaliveto)
     Päivä (dow 4, volume) — fokus: Penkkipunnerrus:
       · primary: Penkkipunnerrus — 5×5 @ V3 (horisontaalityöntö)
       · accessory: Vinopenkkipunnerrus — 3×8 @ V3 (horisontaalityöntö)
@@ -350,6 +353,7 @@
       · primary: Takakyykky — 3×3 @ V4 (alaraaja)
       · accessory: Hip thrust — 3×8 @ V4 (alaraaja)
       · accessory: Leg curl — 2×10 @ — (alaraaja)
+      · accessory: Lisäpainoleuanveto — 3×6 @ V3 (vertikaaliveto)
     Päivä (dow 4, volume) — fokus: Penkkipunnerrus:
       · primary: Penkkipunnerrus — 3×5 @ V4 (horisontaalityöntö)
       · accessory: Spoto press — 3×8 @ V4 (horisontaalityöntö)
@@ -361,7 +365,7 @@
 ### P6
 > Mies 35 v / 90 kg, 3 v, voima+massa, täysi sali, 3–4 pv/vk, krooninen olkapääkipu (kivulias kaari pystypunnerruksessa + syvässä dipissä).
 
-- **Liikevalinta (primaryt):** Takakyykky + Penkkipunnerrus + Lisäpainoleuanveto
+- **Liikevalinta (primaryt):** Takakyykky + Lisäpainoleuanveto
 - **Frekvenssi:** 4 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
 - **Periodisaatio:** 5 vk (materialisoitu)
 
@@ -380,16 +384,16 @@
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
       · primary: Takakyykky — 1×5 @ V2 (alaraaja)
       · primary: Takakyykky — 1×5 @ V1 (alaraaja)
-      · primary: Penkkipunnerrus — 1×5 @ V4 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V2 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V1 (horisontaalityöntö)
       · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V2 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V1 (vertikaaliveto)
+      · primary: Takakyykky — 1×5 @ V4 (alaraaja)
+      · primary: Takakyykky — 1×5 @ V3 (alaraaja)
+      · primary: Takakyykky — 1×5 @ V3 (alaraaja)
+      · primary: Takakyykky — 1×5 @ V2 (alaraaja)
+      · primary: Takakyykky — 1×5 @ V1 (alaraaja)
       · accessory: Ab wheel rollout — 2×10 @ V3 (core)
       · accessory: Hanging leg raise — 3×10 @ — (core)
     Päivä (dow 2, volume) — fokus: Takakyykky:
@@ -397,10 +401,10 @@
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
-      · primary: Penkkipunnerrus — 1×5 @ V4 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V4 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
+      · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
@@ -411,10 +415,10 @@
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
-      · primary: Penkkipunnerrus — 1×5 @ V4 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V4 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
+      · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
@@ -427,19 +431,18 @@
       · primary: Takakyykky — 1×5 @ V2 (alaraaja)
       · primary: Takakyykky — 1×3 @ V1 (alaraaja)
       · backoff: Takakyykky — 1×8 @ V3 (alaraaja)
-      · primary: Penkkipunnerrus — 1×5 @ V4 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V2 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×3 @ V1 (horisontaalityöntö)
-      · backoff: Penkkipunnerrus — 1×8 @ V3 (horisontaalityöntö)
       · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V2 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×3 @ V1 (vertikaaliveto)
       · backoff: Lisäpainoleuanveto — 1×8 @ V3 (vertikaaliveto)
-      · accessory: Leg curl — 3×10 @ — (alaraaja)
+      · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V2 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×3 @ V1 (vertikaaliveto)
+      · backoff: Lisäpainoleuanveto — 1×8 @ V3 (vertikaaliveto)
   **Viikko 5:**
     Päivä (dow 1, heavy) — fokus: Takakyykky:
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
@@ -447,16 +450,16 @@
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
       · primary: Takakyykky — 1×5 @ V2 (alaraaja)
       · primary: Takakyykky — 1×5 @ V1 (alaraaja)
-      · primary: Penkkipunnerrus — 1×5 @ V4 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V2 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V1 (horisontaalityöntö)
       · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V2 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V1 (vertikaaliveto)
+      · primary: Takakyykky — 1×5 @ V4 (alaraaja)
+      · primary: Takakyykky — 1×5 @ V3 (alaraaja)
+      · primary: Takakyykky — 1×5 @ V3 (alaraaja)
+      · primary: Takakyykky — 1×5 @ V2 (alaraaja)
+      · primary: Takakyykky — 1×5 @ V1 (alaraaja)
       · accessory: Ab wheel rollout — 2×10 @ V3 (core)
       · accessory: Hanging leg raise — 3×10 @ — (core)
     Päivä (dow 2, volume) — fokus: Takakyykky:
@@ -464,10 +467,10 @@
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
-      · primary: Penkkipunnerrus — 1×5 @ V4 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V4 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
+      · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
@@ -478,10 +481,10 @@
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
-      · primary: Penkkipunnerrus — 1×5 @ V4 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V4 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
+      · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
       · primary: Takakyykky — 1×5 @ V4 (alaraaja)
       · primary: Takakyykky — 1×5 @ V3 (alaraaja)
@@ -494,19 +497,18 @@
       · primary: Takakyykky — 1×5 @ V2 (alaraaja)
       · primary: Takakyykky — 1×3 @ V1 (alaraaja)
       · backoff: Takakyykky — 1×8 @ V3 (alaraaja)
-      · primary: Penkkipunnerrus — 1×5 @ V4 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V3 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×5 @ V2 (horisontaalityöntö)
-      · primary: Penkkipunnerrus — 1×3 @ V1 (horisontaalityöntö)
-      · backoff: Penkkipunnerrus — 1×8 @ V3 (horisontaalityöntö)
       · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×5 @ V2 (vertikaaliveto)
       · primary: Lisäpainoleuanveto — 1×3 @ V1 (vertikaaliveto)
       · backoff: Lisäpainoleuanveto — 1×8 @ V3 (vertikaaliveto)
-      · accessory: Leg curl — 3×10 @ — (alaraaja)
+      · primary: Lisäpainoleuanveto — 1×5 @ V4 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V3 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×5 @ V2 (vertikaaliveto)
+      · primary: Lisäpainoleuanveto — 1×3 @ V1 (vertikaaliveto)
+      · backoff: Lisäpainoleuanveto — 1×8 @ V3 (vertikaaliveto)
   *(vk 2…4 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 5)*
 
 ---
@@ -515,12 +517,12 @@
 > (known-negative A) Mies 19 v / 72 kg, 2 kk tausta, toive: 'maksimivoima nopeasti' + halu 6–7 pv/vk + raskaat maksiminostot, korkea motivaatio, ei rajoitteita.
 
 - **Liikevalinta (primaryt):** Penkkipunnerrus + Takakyykky + Maastaveto
-- **Frekvenssi:** 6 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
+- **Frekvenssi:** 3 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
 - **Periodisaatio:** 4 vk (materialisoitu) · mapper-aikomus 6 vk · ⚠ deklaroitu weekCount=6 ≠ materialisoitu 4
 
 **Viikkomääritykset (periodisaatio/progressio — numeerinen, sokko):**
-  - vk 1: ΔPct 0% · pää 3 × V2
-  - vk 2: ΔPct 0.025% · pää 3 × V1
+  - vk 1: ΔPct 0% · pää 3 × V3
+  - vk 2: ΔPct 0.025% · pää 3 × V3
   - vk 3: ΔPct 0.035% · pää 2 × V1
   - vk 4: ΔPct -0.25% · pää 3 × V4
 
@@ -531,29 +533,21 @@
       · backoff: Penkkipunnerrus — 3×5 @ V3 (horisontaalityöntö)
       · accessory: Seated OHP — 3×6 @ V3 (vertikaalityöntö)
       · accessory: Tricep pushdown — 3×10 @ — (ojentajaekstensio)
-    Päivä (dow 1, volume) — fokus: Takakyykky:
+    Päivä (dow 3, volume) — fokus: Takakyykky:
       · primary: Takakyykky — 5×5 @ V3 (alaraaja)
       · accessory: Bulgarian split squat — 3×8 @ V3 (alaraaja)
       · accessory: Hanging leg raise — 3×10 @ — (core)
-    Päivä (dow 2, volume) — fokus: Maastaveto:
-      · primary: Maastaveto — 5×5 @ V3 (lonkkahingaus)
-      · accessory: Paused DL — 3×8 @ V3 (alaraaja)
-      · accessory: Hanging leg raise — 3×10 @ — (core)
-    Päivä (dow 4, speed) — fokus: Penkkipunnerrus:
-      · primary: Penkkipunnerrus — 6×2 @ V4 (horisontaalityöntö)
-      · accessory: Push press — 3×10 @ — (vertikaalityöntö)
-      · accessory: Tricep pushdown — 3×10 @ — (ojentajaekstensio)
+    Päivä (dow 5, speed) — fokus: Maastaveto:
+      · primary: Maastaveto — 6×2 @ V4 (lonkkahingaus)
+      · accessory: Hip thrust — 3×10 @ — (alaraaja)
   **Viikko 4:**
     Päivä (dow 1, heavy) — fokus: Penkkipunnerrus:
       · primary: Penkkipunnerrus — 3×3 @ V4 (horisontaalityöntö)
       · accessory: Seated OHP — 3×8 @ V4 (vertikaalityöntö)
       · accessory: Skull crusher — 2×10 @ — (ojentajaekstensio)
-    Päivä (dow 1, volume) — fokus: Takakyykky:
+    Päivä (dow 3, volume) — fokus: Takakyykky:
       · primary: Takakyykky — 3×5 @ V4 (alaraaja)
       · accessory: Paused squat — 3×8 @ V4 (alaraaja)
-    Päivä (dow 2, volume) — fokus: Maastaveto:
-      · primary: Maastaveto — 3×5 @ V4 (lonkkahingaus)
-      · accessory: Snatch-grip DL — 3×8 @ V4 (alaraaja)
   *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
 
 ---
@@ -576,14 +570,11 @@
     Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 5×3 @ V2 (alaraaja)
       · backoff: Bulgarian split squat — 3×5 @ V3 (alaraaja)
-      · accessory: Glute-Ham Raise — 3×6 @ V3 (alaraaja)
-      · accessory: Lisäpainoleuanveto — 3×8 @ V3 (horisontaaliveto)
-      · accessory: Pohjenosto — 3×10 @ — (alaraaja)
+      · accessory: Glute-Ham Raise — 2×6 @ V3 (alaraaja)
     Päivä (dow 4, volume) — fokus: Handstand push-up (HSPU):
       · primary: Handstand push-up (HSPU) — 5×5 @ V3 (vertikaalityöntö)
       · accessory: Handstand push-up (HSPU) — 3×8 @ V3 (vertikaalityöntö)
-      · accessory: Lisäpainoleuanveto — 3×8 @ V3 (horisontaaliveto)
-      · accessory: Hanging leg raise — 3×10 @ — (core)
+      · accessory: Lisäpainoleuanveto — 2×8 @ V3 (vertikaaliveto)
   **Viikko 4:**
     Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 3×3 @ V4 (alaraaja)
@@ -592,7 +583,7 @@
     Päivä (dow 4, volume) — fokus: Handstand push-up (HSPU):
       · primary: Handstand push-up (HSPU) — 3×5 @ V4 (vertikaalityöntö)
       · accessory: Handstand push-up (HSPU) — 3×8 @ V4 (vertikaalityöntö)
-      · accessory: Lisäpainoleuanveto — 2×8 @ V4 (horisontaaliveto)
+      · accessory: Lisäpainoleuanveto — 2×8 @ V4 (vertikaaliveto)
   *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
 
 ---
@@ -614,12 +605,14 @@
   **Viikko 1:**
     Päivä (dow 1, volume) — fokus: Käsipainopenkki:
       · primary: Käsipainopenkki — 2×10 @ V1 (horisontaalityöntö)
+      · accessory: Käsipainosoutu — 2×15 @ V1 (horisontaaliveto)
       · accessory: Hammer curl — 2×12 @ V1 (hauisfleksio)
     Päivä (dow 2, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 2×10 @ V1 (alaraaja)
     Päivä (dow 4, volume) — fokus: Käsipainopenkki:
       · primary: Käsipainopenkki — 2×8 @ V1 (horisontaalityöntö)
       · accessory: Handstand push-up (HSPU) — 2×10 @ V1 (vertikaalityöntö)
+      · accessory: Käsipainosoutu — 2×15 @ V1 (horisontaaliveto)
       · accessory: Skull crusher — 2×12 @ V1 (ojentajaekstensio)
     Päivä (dow 5, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 2×8 @ V1 (alaraaja)
@@ -630,12 +623,14 @@
   **Viikko 4:**
     Päivä (dow 1, volume) — fokus: Käsipainopenkki:
       · primary: Käsipainopenkki — 1×10 @ V4 (horisontaalityöntö)
+      · accessory: Käsipainosoutu — 1×15 @ V4 (horisontaaliveto)
       · accessory: Hauiskääntö tanko — 1×12 @ V4 (hauisfleksio)
     Päivä (dow 2, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 1×10 @ V4 (alaraaja)
     Päivä (dow 4, volume) — fokus: Käsipainopenkki:
       · primary: Käsipainopenkki — 1×8 @ V4 (horisontaalityöntö)
       · accessory: Pystypunnerrus käsipainot — 1×10 @ V4 (vertikaalityöntö)
+      · accessory: Käsipainosoutu — 1×15 @ V4 (horisontaaliveto)
     Päivä (dow 5, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 1×8 @ V4 (alaraaja)
       · accessory: Glute-Ham Raise — 1×10 @ V4 (alaraaja)
@@ -678,8 +673,7 @@
       · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
       · primary: Bulgarian split squat — 1×5 @ V2 (alaraaja)
       · primary: Bulgarian split squat — 1×5 @ V1 (alaraaja)
-      · accessory: Ab wheel rollout — 2×10 @ V3 (core)
-      · accessory: Hanging leg raise — 3×10 @ — (core)
+      · accessory: Ab wheel rollout — 1×10 @ V3 (core)
     Päivä (dow 3, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
       · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
@@ -706,14 +700,11 @@
       · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
       · primary: Handstand push-up (HSPU) — 1×5 @ V2 (vertikaalityöntö)
       · primary: Handstand push-up (HSPU) — 1×3 @ V1 (vertikaalityöntö)
-      · backoff: Handstand push-up (HSPU) — 1×8 @ V3 (vertikaalityöntö)
       · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
       · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
       · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
       · primary: Bulgarian split squat — 1×5 @ V2 (alaraaja)
       · primary: Bulgarian split squat — 1×3 @ V1 (alaraaja)
-      · backoff: Bulgarian split squat — 1×8 @ V3 (alaraaja)
-      · accessory: Glute-Ham Raise — 3×10 @ — (alaraaja)
   **Viikko 5:**
     Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
@@ -731,8 +722,7 @@
       · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
       · primary: Bulgarian split squat — 1×5 @ V2 (alaraaja)
       · primary: Bulgarian split squat — 1×5 @ V1 (alaraaja)
-      · accessory: Ab wheel rollout — 2×10 @ V3 (core)
-      · accessory: Hanging leg raise — 3×10 @ — (core)
+      · accessory: Ab wheel rollout — 1×10 @ V3 (core)
     Päivä (dow 3, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
       · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
@@ -759,14 +749,11 @@
       · primary: Handstand push-up (HSPU) — 1×5 @ V3 (vertikaalityöntö)
       · primary: Handstand push-up (HSPU) — 1×5 @ V2 (vertikaalityöntö)
       · primary: Handstand push-up (HSPU) — 1×3 @ V1 (vertikaalityöntö)
-      · backoff: Handstand push-up (HSPU) — 1×8 @ V3 (vertikaalityöntö)
       · primary: Bulgarian split squat — 1×5 @ V4 (alaraaja)
       · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
       · primary: Bulgarian split squat — 1×5 @ V3 (alaraaja)
       · primary: Bulgarian split squat — 1×5 @ V2 (alaraaja)
       · primary: Bulgarian split squat — 1×3 @ V1 (alaraaja)
-      · backoff: Bulgarian split squat — 1×8 @ V3 (alaraaja)
-      · accessory: Glute-Ham Raise — 3×10 @ — (alaraaja)
   *(vk 2…4 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 5)*
 
 ---
@@ -846,7 +833,7 @@
 - **goal:** multi-blokki [intensifikaatio → peaking] · **skeleton:** multi-block-chain · **weekCount:** 6
 - **Top-3 kandidaatit (confidence):**
     1. `multi-issurin` (Block-periodisaatio (Issurin)) — **conf 100**
-        rationale: Kisapäivä asetettu (66 pv) → riittävästi aikaa block-periodisaatiolle; Kisa-tavoite → multi-blokki on tieteellinen standardi (Issurin); Max-tavoite tukee perinteistä hyp→str→int→peak-sekvenssiä
+        rationale: Kisapäivä asetettu (62 pv) → riittävästi aikaa block-periodisaatiolle; Kisa-tavoite → multi-blokki on tieteellinen standardi (Issurin); Max-tavoite tukee perinteistä hyp→str→int→peak-sekvenssiä
     2. `single-westside-conjugate` (Westside Conjugate) — **conf 65**
         rationale: Max-tavoite + Westside-rotaatio sopivat klassiseen voimanostokontekstiin; Edistynyt taso vaaditaan — ME-rotaation viikoittainen vaihto + 1RM-singletkin; 4 päivää/vk → sopii suoraan ME-Lower/ME-Upper/DE-Lower/DE-Upper -jakoon
     3. `single-maksimivoima` (Maksimivoima-blokki) — **conf 58**
