@@ -24,7 +24,7 @@ import { generateCustomMesocycle, generateMultiBlockMesocycle } from "../data.js
 const GEN_DATE = "2026-06-14"; // startDate-ankkuri (Date.now ei sallittu workflow-skripteissä; harness Node)
 
 // ─────────────────────────────────────────────────────────────────────────
-// 8 PROFIILIA — 32Q-vektorit. neutralNotes = persona ei määritä → neutraali/tyypillinen.
+// 11 PROFIILIA — 33Q-vektorit. neutralNotes = persona ei määritä → neutraali/tyypillinen.
 // ─────────────────────────────────────────────────────────────────────────
 const profiles = [
   {
@@ -146,6 +146,7 @@ const profiles = [
       q21_splitPreference: "fullbody", q22_avoidedExercises: [], q23_volumePref: "auto",
       q24_frequency: { daysPerWeek: 2, sessionLengthMinutes: 60 },
       q31_preferredDays: [], q25_rpePrecision: "vara_loose", q33_aggressivenessDefault: "balanced",
+      q34_recoveryStatus: "heikko",
     },
     neutralNotes: [
       "q06 1: 'epäsäännöllinen ~1 v'; q08 beginner (epäsäännöllinen ~1 v)",
@@ -154,7 +155,7 @@ const profiles = [
       "q12 general_strength: terveys/voima/toimintakyky → yleisvoima",
       "q24 daysPerWeek 2: '2–3 pv' → valittu 2 (alaraja, palautumisrajoite); session 60",
       "q21 fullbody: 2 pv → fullbody",
-      "★ KRIITTINEN: PALAUTUMISRAJOITETTA (hidas palautuminen / työstressi / vaihteleva uni) EI voi syöttää suoraan — 32Q:ssa ei ole stressi-/palautumiskysymystä. Captureoituu VAIN epäsuorasti (ikä 56, ei unimittaria). recoveryCapacity = pickRecoveryCapacity(answers) johtaa sen iästä/datasta. Tämä on diagnostinen havainto W2:lle.",
+      "★ PALAUTUMISRAJOITE (hidas palautuminen / työstressi / vaihteleva uni) → q34_recoveryStatus='heikko' (Pilari 3 R2 lisäsi q34-palautumiskysymyksen, 33Q). pickRecoveryCapacity → 'heikko' → applyRecoveryScalar (apuliike-volyymi −30 %) + applyStartingCapacity (aloitusintensiteetti submaks.). Aiemmin (32Q) tämä captureoitui vain epäsuorasti iästä → korjattu.",
       "q13 none (ei mobility, vaikka 'toimintakyky' voisi viitata siihen → neutraali none); q15/q18/q19/q20 none, q23 auto, q25 vara_loose, q33 balanced: neutraali",
     ],
   },
@@ -227,6 +228,7 @@ const profiles = [
       q21_splitPreference: "fullbody", q22_avoidedExercises: [], q23_volumePref: "auto",
       q24_frequency: { daysPerWeek: 2, sessionLengthMinutes: 30 },
       q31_preferredDays: [], q25_rpePrecision: "vara_loose", q33_aggressivenessDefault: "balanced",
+      q34_recoveryStatus: "heikko",
     },
     neutralNotes: [
       "q06 0.5: '<1 v'; q08 beginner",
@@ -236,7 +238,7 @@ const profiles = [
       "q29 off_program: <1 v",
       "q24: 2 pv × 30 min (annettu)",
       "q21 fullbody (2 pv); q23 auto, q25 vara_loose, q33 balanced: neutraali",
-      "★ KNOWN-NEGATIVE: 'heikko palautuminen' EI ole suoraan syötettävissä (ei 32Q-kysymystä). 2×30 min/vk + ei välineitä + beginner + ristiriitainen max+hypertrofia 'nopeasti' = realistisesti mahdoton tavoiteyhdistelmä. W2 arvioi tunnistaako/käsitteleekö wizard ristiriidan + resurssirajat.",
+      "★ KNOWN-NEGATIVE: 'heikko palautuminen' → q34_recoveryStatus='heikko' (Pilari 3 R2, 33Q) → pickRecoveryCapacity 'heikko' → apuliike-volyymi −30 % + aloitusintensiteetti submaks. 2×30 min/vk + ei välineitä + beginner + ristiriitainen max+hypertrofia 'nopeasti' = realistisesti mahdoton tavoiteyhdistelmä. W2 arvioi tunnistaako/käsitteleekö wizard ristiriidan + resurssirajat.",
     ],
   },
   // ─── Pilari 3 (b) KATTAVUUSLISÄYS: adversariaalin paljastamat kalusto-osajoukot ───
@@ -420,7 +422,7 @@ function fmtStyle(r) {
   return s;
 }
 function fmtVector(r) {
-  let s = `### ${r.id}\n> ${r.persona}\n\n**32Q-vektori:**\n\`\`\`json\n${JSON.stringify(r.id ? profiles.find(p => p.id === r.id).answers : {}, null, 1)}\n\`\`\`\n`;
+  let s = `### ${r.id}\n> ${r.persona}\n\n**33Q-vektori:**\n\`\`\`json\n${JSON.stringify(r.id ? profiles.find(p => p.id === r.id).answers : {}, null, 1)}\n\`\`\`\n`;
   s += `**Neutraalivalinnat (persona ei määritä → neutraali/tyypillinen):**\n`;
   s += r.neutralNotes.map(n => `- ${n}`).join("\n");
   s += "\n";
@@ -444,7 +446,7 @@ let md = `# Wizard-dumppi — ${profiles.length} profiilia (KAPSTONI pilari 3, W
 > Tämä dumppi on **kolmessa erillisessä lohkossa**. Lue järjestyksessä:
 > 1. **SECTION A — OHJELMAT (sokko):** lue VAIN ohjelmat. Arvioi kukin ohjelma ja **päättele itse mikä ohjelmointityyli se on** ja sopiiko se personalle. Tyylin nimeä EI ole tässä lohkossa.
 > 2. **SECTION B — TYYLIVALINNAT:** vasta kun olet tehnyt sokkoarviot, lue todelliset tyylivalinnat + confidence + top-3 kandidaatit ja vertaa päätelmääsi.
-> 3. **SECTION C — VEKTORIT + NEUTRAALIVALINNAT:** syöte-audit (32Q-vektorit + jokainen neutraalivalinta).
+> 3. **SECTION C — VEKTORIT + NEUTRAALIVALINNAT:** syöte-audit (33Q-vektorit + jokainen neutraalivalinta).
 >
 > Älä lue Section B ennen Section A:n arviota.
 
@@ -464,7 +466,7 @@ ${results.map(fmtStyle).join("\n")}
 ---
 ---
 
-# SECTION C — 32Q-VEKTORIT + NEUTRAALIVALINNAT (syöte-audit)
+# SECTION C — 33Q-VEKTORIT + NEUTRAALIVALINNAT (syöte-audit)
 
 ${results.map(fmtVector).join("\n---\n\n")}
 `;
