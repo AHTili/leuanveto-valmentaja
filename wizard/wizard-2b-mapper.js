@@ -1318,6 +1318,45 @@ const _INJURY_BLOCKLIST = [
   { injuryKeywords: ["selk", "alaselk", "back"],     movementKeywords: ["maavet", "deadlift"] },
 ];
 
+// ─── Pilari 3 R2 (F): vamma-alueet → liike-esto (absolute + modified) ──────
+// A1 (P6): pickPrimaries suodatti vain type==="absolute" JA vain primaareista → "modified"-
+// vamma oli inertti, ja apuliikkeet säilyivät vaikka kuormittivat vamma-aluetta. Ratifioitu:
+// käsittele molemmat tyypit + sovella apuliikkeisiin (substituoi same-category / pudota).
+// MINIMAALINEN: ei verdict-gating. (HUOM: back/maastaveto-osuma jää inertiksi kunnes OBS-055
+// korjaa blocklist-avainsanan "maavet"→"maasta" — deferred backlog, scope-lukon ulkopuolella.)
+function _injuredAreas(q11_injuries) {
+  return (Array.isArray(q11_injuries) ? q11_injuries : [])
+    .filter(i => i && (i.type === "absolute" || i.type === "modified") && typeof i.area === "string")
+    .map(i => i.area.toLowerCase());
+}
+function _injuryBlocksMovement(nameL, injuredAreas) {
+  if (!injuredAreas.length) return false;
+  return _INJURY_BLOCKLIST.some(b => {
+    const injuryHit = injuredAreas.some(a => b.injuryKeywords.some(k => a.includes(k)));
+    return injuryHit && b.movementKeywords.some(k => nameL.includes(k));
+  });
+}
+// Apuliike-tason vamma-suodatin (post-process, ennen applyEquipmentFilter → kalusto validoi subin).
+export function applyInjuryFilter(weekPlans, q11_injuries, movementBank = FALLBACK_MOVEMENT_BANK) {
+  const injuredAreas = _injuredAreas(q11_injuries);
+  if (injuredAreas.length === 0) return weekPlans; // no-op
+  const bank = (Array.isArray(movementBank) && movementBank.length) ? movementBank : FALLBACK_MOVEMENT_BANK;
+  const blocks = name => _injuryBlocksMovement((name || "").toLowerCase(), injuredAreas);
+  return weekPlans.map(wp => ({
+    ...wp,
+    days: (wp.days || []).map(d => ({
+      ...d,
+      slots: (d.slots || []).reduce((acc, s) => {
+        if (!blocks(s.defaultMovementName)) { acc.push(s); return acc; }
+        // Vamma-alueen liike → substituoi same-category ei-estetty / pudota (rehellinen).
+        const sub = bank.find(mv => mv && mv.category === s.category && mv.id !== "fb_custom_other" && !blocks(mv.name));
+        if (sub) acc.push({ ...s, defaultMovementName: sub.name, variantName: null, _injurySubstituted: true });
+        return acc;
+      }, []),
+    })),
+  }));
+}
+
 // ─── Pilari 3 FIX-B (C0): liike → VÄHIMMÄISkalustovaatimus ──────────────────
 // A1 paljasti: liikepankissa EI ole kalustometatietoa (vain loadType+category),
 // joten q17_equipment ei suodata apuliikkeitä → kalusto-vuoto (P2/P8). Tämä on
@@ -1395,21 +1434,10 @@ export function pickPrimaries(answers) {
   }
   primaries = primaries.map(p => ({ ...p })); // shallow copy jotta original ei muutu
 
-  // 1. q11_injuries (absolute) → poista
-  if (Array.isArray(answers.q11_injuries)) {
-    const absoluteAreas = answers.q11_injuries
-      .filter(i => i && i.type === "absolute" && typeof i.area === "string")
-      .map(i => i.area.toLowerCase());
-    if (absoluteAreas.length > 0) {
-      primaries = primaries.filter(p => {
-        const nameL = p.name.toLowerCase();
-        return !_INJURY_BLOCKLIST.some(b => {
-          const injuryHit = absoluteAreas.some(a => b.injuryKeywords.some(k => a.includes(k)));
-          if (!injuryHit) return false;
-          return b.movementKeywords.some(k => nameL.includes(k));
-        });
-      });
-    }
+  // 1. q11_injuries → poista vamma-alueen liikkeet (F: absolute + modified, jaettu helper).
+  const injuredAreas = _injuredAreas(answers.q11_injuries);
+  if (injuredAreas.length > 0) {
+    primaries = primaries.filter(p => !_injuryBlocksMovement(p.name.toLowerCase(), injuredAreas));
   }
 
   // 2. q22_avoidedExercises → poista nimi-osumat
@@ -3045,6 +3073,22 @@ export function selfTestMapper() {
   ck("B: maksimivoima pidempi tauko → vähemmän sarjoja kuin hypertrofia",
      applyTimeBudgetCap(bWP, { sessionLengthMinutes: 30 }, "maksimivoima")[0].days[0].slots.reduce((s, x) => s + (Number(x.sets) || 0), 0)
      <= applyTimeBudgetCap(bWP, { sessionLengthMinutes: 30 }, "hypertrofia")[0].days[0].slots.reduce((s, x) => s + (Number(x.sets) || 0), 0));
+
+  // ─── 5l. Pilari 3 R2 (F): q11 vamma (absolute + modified) primaari + apuliike ──
+  ck("F: modified-vamma → _injuredAreas mukana (ei vain absolute)", _injuredAreas([{ type: "modified", area: "Olkapää" }]).length === 1);
+  ck("F: olka-vamma estää 'Penkkipunnerrus' (press-osuma)", _injuryBlocksMovement("penkkipunnerrus", ["olkapää"]) === true);
+  ck("F: olka-vamma EI estä 'Takakyykky'", _injuryBlocksMovement("takakyykky", ["olkapää"]) === false);
+  ck("F: ei vammaa → _injuredAreas tyhjä (bit-exact)", _injuredAreas([]).length === 0);
+  const injWP = [{ week: 1, days: [{ slots: [
+    { role: "primary",   category: "alaraaja",           defaultMovementName: "Takakyykky", sets: 5, reps: 3 },
+    { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Dippi", sets: 3, reps: 8 },
+  ] }] }];
+  const injF = applyInjuryFilter(injWP, [{ type: "modified", area: "olkapää" }])[0].days[0].slots;
+  ck("F: modified olka → Dippi-APULIIKE poistettu/substituoitu (sovelletaan accessory:eihin)", !injF.some(s => /dippi/i.test(s.defaultMovementName)));
+  ck("F: vamma-suodatin säilyttää terveen primaarin (Takakyykky)", injF.some(s => s.role === "primary" && s.defaultMovementName === "Takakyykky"));
+  ck("F: ei vammaa → applyInjuryFilter no-op (bit-exact)", applyInjuryFilter(injWP, [])[0].days[0].slots.length === 2);
+  ck("F: modified olka pickPrimaries → ei press-primaaria",
+     !pickPrimaries({ q12_primaryGoal: "max_1RM", q11_injuries: [{ type: "modified", area: "olkapää" }], q17_equipment: ["barbell_rack", "pullup_bar", "dip_station"], q22_avoidedExercises: [] }).some(p => /penkkipunnerrus|pystypunnerrus|dippi/i.test(p.name)));
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",

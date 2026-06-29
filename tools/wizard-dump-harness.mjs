@@ -14,6 +14,8 @@ import {
   applyStartingCapacityDegradation,
   // Pilari 3 R2 (B): aikabudjetti rajaa työsarjat
   applyTimeBudgetCap,
+  // Pilari 3 R2 (F): apuliike-tason vamma-suodatin
+  applyInjuryFilter,
 } from "../wizard/wizard-2b-mapper.js";
 import { generateCustomMesocycle, generateMultiBlockMesocycle } from "../data.js";
 
@@ -329,6 +331,8 @@ function runProfile(p) {
       meso.weekPlans = applySplitFilter(meso.weekPlans, splitPref);
       meso.weekPlans = applyVolumeCap(meso.weekPlans, mapped.goal);
     }
+    // Pilari 3 R2 (F): apuliike-tason vamma-suodatin (ennen kalusto-suodatinta)
+    meso.weekPlans = applyInjuryFilter(meso.weekPlans, cfg.answers.q11_injuries);
     // Pilari 3 C2/C3: kalusto-suodatin + alaraaja-takuu (index.html finalize-ketju)
     meso.weekPlans = applyEquipmentFilter(meso.weekPlans, cfg.answers.q17_equipment);
     meso.weekPlans = ensureLowerBody(meso.weekPlans, cfg.answers.q17_equipment);

@@ -1125,6 +1125,8 @@ import {
   applySessionFocusLabels,
   // v4.44.0 (Track B Vaihe 2C-β2): split-filter + volyymi-cap post-process
   applySplitFilter, applyVolumeCap,
+  // Pilari 3 R2 (F): apuliike-tason vamma-suodatin (q11 absolute+modified)
+  applyInjuryFilter,
   // Pilari 3 C2 (FIX-B): kalusto-suodatin (apuliikkeiden q17-korvaus)
   applyEquipmentFilter,
   // Pilari 3 C3: alaraaja-invariantti-guarantor
@@ -4127,6 +4129,9 @@ async function handleGenerateProgram() {
       newMeso.weekPlans = applySplitFilter(newMeso.weekPlans, splitPref);
       newMeso.weekPlans = applyVolumeCap(newMeso.weekPlans, mapped.goal);
     }
+    // Pilari 3 R2 (F): suodata vamma-alueen apuliikkeet (q11 absolute+modified) — substituoi
+    // same-category / pudota. Ennen kalusto-suodatinta → kalusto validoi vamma-subin. No-op kun ei vammoja.
+    newMeso.weekPlans = applyInjuryFilter(newMeso.weekPlans, wizardConfig.answers?.q11_injuries);
     // Pilari 3 C2 (FIX-B): suodata kalusto — kelvottomat apuliikkeet (q17 ei kata) korvataan
     // sama-kategoria-ekvivalentilla / pudotetaan. No-op täyskalustolle + kun q17 puuttuu.
     newMeso.weekPlans = applyEquipmentFilter(newMeso.weekPlans, wizardConfig.answers?.q17_equipment);
