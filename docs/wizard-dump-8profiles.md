@@ -1,11 +1,15 @@
 # Wizard-dumppi — 11 profiilia (KAPSTONI pilari 3, W1-standardi)
 
-> **POST-FIX RE-DUMPPI** (pilari 3 -materialisaatiokorjaus C0-C4 mukana). Generoitu 2026-06-14.
-> Ajettu repon oikealla Wizard-mapperilla (`wizard/wizard-2b-mapper.js` `mapWizardToProgram`) +
-> mesosykligeneraattorilla (`data.js`) + KORJATULLA post-process-pipelinella
-> (`applySplitFilter` → `applyVolumeCap` → `applyEquipmentFilter` → `ensureLowerBody` →
-> `applySessionFocusLabels` → `applyTierProgression`), joka replikoi index.html:n päivitetyn finalize-ketjun.
-> Korjaus: goal-aware primaarit + K kategoria-slot-täyttö + kalusto-suodatin + alaraaja-takuu + P8 kehonpaino/advisory.
+> **POST-FIX RE-DUMPPI — round 2 (A–F)**. Generoitu 2026-06-29 · APP_VERSION 4.52.49 ·
+> ohjelmien start-ankkuri 2026-06-14. Ajettu repon oikealla Wizard-mapperilla
+> (`wizard/wizard-2b-mapper.js` `mapWizardToProgram`) + mesosykligeneraattorilla (`data.js`) +
+> KORJATULLA post-process-pipelinella (`applySplitFilter` → `applyVolumeCap` → `applyInjuryFilter` →
+> `applyEquipmentFilter` → `ensureLowerBody` → `applyTimeBudgetCap` → `applyStartingCapacityToSlots` →
+> `applySessionFocusLabels` → `applyTierProgression` → `applyStartingCapacityDegradation`), joka replikoi
+> index.html:n finalize-ketjun.
+> Round 1: goal-aware primaarit + K kategoria-slot-täyttö + kalusto-suodatin + alaraaja-takuu + P8 kehonpaino/advisory.
+> Round 2 (A–F): A aloittelija-turvaraja (freq-cap + V3-aloitus, sessiotaso) · B aikabudjetti-cap ·
+> C q34-palautuminen (volyymi −30 % + intensiteetti) · D primaari-demote (ei katoa) · E Käsipainosoutu-substituutio · F vamma-modified.
 > mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
 >
 > **Tulos: 11/11 profiilia generoitui onnistuneesti.** (P1–P8 W2-perusprofiilit + P9–P11 pilari 3 (b) kalusto-kattavuuslisäys.)
@@ -14,7 +18,7 @@
 > Tämä dumppi on **kolmessa erillisessä lohkossa**. Lue järjestyksessä:
 > 1. **SECTION A — OHJELMAT (sokko):** lue VAIN ohjelmat. Arvioi kukin ohjelma ja **päättele itse mikä ohjelmointityyli se on** ja sopiiko se personalle. Tyylin nimeä EI ole tässä lohkossa.
 > 2. **SECTION B — TYYLIVALINNAT:** vasta kun olet tehnyt sokkoarviot, lue todelliset tyylivalinnat + confidence + top-3 kandidaatit ja vertaa päätelmääsi.
-> 3. **SECTION C — VEKTORIT + NEUTRAALIVALINNAT:** syöte-audit (32Q-vektorit + jokainen neutraalivalinta).
+> 3. **SECTION C — VEKTORIT + NEUTRAALIVALINNAT:** syöte-audit (33Q-vektorit + jokainen neutraalivalinta).
 >
 > Älä lue Section B ennen Section A:n arviota.
 
@@ -324,40 +328,40 @@
 > Mies 56 v / 88 kg, epäsäännöllinen ~1 v (tauolla), terveys/voima/toimintakyky, täysi sali, 2–3 pv/vk, itse raportoitu palautumisrajoite (hidas palautuminen, työstressi, vaihteleva uni).
 
 - **Liikevalinta (primaryt):** Takakyykky + Penkkipunnerrus + Lisäpainoleuanveto
-- **Frekvenssi:** 2 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
+- **Frekvenssi:** 2 pv/vk · **Palautumiskapasiteetti (johdettu):** heikko
 - **Periodisaatio:** 4 vk (materialisoitu) · mapper-aikomus 6 vk · ⚠ deklaroitu weekCount=6 ≠ materialisoitu 4
 
 **Viikkomääritykset (periodisaatio/progressio — numeerinen, sokko):**
-  - vk 1: ΔPct 0% · pää 3 × V2
-  - vk 2: ΔPct 0.025% · pää 3 × V1
+  - vk 1: ΔPct 0% · pää 3 × V3
+  - vk 2: ΔPct 0.025% · pää 3 × V2
   - vk 3: ΔPct 0.035% · pää 2 × V1
   - vk 4: ΔPct -0.25% · pää 3 × V4
 
 **Viikko-ohjelmat (liikkeet · volyymi sets×reps · intensiteetti V):**
   **Viikko 1:**
     Päivä (dow 1, heavy) — fokus: Takakyykky:
-      · primary: Takakyykky — 5×3 @ V2 (alaraaja)
+      · primary: Takakyykky — 5×3 @ V3 (alaraaja)
       · backoff: Takakyykky — 3×5 @ V3 (alaraaja)
       · accessory: Hip thrust — 3×6 @ V3 (alaraaja)
-      · accessory: Chest-supported row — 3×8 @ V3 (horisontaaliveto)
-      · accessory: Pohjenosto — 3×10 @ — (alaraaja)
-      · accessory: Lisäpainoleuanveto — 3×6 @ V3 (vertikaaliveto)
+      · accessory: Chest-supported row — 2×8 @ V3 (horisontaaliveto)
+      · accessory: Pohjenosto — 2×10 @ — (alaraaja)
+      · accessory: Lisäpainoleuanveto — 2×6 @ V3 (vertikaaliveto)
     Päivä (dow 4, volume) — fokus: Penkkipunnerrus:
-      · primary: Penkkipunnerrus — 5×5 @ V3 (horisontaalityöntö)
+      · primary: Penkkipunnerrus — 5×5 @ V4 (horisontaalityöntö)
       · accessory: Vinopenkkipunnerrus — 3×8 @ V3 (horisontaalityöntö)
-      · accessory: T-bar row — 3×8 @ V3 (horisontaaliveto)
-      · accessory: Hammer curl — 3×12 @ — (hauisfleksio)
-      · accessory: Hanging leg raise — 3×10 @ — (core)
+      · accessory: T-bar row — 2×8 @ V3 (horisontaaliveto)
+      · accessory: Hammer curl — 2×12 @ — (hauisfleksio)
+      · accessory: Hanging leg raise — 2×10 @ — (core)
   **Viikko 4:**
     Päivä (dow 1, heavy) — fokus: Takakyykky:
       · primary: Takakyykky — 3×3 @ V4 (alaraaja)
-      · accessory: Hip thrust — 3×8 @ V4 (alaraaja)
-      · accessory: Leg curl — 2×10 @ — (alaraaja)
-      · accessory: Lisäpainoleuanveto — 3×6 @ V3 (vertikaaliveto)
+      · accessory: Hip thrust — 2×8 @ V4 (alaraaja)
+      · accessory: Leg curl — 1×10 @ — (alaraaja)
+      · accessory: Lisäpainoleuanveto — 2×6 @ V3 (vertikaaliveto)
     Päivä (dow 4, volume) — fokus: Penkkipunnerrus:
       · primary: Penkkipunnerrus — 3×5 @ V4 (horisontaalityöntö)
-      · accessory: Spoto press — 3×8 @ V4 (horisontaalityöntö)
-      · accessory: T-bar row — 2×8 @ V4 (horisontaaliveto)
+      · accessory: Spoto press — 2×8 @ V4 (horisontaalityöntö)
+      · accessory: T-bar row — 1×8 @ V4 (horisontaaliveto)
   *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
 
 ---
@@ -529,7 +533,7 @@
 **Viikko-ohjelmat (liikkeet · volyymi sets×reps · intensiteetti V):**
   **Viikko 1:**
     Päivä (dow 1, heavy) — fokus: Penkkipunnerrus:
-      · primary: Penkkipunnerrus — 5×3 @ V2 (horisontaalityöntö)
+      · primary: Penkkipunnerrus — 5×3 @ V3 (horisontaalityöntö)
       · backoff: Penkkipunnerrus — 3×5 @ V3 (horisontaalityöntö)
       · accessory: Seated OHP — 3×6 @ V3 (vertikaalityöntö)
       · accessory: Tricep pushdown — 3×10 @ — (ojentajaekstensio)
@@ -556,34 +560,34 @@
 > (known-negative B) Nainen 41 v / 70 kg, <1 v, ristiriitainen vektori: SEKÄ kilpailutason maksimivoima ETTÄ maksimaalinen lihaskasvu nopeasti; 2 pv/vk × 30 min; ei välineitä (koti); heikko palautuminen.
 
 - **Liikevalinta (primaryt):** Bulgarian split squat + Handstand push-up (HSPU)
-- **Frekvenssi:** 2 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
+- **Frekvenssi:** 2 pv/vk · **Palautumiskapasiteetti (johdettu):** heikko
 - **Periodisaatio:** 4 vk (materialisoitu) · mapper-aikomus 6 vk · ⚠ deklaroitu weekCount=6 ≠ materialisoitu 4
 
 **Viikkomääritykset (periodisaatio/progressio — numeerinen, sokko):**
-  - vk 1: ΔPct 0% · pää 3 × V2
-  - vk 2: ΔPct 0.014% · pää 3 × V1
+  - vk 1: ΔPct 0% · pää 3 × V3
+  - vk 2: ΔPct 0.014% · pää 3 × V2
   - vk 3: ΔPct 0.019% · pää 2 × V1
   - vk 4: ΔPct -0.25% · pää 3 × V4
 
 **Viikko-ohjelmat (liikkeet · volyymi sets×reps · intensiteetti V):**
   **Viikko 1:**
     Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
-      · primary: Bulgarian split squat — 5×3 @ V2 (alaraaja)
+      · primary: Bulgarian split squat — 5×3 @ V3 (alaraaja)
       · backoff: Bulgarian split squat — 3×5 @ V3 (alaraaja)
       · accessory: Glute-Ham Raise — 2×6 @ V3 (alaraaja)
     Päivä (dow 4, volume) — fokus: Handstand push-up (HSPU):
-      · primary: Handstand push-up (HSPU) — 5×5 @ V3 (vertikaalityöntö)
+      · primary: Handstand push-up (HSPU) — 5×5 @ V4 (vertikaalityöntö)
       · accessory: Handstand push-up (HSPU) — 3×8 @ V3 (vertikaalityöntö)
       · accessory: Lisäpainoleuanveto — 2×8 @ V3 (vertikaaliveto)
   **Viikko 4:**
     Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 3×3 @ V4 (alaraaja)
-      · accessory: Glute-Ham Raise — 3×8 @ V4 (alaraaja)
-      · accessory: Glute-Ham Raise — 2×10 @ — (alaraaja)
+      · accessory: Glute-Ham Raise — 2×8 @ V4 (alaraaja)
+      · accessory: Glute-Ham Raise — 1×10 @ — (alaraaja)
     Päivä (dow 4, volume) — fokus: Handstand push-up (HSPU):
       · primary: Handstand push-up (HSPU) — 3×5 @ V4 (vertikaalityöntö)
-      · accessory: Handstand push-up (HSPU) — 3×8 @ V4 (vertikaalityöntö)
-      · accessory: Lisäpainoleuanveto — 2×8 @ V4 (vertikaaliveto)
+      · accessory: Handstand push-up (HSPU) — 2×8 @ V4 (vertikaalityöntö)
+      · accessory: Lisäpainoleuanveto — 1×8 @ V4 (vertikaaliveto)
   *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
 
 ---
@@ -949,12 +953,12 @@
 ---
 ---
 
-# SECTION C — 32Q-VEKTORIT + NEUTRAALIVALINNAT (syöte-audit)
+# SECTION C — 33Q-VEKTORIT + NEUTRAALIVALINNAT (syöte-audit)
 
 ### P1
 > Mies 28 v, <6 kk tausta, yleisvoima, täysi sali, 3 pv/vk, ei rajoitteita.
 
-**32Q-vektori:**
+**33Q-vektori:**
 ```json
 {
  "q01_age": 28,
@@ -1010,7 +1014,7 @@
 ### P2
 > Mies 32 v, 2–3 v, hypertrofia, koti (käsipainot ≤32 kg, leuanvetotanko, kuminauhat; ei penkkiä/tankoa), 4 pv/vk.
 
-**32Q-vektori:**
+**33Q-vektori:**
 ```json
 {
  "q01_age": 32,
@@ -1062,7 +1066,7 @@
 ### P3
 > Mies 27 v / 75 kg, 5+ v (2 v lajispesifistä), streetlifting (painollinen leuanveto/dippi/kyykky + muscle-up), kisa 10–12 vk päässä, sali + vyöpaino, 4–5 pv/vk, edistyneet suhteelliset voimatasot.
 
-**32Q-vektori:**
+**33Q-vektori:**
 ```json
 {
  "q01_age": 27,
@@ -1121,7 +1125,7 @@
 ### P4
 > Nainen 30 v / 63 kg, ~2 v, maksimivoima, täysi sali, 3–4 pv/vk.
 
-**32Q-vektori:**
+**33Q-vektori:**
 ```json
 {
  "q01_age": 30,
@@ -1176,7 +1180,7 @@
 ### P5
 > Mies 56 v / 88 kg, epäsäännöllinen ~1 v (tauolla), terveys/voima/toimintakyky, täysi sali, 2–3 pv/vk, itse raportoitu palautumisrajoite (hidas palautuminen, työstressi, vaihteleva uni).
 
-**32Q-vektori:**
+**33Q-vektori:**
 ```json
 {
  "q01_age": 56,
@@ -1214,7 +1218,8 @@
  },
  "q31_preferredDays": [],
  "q25_rpePrecision": "vara_loose",
- "q33_aggressivenessDefault": "balanced"
+ "q33_aggressivenessDefault": "balanced",
+ "q34_recoveryStatus": "heikko"
 }
 ```
 **Neutraalivalinnat (persona ei määritä → neutraali/tyypillinen):**
@@ -1224,7 +1229,7 @@
 - q12 general_strength: terveys/voima/toimintakyky → yleisvoima
 - q24 daysPerWeek 2: '2–3 pv' → valittu 2 (alaraja, palautumisrajoite); session 60
 - q21 fullbody: 2 pv → fullbody
-- ★ KRIITTINEN: PALAUTUMISRAJOITETTA (hidas palautuminen / työstressi / vaihteleva uni) EI voi syöttää suoraan — 32Q:ssa ei ole stressi-/palautumiskysymystä. Captureoituu VAIN epäsuorasti (ikä 56, ei unimittaria). recoveryCapacity = pickRecoveryCapacity(answers) johtaa sen iästä/datasta. Tämä on diagnostinen havainto W2:lle.
+- ★ PALAUTUMISRAJOITE (hidas palautuminen / työstressi / vaihteleva uni) → q34_recoveryStatus='heikko' (Pilari 3 R2 lisäsi q34-palautumiskysymyksen, 33Q). pickRecoveryCapacity → 'heikko' → applyRecoveryScalar (apuliike-volyymi −30 %) + applyStartingCapacity (aloitusintensiteetti submaks.). Aiemmin (32Q) tämä captureoitui vain epäsuorasti iästä → korjattu.
 - q13 none (ei mobility, vaikka 'toimintakyky' voisi viitata siihen → neutraali none); q15/q18/q19/q20 none, q23 auto, q25 vara_loose, q33 balanced: neutraali
 
 ---
@@ -1232,7 +1237,7 @@
 ### P6
 > Mies 35 v / 90 kg, 3 v, voima+massa, täysi sali, 3–4 pv/vk, krooninen olkapääkipu (kivulias kaari pystypunnerruksessa + syvässä dipissä).
 
-**32Q-vektori:**
+**33Q-vektori:**
 ```json
 {
  "q01_age": 35,
@@ -1294,7 +1299,7 @@
 ### P7
 > (known-negative A) Mies 19 v / 72 kg, 2 kk tausta, toive: 'maksimivoima nopeasti' + halu 6–7 pv/vk + raskaat maksiminostot, korkea motivaatio, ei rajoitteita.
 
-**32Q-vektori:**
+**33Q-vektori:**
 ```json
 {
  "q01_age": 19,
@@ -1351,7 +1356,7 @@
 ### P8
 > (known-negative B) Nainen 41 v / 70 kg, <1 v, ristiriitainen vektori: SEKÄ kilpailutason maksimivoima ETTÄ maksimaalinen lihaskasvu nopeasti; 2 pv/vk × 30 min; ei välineitä (koti); heikko palautuminen.
 
-**32Q-vektori:**
+**33Q-vektori:**
 ```json
 {
  "q01_age": 41,
@@ -1384,7 +1389,8 @@
  },
  "q31_preferredDays": [],
  "q25_rpePrecision": "vara_loose",
- "q33_aggressivenessDefault": "balanced"
+ "q33_aggressivenessDefault": "balanced",
+ "q34_recoveryStatus": "heikko"
 }
 ```
 **Neutraalivalinnat (persona ei määritä → neutraali/tyypillinen):**
@@ -1395,14 +1401,14 @@
 - q29 off_program: <1 v
 - q24: 2 pv × 30 min (annettu)
 - q21 fullbody (2 pv); q23 auto, q25 vara_loose, q33 balanced: neutraali
-- ★ KNOWN-NEGATIVE: 'heikko palautuminen' EI ole suoraan syötettävissä (ei 32Q-kysymystä). 2×30 min/vk + ei välineitä + beginner + ristiriitainen max+hypertrofia 'nopeasti' = realistisesti mahdoton tavoiteyhdistelmä. W2 arvioi tunnistaako/käsitteleekö wizard ristiriidan + resurssirajat.
+- ★ KNOWN-NEGATIVE: 'heikko palautuminen' → q34_recoveryStatus='heikko' (Pilari 3 R2, 33Q) → pickRecoveryCapacity 'heikko' → apuliike-volyymi −30 % + aloitusintensiteetti submaks. 2×30 min/vk + ei välineitä + beginner + ristiriitainen max+hypertrofia 'nopeasti' = realistisesti mahdoton tavoiteyhdistelmä. W2 arvioi tunnistaako/käsitteleekö wizard ristiriidan + resurssirajat.
 
 ---
 
 ### P9
 > Mies 30 v / 85 kg, 2 v, hypertrofia, KOTI vain käsipainot (ei leukatankoa/tankoa), 4 pv/vk.
 
-**32Q-vektori:**
+**33Q-vektori:**
 ```json
 {
  "q01_age": 30,
@@ -1448,7 +1454,7 @@
 ### P10
 > Nainen 34 v / 64 kg, 3 v, yleisvoima, KOTI vain renkaat/TRX, 3 pv/vk.
 
-**32Q-vektori:**
+**33Q-vektori:**
 ```json
 {
  "q01_age": 34,
@@ -1494,7 +1500,7 @@
 ### P11
 > Mies 25 v / 78 kg, <1 v, yleiskunto, KOTI ei välineitä (pelkkä kehonpaino), 3 pv/vk.
 
-**32Q-vektori:**
+**33Q-vektori:**
 ```json
 {
  "q01_age": 25,
