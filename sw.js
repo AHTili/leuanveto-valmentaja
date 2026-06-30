@@ -736,7 +736,10 @@
 //           substituutio, F vamma-modified) + Käsipainosoutu katalogiin (OBS-053).
 // v4.52.49: Pilari 3 R2 (Cowork re-arvio) — aloitus-intensiteetti-degradaatio
 //           propagoituu sessiotason slot.targetVx:ään (näyttö = live, AUKKO 2).
-const APP_VERSION = "4.52.49";
+// v4.52.50: Pilari 3 R3 (Cowork re-arvio 2) — P2 hypertrofia MEV-floor (≥10
+//           settiä/päälihas/vk + komposiitti) + P6 kavennettu olkapää-blocklist
+//           (penkki säilyy). P3 lykätty γ/M2.
+const APP_VERSION = "4.52.50";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.

@@ -1,15 +1,17 @@
 # Wizard-dumppi — 11 profiilia (KAPSTONI pilari 3, W1-standardi)
 
-> **POST-FIX RE-DUMPPI — round 2 (A–F)**. Generoitu 2026-06-29 · APP_VERSION 4.52.49 ·
+> **POST-FIX RE-DUMPPI — round 3 (P2 + P6)**. Generoitu 2026-06-30 · APP_VERSION 4.52.50 ·
 > ohjelmien start-ankkuri 2026-06-14. Ajettu repon oikealla Wizard-mapperilla
 > (`wizard/wizard-2b-mapper.js` `mapWizardToProgram`) + mesosykligeneraattorilla (`data.js`) +
 > KORJATULLA post-process-pipelinella (`applySplitFilter` → `applyVolumeCap` → `applyInjuryFilter` →
-> `applyEquipmentFilter` → `ensureLowerBody` → `applyTimeBudgetCap` → `applyStartingCapacityToSlots` →
-> `applySessionFocusLabels` → `applyTierProgression` → `applyStartingCapacityDegradation`), joka replikoi
-> index.html:n finalize-ketjun.
+> `applyEquipmentFilter` → `ensureLowerBody` → `applyHypertrophyMevFloor` → `applyTimeBudgetCap` →
+> `applyStartingCapacityToSlots` → `applySessionFocusLabels` → `applyTierProgression` →
+> `applyStartingCapacityDegradation`), joka replikoi index.html:n finalize-ketjun.
 > Round 1: goal-aware primaarit + K kategoria-slot-täyttö + kalusto-suodatin + alaraaja-takuu + P8 kehonpaino/advisory.
 > Round 2 (A–F): A aloittelija-turvaraja (freq-cap + V3-aloitus, sessiotaso) · B aikabudjetti-cap ·
 > C q34-palautuminen (volyymi −30 % + intensiteetti) · D primaari-demote (ei katoa) · E Käsipainosoutu-substituutio · F vamma-modified.
+> Round 3 (P2 + P6): P2 hypertrofia MEV-floor (≥10 settiä/päälihas/vk, recovery/aikabudjetti voittaa + advisory) ·
+> P6 kavennettu olkapää-blocklist (penkki säilyy, vain pystypunnerrus/dippi poistuu). P3 LYKÄTTY γ/M2 (pilotti bittitarkka).
 > mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
 >
 > **Tulos: 11/11 profiilia generoitui onnistuneesti.** (P1–P8 W2-perusprofiilit + P9–P11 pilari 3 (b) kalusto-kattavuuslisäys.)
