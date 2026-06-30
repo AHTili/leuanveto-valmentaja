@@ -2268,6 +2268,85 @@ export function applyTimeBudgetCap(weekPlans, q24_frequency, goal) {
   }));
 }
 
+// ─── Pilari 3 R3 (P2): hypertrofia MEV-floor — ≥10 settiä/päälihas/vk ──────
+// A1 (P2/P9): RP-minimalist setsPerWeek=[2,3,4,1] × ~2 liikettä/lihas → ~4-8 settiä/lihas/vk <
+// MEV 10 (Israetel). Ratifioitu (vaihtoehto B): sessiotason floor nostaa alittavien PÄÄLIHASTEN
+// sarjat olemassa oleville liikkeille MEV-tasolle, progressio (MEV→MAV) säilytettynä (shift vk1-
+// vajeesta kaikkiin työviikkoihin). Komposiittisäännöt: recovery VOITTAA (ohita jos recoveryLimited);
+// aikabudjetti VOITTAA (floor ennen applyTimeBudgetCap:ia → B trimmaa jos ei mahdu + advisory).
+// Hypertrofia-gated (q12). Korjaa myös P9-ripplen (sama minimalistRP-polku).
+const _HYP_FLOOR_CATEGORIES = new Set(["horisontaalityöntö", "vertikaalityöntö", "horisontaaliveto", "vertikaaliveto", "alaraaja", "lonkkahingaus"]);
+const HYP_MEV_SETS = 10;
+function _distributeMevDeficit(days, deficit) {
+  const newDays = (days || []).map(d => ({ ...d, slots: (d.slots || []).map(s => ({ ...s })) }));
+  for (const [cat, def] of Object.entries(deficit)) {
+    const slots = [];
+    for (const d of newDays) for (const s of d.slots) if (s.category === cat) slots.push(s);
+    if (slots.length === 0) continue;
+    // jaa vaje round-robin olemassa oleville liikkeille (1 sarja/kierros)
+    for (let i = 0; i < def; i++) {
+      const s = slots[i % slots.length];
+      s.sets = (Number(s.sets) || 0) + 1;
+      s._mevFloored = true;
+    }
+  }
+  return newDays;
+}
+export function applyHypertrophyMevFloor(weekPlans, weekDefs, q12PrimaryGoal, triggers) {
+  if (q12PrimaryGoal !== "hypertrophy") return weekPlans;          // gate: vain hypertrofia-tavoite
+  if (triggers && triggers.recoveryLimited) return weekPlans;      // recovery voittaa (ei pakota yli kapasiteetin)
+  if (!Array.isArray(weekPlans) || weekPlans.length === 0) return weekPlans;
+  const deloadWeeks = new Set((Array.isArray(weekDefs) ? weekDefs : [])
+    .filter(wd => typeof wd.deltaPctBase === "number" && wd.deltaPctBase < 0).map(wd => wd.week));
+  const weekTotal = wp => (wp.days || []).reduce((s, d) => s + (d.slots || []).reduce((a, x) => a + (Number(x.sets) || 0), 0), 0);
+  const catTotal = (wp, cat) => (wp.days || []).reduce((s, d) =>
+    s + (d.slots || []).filter(x => x.category === cat).reduce((a, x) => a + (Number(x.sets) || 0), 0), 0);
+  const working = weekPlans.filter(wp => !deloadWeeks.has(wp.week));
+  if (working.length === 0) return weekPlans;
+  // MEV-viikko = matalin työviikko (minimalist: vk1) → progressio-shiftin pohja
+  const mevWeek = working.reduce((min, wp) => weekTotal(wp) < weekTotal(min) ? wp : min, working[0]);
+  const baseShift = {};
+  for (const cat of _HYP_FLOOR_CATEGORIES) {
+    const have = catTotal(mevWeek, cat);
+    if (have > 0 && have < HYP_MEV_SETS) baseShift[cat] = HYP_MEV_SETS - have;
+  }
+  if (Object.keys(baseShift).length === 0) return weekPlans;        // jo MEV:ssä → no-op
+  // Per-viikko target = max(MEV, viikon_volyymi + shift) → TAKAA ≥MEV joka työviikko (myös kun
+  // per-kategoria-jakauma vaihtelee viikoittain) JA säilyttää progression (shift). Deload koskematon.
+  return weekPlans.map(wp => {
+    if (deloadWeeks.has(wp.week)) return wp;
+    const add = {};
+    for (const [cat, shift] of Object.entries(baseShift)) {
+      const have = catTotal(wp, cat);
+      if (have === 0) continue;                                     // ei slotteja → ei voi nostaa
+      const target = Math.max(HYP_MEV_SETS, have + shift);
+      if (target > have) add[cat] = target - have;
+    }
+    if (Object.keys(add).length === 0) return wp;
+    return { ...wp, days: _distributeMevDeficit(wp.days, add) };
+  });
+}
+// Komposiitti-advisory (ratifioitu "advisory jos sessio ei mahdu"): kun aikabudjetti (B) trimmaa
+// MEV-flooratun päälihaksen alle tavoitteen jollain työviikolla. Ajetaan POST-B (lopullinen volyymi).
+export function mevTimeBudgetAdvisory(weekPlans, weekDefs, q12PrimaryGoal, triggers) {
+  if (q12PrimaryGoal !== "hypertrophy" || (triggers && triggers.recoveryLimited)) return null;
+  if (!Array.isArray(weekPlans)) return null;
+  const deloadWeeks = new Set((Array.isArray(weekDefs) ? weekDefs : [])
+    .filter(wd => typeof wd.deltaPctBase === "number" && wd.deltaPctBase < 0).map(wd => wd.week));
+  let short = false;
+  for (const wp of weekPlans) {
+    if (deloadWeeks.has(wp.week)) continue;
+    const cat = {};
+    (wp.days || []).forEach(d => (d.slots || []).forEach(s => {
+      if (_HYP_FLOOR_CATEGORIES.has(s.category)) cat[s.category] = (cat[s.category] || 0) + (Number(s.sets) || 0);
+    }));
+    if (Object.values(cat).some(v => v > 0 && v < HYP_MEV_SETS)) { short = true; break; }
+  }
+  return short
+    ? "Osa hypertrofia-lihasryhmistä jää tavoitevolyymin (10 sarjaa/viikko) alle käytettävissä olevan sessioajan vuoksi — pidennä sessioita tai lisää treenipäivä saavuttaaksesi täyden volyymin."
+    : null;
+}
+
 // ─── 2C-β: Session-fokus per päivä ─────────────────────────────────────
 //
 // Pää-app:in skeleton-factoryt antavat päiväkorteille yleisiä labeleita
@@ -3135,6 +3214,29 @@ export function selfTestMapper() {
      p6F.some(s => /penkkipunnerrus/i.test(s.defaultMovementName)));
   ck("F P6: nimetyt kipuliikkeet (pystypunnerrus + dippi) poistuvat/substituoituvat",
      !p6F.some(s => /pystypunnerrus|dippi/i.test(s.defaultMovementName)));
+
+  // ─── 5m. Pilari 3 R3 (P2): hypertrofia MEV-floor + komposiitti-advisory ──
+  const mevWP = [
+    { week: 1, days: [{ slots: [
+      { role: "primary",   category: "horisontaalityöntö", defaultMovementName: "Penkki", sets: 2, reps: 10 },
+      { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Fly", sets: 2, reps: 10 },
+      { role: "primary",   category: "alaraaja", defaultMovementName: "Kyykky", sets: 2, reps: 10 } ] }] },
+    { week: 2, days: [{ slots: [
+      { role: "primary",   category: "horisontaalityöntö", defaultMovementName: "Penkki", sets: 3, reps: 10 },
+      { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Fly", sets: 3, reps: 10 },
+      { role: "primary",   category: "alaraaja", defaultMovementName: "Kyykky", sets: 3, reps: 10 } ] }] },
+  ];
+  const mevDefs = [{ week: 1, deltaPctBase: 0 }, { week: 2, deltaPctBase: 0.025 }];
+  const mevF = applyHypertrophyMevFloor(mevWP, mevDefs, "hypertrophy", null);
+  const mevCat = (wp, cat) => wp.days[0].slots.filter(s => s.category === cat).reduce((a, s) => a + (Number(s.sets) || 0), 0);
+  ck("P2 MEV: hypertrofia → rinta vk1 ≥10 (oli 4)", mevCat(mevF[0], "horisontaalityöntö") >= 10);
+  ck("P2 MEV: alaraaja vk1 ≥10", mevCat(mevF[0], "alaraaja") >= 10);
+  ck("P2 MEV: progressio säilyy (vk2 rinta ≥ vk1)", mevCat(mevF[1], "horisontaalityöntö") >= mevCat(mevF[0], "horisontaalityöntö"));
+  ck("P2 MEV: non-hypertrofia → no-op (bit-exact)", applyHypertrophyMevFloor(mevWP, mevDefs, "max_1RM", null)[0].days[0].slots[0].sets === 2);
+  ck("P2 MEV: recovery VOITTAA (recoveryLimited → no-op)", applyHypertrophyMevFloor(mevWP, mevDefs, "hypertrophy", { recoveryLimited: true })[0].days[0].slots[0].sets === 2);
+  ck("P2 MEV: advisory kun lihasryhmä alle MEV (aikabudjetti voittaa)",
+     typeof mevTimeBudgetAdvisory([{ week: 1, days: [{ slots: [{ category: "horisontaalityöntö", sets: 4 }] }] }], [{ week: 1, deltaPctBase: 0 }], "hypertrophy", null) === "string");
+  ck("P2 MEV: ei advisorya kun kaikki ≥MEV", mevTimeBudgetAdvisory([{ week: 1, days: [{ slots: [{ category: "horisontaalityöntö", sets: 10 }] }] }], [{ week: 1, deltaPctBase: 0 }], "hypertrophy", null) === null);
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",

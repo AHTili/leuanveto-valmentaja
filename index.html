@@ -1131,6 +1131,8 @@ import {
   applyEquipmentFilter,
   // Pilari 3 C3: alaraaja-invariantti-guarantor
   ensureLowerBody,
+  // Pilari 3 R3 (P2): hypertrofia MEV-floor (≥10 settiä/päälihas/vk) + komposiitti-advisory
+  applyHypertrophyMevFloor, mevTimeBudgetAdvisory,
   // Pilari 3 R2 (B): aikabudjetti rajaa työsarjat (sessionLengthMinutes)
   applyTimeBudgetCap,
   // v4.45.0 (Track B Vaihe 2C-γ): tier-pohjainen kg/vk-progressiokerroin
@@ -4139,6 +4141,9 @@ async function handleGenerateProgram() {
     newMeso.weekPlans = applyEquipmentFilter(newMeso.weekPlans, wizardConfig.answers?.q17_equipment);
     // Pilari 3 C3: rakenteellinen alaraaja-takuu (jos ohjelma jäi jalattomaksi → injektoi).
     newMeso.weekPlans = ensureLowerBody(newMeso.weekPlans, wizardConfig.answers?.q17_equipment);
+    // Pilari 3 R3 (P2): hypertrofia MEV-floor (≥10 settiä/päälihas/vk) ENNEN aikabudjettia →
+    // aikabudjetti voittaa (B trimmaa jos ei mahdu); recovery voittaa (gate recoveryLimited).
+    newMeso.weekPlans = applyHypertrophyMevFloor(newMeso.weekPlans, newMeso.weekDefs, wizardConfig.answers?.q12_primaryGoal, mapped._wizardMeta?._capacityTriggers);
     // Pilari 3 R2 (B): aikabudjetti rajaa työsarjat (~3 min/sarja, säädettävissä tavoitteella).
     // Primaryt + alaraaja-takuu suojattu. No-op kun päivä mahtuu / ei sessionLengthMinutes:iä.
     newMeso.weekPlans = applyTimeBudgetCap(newMeso.weekPlans, wizardConfig.answers?.q24_frequency, mapped.goal);
@@ -4146,6 +4151,10 @@ async function handleGenerateProgram() {
     // slot.targetVx:ään (vk1-2 primaarit) → materialisoitu sessio = degradoitu weekDef = live.
     newMeso.weekPlans = applyStartingCapacityToSlots(newMeso.weekPlans, mapped._wizardMeta?._capacityTriggers);
     newMeso.weekPlans = applySessionFocusLabels(newMeso.weekPlans);
+    // Pilari 3 R3 (P2): komposiitti-advisory POST-B — jos aikabudjetti trimmasi MEV-flooratun
+    // lihasryhmän alle tavoitteen, kerro se (ei pakoteta volyymia yli kapasiteetin).
+    const _volAdv = mevTimeBudgetAdvisory(newMeso.weekPlans, newMeso.weekDefs, wizardConfig.answers?.q12_primaryGoal, mapped._wizardMeta?._capacityTriggers);
+    if (_volAdv && mapped._wizardMeta) mapped._wizardMeta.goalConflictAdvisory = [mapped._wizardMeta.goalConflictAdvisory, _volAdv].filter(Boolean).join(" ");
     // 2C-γ: Tier-pohjainen progressiokerroin weekDef.deltaPctBase:lle.
     // Säätää vk 2-3 progressionopeutta (vk 1 akklimatisaatio + vk 4 deload
     // säilyvät). Lähde: Latella 2020 + Nuckols SBS, EMPIRINEN — yksilövaihtelu

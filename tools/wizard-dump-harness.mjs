@@ -16,6 +16,8 @@ import {
   applyStartingCapacityToSlots,
   // Pilari 3 R2 (B): aikabudjetti rajaa työsarjat
   applyTimeBudgetCap,
+  // Pilari 3 R3 (P2): hypertrofia MEV-floor + komposiitti-advisory
+  applyHypertrophyMevFloor, mevTimeBudgetAdvisory,
   // Pilari 3 R2 (F): apuliike-tason vamma-suodatin
   applyInjuryFilter,
 } from "../wizard/wizard-2b-mapper.js";
@@ -342,11 +344,16 @@ function runProfile(p) {
     // Pilari 3 C2/C3: kalusto-suodatin + alaraaja-takuu (index.html finalize-ketju)
     meso.weekPlans = applyEquipmentFilter(meso.weekPlans, cfg.answers.q17_equipment);
     meso.weekPlans = ensureLowerBody(meso.weekPlans, cfg.answers.q17_equipment);
+    // Pilari 3 R3 (P2): hypertrofia MEV-floor ENNEN aikabudjettia (aikabudjetti voittaa)
+    meso.weekPlans = applyHypertrophyMevFloor(meso.weekPlans, meso.weekDefs, cfg.answers.q12_primaryGoal, mapped._wizardMeta?._capacityTriggers);
     // Pilari 3 R2 (B): aikabudjetti rajaa työsarjat (index.html finalize-ketju)
     meso.weekPlans = applyTimeBudgetCap(meso.weekPlans, cfg.answers.q24_frequency, mapped.goal);
     // Pilari 3 R2 (Cowork AUKKO 2): sessiotason slot.targetVx-propagaatio (näyttö = live)
     meso.weekPlans = applyStartingCapacityToSlots(meso.weekPlans, mapped._wizardMeta?._capacityTriggers);
     meso.weekPlans = applySessionFocusLabels(meso.weekPlans);
+    // Pilari 3 R3 (P2): komposiitti-advisory POST-B (aikabudjetti trimmasi MEV-flooratun lihasryhmän)
+    const _volAdv = mevTimeBudgetAdvisory(meso.weekPlans, meso.weekDefs, cfg.answers.q12_primaryGoal, mapped._wizardMeta?._capacityTriggers);
+    if (_volAdv && mapped._wizardMeta) mapped._wizardMeta.goalConflictAdvisory = [mapped._wizardMeta.goalConflictAdvisory, _volAdv].filter(Boolean).join(" ");
     if (Array.isArray(meso.weekDefs)) {
       meso.weekDefs = applyTierProgression(meso.weekDefs, cfg.answers.q08_selfLevel, cfg.answers.q02_sex);
       // Pilari 3 R2 (A+C): aloitus-kapasiteetti-intensiteetti-degradaatio (index.html finalize-ketju)
@@ -378,6 +385,9 @@ function fmtProgramBlinded(r) {
   let s = `### ${r.id}\n> ${r.persona}\n\n`;
   s += `- **Liikevalinta (primaryt):** ${mp.primaries.map(x => x.name).join(" + ")}\n`;
   s += `- **Frekvenssi:** ${mp.daysPerWeek} pv/vk · **Palautumiskapasiteetti (johdettu):** ${mp.recoveryCapacity}\n`;
+  // Pilari 3: rehellinen advisory (ristiriita / resurssirajoite / aloitusturvallisuus / MEV-aikabudjetti)
+  const _gca = mp._wizardMeta && mp._wizardMeta.goalConflictAdvisory;
+  if (_gca) s += `- **ℹ Huomio:** ${_gca}\n`;
   const materialized = Array.isArray(m.weekDefs) ? m.weekDefs.length : (m.weekPlans?.length || 0);
   let wcNote = "";
   if (typeof mp.weekCount === "number" && mp.weekCount !== materialized) wcNote += ` · mapper-aikomus ${mp.weekCount} vk`;
