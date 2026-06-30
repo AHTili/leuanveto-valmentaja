@@ -1,6 +1,6 @@
 # Wizard-dumppi — 11 profiilia (KAPSTONI pilari 3, W1-standardi)
 
-> **POST-FIX RE-DUMPPI — round 3 (P2 + P6)**. Generoitu 2026-06-30 · APP_VERSION 4.52.50 ·
+> **POST-FIX RE-DUMPPI — round 4 (P2 MEV-jakautuminen)**. Generoitu 2026-06-30 · APP_VERSION 4.52.51 ·
 > ohjelmien start-ankkuri 2026-06-14. Ajettu repon oikealla Wizard-mapperilla
 > (`wizard/wizard-2b-mapper.js` `mapWizardToProgram`) + mesosykligeneraattorilla (`data.js`) +
 > KORJATULLA post-process-pipelinella (`applySplitFilter` → `applyVolumeCap` → `applyInjuryFilter` →
@@ -12,6 +12,8 @@
 > C q34-palautuminen (volyymi −30 % + intensiteetti) · D primaari-demote (ei katoa) · E Käsipainosoutu-substituutio · F vamma-modified.
 > Round 3 (P2 + P6): P2 hypertrofia MEV-floor (≥10 settiä/päälihas/vk, recovery/aikabudjetti voittaa + advisory) ·
 > P6 kavennettu olkapää-blocklist (penkki säilyy, vain pystypunnerrus/dippi poistuu). P3 LYKÄTTY γ/M2 (pilotti bittitarkka).
+> Round 4 (P2 jakautuminen): per-(sessio×liike)-katto 6 + add-movement yksiliikkeisille (olkapää HSPU+pystypunnerrus) +
+> spread (selän duplikaatti-kasauma levitetty) → yksikään liike ei kasaa >6 sarjaa/sessio. Vain hypertrofia (P2/P9).
 > mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
 >
 > **Tulos: 11/11 profiilia generoitui onnistuneesti.** (P1–P8 W2-perusprofiilit + P9–P11 pilari 3 (b) kalusto-kattavuuslisäys.)
@@ -78,7 +80,6 @@
 
 - **Liikevalinta (primaryt):** Lisäpainoleuanveto + Käsipainopenkki + Bulgarian split squat
 - **Frekvenssi:** 4 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
-- **ℹ Huomio:** Osa hypertrofia-lihasryhmistä jää tavoitevolyymin (10 sarjaa/viikko) alle käytettävissä olevan sessioajan vuoksi — pidennä sessioita tai lisää treenipäivä saavuttaaksesi täyden volyymin.
 - **Periodisaatio:** 4 vk (materialisoitu)
 
 **Viikkomääritykset (periodisaatio/progressio — numeerinen, sokko):**
@@ -92,11 +93,12 @@
     Päivä (dow 1, volume) — fokus: Lisäpainoleuanveto:
       · primary: Lisäpainoleuanveto — 4×10 @ V1 (vertikaaliveto)
       · accessory: Dumbbell fly — 5×10 @ V1 (horisontaalityöntö)
-      · accessory: Handstand push-up (HSPU) — 10×15 @ V1 (vertikaalityöntö)
+      · accessory: Handstand push-up (HSPU) — 6×15 @ V1 (vertikaalityöntö)
+      · accessory: Pystypunnerrus käsipainot — 4×10 @ V2 (vertikaalityöntö)
     Päivä (dow 2, volume) — fokus: Käsipainopenkki:
       · primary: Käsipainopenkki — 5×10 @ V1 (horisontaalityöntö)
       · accessory: Leuanveto (kehonpaino) — 3×10 @ V1 (vertikaaliveto)
-      · accessory: Käsipainosoutu — 3×15 @ V1 (horisontaaliveto)
+      · accessory: Käsipainosoutu — 4×15 @ V1 (horisontaaliveto)
       · accessory: Hammer curl — 2×12 @ V1 (hauisfleksio)
     Päivä (dow 4, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 4×8 @ V1 (alaraaja)
@@ -104,7 +106,7 @@
       · accessory: Glute-Ham Raise — 3×12 @ V1 (alaraaja)
     Päivä (dow 5, volume) — fokus: Lisäpainoleuanveto:
       · primary: Lisäpainoleuanveto — 3×8 @ V1 (vertikaaliveto)
-      · accessory: Käsipainosoutu — 3×10 @ V1 (horisontaaliveto)
+      · accessory: Käsipainosoutu — 2×10 @ V1 (horisontaaliveto)
       · accessory: Käsipainosoutu — 2×10 @ V1 (horisontaaliveto)
       · accessory: Käsipainosoutu — 2×15 @ V1 (horisontaaliveto)
       · accessory: Hanging leg raise — 2×12 @ — (core)
@@ -605,7 +607,7 @@
 
 - **Liikevalinta (primaryt):** Käsipainopenkki + Bulgarian split squat
 - **Frekvenssi:** 4 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
-- **ℹ Huomio:** Vetoliikkeet vaativat leukatangon, vaijerilaitteen tai tangon — valitulla kalustolla ohjelma painottuu työntö- ja jalkaliikkeisiin. Osa hypertrofia-lihasryhmistä jää tavoitevolyymin (10 sarjaa/viikko) alle käytettävissä olevan sessioajan vuoksi — pidennä sessioita tai lisää treenipäivä saavuttaaksesi täyden volyymin.
+- **ℹ Huomio:** Vetoliikkeet vaativat leukatangon, vaijerilaitteen tai tangon — valitulla kalustolla ohjelma painottuu työntö- ja jalkaliikkeisiin. Osa hypertrofia-lihasryhmistä jää tavoitevolyymin (10 sarjaa/viikko) alle käytettävissä olevan sessioajan tai liikevalikoiman vuoksi — pidennä sessioita, lisää treenipäivä tai laajenna kalustoa saavuttaaksesi täyden volyymin.
 - **Periodisaatio:** 4 vk (materialisoitu)
 
 **Viikkomääritykset (periodisaatio/progressio — numeerinen, sokko):**
@@ -624,8 +626,10 @@
       · primary: Bulgarian split squat — 2×10 @ V1 (alaraaja)
     Päivä (dow 4, volume) — fokus: Käsipainopenkki:
       · primary: Käsipainopenkki — 5×8 @ V1 (horisontaalityöntö)
-      · accessory: Handstand push-up (HSPU) — 10×10 @ V1 (vertikaalityöntö)
+      · accessory: Handstand push-up (HSPU) — 6×10 @ V1 (vertikaalityöntö)
       · accessory: Käsipainosoutu — 5×15 @ V1 (horisontaaliveto)
+      · accessory: Skull crusher — 2×12 @ V1 (ojentajaekstensio)
+      · accessory: Pystypunnerrus käsipainot — 2×10 @ V2 (vertikaalityöntö)
     Päivä (dow 5, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 2×8 @ V1 (alaraaja)
       · accessory: Walking lunge — 2×10 @ V1 (alaraaja)

@@ -739,7 +739,10 @@
 // v4.52.50: Pilari 3 R3 (Cowork re-arvio 2) — P2 hypertrofia MEV-floor (≥10
 //           settiä/päälihas/vk + komposiitti) + P6 kavennettu olkapää-blocklist
 //           (penkki säilyy). P3 lykätty γ/M2.
-const APP_VERSION = "4.52.50";
+// v4.52.51: Pilari 3 R4 (Cowork re-arvio 3) — MEV-floor jakautuminen: per-(sessio×
+//           liike)-katto 6 + add-movement + spread (P2 olkapää HSPU 10×15 → HSPU+
+//           pystypunnerrus, selkä levitetty). Vain hypertrofia.
+const APP_VERSION = "4.52.51";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.

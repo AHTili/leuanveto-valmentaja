@@ -25,7 +25,7 @@ import { generateCustomMesocycle, generateMultiBlockMesocycle } from "../data.js
 
 const GEN_DATE = "2026-06-14"; // ohjelmien startDate-ankkuri (vakio → vertailukelpoisuus; EI dumpin generointipäivä)
 const DUMP_DATE = "2026-06-30"; // dumpin re-generointipäivä (header) — eri kuin start-ankkuri
-const APP_VERSION = "4.52.50";  // pidä synkassa sw.js APP_VERSION:in kanssa (header-tuoreusportti)
+const APP_VERSION = "4.52.51";  // pidä synkassa sw.js APP_VERSION:in kanssa (header-tuoreusportti)
 
 // ─────────────────────────────────────────────────────────────────────────
 // 11 PROFIILIA — 33Q-vektorit. neutralNotes = persona ei määritä → neutraali/tyypillinen.
@@ -444,7 +444,7 @@ function fmtVector(r) {
 const okCount = results.filter(r => !r.error).length;
 let md = `# Wizard-dumppi — ${profiles.length} profiilia (KAPSTONI pilari 3, W1-standardi)
 
-> **POST-FIX RE-DUMPPI — round 3 (P2 + P6)**. Generoitu ${DUMP_DATE} · APP_VERSION ${APP_VERSION} ·
+> **POST-FIX RE-DUMPPI — round 4 (P2 MEV-jakautuminen)**. Generoitu ${DUMP_DATE} · APP_VERSION ${APP_VERSION} ·
 > ohjelmien start-ankkuri ${GEN_DATE}. Ajettu repon oikealla Wizard-mapperilla
 > (\`wizard/wizard-2b-mapper.js\` \`mapWizardToProgram\`) + mesosykligeneraattorilla (\`data.js\`) +
 > KORJATULLA post-process-pipelinella (\`applySplitFilter\` → \`applyVolumeCap\` → \`applyInjuryFilter\` →
@@ -456,6 +456,8 @@ let md = `# Wizard-dumppi — ${profiles.length} profiilia (KAPSTONI pilari 3, W
 > C q34-palautuminen (volyymi −30 % + intensiteetti) · D primaari-demote (ei katoa) · E Käsipainosoutu-substituutio · F vamma-modified.
 > Round 3 (P2 + P6): P2 hypertrofia MEV-floor (≥10 settiä/päälihas/vk, recovery/aikabudjetti voittaa + advisory) ·
 > P6 kavennettu olkapää-blocklist (penkki säilyy, vain pystypunnerrus/dippi poistuu). P3 LYKÄTTY γ/M2 (pilotti bittitarkka).
+> Round 4 (P2 jakautuminen): per-(sessio×liike)-katto 6 + add-movement yksiliikkeisille (olkapää HSPU+pystypunnerrus) +
+> spread (selän duplikaatti-kasauma levitetty) → yksikään liike ei kasaa >6 sarjaa/sessio. Vain hypertrofia (P2/P9).
 > mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
 >
 > **Tulos: ${okCount}/${profiles.length} profiilia generoitui onnistuneesti.** (P1–P8 W2-perusprofiilit + P9–P11 pilari 3 (b) kalusto-kattavuuslisäys.)
