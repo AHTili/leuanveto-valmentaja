@@ -1339,7 +1339,11 @@ function _availableMovementForFunction(fn, eqSet) {
 
 // Injury-keyword → liike-keyword -mapping. // HEURISTIC.
 const _INJURY_BLOCKLIST = [
-  { injuryKeywords: ["olka", "olkapää", "shoulder"], movementKeywords: ["dippi", "punnerrus", "press"] },
+  // Pilari 3 R3 (P6, ratifioitu MINIMAALINEN): olkapää-vamma poistaa VAIN nimetyt kipuliikkeet
+  // (pystypunnerrus + dippi) — EI penkkiä. Aiempi "punnerrus" osui myös "Penkkipunnerrukseen"
+  // (.includes), "press" Chest pressiin → penkki katosi (P6). Kavennettu: "pystypunnerrus" ei
+  // substring-osu "penkkipunnerrukseen", penkki/chest press säilyy (horisontaalinen, vähemmän impingoiva).
+  { injuryKeywords: ["olka", "olkapää", "shoulder"], movementKeywords: ["dippi", "pystypunnerrus"] },
   { injuryKeywords: ["polvi", "knee"],               movementKeywords: ["kyykky", "squat"] },
   { injuryKeywords: ["selk", "alaselk", "back"],     movementKeywords: ["maavet", "deadlift"] },
 ];
@@ -3108,7 +3112,8 @@ export function selfTestMapper() {
 
   // ─── 5l. Pilari 3 R2 (F): q11 vamma (absolute + modified) primaari + apuliike ──
   ck("F: modified-vamma → _injuredAreas mukana (ei vain absolute)", _injuredAreas([{ type: "modified", area: "Olkapää" }]).length === 1);
-  ck("F: olka-vamma estää 'Penkkipunnerrus' (press-osuma)", _injuryBlocksMovement("penkkipunnerrus", ["olkapää"]) === true);
+  ck("F: olka-vamma estää 'Pystypunnerrus' (nimetty kipuliike)", _injuryBlocksMovement("pystypunnerrus", ["olkapää"]) === true);
+  ck("F P6: olka-vamma EI estä penkkiä (kavennettu blocklist — penkki säilyy)", _injuryBlocksMovement("penkkipunnerrus", ["olkapää"]) === false);
   ck("F: olka-vamma EI estä 'Takakyykky'", _injuryBlocksMovement("takakyykky", ["olkapää"]) === false);
   ck("F: ei vammaa → _injuredAreas tyhjä (bit-exact)", _injuredAreas([]).length === 0);
   const injWP = [{ week: 1, days: [{ slots: [
@@ -3119,8 +3124,17 @@ export function selfTestMapper() {
   ck("F: modified olka → Dippi-APULIIKE poistettu/substituoitu (sovelletaan accessory:eihin)", !injF.some(s => /dippi/i.test(s.defaultMovementName)));
   ck("F: vamma-suodatin säilyttää terveen primaarin (Takakyykky)", injF.some(s => s.role === "primary" && s.defaultMovementName === "Takakyykky"));
   ck("F: ei vammaa → applyInjuryFilter no-op (bit-exact)", applyInjuryFilter(injWP, [])[0].days[0].slots.length === 2);
-  ck("F: modified olka pickPrimaries → ei press-primaaria",
-     !pickPrimaries({ q12_primaryGoal: "max_1RM", q11_injuries: [{ type: "modified", area: "olkapää" }], q17_equipment: ["barbell_rack", "pullup_bar", "dip_station"], q22_avoidedExercises: [] }).some(p => /penkkipunnerrus|pystypunnerrus|dippi/i.test(p.name)));
+  // P6 slot-tason lukko: penkki säilyy, vain nimetyt (pystypunnerrus/dippi) poistuvat/substituoituvat.
+  const p6WP = [{ week: 1, days: [{ slots: [
+    { role: "primary",   category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 5, reps: 5 },
+    { role: "accessory", category: "vertikaalityöntö",   defaultMovementName: "Pystypunnerrus", sets: 3, reps: 8 },
+    { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Dippi", sets: 3, reps: 8 },
+  ] }] }];
+  const p6F = applyInjuryFilter(p6WP, [{ type: "modified", area: "olkapää" }])[0].days[0].slots;
+  ck("F P6: penkki (Penkkipunnerrus) SÄILYY olka-vammalla (kavennettu blocklist)",
+     p6F.some(s => /penkkipunnerrus/i.test(s.defaultMovementName)));
+  ck("F P6: nimetyt kipuliikkeet (pystypunnerrus + dippi) poistuvat/substituoituvat",
+     !p6F.some(s => /pystypunnerrus|dippi/i.test(s.defaultMovementName)));
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
