@@ -4143,7 +4143,7 @@ async function handleGenerateProgram() {
     newMeso.weekPlans = ensureLowerBody(newMeso.weekPlans, wizardConfig.answers?.q17_equipment);
     // Pilari 3 R3 (P2): hypertrofia MEV-floor (≥10 settiä/päälihas/vk) ENNEN aikabudjettia →
     // aikabudjetti voittaa (B trimmaa jos ei mahdu); recovery voittaa (gate recoveryLimited).
-    newMeso.weekPlans = applyHypertrophyMevFloor(newMeso.weekPlans, newMeso.weekDefs, wizardConfig.answers?.q12_primaryGoal, mapped._wizardMeta?._capacityTriggers);
+    newMeso.weekPlans = applyHypertrophyMevFloor(newMeso.weekPlans, newMeso.weekDefs, wizardConfig.answers?.q12_primaryGoal, mapped._wizardMeta?._capacityTriggers, wizardConfig.answers?.q17_equipment, wizardConfig.answers?.q11_injuries);
     // Pilari 3 R2 (B): aikabudjetti rajaa työsarjat (~3 min/sarja, säädettävissä tavoitteella).
     // Primaryt + alaraaja-takuu suojattu. No-op kun päivä mahtuu / ei sessionLengthMinutes:iä.
     newMeso.weekPlans = applyTimeBudgetCap(newMeso.weekPlans, wizardConfig.answers?.q24_frequency, mapped.goal);

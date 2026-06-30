@@ -345,7 +345,7 @@ function runProfile(p) {
     meso.weekPlans = applyEquipmentFilter(meso.weekPlans, cfg.answers.q17_equipment);
     meso.weekPlans = ensureLowerBody(meso.weekPlans, cfg.answers.q17_equipment);
     // Pilari 3 R3 (P2): hypertrofia MEV-floor ENNEN aikabudjettia (aikabudjetti voittaa)
-    meso.weekPlans = applyHypertrophyMevFloor(meso.weekPlans, meso.weekDefs, cfg.answers.q12_primaryGoal, mapped._wizardMeta?._capacityTriggers);
+    meso.weekPlans = applyHypertrophyMevFloor(meso.weekPlans, meso.weekDefs, cfg.answers.q12_primaryGoal, mapped._wizardMeta?._capacityTriggers, cfg.answers.q17_equipment, cfg.answers.q11_injuries);
     // Pilari 3 R2 (B): aikabudjetti rajaa työsarjat (index.html finalize-ketju)
     meso.weekPlans = applyTimeBudgetCap(meso.weekPlans, cfg.answers.q24_frequency, mapped.goal);
     // Pilari 3 R2 (Cowork AUKKO 2): sessiotason slot.targetVx-propagaatio (näyttö = live)

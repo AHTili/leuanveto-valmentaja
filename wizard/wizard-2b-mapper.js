@@ -2277,53 +2277,132 @@ export function applyTimeBudgetCap(weekPlans, q24_frequency, goal) {
 // Hypertrofia-gated (q12). Korjaa myös P9-ripplen (sama minimalistRP-polku).
 const _HYP_FLOOR_CATEGORIES = new Set(["horisontaalityöntö", "vertikaalityöntö", "horisontaaliveto", "vertikaaliveto", "alaraaja", "lonkkahingaus"]);
 const HYP_MEV_SETS = 10;
-function _distributeMevDeficit(days, deficit) {
+const HYP_PER_MOVEMENT_CAP = 6; // R4 (P2-jakautuminen): max sarjaa/liike — estä yhden liikkeen kasauma (HSPU 10×15)
+const _dayLoad = d => (d.slots || []).reduce((a, x) => a + (Number(x.sets) || 0), 0);
+// R4: jaa vaje round-robin OLEMASSA oleville liikkeille per-liike-katolla; jos lihasryhmä ei mahduta
+// targetia katon sisään → LISÄÄ liike samalle lihasryhmälle saatavilla olevasta katalogista/kalustosta
+// (P2 olkapää: HSPU + käsipaino-pystypunnerrus → ~5+5). Jäljelle jäävä (ei 2. liikettä) → muscle < MEV →
+// mevTimeBudgetAdvisory nappaa post-B (sama advisory-malli kuin aikabudjetti).
+function _distributeMevDeficit(days, deficit, eqSet, injuredAreas, bank) {
   const newDays = (days || []).map(d => ({ ...d, slots: (d.slots || []).map(s => ({ ...s })) }));
+  const CAP = HYP_PER_MOVEMENT_CAP;
+  const dmKey = (d, s) => `${newDays.indexOf(d)}|${s.defaultMovementName}`; // (sessio × liike) -avain
   for (const [cat, def] of Object.entries(deficit)) {
-    const slots = [];
-    for (const d of newDays) for (const s of d.slots) if (s.category === cat) slots.push(s);
-    if (slots.length === 0) continue;
-    // jaa vaje round-robin olemassa oleville liikkeille (1 sarja/kierros)
-    for (let i = 0; i < def; i++) {
-      const s = slots[i % slots.length];
-      s.sets = (Number(s.sets) || 0) + 1;
-      s._mevFloored = true;
+    const entries = [];
+    for (const d of newDays) for (const s of d.slots) if (s.category === cat) entries.push({ s, d });
+    if (entries.length === 0) continue;
+    const current = entries.reduce((a, x) => a + (Number(x.s.sets) || 0), 0);
+    const target = current + def;
+    // (sessio × liike) -kapasiteetti = distinct-avainten määrä × katto. Lisää distinct-liikkeitä
+    // kunnes kapasiteetti ≥ target (estä sama liike samassa sessiossa > katto) tai ei kandidaatteja.
+    const capacity = () => new Set(entries.map(e => dmKey(e.d, e.s))).size * CAP;
+    if (capacity() < target && Array.isArray(bank)) {
+      const used = new Set(entries.map(x => x.s.defaultMovementName));
+      const catDays = [...new Set(entries.map(x => x.d))];
+      const cands = bank.filter(mv => mv && mv.category === cat && mv.id !== "fb_custom_other"
+        && !used.has(mv.name)
+        && isMovementPerformable(mv.name, mv.loadType, mv.category, eqSet || new Set())
+        && !_injuryBlocksMovement((mv.name || "").toLowerCase(), injuredAreas || []));
+      cands.sort((a, b) => _eqCost(a, eqSet || new Set()) - _eqCost(b, eqSet || new Set()));
+      for (let i = 0; capacity() < target && i < cands.length; i++) {
+        const day = catDays.reduce((min, d) => _dayLoad(d) < _dayLoad(min) ? d : min, catDays[0]); // säilytä split + tasaa freq
+        const ns = { role: "accessory", category: cat, defaultMovementName: cands[i].name,
+          sets: 0, reps: 10, targetVx: 2, variantName: null, _mevFloored: true, _mevAdded: true };
+        day.slots.push(ns);
+        entries.push({ s: ns, d: day });
+        used.add(cands[i].name);
+      }
+    }
+    // round-robin, per-(sessio × liike) -katto (duplikaatti-slotit samasta liikkeestä/päivästä jakavat avaimen)
+    const dmTotals = {};
+    for (const e of entries) { const k = dmKey(e.d, e.s); dmTotals[k] = (dmTotals[k] || 0) + (Number(e.s.sets) || 0); }
+    let remaining = def, progressed = true;
+    while (remaining > 0 && progressed) {
+      progressed = false;
+      for (const e of entries) {
+        if (remaining <= 0) break;
+        const k = dmKey(e.d, e.s);
+        if ((dmTotals[k] || 0) < CAP) { e.s.sets = (Number(e.s.sets) || 0) + 1; e.s._mevFloored = true; dmTotals[k]++; remaining--; progressed = true; }
+      }
+    }
+    // remaining > 0 → ei riittävästi liikkeitä kalustolle → muscle < MEV → mevTimeBudgetAdvisory post-B
+  }
+  return newDays;
+}
+// R4: levitä per-(sessio×liike) ylivuoto (>katto) saman kategorian TOISEEN sessioon (sama liike,
+// toinen päivä) → ≤katto/sessio ILMAN volyymin pudotusta. Korjaa myös E-artefaktin (sama liike
+// duplikaatti-sloteissa samalla päivällä, esim. 3× Käsipainosoutu = 9). Volyymineutraali.
+function _spreadOverCap(newDays, categories) {
+  const CAP = HYP_PER_MOVEMENT_CAP;
+  const catDaysOf = cat => newDays.filter(d => (d.slots || []).some(s => s.category === cat));
+  for (const cat of categories) {
+    if (catDaysOf(cat).length <= 1) continue; // ei toista sessiota mihin levittää
+    let changed = true, guard = 0;
+    while (changed && guard++ < 100) {
+      changed = false;
+      for (const d of catDaysOf(cat)) {
+        const byMove = {};
+        for (const s of d.slots) if (s.category === cat) (byMove[s.defaultMovementName] = byMove[s.defaultMovementName] || []).push(s);
+        for (const [name, slots] of Object.entries(byMove)) {
+          const tot = slots.reduce((a, s) => a + (Number(s.sets) || 0), 0);
+          if (tot <= CAP) continue;
+          const dst = catDaysOf(cat).filter(x => x !== d).map(x => {
+            const xt = (x.slots || []).filter(s => s.category === cat && s.defaultMovementName === name).reduce((a, s) => a + (Number(s.sets) || 0), 0);
+            return { x, room: CAP - xt };
+          }).filter(o => o.room > 0).sort((a, b) => b.room - a.room)[0];
+          if (!dst) continue; // ei tilaa toisessa sessiossa → jätä (mevTimeBudgetAdvisory nappaa jos < MEV)
+          const move = Math.min(tot - CAP, dst.room);
+          let toCut = move;
+          for (let i = slots.length - 1; i >= 0 && toCut > 0; i--) { const c = Math.min(Number(slots[i].sets) || 0, toCut); slots[i].sets -= c; toCut -= c; }
+          const ts = (dst.x.slots || []).find(s => s.category === cat && s.defaultMovementName === name);
+          if (ts) ts.sets = (Number(ts.sets) || 0) + move;
+          else dst.x.slots.push({ role: "accessory", category: cat, defaultMovementName: name, sets: move, reps: slots[0].reps || 10, targetVx: slots[0].targetVx ?? 2, variantName: null, _mevFloored: true, _mevSpread: true });
+          d.slots = d.slots.filter(s => !(s.category === cat && s.defaultMovementName === name && (Number(s.sets) || 0) === 0));
+          changed = true;
+        }
+        if (changed) break; // d.slots muuttui → uudelleenlaske catDays
+      }
     }
   }
   return newDays;
 }
-export function applyHypertrophyMevFloor(weekPlans, weekDefs, q12PrimaryGoal, triggers) {
+export function applyHypertrophyMevFloor(weekPlans, weekDefs, q12PrimaryGoal, triggers, q17Equipment, q11Injuries, movementBank = FALLBACK_MOVEMENT_BANK) {
   if (q12PrimaryGoal !== "hypertrophy") return weekPlans;          // gate: vain hypertrofia-tavoite
   if (triggers && triggers.recoveryLimited) return weekPlans;      // recovery voittaa (ei pakota yli kapasiteetin)
   if (!Array.isArray(weekPlans) || weekPlans.length === 0) return weekPlans;
+  const eqSet = new Set(Array.isArray(q17Equipment) ? q17Equipment : []);   // R4: add-movement -kalusto
+  const injuredAreas = _injuredAreas(q11Injuries);
+  const bank = (Array.isArray(movementBank) && movementBank.length) ? movementBank : FALLBACK_MOVEMENT_BANK;
   const deloadWeeks = new Set((Array.isArray(weekDefs) ? weekDefs : [])
     .filter(wd => typeof wd.deltaPctBase === "number" && wd.deltaPctBase < 0).map(wd => wd.week));
-  const weekTotal = wp => (wp.days || []).reduce((s, d) => s + (d.slots || []).reduce((a, x) => a + (Number(x.sets) || 0), 0), 0);
   const catTotal = (wp, cat) => (wp.days || []).reduce((s, d) =>
     s + (d.slots || []).filter(x => x.category === cat).reduce((a, x) => a + (Number(x.sets) || 0), 0), 0);
   const working = weekPlans.filter(wp => !deloadWeeks.has(wp.week));
   if (working.length === 0) return weekPlans;
-  // MEV-viikko = matalin työviikko (minimalist: vk1) → progressio-shiftin pohja
-  const mevWeek = working.reduce((min, wp) => weekTotal(wp) < weekTotal(min) ? wp : min, working[0]);
-  const baseShift = {};
-  for (const cat of _HYP_FLOOR_CATEGORIES) {
-    const have = catTotal(mevWeek, cat);
-    if (have > 0 && have < HYP_MEV_SETS) baseShift[cat] = HYP_MEV_SETS - have;
-  }
-  if (Object.keys(baseShift).length === 0) return weekPlans;        // jo MEV:ssä → no-op
-  // Per-viikko target = max(MEV, viikon_volyymi + shift) → TAKAA ≥MEV joka työviikko (myös kun
-  // per-kategoria-jakauma vaihtelee viikoittain) JA säilyttää progression (shift). Deload koskematon.
+  // Onko jotain tehtävää? (alittava päälihas TAI per-(sessio×liike) ylivuoto) → muuten no-op.
+  const anyWork = working.some(wp => {
+    let over = false;
+    (wp.days || []).forEach(d => { const dm = {}; (d.slots || []).forEach(s => { if (_HYP_FLOOR_CATEGORIES.has(s.category)) dm[s.category + "|" + s.defaultMovementName] = (dm[s.category + "|" + s.defaultMovementName] || 0) + (Number(s.sets) || 0); }); if (Object.values(dm).some(v => v > HYP_PER_MOVEMENT_CAP)) over = true; });
+    return over || [..._HYP_FLOOR_CATEGORIES].some(cat => { const h = catTotal(wp, cat); return h > 0 && h < HYP_MEV_SETS; });
+  });
+  if (!anyWork) return weekPlans;                                   // jo MEV:ssä + ei kasaumaa → no-op
+  // Per-viikko: nosta alittavat päälihakset MEV:iin (target = max(MEV, viikon_volyymi) — EI shift-
+  // inflaatiota jo-yli-MEV-viikkoihin, joka ylittäisi sessiokapasiteetin) + levitä ylivuoto. Deload koskematon.
   return weekPlans.map(wp => {
     if (deloadWeeks.has(wp.week)) return wp;
     const add = {};
-    for (const [cat, shift] of Object.entries(baseShift)) {
+    for (const cat of _HYP_FLOOR_CATEGORIES) {
       const have = catTotal(wp, cat);
-      if (have === 0) continue;                                     // ei slotteja → ei voi nostaa
-      const target = Math.max(HYP_MEV_SETS, have + shift);
-      if (target > have) add[cat] = target - have;
+      if (have > 0 && have < HYP_MEV_SETS) add[cat] = HYP_MEV_SETS - have; // raise vain alittavat
     }
-    if (Object.keys(add).length === 0) return wp;
-    return { ...wp, days: _distributeMevDeficit(wp.days, add) };
+    let days = Object.keys(add).length
+      ? _distributeMevDeficit(wp.days, add, eqSet, injuredAreas, bank)
+      : (wp.days || []).map(d => ({ ...d, slots: (d.slots || []).map(s => ({ ...s })) }));
+    // R4: levitä per-(sessio×liike) ylivuoto (top-up + esiintynyt E-duplikaatti) → ≤katto/sessio
+    const present = new Set();
+    days.forEach(d => (d.slots || []).forEach(s => { if (_HYP_FLOOR_CATEGORIES.has(s.category)) present.add(s.category); }));
+    days = _spreadOverCap(days, [...present]);
+    return { ...wp, days };
   });
 }
 // Komposiitti-advisory (ratifioitu "advisory jos sessio ei mahdu"): kun aikabudjetti (B) trimmaa
@@ -2343,7 +2422,7 @@ export function mevTimeBudgetAdvisory(weekPlans, weekDefs, q12PrimaryGoal, trigg
     if (Object.values(cat).some(v => v > 0 && v < HYP_MEV_SETS)) { short = true; break; }
   }
   return short
-    ? "Osa hypertrofia-lihasryhmistä jää tavoitevolyymin (10 sarjaa/viikko) alle käytettävissä olevan sessioajan vuoksi — pidennä sessioita tai lisää treenipäivä saavuttaaksesi täyden volyymin."
+    ? "Osa hypertrofia-lihasryhmistä jää tavoitevolyymin (10 sarjaa/viikko) alle käytettävissä olevan sessioajan tai liikevalikoiman vuoksi — pidennä sessioita, lisää treenipäivä tai laajenna kalustoa saavuttaaksesi täyden volyymin."
     : null;
 }
 
@@ -3237,6 +3316,25 @@ export function selfTestMapper() {
   ck("P2 MEV: advisory kun lihasryhmä alle MEV (aikabudjetti voittaa)",
      typeof mevTimeBudgetAdvisory([{ week: 1, days: [{ slots: [{ category: "horisontaalityöntö", sets: 4 }] }] }], [{ week: 1, deltaPctBase: 0 }], "hypertrophy", null) === "string");
   ck("P2 MEV: ei advisorya kun kaikki ≥MEV", mevTimeBudgetAdvisory([{ week: 1, days: [{ slots: [{ category: "horisontaalityöntö", sets: 10 }] }] }], [{ week: 1, deltaPctBase: 0 }], "hypertrophy", null) === null);
+  // R4: per-(sessio×liike) -katto + add-movement yksiliikkeiselle lihasryhmälle
+  const capWP = [{ week: 1, days: [{ slots: [
+    { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Handstand push-up (HSPU)", sets: 2, reps: 10, targetVx: 2 } ] }] }];
+  const capV = applyHypertrophyMevFloor(capWP, [{ week: 1, deltaPctBase: 0 }], "hypertrophy", null, ["dumbbells"], [])[0].days[0].slots
+    .filter(s => s.category === "vertikaalityöntö");
+  const capByMove = {}; capV.forEach(s => capByMove[s.defaultMovementName] = (capByMove[s.defaultMovementName] || 0) + s.sets);
+  ck("P2 MEV R4: yksiliikkeinen olkapää deficitillä → add-movement (≥2 liikettä)", Object.keys(capByMove).length >= 2);
+  ck("P2 MEV R4: yksikään liike ei kasaa >6 sarjaa (per-liike-katto)", Object.values(capByMove).every(v => v <= HYP_PER_MOVEMENT_CAP));
+  ck("P2 MEV R4: olkapää ≥10 (MEV täyttyy 2 liikkeellä)", Object.values(capByMove).reduce((a, b) => a + b, 0) >= 10);
+  // R4: spread — sama liike duplikaattina samalla päivällä (9) levittyy toiseen sessioon ≤6/sessio
+  const spreadWP = [{ week: 1, days: [
+    { dayOfWeek: 1, slots: [{ role: "accessory", category: "horisontaaliveto", defaultMovementName: "Käsipainosoutu", sets: 3, reps: 10, targetVx: 2 }] },
+    { dayOfWeek: 3, slots: [
+      { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Käsipainosoutu", sets: 3, reps: 10, targetVx: 2 },
+      { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Käsipainosoutu", sets: 3, reps: 10, targetVx: 2 },
+      { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Käsipainosoutu", sets: 3, reps: 10, targetVx: 2 } ] } ] }];
+  const spreadF = applyHypertrophyMevFloor(spreadWP, [{ week: 1, deltaPctBase: 0 }], "hypertrophy", null, ["dumbbells"], [])[0].days;
+  const maxSessMove = Math.max(...spreadF.map(d => d.slots.filter(s => s.category === "horisontaaliveto").reduce((a, s) => a + s.sets, 0)));
+  ck("P2 MEV R4: duplikaatti-kasauma (9) levittyy ≤6/sessio", maxSessMove <= HYP_PER_MOVEMENT_CAP);
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
