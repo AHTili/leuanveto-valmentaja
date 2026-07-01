@@ -742,7 +742,10 @@
 // v4.52.51: Pilari 3 R4 (Cowork re-arvio 3) — MEV-floor jakautuminen: per-(sessio×
 //           liike)-katto 6 + add-movement + spread (P2 olkapää HSPU 10×15 → HSPU+
 //           pystypunnerrus, selkä levitetty). Vain hypertrofia.
-const APP_VERSION = "4.52.51";
+// v4.52.52: Pilari 3 R5 (Cowork re-arvio 4) — P2 kalustovirhe: GHR→machines +
+//           Käsipainopenkki→penkki-proxy + substituutit (lattiapunnerrus/Nordic ham/
+//           käsipaino-RDL). Yksikään liike ei vaadi q17:stä puuttuvaa kalustoa.
+const APP_VERSION = "4.52.52";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.

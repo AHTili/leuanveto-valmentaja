@@ -1,6 +1,6 @@
 # Wizard-dumppi — 11 profiilia (KAPSTONI pilari 3, W1-standardi)
 
-> **POST-FIX RE-DUMPPI — round 4 (P2 MEV-jakautuminen)**. Generoitu 2026-06-30 · APP_VERSION 4.52.51 ·
+> **POST-FIX RE-DUMPPI — round 5 (P2 kalustovirhe)**. Generoitu 2026-07-01 · APP_VERSION 4.52.52 ·
 > ohjelmien start-ankkuri 2026-06-14. Ajettu repon oikealla Wizard-mapperilla
 > (`wizard/wizard-2b-mapper.js` `mapWizardToProgram`) + mesosykligeneraattorilla (`data.js`) +
 > KORJATULLA post-process-pipelinella (`applySplitFilter` → `applyVolumeCap` → `applyInjuryFilter` →
@@ -14,6 +14,8 @@
 > P6 kavennettu olkapää-blocklist (penkki säilyy, vain pystypunnerrus/dippi poistuu). P3 LYKÄTTY γ/M2 (pilotti bittitarkka).
 > Round 4 (P2 jakautuminen): per-(sessio×liike)-katto 6 + add-movement yksiliikkeisille (olkapää HSPU+pystypunnerrus) +
 > spread (selän duplikaatti-kasauma levitetty) → yksikään liike ei kasaa >6 sarjaa/sessio. Vain hypertrofia (P2/P9).
+> Round 5 (P2 kalustovirhe): GHR→machines (ei bodyweight) + Käsipainopenkki→penkki-proxy + substituutit (käsipaino-lattiapunnerrus /
+> Nordic ham / käsipaino-RDL) → yksikään liike ei vaadi q17:stä puuttuvaa kalustoa. Muuttaa P2/P8/P9/P11 (kalustorajoitteiset).
 > mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
 >
 > **Tulos: 11/11 profiilia generoitui onnistuneesti.** (P1–P8 W2-perusprofiilit + P9–P11 pilari 3 (b) kalusto-kattavuuslisäys.)
@@ -78,7 +80,7 @@
 ### P2
 > Mies 32 v, 2–3 v, hypertrofia, koti (käsipainot ≤32 kg, leuanvetotanko, kuminauhat; ei penkkiä/tankoa), 4 pv/vk.
 
-- **Liikevalinta (primaryt):** Lisäpainoleuanveto + Käsipainopenkki + Bulgarian split squat
+- **Liikevalinta (primaryt):** Lisäpainoleuanveto + Käsipainolattiapunnerrus + Bulgarian split squat
 - **Frekvenssi:** 4 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
 - **Periodisaatio:** 4 vk (materialisoitu)
 
@@ -95,15 +97,15 @@
       · accessory: Dumbbell fly — 5×10 @ V1 (horisontaalityöntö)
       · accessory: Handstand push-up (HSPU) — 6×15 @ V1 (vertikaalityöntö)
       · accessory: Pystypunnerrus käsipainot — 4×10 @ V2 (vertikaalityöntö)
-    Päivä (dow 2, volume) — fokus: Käsipainopenkki:
-      · primary: Käsipainopenkki — 5×10 @ V1 (horisontaalityöntö)
+    Päivä (dow 2, volume) — fokus: Käsipainolattiapunnerrus:
+      · primary: Käsipainolattiapunnerrus — 5×10 @ V1 (horisontaalityöntö)
       · accessory: Leuanveto (kehonpaino) — 3×10 @ V1 (vertikaaliveto)
       · accessory: Käsipainosoutu — 4×15 @ V1 (horisontaaliveto)
       · accessory: Hammer curl — 2×12 @ V1 (hauisfleksio)
     Päivä (dow 4, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 4×8 @ V1 (alaraaja)
-      · accessory: Glute-Ham Raise — 3×10 @ V1 (alaraaja)
-      · accessory: Glute-Ham Raise — 3×12 @ V1 (alaraaja)
+      · accessory: Nordic ham — 3×10 @ V1 (alaraaja)
+      · accessory: Nordic ham — 3×12 @ V1 (alaraaja)
     Päivä (dow 5, volume) — fokus: Lisäpainoleuanveto:
       · primary: Lisäpainoleuanveto — 3×8 @ V1 (vertikaaliveto)
       · accessory: Käsipainosoutu — 2×10 @ V1 (horisontaaliveto)
@@ -115,14 +117,14 @@
       · primary: Lisäpainoleuanveto — 1×10 @ V4 (vertikaaliveto)
       · accessory: Dumbbell fly — 1×10 @ V4 (horisontaalityöntö)
       · accessory: Handstand push-up (HSPU) — 1×15 @ V4 (vertikaalityöntö)
-    Päivä (dow 2, volume) — fokus: Käsipainopenkki:
-      · primary: Käsipainopenkki — 1×10 @ V4 (horisontaalityöntö)
+    Päivä (dow 2, volume) — fokus: Käsipainolattiapunnerrus:
+      · primary: Käsipainolattiapunnerrus — 1×10 @ V4 (horisontaalityöntö)
       · accessory: Leuanveto (kehonpaino) — 1×10 @ V4 (vertikaaliveto)
       · accessory: Käsipainosoutu — 1×15 @ V4 (horisontaaliveto)
       · accessory: Hauiskääntö tanko — 1×12 @ V4 (hauisfleksio)
     Päivä (dow 4, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 1×8 @ V4 (alaraaja)
-      · accessory: Glute-Ham Raise — 1×10 @ V4 (alaraaja)
+      · accessory: Nordic ham — 1×10 @ V4 (alaraaja)
       · accessory: Pohjenosto — 1×12 @ V4 (alaraaja)
     Päivä (dow 5, volume) — fokus: Lisäpainoleuanveto:
       · primary: Lisäpainoleuanveto — 1×8 @ V4 (vertikaaliveto)
@@ -584,7 +586,7 @@
     Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 5×3 @ V3 (alaraaja)
       · backoff: Bulgarian split squat — 3×5 @ V3 (alaraaja)
-      · accessory: Glute-Ham Raise — 2×6 @ V3 (alaraaja)
+      · accessory: Nordic ham — 2×6 @ V3 (alaraaja)
     Päivä (dow 4, volume) — fokus: Handstand push-up (HSPU):
       · primary: Handstand push-up (HSPU) — 5×5 @ V4 (vertikaalityöntö)
       · accessory: Handstand push-up (HSPU) — 3×8 @ V3 (vertikaalityöntö)
@@ -592,8 +594,8 @@
   **Viikko 4:**
     Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 3×3 @ V4 (alaraaja)
-      · accessory: Glute-Ham Raise — 2×8 @ V4 (alaraaja)
-      · accessory: Glute-Ham Raise — 1×10 @ — (alaraaja)
+      · accessory: Nordic ham — 2×8 @ V4 (alaraaja)
+      · accessory: Nordic ham — 1×10 @ — (alaraaja)
     Päivä (dow 4, volume) — fokus: Handstand push-up (HSPU):
       · primary: Handstand push-up (HSPU) — 3×5 @ V4 (vertikaalityöntö)
       · accessory: Handstand push-up (HSPU) — 2×8 @ V4 (vertikaalityöntö)
@@ -605,7 +607,7 @@
 ### P9
 > Mies 30 v / 85 kg, 2 v, hypertrofia, KOTI vain käsipainot (ei leukatankoa/tankoa), 4 pv/vk.
 
-- **Liikevalinta (primaryt):** Käsipainopenkki + Bulgarian split squat
+- **Liikevalinta (primaryt):** Käsipainolattiapunnerrus + Bulgarian split squat
 - **Frekvenssi:** 4 pv/vk · **Palautumiskapasiteetti (johdettu):** keski
 - **ℹ Huomio:** Vetoliikkeet vaativat leukatangon, vaijerilaitteen tai tangon — valitulla kalustolla ohjelma painottuu työntö- ja jalkaliikkeisiin. Osa hypertrofia-lihasryhmistä jää tavoitevolyymin (10 sarjaa/viikko) alle käytettävissä olevan sessioajan tai liikevalikoiman vuoksi — pidennä sessioita, lisää treenipäivä tai laajenna kalustoa saavuttaaksesi täyden volyymin.
 - **Periodisaatio:** 4 vk (materialisoitu)
@@ -618,14 +620,14 @@
 
 **Viikko-ohjelmat (liikkeet · volyymi sets×reps · intensiteetti V):**
   **Viikko 1:**
-    Päivä (dow 1, volume) — fokus: Käsipainopenkki:
-      · primary: Käsipainopenkki — 5×10 @ V1 (horisontaalityöntö)
+    Päivä (dow 1, volume) — fokus: Käsipainolattiapunnerrus:
+      · primary: Käsipainolattiapunnerrus — 5×10 @ V1 (horisontaalityöntö)
       · accessory: Käsipainosoutu — 5×15 @ V1 (horisontaaliveto)
       · accessory: Hammer curl — 2×12 @ V1 (hauisfleksio)
     Päivä (dow 2, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 2×10 @ V1 (alaraaja)
-    Päivä (dow 4, volume) — fokus: Käsipainopenkki:
-      · primary: Käsipainopenkki — 5×8 @ V1 (horisontaalityöntö)
+    Päivä (dow 4, volume) — fokus: Käsipainolattiapunnerrus:
+      · primary: Käsipainolattiapunnerrus — 5×8 @ V1 (horisontaalityöntö)
       · accessory: Handstand push-up (HSPU) — 6×10 @ V1 (vertikaalityöntö)
       · accessory: Käsipainosoutu — 5×15 @ V1 (horisontaaliveto)
       · accessory: Skull crusher — 2×12 @ V1 (ojentajaekstensio)
@@ -633,25 +635,25 @@
     Päivä (dow 5, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 2×8 @ V1 (alaraaja)
       · accessory: Walking lunge — 2×10 @ V1 (alaraaja)
-      · accessory: Glute-Ham Raise — 2×10 @ V1 (alaraaja)
-      · accessory: Glute-Ham Raise — 2×15 @ V1 (alaraaja)
+      · accessory: Nordic ham — 2×10 @ V1 (alaraaja)
+      · accessory: Nordic ham — 2×15 @ V1 (alaraaja)
       · accessory: Hanging leg raise — 2×12 @ — (core)
   **Viikko 4:**
-    Päivä (dow 1, volume) — fokus: Käsipainopenkki:
-      · primary: Käsipainopenkki — 1×10 @ V4 (horisontaalityöntö)
+    Päivä (dow 1, volume) — fokus: Käsipainolattiapunnerrus:
+      · primary: Käsipainolattiapunnerrus — 1×10 @ V4 (horisontaalityöntö)
       · accessory: Käsipainosoutu — 1×15 @ V4 (horisontaaliveto)
       · accessory: Hauiskääntö tanko — 1×12 @ V4 (hauisfleksio)
     Päivä (dow 2, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 1×10 @ V4 (alaraaja)
-    Päivä (dow 4, volume) — fokus: Käsipainopenkki:
-      · primary: Käsipainopenkki — 1×8 @ V4 (horisontaalityöntö)
+    Päivä (dow 4, volume) — fokus: Käsipainolattiapunnerrus:
+      · primary: Käsipainolattiapunnerrus — 1×8 @ V4 (horisontaalityöntö)
       · accessory: Pystypunnerrus käsipainot — 1×10 @ V4 (vertikaalityöntö)
       · accessory: Käsipainosoutu — 1×15 @ V4 (horisontaaliveto)
     Päivä (dow 5, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 1×8 @ V4 (alaraaja)
-      · accessory: Glute-Ham Raise — 1×10 @ V4 (alaraaja)
-      · accessory: Glute-Ham Raise — 1×10 @ V4 (alaraaja)
-      · accessory: Glute-Ham Raise — 1×15 @ V4 (alaraaja)
+      · accessory: Nordic ham — 1×10 @ V4 (alaraaja)
+      · accessory: Nordic ham — 1×10 @ V4 (alaraaja)
+      · accessory: Nordic ham — 1×15 @ V4 (alaraaja)
       · accessory: Hanging leg raise — 1×12 @ — (core)
   *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
 
@@ -794,7 +796,7 @@
     Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 5×3 @ V2 (alaraaja)
       · backoff: Bulgarian split squat — 3×5 @ V3 (alaraaja)
-      · accessory: Glute-Ham Raise — 3×6 @ V3 (alaraaja)
+      · accessory: Nordic ham — 3×6 @ V3 (alaraaja)
       · accessory: Pohjenosto — 3×10 @ — (alaraaja)
     Päivä (dow 3, volume) — fokus: Handstand push-up (HSPU):
       · primary: Handstand push-up (HSPU) — 5×5 @ V3 (vertikaalityöntö)
@@ -802,13 +804,13 @@
       · accessory: Hanging leg raise — 3×10 @ — (core)
     Päivä (dow 5, speed) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 6×2 @ V4 (alaraaja)
-      · accessory: Glute-Ham Raise — 3×10 @ — (alaraaja)
+      · accessory: Nordic ham — 3×10 @ — (alaraaja)
       · accessory: Pohjenosto — 3×10 @ — (alaraaja)
   **Viikko 4:**
     Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 3×3 @ V4 (alaraaja)
-      · accessory: Glute-Ham Raise — 3×8 @ V4 (alaraaja)
-      · accessory: Glute-Ham Raise — 2×10 @ — (alaraaja)
+      · accessory: Nordic ham — 3×8 @ V4 (alaraaja)
+      · accessory: Nordic ham — 2×10 @ — (alaraaja)
     Päivä (dow 3, volume) — fokus: Handstand push-up (HSPU):
       · primary: Handstand push-up (HSPU) — 3×5 @ V4 (vertikaalityöntö)
       · accessory: Handstand push-up (HSPU) — 3×8 @ V4 (vertikaalityöntö)
@@ -851,7 +853,7 @@
 - **goal:** multi-blokki [intensifikaatio → peaking] · **skeleton:** multi-block-chain · **weekCount:** 6
 - **Top-3 kandidaatit (confidence):**
     1. `multi-issurin` (Block-periodisaatio (Issurin)) — **conf 100**
-        rationale: Kisapäivä asetettu (61 pv) → riittävästi aikaa block-periodisaatiolle; Kisa-tavoite → multi-blokki on tieteellinen standardi (Issurin); Max-tavoite tukee perinteistä hyp→str→int→peak-sekvenssiä
+        rationale: Kisapäivä asetettu (60 pv) → riittävästi aikaa block-periodisaatiolle; Kisa-tavoite → multi-blokki on tieteellinen standardi (Issurin); Max-tavoite tukee perinteistä hyp→str→int→peak-sekvenssiä
     2. `single-westside-conjugate` (Westside Conjugate) — **conf 65**
         rationale: Max-tavoite + Westside-rotaatio sopivat klassiseen voimanostokontekstiin; Edistynyt taso vaaditaan — ME-rotaation viikoittainen vaihto + 1RM-singletkin; 4 päivää/vk → sopii suoraan ME-Lower/ME-Upper/DE-Lower/DE-Upper -jakoon
     3. `single-maksimivoima` (Maksimivoima-blokki) — **conf 58**
