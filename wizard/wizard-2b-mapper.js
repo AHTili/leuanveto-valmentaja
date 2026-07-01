@@ -1400,8 +1400,10 @@ export function applyInjuryFilter(weekPlans, q11_injuries, movementBank = FALLBA
 // Tuntematon liike → movementRequiredEquipment-heuristiikka; EPÄVARMA → [] (älä
 // suodata pois — inklusiivinen default, ratifioitu).
 const _EQ_GROUPS = {
-  pullup_bar:    ["Lisäpainoleuanveto", "Leuanveto (kehonpaino)", "Muscle-up", "Vastaote-leuat", "Yksikätinen leuanveto", "Archer pull-up", "L-sit pull-up", "Front Lever (hold)", "Planche (hold)", "Human Flag (hold)"],
-  dip_station:   ["Lisäpainodippi", "Dippi (kehonpaino)", "Dippi"],
+  // Pilari 3 R5b (P8): Lisäpainoleuanveto/Lisäpainodippi SIIRRETTY MOVEMENT_EQUIPMENT_ANY:hin
+  // (vaativat leukatanko/dip + LISÄPAINOLÄHTEEN); kehonpaino-versiot jäävät tänne.
+  pullup_bar:    ["Leuanveto (kehonpaino)", "Muscle-up", "Vastaote-leuat", "Yksikätinen leuanveto", "Archer pull-up", "L-sit pull-up", "Front Lever (hold)", "Planche (hold)", "Human Flag (hold)"],
+  dip_station:   ["Dippi (kehonpaino)", "Dippi"],
   barbell_rack:  ["Takakyykky", "Kyykky", "Etukyykky", "Penkkipunnerrus", "Maastaveto", "Pystypunnerrus", "Penkkiveto", "Vinopenkkipunnerrus", "Close-grip bench", "Floor press", "Pin press", "JM press", "Rack pull", "Romanialainen maastaveto (RDL)", "Romanian DL", "Paused squat", "Front squat", "Deficit DL", "Pin squat", "Box squat", "Safety bar squat", "Paused DL", "Block pull", "Snatch-grip DL", "Good morning", "Paused bench press", "Spoto press", "Larsen press", "Board press", "Push press", "Seated OHP", "Z-press", "T-bar row", "Seal row", "Hip thrust"],
   cable_machine: ["Ylätalja", "Lat pulldown", "Ylätalja neutraaliote", "Alatalja", "Cable row", "Seated row", "Tricep pushdown", "Face pull", "Cable crunch", "Cable curl", "Pallof press"],
   machines:      ["Jalkaprässi", "Yhden jalan jalkaprässi", "Leg extension", "Leg curl", "Chest press", "Shoulder press laite", "Pullover kone", "Chest-supported row", "Front-foot elevated split squat", "Glute-Ham Raise"],
@@ -1422,6 +1424,11 @@ const MOVEMENT_EQUIPMENT_ANY = Object.freeze({
   // käsipaino) → suodattuu → käsipaino-lattiapunnerrus. Täyssali (rack/laite) → OK.
   "Käsipainopenkki":       [["dumbbells", "barbell_rack"], ["dumbbells", "machines"]],
   "Incline dumbbell press": [["dumbbells", "barbell_rack"], ["dumbbells", "machines"]],
+  // Pilari 3 R5b (P8 kalusto): LISÄPAINOleuanveto/dippi vaativat leukatangon/dipin + LISÄPAINOLÄHTEEN
+  // (käsipainot, levyt+vyö tai laitteet). q17:ssä ei "lisäpainovyö"-tyyppiä → painolähde-proxy. P8
+  // (pelkkä leukatanko) → suodattuu → Leuanveto (kehonpaino). Streetliftari (leukatanko+painolähde) → OK.
+  "Lisäpainoleuanveto":    [["pullup_bar", "dumbbells"], ["pullup_bar", "barbell_rack"], ["pullup_bar", "machines"], ["pullup_bar", "dip_station"]],
+  "Lisäpainodippi":        [["dip_station", "dumbbells"], ["dip_station", "barbell_rack"], ["dip_station", "machines"]],
 });
 // Eksplisiittisesti kehonpaino (vähimmäisvaatimus = ei välinettä).
 // Pilari 3 R5 (P2 kalusto): Glute-Ham Raise SIIRRETTY machines:iin (vaatii GHR-laitteen/-penkin) —
@@ -3088,8 +3095,8 @@ export function selfTestMapper() {
   const eqHome = new Set(["pullup_bar"]); // kotikuntoilija: vain leukatanko
   // Kisaliikkeet + selkeät rivit
   ck("C0: Takakyykky → barbell_rack", movementRequiredEquipment("Takakyykky").requires[0] === "barbell_rack");
-  ck("C0: Lisäpainoleuanveto → pullup_bar", movementRequiredEquipment("Lisäpainoleuanveto").requires[0] === "pullup_bar");
-  ck("C0: Lisäpainodippi → dip_station", movementRequiredEquipment("Lisäpainodippi").requires[0] === "dip_station");
+  ck("R5b: Lisäpainoleuanveto = any (leukatanko + painolähde)", movementRequiredEquipment("Lisäpainoleuanveto").any !== null);
+  ck("R5b: Lisäpainodippi = any (dip + painolähde)", movementRequiredEquipment("Lisäpainodippi").any !== null);
   ck("C0: Ylätalja → cable_machine", movementRequiredEquipment("Ylätalja").requires[0] === "cable_machine");
   ck("C0: Jalkaprässi → machines", movementRequiredEquipment("Jalkaprässi").requires[0] === "machines");
   // Heuristiikka (tuntematon nimi avainsanalla)
@@ -3104,7 +3111,9 @@ export function selfTestMapper() {
   ck("C0: tuntematon external (ei avainsanaa) → [] (älä suodata)", movementRequiredEquipment("Jokin oudoliike", "external", "muu").requires.length === 0);
   // Performability täyskalustolla = kaikki performable; kotona = Ylätalja EI performable
   ck("C0: Ylätalja EI performable kotona (vain pullup_bar)", !isMovementPerformable("Ylätalja", "external", "vertikaaliveto", eqHome));
-  ck("C0: Lisäpainoleuanveto performable kotona", isMovementPerformable("Lisäpainoleuanveto", "system", "vertikaaliveto", eqHome));
+  ck("R5b: Lisäpainoleuanveto EI performable pelkällä leukatangolla (tarvitsee painolähteen)", !isMovementPerformable("Lisäpainoleuanveto", "external", "vertikaaliveto", eqHome));
+  ck("R5b: Leuanveto (kehonpaino) performable kotona (Lisäpainoleuanvedon sub)", isMovementPerformable("Leuanveto (kehonpaino)", "system", "vertikaaliveto", eqHome));
+  ck("R5b: Lisäpainoleuanveto performable leukatanko+käsipainot (painolähde)", isMovementPerformable("Lisäpainoleuanveto", "external", "vertikaaliveto", new Set(["pullup_bar", "dumbbells"])));
   ck("C0: Takakyykky performable täyskalustolla", isMovementPerformable("Takakyykky", "external", "alaraaja", eqAll));
   // R5 (P2 kalusto): penkki/laite-vaativat merkitty oikein → filtteri suodattaa + substituutit toimivat.
   ck("R5: GHR → machines (ei enää bodyweight)", !!movementRequiredEquipment("Glute-Ham Raise").requires && movementRequiredEquipment("Glute-Ham Raise").requires.includes("machines"));
@@ -3184,10 +3193,11 @@ export function selfTestMapper() {
   ck("C4: bodyweight-only → ei tyhjä (fallback)", bwOnly.length >= 1);
   ck("C4: bodyweight-only → sis. alaraaja (#4)", bwOnly.some(p => p.category === "alaraaja"));
   ck("C4: bodyweight-only → ei barbell-liikkeitä", !bwOnly.some(p => ["Takakyykky", "Penkkipunnerrus", "Maastaveto"].includes(p.name)));
-  // pullup_bar-only: hypertrofian pull (Lisäpainoleuanveto) SÄILYY equipment-filtteristä →
-  // ei fallbackia; jalat tulevat ensureLowerBody-backstopista materialisaatiossa (C3).
+  // pullup_bar-only: hypertrofian pull SÄILYY, mutta R5b substituoi lisäpainoversio → KEHONPAINO
+  // (Leuanveto), koska pelkällä leukatangolla ei ole lisäpainolähdettä; jalat ensureLowerBody:sta (C3).
   const bwBar = pickPrimaries({ q09_sport: "hybrid", q12_primaryGoal: "hypertrophy", q17_equipment: ["pullup_bar"] });
-  ck("C4: pullup_bar-only → pull säilyy (Lisäpainoleuanveto), suoritettava", bwBar.some(p => p.name === "Lisäpainoleuanveto")
+  ck("C4: pullup_bar-only → pull säilyy kehonpaino-versiona (Lisäpaino→Leuanveto), suoritettava",
+     bwBar.some(p => p.category === "vertikaaliveto" && /leuanveto/i.test(p.name))
      && bwBar.every(p => isMovementPerformable(p.name, null, p.category, new Set(["pullup_bar"]))));
   // dip_station-only (ei pullup_bar/barbell) → koko goal-setti cullataan → fallback: push + jalat
   const bwDip = pickPrimaries({ q09_sport: "hybrid", q12_primaryGoal: "hypertrophy", q17_equipment: ["dip_station"] });
