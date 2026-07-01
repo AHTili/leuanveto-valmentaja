@@ -1311,8 +1311,9 @@ const _FUNCTION_MOVEMENTS = Object.freeze({
   ],
   push: [
     { name: "Penkkipunnerrus",          category: "horisontaalityöntö", requires: ["barbell_rack"] },
-    { name: "Käsipainopenkki",          category: "horisontaalityöntö", requires: ["dumbbells"] },
+    { name: "Käsipainopenkki",          category: "horisontaalityöntö", requires: ["dumbbells"] }, // suoritettavuus: MOVEMENT_EQUIPMENT_ANY penkki-proxy (R5)
     { name: "Chest press",              category: "horisontaalityöntö", requires: ["machines"] },
+    { name: "Käsipainolattiapunnerrus", category: "horisontaalityöntö", requires: ["dumbbells"] }, // R5: käsipaino-push ILMAN penkkiä (P2)
     { name: "Dippi (kehonpaino)",       category: "horisontaalityöntö", requires: ["dip_station"] },
     { name: "Handstand push-up (HSPU)", category: "vertikaalityöntö",   requires: [] }, // kehonpaino
   ],
@@ -1403,7 +1404,7 @@ const _EQ_GROUPS = {
   dip_station:   ["Lisäpainodippi", "Dippi (kehonpaino)", "Dippi"],
   barbell_rack:  ["Takakyykky", "Kyykky", "Etukyykky", "Penkkipunnerrus", "Maastaveto", "Pystypunnerrus", "Penkkiveto", "Vinopenkkipunnerrus", "Close-grip bench", "Floor press", "Pin press", "JM press", "Rack pull", "Romanialainen maastaveto (RDL)", "Romanian DL", "Paused squat", "Front squat", "Deficit DL", "Pin squat", "Box squat", "Safety bar squat", "Paused DL", "Block pull", "Snatch-grip DL", "Good morning", "Paused bench press", "Spoto press", "Larsen press", "Board press", "Push press", "Seated OHP", "Z-press", "T-bar row", "Seal row", "Hip thrust"],
   cable_machine: ["Ylätalja", "Lat pulldown", "Ylätalja neutraaliote", "Alatalja", "Cable row", "Seated row", "Tricep pushdown", "Face pull", "Cable crunch", "Cable curl", "Pallof press"],
-  machines:      ["Jalkaprässi", "Yhden jalan jalkaprässi", "Leg extension", "Leg curl", "Chest press", "Shoulder press laite", "Pullover kone", "Chest-supported row", "Front-foot elevated split squat"],
+  machines:      ["Jalkaprässi", "Yhden jalan jalkaprässi", "Leg extension", "Leg curl", "Chest press", "Shoulder press laite", "Pullover kone", "Chest-supported row", "Front-foot elevated split squat", "Glute-Ham Raise"],
   dumbbells:     ["Pystypunnerrus käsipainot", "Hauiskääntö käsipainot", "Hammer curl", "Preacher curl", "Incline curl", "Spider curl", "Sivunosto", "Dumbbell fly", "Skull crusher", "Overhead tricep ext", "French press", "Kickback"],
 };
 const MOVEMENT_EQUIPMENT = Object.freeze((() => {
@@ -1416,12 +1417,19 @@ const MOVEMENT_EQUIPMENT_ANY = Object.freeze({
   "Hauiskääntö tanko": [["barbell_rack"], ["dumbbells"]],
   "Hauiskääntö":       [["dumbbells"], ["barbell_rack"]],
   "Power shrug":       [["barbell_rack"], ["dumbbells"]],
+  // Pilari 3 R5 (P2 kalusto): käsipaino-PENKKIpunnerrus vaatii käsipainot + PENKIN. q17:ssä ei ole
+  // "penkki"-tyyppiä → penkki-proxy: rack TAI laitteet (salikaluston mukana tulee penkki). P2 (pelkkä
+  // käsipaino) → suodattuu → käsipaino-lattiapunnerrus. Täyssali (rack/laite) → OK.
+  "Käsipainopenkki":       [["dumbbells", "barbell_rack"], ["dumbbells", "machines"]],
+  "Incline dumbbell press": [["dumbbells", "barbell_rack"], ["dumbbells", "machines"]],
 });
-// Eksplisiittisesti kehonpaino (vähimmäisvaatimus = ei välinettä — ratifioitu:
-// Bulgarian/lunge/pohjenosto/GHR → bodyweight).
+// Eksplisiittisesti kehonpaino (vähimmäisvaatimus = ei välinettä).
+// Pilari 3 R5 (P2 kalusto): Glute-Ham Raise SIIRRETTY machines:iin (vaatii GHR-laitteen/-penkin) —
+// kumoaa C0:n GHR→bodyweight-ratifioinnin (oli väärä, GHR ei ole kehonpainoliike). Nordic ham on
+// aito kehonpaino-substituutti (ankkuroidut nilkat, ei laitetta).
 const BODYWEIGHT_MOVEMENTS = new Set([
   "Handstand push-up (HSPU)", "Bulgarian split squat", "Walking lunge", "Pohjenosto",
-  "Glute-Ham Raise", "Hyperextensio", "Vatsalihakset (yleinen)", "L-sit (hold)",
+  "Nordic ham", "Hyperextensio", "Vatsalihakset (yleinen)", "L-sit (hold)",
   "Hanging leg raise", "Ab wheel rollout",
 ]);
 
@@ -3098,6 +3106,15 @@ export function selfTestMapper() {
   ck("C0: Ylätalja EI performable kotona (vain pullup_bar)", !isMovementPerformable("Ylätalja", "external", "vertikaaliveto", eqHome));
   ck("C0: Lisäpainoleuanveto performable kotona", isMovementPerformable("Lisäpainoleuanveto", "system", "vertikaaliveto", eqHome));
   ck("C0: Takakyykky performable täyskalustolla", isMovementPerformable("Takakyykky", "external", "alaraaja", eqAll));
+  // R5 (P2 kalusto): penkki/laite-vaativat merkitty oikein → filtteri suodattaa + substituutit toimivat.
+  ck("R5: GHR → machines (ei enää bodyweight)", !!movementRequiredEquipment("Glute-Ham Raise").requires && movementRequiredEquipment("Glute-Ham Raise").requires.includes("machines"));
+  ck("R5: GHR EI suoritettavissa käsipaino+leukatanko", !isMovementPerformable("Glute-Ham Raise", "external", "alaraaja", new Set(["dumbbells", "pullup_bar"])));
+  ck("R5: Käsipainopenkki vaatii penkin (dumbbells+rack) — EI pelkillä käsipainoilla",
+     !isMovementPerformable("Käsipainopenkki", "external", "horisontaalityöntö", new Set(["dumbbells", "pullup_bar"])) &&
+     isMovementPerformable("Käsipainopenkki", "external", "horisontaalityöntö", new Set(["dumbbells", "barbell_rack"])));
+  ck("R5: Käsipainolattiapunnerrus suoritettavissa pelkillä käsipainoilla (Käsipainopenkin sub)", isMovementPerformable("Käsipainolattiapunnerrus", "external", "horisontaalityöntö", new Set(["dumbbells"])));
+  ck("R5: Nordic ham suoritettavissa kehonpainolla (GHR-sub)", isMovementPerformable("Nordic ham", "system", "alaraaja", new Set()));
+  ck("R5: Käsipaino-RDL käsipainoilla kyllä, kehonpainolla ei", isMovementPerformable("Käsipaino-RDL", "external", "lonkkahingaus", new Set(["dumbbells"])) && !isMovementPerformable("Käsipaino-RDL", "external", "lonkkahingaus", new Set()));
 
   // ─── 5c. Pilari 3 C1: goal-aware pickPrimaries (FIX-A) ──────────────
   const eqFull = ["barbell_rack", "pullup_bar", "dip_station", "cable_machine", "machines", "dumbbells"];
