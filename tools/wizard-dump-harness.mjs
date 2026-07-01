@@ -25,7 +25,7 @@ import { generateCustomMesocycle, generateMultiBlockMesocycle } from "../data.js
 
 const GEN_DATE = "2026-06-14"; // ohjelmien startDate-ankkuri (vakio → vertailukelpoisuus; EI dumpin generointipäivä)
 const DUMP_DATE = "2026-07-01"; // dumpin re-generointipäivä (header) — eri kuin start-ankkuri
-const APP_VERSION = "4.52.52";  // pidä synkassa sw.js APP_VERSION:in kanssa (header-tuoreusportti)
+const APP_VERSION = "4.52.53";  // pidä synkassa sw.js APP_VERSION:in kanssa (header-tuoreusportti)
 
 // ─────────────────────────────────────────────────────────────────────────
 // 11 PROFIILIA — 33Q-vektorit. neutralNotes = persona ei määritä → neutraali/tyypillinen.
@@ -444,7 +444,7 @@ function fmtVector(r) {
 const okCount = results.filter(r => !r.error).length;
 let md = `# Wizard-dumppi — ${profiles.length} profiilia (KAPSTONI pilari 3, W1-standardi)
 
-> **POST-FIX RE-DUMPPI — round 5 (P2 kalustovirhe)**. Generoitu ${DUMP_DATE} · APP_VERSION ${APP_VERSION} ·
+> **POST-FIX RE-DUMPPI — round 5b (P8 kalustovirhe)**. Generoitu ${DUMP_DATE} · APP_VERSION ${APP_VERSION} ·
 > ohjelmien start-ankkuri ${GEN_DATE}. Ajettu repon oikealla Wizard-mapperilla
 > (\`wizard/wizard-2b-mapper.js\` \`mapWizardToProgram\`) + mesosykligeneraattorilla (\`data.js\`) +
 > KORJATULLA post-process-pipelinella (\`applySplitFilter\` → \`applyVolumeCap\` → \`applyInjuryFilter\` →
@@ -460,6 +460,8 @@ let md = `# Wizard-dumppi — ${profiles.length} profiilia (KAPSTONI pilari 3, W
 > spread (selän duplikaatti-kasauma levitetty) → yksikään liike ei kasaa >6 sarjaa/sessio. Vain hypertrofia (P2/P9).
 > Round 5 (P2 kalustovirhe): GHR→machines (ei bodyweight) + Käsipainopenkki→penkki-proxy + substituutit (käsipaino-lattiapunnerrus /
 > Nordic ham / käsipaino-RDL) → yksikään liike ei vaadi q17:stä puuttuvaa kalustoa. Muuttaa P2/P8/P9/P11 (kalustorajoitteiset).
+> Round 5b (P8 kalustovirhe): Lisäpainoleuanveto/dippi → painolähde-proxy (leukatanko/dip + käsipaino/tanko/laite); P8 (pelkkä
+> leukatanko) → Leuanveto (kehonpaino). BOUNDED SCAN: kaikkien 11 profiilin liikkeet ↔ q17 → 11/11 puhdas (ei kalustorikkomuksia).
 > mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
 >
 > **Tulos: ${okCount}/${profiles.length} profiilia generoitui onnistuneesti.** (P1–P8 W2-perusprofiilit + P9–P11 pilari 3 (b) kalusto-kattavuuslisäys.)

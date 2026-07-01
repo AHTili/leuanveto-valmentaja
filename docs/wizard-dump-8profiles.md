@@ -1,6 +1,6 @@
 # Wizard-dumppi — 11 profiilia (KAPSTONI pilari 3, W1-standardi)
 
-> **POST-FIX RE-DUMPPI — round 5 (P2 kalustovirhe)**. Generoitu 2026-07-01 · APP_VERSION 4.52.52 ·
+> **POST-FIX RE-DUMPPI — round 5b (P8 kalustovirhe)**. Generoitu 2026-07-01 · APP_VERSION 4.52.53 ·
 > ohjelmien start-ankkuri 2026-06-14. Ajettu repon oikealla Wizard-mapperilla
 > (`wizard/wizard-2b-mapper.js` `mapWizardToProgram`) + mesosykligeneraattorilla (`data.js`) +
 > KORJATULLA post-process-pipelinella (`applySplitFilter` → `applyVolumeCap` → `applyInjuryFilter` →
@@ -16,6 +16,8 @@
 > spread (selän duplikaatti-kasauma levitetty) → yksikään liike ei kasaa >6 sarjaa/sessio. Vain hypertrofia (P2/P9).
 > Round 5 (P2 kalustovirhe): GHR→machines (ei bodyweight) + Käsipainopenkki→penkki-proxy + substituutit (käsipaino-lattiapunnerrus /
 > Nordic ham / käsipaino-RDL) → yksikään liike ei vaadi q17:stä puuttuvaa kalustoa. Muuttaa P2/P8/P9/P11 (kalustorajoitteiset).
+> Round 5b (P8 kalustovirhe): Lisäpainoleuanveto/dippi → painolähde-proxy (leukatanko/dip + käsipaino/tanko/laite); P8 (pelkkä
+> leukatanko) → Leuanveto (kehonpaino). BOUNDED SCAN: kaikkien 11 profiilin liikkeet ↔ q17 → 11/11 puhdas (ei kalustorikkomuksia).
 > mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
 >
 > **Tulos: 11/11 profiilia generoitui onnistuneesti.** (P1–P8 W2-perusprofiilit + P9–P11 pilari 3 (b) kalusto-kattavuuslisäys.)
@@ -590,7 +592,7 @@
     Päivä (dow 4, volume) — fokus: Handstand push-up (HSPU):
       · primary: Handstand push-up (HSPU) — 5×5 @ V4 (vertikaalityöntö)
       · accessory: Handstand push-up (HSPU) — 3×8 @ V3 (vertikaalityöntö)
-      · accessory: Lisäpainoleuanveto — 2×8 @ V3 (vertikaaliveto)
+      · accessory: Leuanveto (kehonpaino) — 2×8 @ V3 (vertikaaliveto)
   **Viikko 4:**
     Päivä (dow 1, heavy) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 3×3 @ V4 (alaraaja)
@@ -599,7 +601,7 @@
     Päivä (dow 4, volume) — fokus: Handstand push-up (HSPU):
       · primary: Handstand push-up (HSPU) — 3×5 @ V4 (vertikaalityöntö)
       · accessory: Handstand push-up (HSPU) — 2×8 @ V4 (vertikaalityöntö)
-      · accessory: Lisäpainoleuanveto — 1×8 @ V4 (vertikaaliveto)
+      · accessory: Leuanveto (kehonpaino) — 1×8 @ V4 (vertikaaliveto)
   *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
 
 ---

@@ -745,7 +745,10 @@
 // v4.52.52: Pilari 3 R5 (Cowork re-arvio 4) — P2 kalustovirhe: GHR→machines +
 //           Käsipainopenkki→penkki-proxy + substituutit (lattiapunnerrus/Nordic ham/
 //           käsipaino-RDL). Yksikään liike ei vaadi q17:stä puuttuvaa kalustoa.
-const APP_VERSION = "4.52.52";
+// v4.52.53: Pilari 3 R5b (Cowork re-arvio 5) — P8 kalustovirhe: Lisäpainoleuanveto/
+//           dippi vaativat painolähteen (leukatanko/dip + käsipaino/tanko/laite) →
+//           P8 (pelkkä leukatanko) → Leuanveto (kehonpaino). Bounded scan: 11/11 puhdas.
+const APP_VERSION = "4.52.53";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.
