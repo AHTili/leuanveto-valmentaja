@@ -347,6 +347,9 @@ const PRESET_MOVEMENTS = [
   { name: "Long pause bench",  category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
   { name: "Rack pull",         category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
   { name: "Glute-Ham Raise",   category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  // Pilari 3 R5 (P2 kalusto): Nordic ham + käsipaino-RDL — GHR:n (laite) substituutit ilman laitetta/tankoa.
+  { name: "Nordic ham",        category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Käsipaino-RDL",     category: "lonkkahingaus", isPrimary: false, isPreset: true, tier: 3 },
   { name: "Hyperextensio",     category: "core",     isPrimary: false, isPreset: true, tier: 3 },
   { name: "Dumbbell fly",      category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   { name: "Power shrug",       category: "muu",      isPrimary: false, isPreset: true, tier: 3 },
@@ -361,6 +364,8 @@ const PRESET_MOVEMENTS = [
   // työntöliike puuttui katalogista (vino oli jo "Incline dumbbell press").
   // Surface'aa olemassa oleviin asennuksiin ensureNewPresetMovements:in kautta.
   { name: "Käsipainopenkki",        category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  // Pilari 3 R5 (P2 kalusto): käsipaino-lattiapunnerrus — horisontaalityöntö ILMAN penkkiä (P2-substituutti Käsipainopenkille).
+  { name: "Käsipainolattiapunnerrus", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   // Pilari 3 R2 (OBS-053 minimaalisesti, 2026-06-28): käsipaino-soutu — käsipaino+leukatanko-
   // kotikuntoilijalta (P2) puuttui pätevä horisontaaliveto-liike → FIX-B substituoi cross-category
   // (väärä leima + duplikaatti, MEV-vaje). Tämä antaa aidon selkä-option. Rengasvariantit → backlog.
@@ -476,6 +481,8 @@ const MOVEMENT_DESCRIPTIONS = {
   "Long pause bench": { howTo: "Penkkipunnerrus 3–5 sek pysähdyksellä rinnalla. Eliminoi stretch-reflex täysin, opettaa pohja-asennon hallintaa. GZCL T2-variantti.", cue: "Pidä tanko rinnalla — laske yksi mississippi, kaksi mississippi — sitten työnnä" },
   "Rack pull": { howTo: "Maastaveto häkin tappien päältä polven korkeudella tai yli. Lockout-vahvuus, ylä-ROM-overload. WSBB ME-rotaation kanoninen variantti.", cue: "Starttaa polvista, lapaluut lukossa — kuormat raskaammat kuin perus-DL:ssä" },
   "Glute-Ham Raise": { howTo: "GHR-laitteella tai bench-rolloilla: aloita pystyssä, laskeudu hallitusti eteen pohkeiden ankkuroinnilla, nouse takareisien voimalla takaisin pystyyn. Pakara + hamstrings.", cue: "Hidas eccentric, pakara tiukkana koko liikkeen ajan" },
+  "Nordic ham": { howTo: "Polvillaan, nilkat ankkuroituna (partneri, kuminauha tai raskas käsipaino jalkojen päällä): laskeudu hallitusti eteen takareisien jarruttaessa, työnnä käsillä takaisin ylös. Ei laitetta tarvita — hamstring-eksentrinen ilman GHR-penkkiä.", cue: "Mahdollisimman hidas lasku — hamstring jarruttaa koko matkan; lantio suorana (ei taita)" },
+  "Käsipaino-RDL": { howTo: "Käsipainot reisien edessä, polvet pehmeinä. Työnnä lantio taakse pitäen selkä neutraalina, laske painot sääriä pitkin täyteen takareisi-venytykseen, nouse lantio edellä. Hip-hinge ilman tankoa.", cue: "Lantio taakse, ei kyykkyä; käsipainot lähellä sääriä; venytä hamstring ala-asennossa" },
   "Hyperextensio": { howTo: "Hyperextension-laitteella tai romanialaisella penkillä: laskeudu kumarrukseen pyörittäen lantiosta, nouse takaisin vaakatasoon. Voi tehdä lisäpainolla rinnan päällä.", cue: "Älä yli-ojentaudu lannerangasta — pysähdy vaakatasoon" },
   "Dumbbell fly": { howTo: "Käsipainot kädessä penkille selälleen, kädet kaarena auki rinnan tasolle ja takaisin yhteen. Korostaa rinnan adductio-toimintoa. Sheikon accessory-konventio.", cue: "Kyynärpäät lievässä koukussa koko liikkeen ajan — älä suorista täysin" },
   "Power shrug": { howTo: "Maastaveton ylä-asennosta tehty räjähtävä shrugs (kohautus) lisäkuormalla. Trapezius + vetolihakset + lockout-räjähtävyys. Coan-Phillipi -ohjelman accessory.", cue: "Räjähtävä kohautus ylös, hidas alas — älä kierrä hartioita" },

@@ -74,8 +74,13 @@ export const FALLBACK_MOVEMENT_BANK = [
   { id: "fb_jm_press",              name: "JM press",                       category: "horisontaalityöntö", loadType: "external" },
   { id: "fb_rack_pull",             name: "Rack pull",                      category: "alaraaja",       loadType: "external" },
   { id: "fb_ghr",                   name: "Glute-Ham Raise",                category: "alaraaja",       loadType: "external" },
+  // Pilari 3 R5 (P2 kalusto): GHR-substituutit ilman laitetta/tankoa.
+  { id: "fb_nordic_ham",            name: "Nordic ham",                     category: "alaraaja",       loadType: "system" },
+  { id: "fb_db_rdl",                name: "Käsipaino-RDL",                  category: "lonkkahingaus",  loadType: "external" },
   { id: "fb_hyperextensio",         name: "Hyperextensio",                  category: "core",           loadType: "external" },
   { id: "fb_db_fly",                name: "Dumbbell fly",                   category: "horisontaalityöntö", loadType: "external" },
+  // Pilari 3 R5 (P2 kalusto): käsipaino-lattiapunnerrus — horisontaalityöntö ilman penkkiä (Käsipainopenkin substituutti).
+  { id: "fb_db_floor_press",        name: "Käsipainolattiapunnerrus",       category: "horisontaalityöntö", loadType: "external" },
   { id: "fb_power_shrug",           name: "Power shrug",                    category: "muu",            loadType: "external" },
   { id: "fb_bulgarian_split",       name: "Bulgarian split squat",          category: "alaraaja",       loadType: "external" },
   { id: "fb_walking_lunge",         name: "Walking lunge",                  category: "alaraaja",       loadType: "external" },
