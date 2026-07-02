@@ -1367,6 +1367,22 @@ function _injuryBlocksMovement(nameL, injuredAreas) {
     return injuryHit && b.movementKeywords.some(k => nameL.includes(k));
   });
 }
+// K3 (retroauditti): substituutio voi resolvoida useamman slotin SAMAAN liikkeeseen samalla päivällä
+// (cross-category-collision, esim. P2 dow5: T-bar row + Seated row + Penkkiveto → 3× Käsipainosoutu
+// erillisinä riveinä). Merge identtiset (category+name+reps+targetVx) ACCESSORY-rivit immutaabelisti
+// — eri reps/Vx jää erilleen (eri harjoitusärsyke). Ei mutatoi olemassa olevia slot-objekteja
+// (scaleWeekCount jakaa slot-viitteet viikkojen yli → in-place-mutaatio vuotaisi).
+function _pushMergedAccessory(acc, slot) {
+  if (slot.role !== "accessory") { acc.push(slot); return; }
+  const i = acc.findIndex(x => x.role === "accessory" && x.category === slot.category
+    && x.defaultMovementName === slot.defaultMovementName
+    && x.reps === slot.reps && (x.targetVx ?? null) === (slot.targetVx ?? null));
+  if (i === -1) { acc.push(slot); return; }
+  acc[i] = { ...acc[i], sets: (Number(acc[i].sets) || 0) + (Number(slot.sets) || 0),
+    _equipmentSubstituted: acc[i]._equipmentSubstituted || slot._equipmentSubstituted || undefined,
+    _injurySubstituted: acc[i]._injurySubstituted || slot._injurySubstituted || undefined };
+}
+
 // Apuliike-tason vamma-suodatin (post-process, ennen applyEquipmentFilter → kalusto validoi subin).
 export function applyInjuryFilter(weekPlans, q11_injuries, movementBank = FALLBACK_MOVEMENT_BANK) {
   const injuredAreas = _injuredAreas(q11_injuries);
@@ -1378,10 +1394,10 @@ export function applyInjuryFilter(weekPlans, q11_injuries, movementBank = FALLBA
     days: (wp.days || []).map(d => ({
       ...d,
       slots: (d.slots || []).reduce((acc, s) => {
-        if (!blocks(s.defaultMovementName)) { acc.push(s); return acc; }
+        if (!blocks(s.defaultMovementName)) { _pushMergedAccessory(acc, s); return acc; }
         // Vamma-alueen liike → substituoi same-category ei-estetty / pudota (rehellinen).
         const sub = bank.find(mv => mv && mv.category === s.category && mv.id !== "fb_custom_other" && !blocks(mv.name));
-        if (sub) acc.push({ ...s, defaultMovementName: sub.name, variantName: null, _injurySubstituted: true });
+        if (sub) _pushMergedAccessory(acc, { ...s, defaultMovementName: sub.name, variantName: null, _injurySubstituted: true });
         return acc;
       }, []),
     })),
@@ -2195,12 +2211,13 @@ export function applyEquipmentFilter(weekPlans, q17Equipment, movementBank = FAL
       ...d,
       slots: d.slots.reduce((acc, s) => {
         if (s.role !== "accessory") { acc.push(s); return acc; }
-        if (isMovementPerformable(s.defaultMovementName, null, s.category, eqSet)) { acc.push(s); return acc; }
+        if (isMovementPerformable(s.defaultMovementName, null, s.category, eqSet)) { _pushMergedAccessory(acc, s); return acc; }
         const sub = findSub(s.category);
         // Pilari 3 R2 (E): substituutti saa OMAN kategoriansa (sub.category) — EI slotin vanhaa leimaa.
         // Korjaa (b)-regression: cross-category-substituutti merkittiin väärin slotin kategorialla
         // (esim. Lisäpainoleuanveto@horisontaaliveto). Same-category-tapaus: sub.category === s.category.
-        if (sub) acc.push({ ...s, defaultMovementName: sub.name, category: sub.category, variantName: null, _equipmentSubstituted: true });
+        // K3: merge identtiset substituutti-rivit (3× Käsipainosoutu 2×10 → 1 rivi).
+        if (sub) _pushMergedAccessory(acc, { ...s, defaultMovementName: sub.name, category: sub.category, variantName: null, _equipmentSubstituted: true });
         // ei substituuttia → pudota slot (viimeinen keino)
         return acc;
       }, []),
@@ -3408,6 +3425,17 @@ export function selfTestMapper() {
   const k4F = applyHypertrophyMevFloor(k4WP, [{ week: 1, deltaPctBase: 0 }], "hypertrophy", null, ["dumbbells"], []);
   const k4Added = k4F[0].days[0].slots.find(s => s._mevAdded);
   ck("K4: _mevAdded perii viikon targetVx:n (V0, ei V2)", !!k4Added && k4Added.targetVx === 0);
+  // K3: cross-category-collision → identtiset substituutti-rivit mergeytyvät; eri reps jää erilleen.
+  const k3WP = [{ week: 1, days: [{ slots: [
+    { role: "accessory", category: "horisontaaliveto", defaultMovementName: "T-bar row", sets: 2, reps: 10, targetVx: 2 },
+    { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Seated row", sets: 2, reps: 10, targetVx: 2 },
+    { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 2, reps: 15, targetVx: 2 },
+  ] }] }];
+  const k3F = applyEquipmentFilter(k3WP, ["dumbbells", "pullup_bar"])[0].days[0].slots;
+  const k3Rows = k3F.filter(s => s.defaultMovementName === "Käsipainosoutu");
+  ck("K3: 3 törmäävää substituutiota → 2 riviä (2×10+2×10 merge → 4×10; 2×15 erillään)",
+     k3Rows.length === 2 && k3Rows.some(s => s.sets === 4 && s.reps === 10) && k3Rows.some(s => s.sets === 2 && s.reps === 15));
+  ck("K3: volyymi säilyy mergeissä (6 sarjaa)", k3Rows.reduce((a, s) => a + s.sets, 0) === 6);
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
