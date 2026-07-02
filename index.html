@@ -4099,6 +4099,7 @@ async function handleGenerateProgram() {
 
   // 6. Generoi mesocycle (single- tai multi-blokki riippuen mapped.isMultiBlock:sta)
   let newMeso;
+  let volAdvisoryPostPreview = null; // K2: MEV/aikabudjetti-advisory (laskettu post-preview → toast aktivoinnin jälkeen)
   try {
     if (mapped.isMultiBlock) {
       newMeso = generateMultiBlockMesocycle(mapped, mapped.startDateISO);
@@ -4153,8 +4154,11 @@ async function handleGenerateProgram() {
     newMeso.weekPlans = applySessionFocusLabels(newMeso.weekPlans);
     // Pilari 3 R3 (P2): komposiitti-advisory POST-B — jos aikabudjetti trimmasi MEV-flooratun
     // lihasryhmän alle tavoitteen, kerro se (ei pakoteta volyymia yli kapasiteetin).
-    const _volAdv = mevTimeBudgetAdvisory(newMeso.weekPlans, newMeso.weekDefs, wizardConfig.answers?.q12_primaryGoal, mapped._wizardMeta?._capacityTriggers);
-    if (_volAdv && mapped._wizardMeta) mapped._wizardMeta.goalConflictAdvisory = [mapped._wizardMeta.goalConflictAdvisory, _volAdv].filter(Boolean).join(" ");
+    // K2 (retroauditti): lasketaan preview-modaalin SULKEUDUTTUA → talteen funktioscope-muuttujaan
+    // ja surfataan post-aktivointi-toastina (aiemmin tallentui vain customConfigiin = kuollut data,
+    // atletti sai vajaavolyymisen ohjelman ilman mitään ilmoitusta).
+    volAdvisoryPostPreview = mevTimeBudgetAdvisory(newMeso.weekPlans, newMeso.weekDefs, wizardConfig.answers?.q12_primaryGoal, mapped._wizardMeta?._capacityTriggers);
+    if (volAdvisoryPostPreview && mapped._wizardMeta) mapped._wizardMeta.goalConflictAdvisory = [mapped._wizardMeta.goalConflictAdvisory, volAdvisoryPostPreview].filter(Boolean).join(" ");
     // 2C-γ: Tier-pohjainen progressiokerroin weekDef.deltaPctBase:lle.
     // Säätää vk 2-3 progressionopeutta (vk 1 akklimatisaatio + vk 4 deload
     // säilyvät). Lähde: Latella 2020 + Nuckols SBS, EMPIRINEN — yksilövaihtelu
@@ -4244,6 +4248,10 @@ async function handleGenerateProgram() {
   if (!snapshotName) parts.push("snapshot epäonnistui");
   const extraMsg = parts.length > 0 ? ` (${parts.join(", ")})` : "";
   showToast(`Räätälöity ohjelma aktivoitu ✓${extraMsg}`, "ok", 6000);
+  // K2 (retroauditti): MEV/aikabudjetti-advisory näkyväksi — lasketaan vasta materialisaation
+  // jälkeen (preview-modaali jo kiinni), joten ainoa rehellinen surface on post-aktivointi-toast.
+  // Toastit stackaavat (appendChild) → tämä näkyy onnistumis-toastin rinnalla, pidempään.
+  if (volAdvisoryPostPreview) showToast(`ℹ ${volAdvisoryPostPreview}`, "", 12000);
 }
 
 function renderDashboard() {
