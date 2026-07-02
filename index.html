@@ -4473,6 +4473,14 @@ function renderDashboard() {
     : "";
   const warmupLineHTML = warmupBlockHTML; // alias säilytys (käytetty alempana)
 
+  // K1-E4 (OBS-H): todaySession/dayAlreadyDone lasketaan ENNEN slot-rivejä, jotta valmis päivä
+  // voi renderöidä TOTEUMAN suunnitelman sijaan. (Sama logiikka kuin alempana CTA:lle — siirretty
+  // ylös; alempi käyttö lukee näitä samoja muuttujia.)
+  const todaySession = (state.sessions || []).find(s =>
+    (s.dateISO || "") === today && !s.isPlanOverride
+  );
+  const dayAlreadyDone = !!todaySession && !state.planOverrideDateISO;
+
   let slotRowsHTML = "";
   if (slots.length > 0) {
     slotRowsHTML = slots.map((slot, i) => {
@@ -4565,6 +4573,37 @@ function renderDashboard() {
         </div>
       </div>`;
     }).join("");
+  }
+
+  // K1-E4 (OBS-H, retro-kenttä): valmis päivä → kortti näyttää TOTEUMAN (kirjatut sarjat),
+  // ei suunnitelmaa. Aiemmin plan-slotit renderöityivät ehdoitta myös valmiin päivän jälkeen →
+  // atletti näki painoja joita ei tehnyt. Kirjauspolku + Historia olivat jo oikein (A1-verifioitu)
+  // — tämä vaihtaa vain kortin datalähteen. Ei-valmis päivä: ennallaan (bit-exact).
+  if (dayAlreadyDone && todaySession) {
+    const doneSets = (state.allSets || [])
+      .filter(s => s.sessionId === todaySession.sessionId
+        && s.setRole !== "warmup" && s.setRole !== "skipped" && s.setRole !== "readiness_test")
+      .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+    if (doneSets.length > 0) {
+      const byMove = [];
+      for (const s of doneSets) {
+        let g = byMove.find(x => x.movementId === s.movementId);
+        if (!g) { g = { movementId: s.movementId, sets: [] }; byMove.push(g); }
+        g.sets.push(s);
+      }
+      slotRowsHTML = `<div class="muted" style="font-size:11px;letter-spacing:0.5px;padding:2px 0 6px">✔ TOTEUMA — kirjatut sarjat</div>` +
+        byMove.map(g => {
+          const mov = (state.movements || []).find(m => m.movementId === g.movementId);
+          const setsStr = g.sets.map(s => {
+            const vx = (s.actualVx === null || s.actualVx === undefined) ? "" : ` V${s.actualVx}`;
+            return `${s.externalLoadKg ?? 0} kg×${s.reps ?? 0}${vx}`;
+          }).join(" · ");
+          return `<div class="slot-row">
+            <div class="slot-main"><div class="slot-name">${escapeHtml(mov?.name || "?")}</div></div>
+            <div class="slot-detail"><div class="slot-sets">${setsStr}</div></div>
+          </div>`;
+        }).join("");
+    }
   }
 
   const breakHTML = rec?.breakInfo
@@ -4665,10 +4704,8 @@ function renderDashboard() {
   // plania) EI saa blokata oman päivän todellista treeniä. Käyttäjä raportoi: täytti TODAY:nä
   // Ma-päivän plania → CTA lukittui "TÄNÄÄN TEHTY" → ei voinut tehdä todellista TO-treeniä.
   // Korjaus: jos session.isPlanOverride === true, sitä EI lasketa "oman päivän tehdyksi".
-  const todaySession = (state.sessions || []).find(s =>
-    (s.dateISO || "") === today && !s.isPlanOverride
-  );
-  const dayAlreadyDone = !!todaySession && !state.planOverrideDateISO;
+  // K1-E4: todaySession + dayAlreadyDone deklaroidaan nyt YLEMPÄNÄ (ennen slot-rivejä) —
+  // sama logiikka, jaettu toteuma-renderin kanssa.
   const ctaLabel = dayAlreadyDone
     ? "✅ TÄNÄÄN TEHTY"
     : (deloadMode ? "▶ ALOITA KEVENNYS" : "▶ ALOITA TREENI");
@@ -4716,7 +4753,7 @@ function renderDashboard() {
       <div class="hero-sub">${heroSub}</div>
 
       ${slots.length > 0
-        ? `<div class="slot-list">${warmupLineHTML}${slotRowsHTML}</div>`
+        ? `<div class="slot-list">${dayAlreadyDone ? "" : warmupLineHTML}${slotRowsHTML}</div>`
         : '<div class="slot-list"><div class="muted" style="text-align:center;padding:8px 0">Ei ohjelmaa — aloita mesosykli</div></div>'}
 
       <button class="primary-cta${deloadMode ? " deload" : ""}${dayAlreadyDone ? " done" : ""}" id="btn-start-workout"${slots.length === 0 || dayAlreadyDone ? " disabled" : ""}>
