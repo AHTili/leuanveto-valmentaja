@@ -70,8 +70,9 @@ Esimerkki (8a, opittava parametri):
 
 1. `node tools/engine-pilot/lib/smoke-test.mjs` — sanity check
 2. `node tools/engine-pilot/run-pilot.mjs --profile=akseli-elite-streetlifter --scenario=full-16w` — bittitarkka regressio
+3. `node tools/wizard-pilot.mjs` — wizard-materialisaation rakenteelliset invariantit (11 profiilia: kalusto/MEV/cap/alaraaja/primaarit/duplikaatit; K5, retroauditti — engine-pilot + selaintestit ovat sokeita tälle pinnalle)
 
-Jos jompikumpi epäonnistuu (exit ≠ 0), hook palauttaa `exit 1` → Claude jatkaa työskentelyä eikä voi pinnata "valmis":ksi.
+Jos mikä tahansa epäonnistuu (exit ≠ 0), hook palauttaa `exit 1` → Claude jatkaa työskentelyä eikä voi pinnata "valmis":ksi.
 
 Selain-tasoiset testit (`?test=1`, 586 testitapausta) ajetaan manuaalisesti tai osana laajempaa /goal-kierrosta — niitä ei voi ajaa CLI:stä ilman headless-selainta.
 

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node tools/engine-pilot/lib/smoke-test.mjs > /tmp/leve-smoke.log 2>&1 && node tools/engine-pilot/run-pilot.mjs --profile=akseli-elite-streetlifter --scenario=full-16w > /tmp/leve-pilot.log 2>&1 && echo 'STOP HOOK OK: smoke + Akseli pilot passed' || { echo 'STOP HOOK FAILED — see /tmp/leve-smoke.log and /tmp/leve-pilot.log'; tail -30 /tmp/leve-smoke.log; tail -30 /tmp/leve-pilot.log; exit 1; }"
+            "command": "node tools/engine-pilot/lib/smoke-test.mjs > /tmp/leve-smoke.log 2>&1 && node tools/engine-pilot/run-pilot.mjs --profile=akseli-elite-streetlifter --scenario=full-16w > /tmp/leve-pilot.log 2>&1 && node tools/wizard-pilot.mjs > /tmp/leve-wizard-pilot.log 2>&1 && echo 'STOP HOOK OK: smoke + Akseli pilot + wizard-pilot passed' || { echo 'STOP HOOK FAILED — see /tmp/leve-smoke.log, /tmp/leve-pilot.log, /tmp/leve-wizard-pilot.log'; tail -30 /tmp/leve-smoke.log; tail -30 /tmp/leve-pilot.log; tail -30 /tmp/leve-wizard-pilot.log; exit 1; }"
           }
         ]
       }

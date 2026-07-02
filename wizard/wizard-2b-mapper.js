@@ -2091,9 +2091,14 @@ export function applySplitFilter(weekPlans, splitPref) {
       }
       if (!allowedCats) return d;
 
-      // Suodata accessory-slotit, säilytä primary/backoff/warmup/opener/attempt
+      // Suodata accessory-slotit, säilytä primary/backoff/warmup/opener/attempt.
+      // K5-pilotin löydös (retroauditti): _demotedPrimary SUOJATTU — D-takuu (R2, "ei katoavaa
+      // primaaria") injektoi ylimääräisen primaarin accessoryksi; splitFilter pudotti sen väärän
+      // kategorian päivällä (P7 vk4 deload, 2 päivää → Maastaveto katosi). Sama suojausluokka kuin
+      // _lowerBodyGuaranteed aikabudjetti-capissa.
       const filteredSlots = d.slots.filter(s => {
         if (s.role !== "accessory") return true;
+        if (s._demotedPrimary) return true;
         return allowedCats.includes(s.category);
       });
       return { ...d, slots: filteredSlots };
@@ -3436,6 +3441,15 @@ export function selfTestMapper() {
   ck("K3: 3 törmäävää substituutiota → 2 riviä (2×10+2×10 merge → 4×10; 2×15 erillään)",
      k3Rows.length === 2 && k3Rows.some(s => s.sets === 4 && s.reps === 10) && k3Rows.some(s => s.sets === 2 && s.reps === 15));
   ck("K3: volyymi säilyy mergeissä (6 sarjaa)", k3Rows.reduce((a, s) => a + s.sets, 0) === 6);
+  // K5-pilotin löydös: splitFilter EI pudota D-takuun demotattua primaaria väärän kategorian päivällä.
+  const k5WP = [{ week: 1, days: [{ slots: [
+    { role: "primary",   category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 5, targetVx: 2 },
+    { role: "accessory", category: "lonkkahingaus", defaultMovementName: "Maastaveto", sets: 3, reps: 6, targetVx: 3, _demotedPrimary: true },
+    { role: "accessory", category: "alaraaja", defaultMovementName: "Bulgarian split squat", sets: 3, reps: 8, targetVx: 3 },
+  ] }] }];
+  const k5F = applySplitFilter(k5WP, "upper_lower")[0].days[0].slots;
+  ck("K5: splitFilter säilyttää _demotedPrimary-slotin (D-takuu, P7 vk4)", k5F.some(s => s._demotedPrimary && s.defaultMovementName === "Maastaveto"));
+  ck("K5: splitFilter suodattaa yhä tavallisen väärän kategorian accessoryn", !k5F.some(s => s.defaultMovementName === "Bulgarian split squat"));
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
