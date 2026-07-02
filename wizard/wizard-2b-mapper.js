@@ -2293,6 +2293,10 @@ export function applyTimeBudgetCap(weekPlans, q24_frequency, goal) {
 const _HYP_FLOOR_CATEGORIES = new Set(["horisontaalityöntö", "vertikaalityöntö", "horisontaaliveto", "vertikaaliveto", "alaraaja", "lonkkahingaus"]);
 const HYP_MEV_SETS = 10;
 const HYP_PER_MOVEMENT_CAP = 6; // R4 (P2-jakautuminen): max sarjaa/liike — estä yhden liikkeen kasauma (HSPU 10×15)
+// K1b (retroauditti): deload-tunnistus. Pelkkä deltaPctBase < 0 luokitteli hypertrofia-tyylin
+// vk1 (−0.10) / vk2 (−0.05) — tarkoituksellisen kevyen volyymipohjan — deloadiksi → floor ohitti ne.
+// Tutkimusankkuri: deload Δ% on −20…−30 % (Helms 2018, ks. docs/TUTKIMUS_INVARIANTIT.md) → kynnys −0.20.
+const HYP_DELOAD_DELTA = -0.20;
 const _dayLoad = d => (d.slots || []).reduce((a, x) => a + (Number(x.sets) || 0), 0);
 // R4: jaa vaje round-robin OLEMASSA oleville liikkeille per-liike-katolla; jos lihasryhmä ei mahduta
 // targetia katon sisään → LISÄÄ liike samalle lihasryhmälle saatavilla olevasta katalogista/kalustosta
@@ -2321,8 +2325,13 @@ function _distributeMevDeficit(days, deficit, eqSet, injuredAreas, bank) {
       cands.sort((a, b) => _eqCost(a, eqSet || new Set()) - _eqCost(b, eqSet || new Set()));
       for (let i = 0; capacity() < target && i < cands.length; i++) {
         const day = catDays.reduce((min, d) => _dayLoad(d) < _dayLoad(min) ? d : min, catDays[0]); // säilytä split + tasaa freq
+        // K4 (retroauditti): peri viikon intensiteetti kohdepäivän saman kategorian slotista (fallback:
+        // kategorian 1. slotti) — EI kovakoodattua V2:ta joka riiteli esim. minimalistRP-vk3:n V0:n kanssa.
+        const ref = (day.slots || []).find(s => s.category === cat && typeof s.targetVx === "number")
+          || entries.find(e => typeof e.s.targetVx === "number")?.s;
         const ns = { role: "accessory", category: cat, defaultMovementName: cands[i].name,
-          sets: 0, reps: 10, targetVx: 2, variantName: null, _mevFloored: true, _mevAdded: true };
+          sets: 0, reps: (ref && ref.reps) || 10, targetVx: (ref && typeof ref.targetVx === "number") ? ref.targetVx : 2,
+          variantName: null, _mevFloored: true, _mevAdded: true };
         day.slots.push(ns);
         entries.push({ s: ns, d: day });
         used.add(cands[i].name);
@@ -2347,9 +2356,18 @@ function _distributeMevDeficit(days, deficit, eqSet, injuredAreas, bank) {
 // R4: levitä per-(sessio×liike) ylivuoto (>katto) saman kategorian TOISEEN sessioon (sama liike,
 // toinen päivä) → ≤katto/sessio ILMAN volyymin pudotusta. Korjaa myös E-artefaktin (sama liike
 // duplikaatti-sloteissa samalla päivällä, esim. 3× Käsipainosoutu = 9). Volyymineutraali.
+// K1 (retroauditti): VAIN role==="accessory" — primaari/backoff (template-top-set + backoff -rakenne,
+// esim. hypertrofia-tyylin Lisäpainoleuanveto primary 5 + backoff 3) on tyylitehtaan tarkoituksellista
+// designia, EI floorin toimivaltaa. Ennen: ylivuoto trimmasi backoffin ja mergesi toisen päivän
+// PRIMAARIIN (ilman flagia, aikabudjetti-suojattu → lukittu inflaatio).
 function _spreadOverCap(newDays, categories) {
   const CAP = HYP_PER_MOVEMENT_CAP;
   const catDaysOf = cat => newDays.filter(d => (d.slots || []).some(s => s.category === cat));
+  // Kohdepäivän tila lasketaan KAIKISTA rooleista (ettei accessory-levitys kasaa samaa liikettä
+  // päivälle jossa se on jo primaarina), mutta lähde/merge-kohde on aina accessory.
+  const dayMoveTotalAllRoles = (d, cat, name) => (d.slots || [])
+    .filter(s => s.category === cat && s.defaultMovementName === name)
+    .reduce((a, s) => a + (Number(s.sets) || 0), 0);
   for (const cat of categories) {
     if (catDaysOf(cat).length <= 1) continue; // ei toista sessiota mihin levittää
     let changed = true, guard = 0;
@@ -2357,22 +2375,20 @@ function _spreadOverCap(newDays, categories) {
       changed = false;
       for (const d of catDaysOf(cat)) {
         const byMove = {};
-        for (const s of d.slots) if (s.category === cat) (byMove[s.defaultMovementName] = byMove[s.defaultMovementName] || []).push(s);
+        for (const s of d.slots) if (s.category === cat && s.role === "accessory") (byMove[s.defaultMovementName] = byMove[s.defaultMovementName] || []).push(s);
         for (const [name, slots] of Object.entries(byMove)) {
           const tot = slots.reduce((a, s) => a + (Number(s.sets) || 0), 0);
           if (tot <= CAP) continue;
-          const dst = catDaysOf(cat).filter(x => x !== d).map(x => {
-            const xt = (x.slots || []).filter(s => s.category === cat && s.defaultMovementName === name).reduce((a, s) => a + (Number(s.sets) || 0), 0);
-            return { x, room: CAP - xt };
-          }).filter(o => o.room > 0).sort((a, b) => b.room - a.room)[0];
+          const dst = catDaysOf(cat).filter(x => x !== d).map(x => ({ x, room: CAP - dayMoveTotalAllRoles(x, cat, name) }))
+            .filter(o => o.room > 0).sort((a, b) => b.room - a.room)[0];
           if (!dst) continue; // ei tilaa toisessa sessiossa → jätä (mevTimeBudgetAdvisory nappaa jos < MEV)
           const move = Math.min(tot - CAP, dst.room);
           let toCut = move;
           for (let i = slots.length - 1; i >= 0 && toCut > 0; i--) { const c = Math.min(Number(slots[i].sets) || 0, toCut); slots[i].sets -= c; toCut -= c; }
-          const ts = (dst.x.slots || []).find(s => s.category === cat && s.defaultMovementName === name);
+          const ts = (dst.x.slots || []).find(s => s.category === cat && s.defaultMovementName === name && s.role === "accessory");
           if (ts) ts.sets = (Number(ts.sets) || 0) + move;
           else dst.x.slots.push({ role: "accessory", category: cat, defaultMovementName: name, sets: move, reps: slots[0].reps || 10, targetVx: slots[0].targetVx ?? 2, variantName: null, _mevFloored: true, _mevSpread: true });
-          d.slots = d.slots.filter(s => !(s.category === cat && s.defaultMovementName === name && (Number(s.sets) || 0) === 0));
+          d.slots = d.slots.filter(s => !(s.category === cat && s.defaultMovementName === name && s.role === "accessory" && (Number(s.sets) || 0) === 0));
           changed = true;
         }
         if (changed) break; // d.slots muuttui → uudelleenlaske catDays
@@ -2389,15 +2405,16 @@ export function applyHypertrophyMevFloor(weekPlans, weekDefs, q12PrimaryGoal, tr
   const injuredAreas = _injuredAreas(q11Injuries);
   const bank = (Array.isArray(movementBank) && movementBank.length) ? movementBank : FALLBACK_MOVEMENT_BANK;
   const deloadWeeks = new Set((Array.isArray(weekDefs) ? weekDefs : [])
-    .filter(wd => typeof wd.deltaPctBase === "number" && wd.deltaPctBase < 0).map(wd => wd.week));
+    .filter(wd => typeof wd.deltaPctBase === "number" && wd.deltaPctBase <= HYP_DELOAD_DELTA).map(wd => wd.week));
   const catTotal = (wp, cat) => (wp.days || []).reduce((s, d) =>
     s + (d.slots || []).filter(x => x.category === cat).reduce((a, x) => a + (Number(x.sets) || 0), 0), 0);
   const working = weekPlans.filter(wp => !deloadWeeks.has(wp.week));
   if (working.length === 0) return weekPlans;
-  // Onko jotain tehtävää? (alittava päälihas TAI per-(sessio×liike) ylivuoto) → muuten no-op.
+  // Onko jotain tehtävää? (alittava päälihas TAI per-(sessio×liike) ACCESSORY-ylivuoto) → muuten no-op.
+  // K1: ylivuototunnistus vain accessoryille — primaari+backoff-rakenne ei laukaise floor-ajoa.
   const anyWork = working.some(wp => {
     let over = false;
-    (wp.days || []).forEach(d => { const dm = {}; (d.slots || []).forEach(s => { if (_HYP_FLOOR_CATEGORIES.has(s.category)) dm[s.category + "|" + s.defaultMovementName] = (dm[s.category + "|" + s.defaultMovementName] || 0) + (Number(s.sets) || 0); }); if (Object.values(dm).some(v => v > HYP_PER_MOVEMENT_CAP)) over = true; });
+    (wp.days || []).forEach(d => { const dm = {}; (d.slots || []).forEach(s => { if (_HYP_FLOOR_CATEGORIES.has(s.category) && s.role === "accessory") dm[s.category + "|" + s.defaultMovementName] = (dm[s.category + "|" + s.defaultMovementName] || 0) + (Number(s.sets) || 0); }); if (Object.values(dm).some(v => v > HYP_PER_MOVEMENT_CAP)) over = true; });
     return over || [..._HYP_FLOOR_CATEGORIES].some(cat => { const h = catTotal(wp, cat); return h > 0 && h < HYP_MEV_SETS; });
   });
   if (!anyWork) return weekPlans;                                   // jo MEV:ssä + ei kasaumaa → no-op
@@ -2426,7 +2443,7 @@ export function mevTimeBudgetAdvisory(weekPlans, weekDefs, q12PrimaryGoal, trigg
   if (q12PrimaryGoal !== "hypertrophy" || (triggers && triggers.recoveryLimited)) return null;
   if (!Array.isArray(weekPlans)) return null;
   const deloadWeeks = new Set((Array.isArray(weekDefs) ? weekDefs : [])
-    .filter(wd => typeof wd.deltaPctBase === "number" && wd.deltaPctBase < 0).map(wd => wd.week));
+    .filter(wd => typeof wd.deltaPctBase === "number" && wd.deltaPctBase <= HYP_DELOAD_DELTA).map(wd => wd.week));
   let short = false;
   for (const wp of weekPlans) {
     if (deloadWeeks.has(wp.week)) continue;
@@ -3362,6 +3379,35 @@ export function selfTestMapper() {
   const spreadF = applyHypertrophyMevFloor(spreadWP, [{ week: 1, deltaPctBase: 0 }], "hypertrophy", null, ["dumbbells"], [])[0].days;
   const maxSessMove = Math.max(...spreadF.map(d => d.slots.filter(s => s.category === "horisontaaliveto").reduce((a, s) => a + s.sets, 0)));
   ck("P2 MEV R4: duplikaatti-kasauma (9) levittyy ≤6/sessio", maxSessMove <= HYP_PER_MOVEMENT_CAP);
+
+  // ─── 5n. Retroauditti K1/K1b/K4: floor-perheen rajaukset ──────────────
+  // K1: primaari+backoff (template-top-set-rakenne, sama liike) EI laukaise flooria eikä spread kosketa sitä.
+  const k1WP = [
+    { week: 1, days: [
+      { slots: [
+        { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 6, targetVx: 2 },
+        { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 10, targetVx: 3 } ] },
+      { slots: [
+        { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 6, targetVx: 2 } ] } ] },
+  ];
+  const k1F = applyHypertrophyMevFloor(k1WP, [{ week: 1, deltaPctBase: 0 }], "hypertrophy", null, ["pullup_bar", "dumbbells"], []);
+  const k1Slots = k1F[0].days.flatMap(d => d.slots).filter(s => s.role !== "accessory");
+  ck("K1: primaari+backoff 5/3/5 säilyy koskemattomana (spread ei mergeä primaariin)",
+     k1Slots.length === 3 && k1Slots[0].sets === 5 && k1Slots[1].sets === 3 && k1Slots[2].sets === 5 && !k1Slots.some(s => s._mevFloored || s._mevSpread));
+  // K1b: kevyt työviikko (−0.10) EI ole deload → floor nostaa; aito deload (−0.25) ohitetaan.
+  const k1bWP = () => [{ week: 1, days: [{ slots: [
+    { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Käsipainolattiapunnerrus", sets: 4, reps: 10, targetVx: 2 } ] }] }];
+  const k1bLight = applyHypertrophyMevFloor(k1bWP(), [{ week: 1, deltaPctBase: -0.10 }], "hypertrophy", null, ["dumbbells"], []);
+  const k1bDeload = applyHypertrophyMevFloor(k1bWP(), [{ week: 1, deltaPctBase: -0.25 }], "hypertrophy", null, ["dumbbells"], []);
+  const catSum = wp => wp[0].days.flatMap(d => d.slots).filter(s => s.category === "horisontaalityöntö").reduce((a, s) => a + s.sets, 0);
+  ck("K1b: −0.10 = kevyt TYÖviikko → floor nostaa ≥10", catSum(k1bLight) >= HYP_MEV_SETS);
+  ck("K1b: −0.25 = aito deload → floor ohittaa (4 säilyy)", catSum(k1bDeload) === 4);
+  // K4: lisätty liike perii kohdepäivän intensiteetin (V0), ei kovakoodattua V2:ta.
+  const k4WP = [{ week: 1, days: [{ slots: [
+    { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Handstand push-up (HSPU)", sets: 2, reps: 10, targetVx: 0 } ] }] }];
+  const k4F = applyHypertrophyMevFloor(k4WP, [{ week: 1, deltaPctBase: 0 }], "hypertrophy", null, ["dumbbells"], []);
+  const k4Added = k4F[0].days[0].slots.find(s => s._mevAdded);
+  ck("K4: _mevAdded perii viikon targetVx:n (V0, ei V2)", !!k4Added && k4Added.targetVx === 0);
 
   // ─── 6. pickPreferredDaysOfWeek ────────────────────────────────────
   ck("pickPreferredDaysOfWeek: 3 → [1,3,5]",
