@@ -26,7 +26,7 @@ import { WIZARD_PROFILES as profiles } from "./wizard-profiles.mjs"; // K5: jaet
 
 const GEN_DATE = "2026-06-14"; // ohjelmien startDate-ankkuri (vakio → vertailukelpoisuus; EI dumpin generointipäivä)
 const DUMP_DATE = "2026-07-01"; // dumpin re-generointipäivä (header) — eri kuin start-ankkuri
-const APP_VERSION = "4.52.53";  // pidä synkassa sw.js APP_VERSION:in kanssa (header-tuoreusportti)
+const APP_VERSION = "4.52.54";  // pidä synkassa sw.js APP_VERSION:in kanssa (header-tuoreusportti)
 
 // ─────────────────────────────────────────────────────────────────────────
 // 11 PROFIILIA — 33Q-vektorit. neutralNotes = persona ei määritä → neutraali/tyypillinen.
@@ -163,7 +163,7 @@ function fmtVector(r) {
 const okCount = results.filter(r => !r.error).length;
 let md = `# Wizard-dumppi — ${profiles.length} profiilia (KAPSTONI pilari 3, W1-standardi)
 
-> **POST-FIX RE-DUMPPI — round 5b (P8 kalustovirhe)**. Generoitu ${DUMP_DATE} · APP_VERSION ${APP_VERSION} ·
+> **POST-FIX RE-DUMPPI — retroauditti K1–K6**. Generoitu ${DUMP_DATE} · APP_VERSION ${APP_VERSION} ·
 > ohjelmien start-ankkuri ${GEN_DATE}. Ajettu repon oikealla Wizard-mapperilla
 > (\`wizard/wizard-2b-mapper.js\` \`mapWizardToProgram\`) + mesosykligeneraattorilla (\`data.js\`) +
 > KORJATULLA post-process-pipelinella (\`applySplitFilter\` → \`applyVolumeCap\` → \`applyInjuryFilter\` →
@@ -181,6 +181,10 @@ let md = `# Wizard-dumppi — ${profiles.length} profiilia (KAPSTONI pilari 3, W
 > Nordic ham / käsipaino-RDL) → yksikään liike ei vaadi q17:stä puuttuvaa kalustoa. Muuttaa P2/P8/P9/P11 (kalustorajoitteiset).
 > Round 5b (P8 kalustovirhe): Lisäpainoleuanveto/dippi → painolähde-proxy (leukatanko/dip + käsipaino/tanko/laite); P8 (pelkkä
 > leukatanko) → Leuanveto (kehonpaino). BOUNDED SCAN: kaikkien 11 profiilin liikkeet ↔ q17 → 11/11 puhdas (ei kalustorikkomuksia).
+> Retroauditti K1–K6 (pilari 3 suljettu → jälkiauditti): MEV-floor-rajaukset (spread vain accessoryihin — primaari/backoff
+> koskematon; deload-kynnys −0.20; lisätty liike perii viikon Vx:n) · duplikaatti-rivien merge (equipment+injury) · MEV-advisory
+> post-aktivointi-toastiksi · UUSI assertoiva wizard-pilot Stop hookiin (löysi + korjasi: splitFilter pudotti demotatun primaarin
+> — P7 vk4 Maastaveto palautettu) · RDL-kerrosristiriita → OBS-044. Näkyy dumpissa: P2/P9 Vx-perintä + merge-rivit, P7 vk4.
 > mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
 >
 > **Tulos: ${okCount}/${profiles.length} profiilia generoitui onnistuneesti.** (P1–P8 W2-perusprofiilit + P9–P11 pilari 3 (b) kalusto-kattavuuslisäys.)

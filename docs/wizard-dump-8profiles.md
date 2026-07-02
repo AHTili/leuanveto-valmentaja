@@ -1,6 +1,6 @@
 # Wizard-dumppi — 11 profiilia (KAPSTONI pilari 3, W1-standardi)
 
-> **POST-FIX RE-DUMPPI — round 5b (P8 kalustovirhe)**. Generoitu 2026-07-01 · APP_VERSION 4.52.53 ·
+> **POST-FIX RE-DUMPPI — retroauditti K1–K6**. Generoitu 2026-07-01 · APP_VERSION 4.52.54 ·
 > ohjelmien start-ankkuri 2026-06-14. Ajettu repon oikealla Wizard-mapperilla
 > (`wizard/wizard-2b-mapper.js` `mapWizardToProgram`) + mesosykligeneraattorilla (`data.js`) +
 > KORJATULLA post-process-pipelinella (`applySplitFilter` → `applyVolumeCap` → `applyInjuryFilter` →
@@ -18,6 +18,10 @@
 > Nordic ham / käsipaino-RDL) → yksikään liike ei vaadi q17:stä puuttuvaa kalustoa. Muuttaa P2/P8/P9/P11 (kalustorajoitteiset).
 > Round 5b (P8 kalustovirhe): Lisäpainoleuanveto/dippi → painolähde-proxy (leukatanko/dip + käsipaino/tanko/laite); P8 (pelkkä
 > leukatanko) → Leuanveto (kehonpaino). BOUNDED SCAN: kaikkien 11 profiilin liikkeet ↔ q17 → 11/11 puhdas (ei kalustorikkomuksia).
+> Retroauditti K1–K6 (pilari 3 suljettu → jälkiauditti): MEV-floor-rajaukset (spread vain accessoryihin — primaari/backoff
+> koskematon; deload-kynnys −0.20; lisätty liike perii viikon Vx:n) · duplikaatti-rivien merge (equipment+injury) · MEV-advisory
+> post-aktivointi-toastiksi · UUSI assertoiva wizard-pilot Stop hookiin (löysi + korjasi: splitFilter pudotti demotatun primaarin
+> — P7 vk4 Maastaveto palautettu) · RDL-kerrosristiriita → OBS-044. Näkyy dumpissa: P2/P9 Vx-perintä + merge-rivit, P7 vk4.
 > mapper-versio 2D-gamma-v1.0. Mainappstate = null (synteettiset personat, ei DB-dataa).
 >
 > **Tulos: 11/11 profiilia generoitui onnistuneesti.** (P1–P8 W2-perusprofiilit + P9–P11 pilari 3 (b) kalusto-kattavuuslisäys.)
@@ -98,7 +102,7 @@
       · primary: Lisäpainoleuanveto — 4×10 @ V1 (vertikaaliveto)
       · accessory: Dumbbell fly — 5×10 @ V1 (horisontaalityöntö)
       · accessory: Handstand push-up (HSPU) — 6×15 @ V1 (vertikaalityöntö)
-      · accessory: Pystypunnerrus käsipainot — 4×10 @ V2 (vertikaalityöntö)
+      · accessory: Pystypunnerrus käsipainot — 4×15 @ V1 (vertikaalityöntö)
     Päivä (dow 2, volume) — fokus: Käsipainolattiapunnerrus:
       · primary: Käsipainolattiapunnerrus — 5×10 @ V1 (horisontaalityöntö)
       · accessory: Leuanveto (kehonpaino) — 3×10 @ V1 (vertikaaliveto)
@@ -110,8 +114,7 @@
       · accessory: Nordic ham — 3×12 @ V1 (alaraaja)
     Päivä (dow 5, volume) — fokus: Lisäpainoleuanveto:
       · primary: Lisäpainoleuanveto — 3×8 @ V1 (vertikaaliveto)
-      · accessory: Käsipainosoutu — 2×10 @ V1 (horisontaaliveto)
-      · accessory: Käsipainosoutu — 2×10 @ V1 (horisontaaliveto)
+      · accessory: Käsipainosoutu — 4×10 @ V1 (horisontaaliveto)
       · accessory: Käsipainosoutu — 2×15 @ V1 (horisontaaliveto)
       · accessory: Hanging leg raise — 2×12 @ — (core)
   **Viikko 4:**
@@ -130,8 +133,7 @@
       · accessory: Pohjenosto — 1×12 @ V4 (alaraaja)
     Päivä (dow 5, volume) — fokus: Lisäpainoleuanveto:
       · primary: Lisäpainoleuanveto — 1×8 @ V4 (vertikaaliveto)
-      · accessory: Käsipainosoutu — 1×10 @ V4 (horisontaaliveto)
-      · accessory: Käsipainosoutu — 1×10 @ V4 (horisontaaliveto)
+      · accessory: Käsipainosoutu — 2×10 @ V4 (horisontaaliveto)
       · accessory: Käsipainosoutu — 1×15 @ V4 (horisontaaliveto)
       · accessory: Hanging leg raise — 1×12 @ — (core)
   *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
@@ -562,6 +564,7 @@
       · primary: Penkkipunnerrus — 3×3 @ V4 (horisontaalityöntö)
       · accessory: Seated OHP — 3×8 @ V4 (vertikaalityöntö)
       · accessory: Skull crusher — 2×10 @ — (ojentajaekstensio)
+      · accessory: Maastaveto — 3×6 @ V3 (lonkkahingaus)
     Päivä (dow 3, volume) — fokus: Takakyykky:
       · primary: Takakyykky — 3×5 @ V4 (alaraaja)
       · accessory: Paused squat — 3×8 @ V4 (alaraaja)
@@ -633,7 +636,7 @@
       · accessory: Handstand push-up (HSPU) — 6×10 @ V1 (vertikaalityöntö)
       · accessory: Käsipainosoutu — 5×15 @ V1 (horisontaaliveto)
       · accessory: Skull crusher — 2×12 @ V1 (ojentajaekstensio)
-      · accessory: Pystypunnerrus käsipainot — 2×10 @ V2 (vertikaalityöntö)
+      · accessory: Pystypunnerrus käsipainot — 2×10 @ V1 (vertikaalityöntö)
     Päivä (dow 5, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 2×8 @ V1 (alaraaja)
       · accessory: Walking lunge — 2×10 @ V1 (alaraaja)
@@ -653,8 +656,7 @@
       · accessory: Käsipainosoutu — 1×15 @ V4 (horisontaaliveto)
     Päivä (dow 5, volume) — fokus: Bulgarian split squat:
       · primary: Bulgarian split squat — 1×8 @ V4 (alaraaja)
-      · accessory: Nordic ham — 1×10 @ V4 (alaraaja)
-      · accessory: Nordic ham — 1×10 @ V4 (alaraaja)
+      · accessory: Nordic ham — 2×10 @ V4 (alaraaja)
       · accessory: Nordic ham — 1×15 @ V4 (alaraaja)
       · accessory: Hanging leg raise — 1×12 @ — (core)
   *(vk 2…3 rakenne progressoituu weekDefs-ΔPct:n mukaan; näytetty vk 1 + vk 4)*
@@ -855,7 +857,7 @@
 - **goal:** multi-blokki [intensifikaatio → peaking] · **skeleton:** multi-block-chain · **weekCount:** 6
 - **Top-3 kandidaatit (confidence):**
     1. `multi-issurin` (Block-periodisaatio (Issurin)) — **conf 100**
-        rationale: Kisapäivä asetettu (60 pv) → riittävästi aikaa block-periodisaatiolle; Kisa-tavoite → multi-blokki on tieteellinen standardi (Issurin); Max-tavoite tukee perinteistä hyp→str→int→peak-sekvenssiä
+        rationale: Kisapäivä asetettu (59 pv) → riittävästi aikaa block-periodisaatiolle; Kisa-tavoite → multi-blokki on tieteellinen standardi (Issurin); Max-tavoite tukee perinteistä hyp→str→int→peak-sekvenssiä
     2. `single-westside-conjugate` (Westside Conjugate) — **conf 65**
         rationale: Max-tavoite + Westside-rotaatio sopivat klassiseen voimanostokontekstiin; Edistynyt taso vaaditaan — ME-rotaation viikoittainen vaihto + 1RM-singletkin; 4 päivää/vk → sopii suoraan ME-Lower/ME-Upper/DE-Lower/DE-Upper -jakoon
     3. `single-maksimivoima` (Maksimivoima-blokki) — **conf 58**
