@@ -17,6 +17,7 @@ import {
   computeMovementReload,
   // H-017 D1 (2026-06-14): intra-session-alaspäin-re-resolve (puhdas funktio)
   resolveIntraSessionAdjustedLoad,
+  resolveTopSingleReanchor,
   calibrateMesocycle,
   varaFeedback, varaTrendCorrection,
   // v4.34.34
@@ -869,6 +870,35 @@ function testIntraSessionReResolve() {
   // T9 — esiehto: ei valmiita pääsarjoja → ei säätöä (no-op).
   const t9 = resolveIntraSessionAdjustedLoad({ ...base, plannedLoadKg: 158.5, plannedPrimaryMedianKg: 162.5, actualLoads: [], actualReps: [], actualVx: [] });
   assertEqual(t9.adjusted, false, "H017-T9 (esiehto): ei pääsarjoja → no-op");
+}
+
+// K3-2 (OBS-F, 2026-07-03): ykkösen tulos re-ankkuroi työsarjat (heavy-first).
+// Kenttäcase: 172,5×1 V1 (e1RM 184) + työsarjat 167,5×3 V1 (implikoi ~190) eivät
+// kohtaa varojensa osalta. e1RM_single = Epley+Vara(load, 1, actualVx); johdettu =
+// e1RM × vReps(reps+Vx+allowance) — sama aritmetiikka kuin recommend()-primary-reitti.
+function testTopSingleReanchor() {
+  // T1 — kyykky-kenttäcase (barbell): 172,5×1 V1 → e1RM 184 → 5×3 V1 (allowance 1,0)
+  //   → vReps(5)=0,857 → 157,5. min(167,5; 157,5) = 157,5, alaspäin.
+  const t1 = resolveTopSingleReanchor({ singleLoadKg: 172.5, singleActualVx: 1, isBarbell: true, bodyweightKg: 91, plannedLoadKg: 167.5, targetReps: 3, targetVx: 1, workSetsCount: 5 });
+  assertEqual(t1.adjusted, true, "K32-T1: raskas single → työsarjat re-ankkuroituvat alas");
+  assertClose(t1.finalLoadKg, 157.5, 0.01, "K32-T1: 167,5 → 157,5 (e1RM 184 × vReps(5))");
+  assertClose(t1.e1rmSingle, 184, 0.1, "K32-T1: e1RM_single = 172,5 × (1+2/30) = 184");
+
+  // T2 — leuka-kenttäcase (non-barbell): 80×1 V1 BW 91 → sys-e1RM 182,4 →
+  //   5×3 V1 → 182,4×0,857−91 = 65,5. min(73; 65,5) = 65,5.
+  const t2 = resolveTopSingleReanchor({ singleLoadKg: 80, singleActualVx: 1, isBarbell: false, bodyweightKg: 91, plannedLoadKg: 73, targetReps: 3, targetVx: 1, workSetsCount: 5 });
+  assertEqual(t2.adjusted, true, "K32-T2 (non-barbell): 80×1 V1 → työsarjat alas");
+  assertClose(t2.finalLoadKg, 65.5, 0.01, "K32-T2: 73 → 65,5 (BW-haara)");
+
+  // T3 — vain alaspäin: helppo single (V4, e1RM 201) → derived 172,5 ≥ suunniteltu 167,5
+  //   → EI nostoa (capacity bump hoitaa noston erikseen confirm-valinnalla).
+  const t3 = resolveTopSingleReanchor({ singleLoadKg: 172.5, singleActualVx: 4, isBarbell: true, bodyweightKg: 91, plannedLoadKg: 167.5, targetReps: 3, targetVx: 1, workSetsCount: 5 });
+  assertEqual(t3.adjusted, false, "K32-T3 (vain alaspäin): helppo single ei nosta työsarjoja");
+  assertEqual(t3.reason, "derived-not-lower", "K32-T3: syy = derived-not-lower");
+
+  // T4 — esiehdot: puuttuva single tai suunniteltu → no-op.
+  assertEqual(resolveTopSingleReanchor({ singleLoadKg: 0, singleActualVx: 1, isBarbell: true, bodyweightKg: 91, plannedLoadKg: 100, targetReps: 3, targetVx: 1, workSetsCount: 5 }).adjusted, false, "K32-T4a: ei singleä → no-op");
+  assertEqual(resolveTopSingleReanchor({ singleLoadKg: 172.5, singleActualVx: 1, isBarbell: true, bodyweightKg: 91, plannedLoadKg: 0, targetReps: 3, targetVx: 1, workSetsCount: 5 }).adjusted, false, "K32-T4b: ei suunniteltua → no-op");
 }
 
 // H-018 OSA 1 (OBS-040, 2026-06-13): e1RM-kortin kanoninen lähde-lukko.
@@ -4321,6 +4351,7 @@ export async function runTests() {
   testMovementReload();
   // H-017 D1: intra-session-alaspäin-re-resolve (puhdas funktio, mittari-ensin)
   testIntraSessionReResolve();
+  testTopSingleReanchor();
   // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
   testE1rmCardCanonicalSource();
   testE1rmCardPlanBasedGate();

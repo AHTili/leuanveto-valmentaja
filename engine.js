@@ -474,6 +474,54 @@ function resolveIntraSessionAdjustedLoad(p) {
 }
 
 /**
+ * K3-2 (retro-kenttä OBS-F) — ykkösen tulos re-ankkuroi työsarjat (VAIN alaspäin).
+ *
+ * Heavy-firstin koko pointti: top-single on tuorein maksimaalinen evidenssi päivän
+ * kapasiteetista. Kenttäcase: 172,5×1 V1 (e1RM ~184) + työsarjat 167,5×3 V1
+ * (implikoi e1RM ~190) eivät kohtaa varojensa osalta — työsarjat ohjelmoitu
+ * kapasiteetin yli. Valmentaja pudottaa työsarjat singlen osoittamaan tasoon.
+ *
+ * e1RM_single = Epley+Vara yhdestä toistosta: (BW+load) × (1 + (1+Vx)/30) [system]
+ * tai load × (1 + (1+Vx)/30) [barbell]. Johdettu työsarjakuorma = e1RM_single ×
+ * vReps(reps + Vx + across-set-allowance) — sama aritmetiikka kuin recommend()-
+ * primary-reitti (K3-1). PUHDAS funktio: UI-handler kutsuu, soveltaa min():llä ja tracaa.
+ *
+ * Vain alaspäin: helppo single (derived ≥ planned) → adjusted:false, ei nostoa
+ * (capacity bump -mekanismi hoitaa noston erikseen atletin confirm-valinnalla).
+ *
+ * @param {object} p
+ * @param {number}  p.singleLoadKg    — toteutuneen ykkösen ulkokuorma
+ * @param {number}  p.singleActualVx  — ykkösen actualVx
+ * @param {boolean} p.isBarbell       — liikkeen kuormamalli (sama liike → sama lippu)
+ * @param {number}  p.bodyweightKg
+ * @param {number}  p.plannedLoadKg   — kohde-työsarjan nykyinen/suunniteltu kuorma
+ * @param {number}  p.targetReps      — kohde-sarjan toistot
+ * @param {number}  p.targetVx        — kohde-sarjan tavoite-Vx
+ * @param {number}  p.workSetsCount   — kohde-liikkeen työsarjojen määrä (allowance)
+ * @returns {{adjusted:boolean, finalLoadKg?:number, e1rmSingle?:number,
+ *            derivedTarget?:number, pct?:number, reason?:string}}
+ */
+function resolveTopSingleReanchor(p) {
+  const { singleLoadKg, singleActualVx, isBarbell, bodyweightKg,
+          plannedLoadKg, targetReps, targetVx, workSetsCount } = p || {};
+  if (!(singleLoadKg > 0) || !Number.isFinite(singleActualVx)) {
+    return { adjusted: false, reason: "no-single" };
+  }
+  if (!(plannedLoadKg > 0)) return { adjusted: false, reason: "no-planned-load" };
+  const bw = bodyweightKg > 0 ? bodyweightKg : 0;
+  const e1rmSingle = (isBarbell ? singleLoadKg : bw + singleLoadKg) * (1 + (1 + singleActualVx) / 30);
+  const pct = vRepsToExpectedPct((targetReps ?? 3) + (targetVx ?? 1) + acrossSetAllowance(workSetsCount));
+  const derivedRaw = isBarbell ? e1rmSingle * pct : e1rmSingle * pct - bw;
+  if (!(derivedRaw > 0)) return { adjusted: false, reason: "derived-nonpositive", e1rmSingle };
+  const derivedTarget = roundToHalf(derivedRaw);
+  const finalLoadKg = Math.min(plannedLoadKg, derivedTarget);
+  if (!(finalLoadKg < plannedLoadKg)) {
+    return { adjusted: false, reason: "derived-not-lower", e1rmSingle, derivedTarget, pct };
+  }
+  return { adjusted: true, finalLoadKg, e1rmSingle, derivedTarget, pct };
+}
+
+/**
  * β Round B-α-1 — Tier-resolveri.
  *
  * L48 B.i + C.iii — 3 polkua movement.tier-kentän tulkintaan:
@@ -9349,6 +9397,7 @@ export {
   acrossSetAllowance, // K3-1: across-set-väsymysvara (jaettu UI-swap-helperin kanssa)
   // H-017 D1 — intra-session-alaspäin-re-resolve (puhdas; UI-handler kutsuu + tracaa)
   resolveIntraSessionAdjustedLoad,
+  resolveTopSingleReanchor, // K3-2 — ykkösen tulos re-ankkuroi työsarjat (vain alaspäin)
   resolveTier,
   tier1Or2,
   // Baseline

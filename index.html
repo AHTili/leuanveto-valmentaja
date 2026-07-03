@@ -1162,6 +1162,8 @@ import {
   intraSessionLoadAdjustSuggestion,
   // H-017 D1: intra-session-alaspäin-re-resolve (puhdas engine-funktio, handler kutsuu)
   resolveIntraSessionAdjustedLoad,
+  // K3-2: ykkösen tulos re-ankkuroi työsarjat (puhdas engine-funktio, vain alaspäin)
+  resolveTopSingleReanchor,
   accessoryProgression, updateMovementProgressFromSets, initialWeightFrom1RM,
   velocityLossPercent,
   // v4.38.0 (Phase 1C): per-rep MV-grid Behrmann 2025 -caveatille (low-velocity-alue)
@@ -13906,6 +13908,72 @@ function bindWorkoutEvents() {
         }
       }
     } catch (e) { console.warn("H-017 D1 intra-session-adjust failed:", e); }
+
+    // ── K3-2 (OBS-F): ykkösen tulos re-ankkuroi saman liikkeen työsarjat (VAIN alaspäin) ──
+    // Heavy-first: kun top-single (targetReps=1, primary/secondary/backoff) kirjataan Vx:llä,
+    // saman liikkeen TEKEMÄTTÖMÄT monitoisto-työsarjat re-resolvoidaan singlen e1RM-
+    // evidenssistä (resolveTopSingleReanchor — sama vReps+allowance-aritmetiikka kuin
+    // recommend()-primary-reitti). Kenttäcase: 172,5×1 V1 + 167,5×3 V1 eivät kohtaa
+    // varojensa osalta. Vain alaspäin — helppo single EI nosta (capacity bump hoitaa
+    // noston erikseen atletin confirm-valinnalla). Komposoituu failureReaction/D1:n
+    // kanssa min-periaatteella (kaikki vain alaspäin).
+    try {
+      const _singleRoles = ["primary", "secondary", "backoff"];
+      const isTopSingle = !currentSet.isWarmup && currentSet.targetReps === 1
+        && _singleRoles.includes(exercise.role) && Number.isFinite(selectedVara)
+        && (currentSet.loadKg ?? 0) > 0;
+      if (isTopSingle) {
+        const bwKgReanchor = state.latestBodyweight || state.settings?.bodyweightKg || 91;
+        let lastAdj = null, adjFromLoad = null, adjName = null, adjCount = 0;
+        const applyReanchor = (tx, candidateSets) => {
+          const txWork = tx.sets.filter(s => !s.isWarmup);
+          candidateSets.forEach(s => {
+            if (s.completed || s.isWarmup || (s.targetReps ?? 0) <= 1) return;
+            const res = resolveTopSingleReanchor({
+              singleLoadKg: currentSet.loadKg, singleActualVx: selectedVara,
+              isBarbell: tx.isBarbell === true, bodyweightKg: bwKgReanchor,
+              plannedLoadKg: s.loadKg ?? s.plannedLoadKg,
+              targetReps: s.targetReps, targetVx: s.targetVx,
+              workSetsCount: txWork.length,
+            });
+            if (res.adjusted) {
+              if (adjFromLoad === null) adjFromLoad = s.loadKg;
+              s.loadKg = res.finalLoadKg;
+              lastAdj = res; adjName = tx.name; adjCount++;
+            }
+          });
+        };
+        // (a) saman exercise-objektin loput monitoisto-sarjat (sekarakenne: single + työsarjat)
+        applyReanchor(exercise, exercise.sets.slice(w.currentSetIdx + 1));
+        // (b) myöhemmät saman liikkeen työ/backoff-exerciset (heavy-first-normaalirakenne)
+        for (let xi = w.currentExerciseIdx + 1; xi < w.exercises.length; xi++) {
+          const tx = w.exercises[xi];
+          if (!tx || !_singleRoles.includes(tx.role)) continue;
+          const sameMov = (exercise.movementId && tx.movementId === exercise.movementId)
+            || tx.name === exercise.name
+            || (tx.name && exercise.name && tx.name.startsWith(exercise.name + " ("));
+          if (!sameMov) continue;
+          if (tx.sets.some(s => s.completed && !s.isWarmup)) continue; // jo aloitettu → ei kosketa
+          applyReanchor(tx, tx.sets);
+        }
+        if (lastAdj) {
+          saveDecisionTrace({
+            traceId: uid(), recId: null, kind: "TOP_SINGLE_REANCHOR",
+            createdAtISO: new Date().toISOString(),
+            summary: `${adjName}: työsarjat re-ankkuroitu ykkösestä ${currentSet.loadKg} kg @V${selectedVara} → ${lastAdj.finalLoadKg} kg (single-e1RM ${lastAdj.e1rmSingle.toFixed(1)} kg, ${adjCount} sarjaa)`,
+            data: {
+              movement: adjName, singleLoadKg: currentSet.loadKg, singleActualVx: selectedVara,
+              e1rmSingle: Number(lastAdj.e1rmSingle.toFixed(1)),
+              derivedTarget: lastAdj.derivedTarget,
+              fromLoadKg: adjFromLoad, finalLoadKg: lastAdj.finalLoadKg,
+              pct: lastAdj.pct != null ? Number(lastAdj.pct.toFixed(4)) : null,
+              adjustedSets: adjCount,
+            },
+          }).catch(e => console.warn("[TOP_SINGLE_REANCHOR] trace save failed:", e));
+          showToast(`Ykkönen ${currentSet.loadKg} kg @V${selectedVara} → työsarjat ${lastAdj.finalLoadKg} kg (seuraa päivän kapasiteettia)`, "ok", 3500);
+        }
+      }
+    } catch (e) { console.warn("K3-2 top-single-reanchor failed:", e); }
 
     // Start rest timer
     startRestTimer();
