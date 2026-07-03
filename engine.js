@@ -4015,8 +4015,10 @@ function deriveBlockPhaseFromMesocycle(mesocycleType, weekNum, weekLabel) {
 // readiness + cap-state + VBT-status). Tier-arvot johdetaan aritmeettisesti
 // nykyisestä TARGET-laskennasta — laskentaketju säilyy bittitarkasti.
 //
-// Spacing-perustelu (Helms 2018 + Akselin design-päätös Q2):
-//   SAFE       = TARGET kuorma × 0.985, targetVx + 1 (enemmän varaa)
+// Spacing-perustelu (Helms 2018 + Akselin design-päätös Q2; SAFE-Vx tarkennettu
+// K-A2-invariantilla deedc1a 2026-05-19 — alkuperäinen "+1 Vx" hylätty koska se
+// nostaa Epley-e1RM:ää pelkällä −1,5 % kuormalla → safe.e1RM ≤ target.e1RM rikkoutuu):
+//   SAFE       = TARGET kuorma × 0.985, SAMA targetVx (K-A2 e1RM-monotonia)
 //   TARGET     = nykyinen recommend() (backward-compat ankkuri)
 //   AGGRESSIVE = TARGET kuorma × 1.015, targetVx − 1 (lähempänä failurea)
 //
