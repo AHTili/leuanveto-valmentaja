@@ -1858,7 +1858,13 @@ function testVBTPromotionStatus() {
     movementId: "test-mov", externalLoadKg: 60 + i, velocityMean: 0.6 - i * 0.02,
     dateISO: "2026-05-01",
   }));
-  const r2 = computeVBTPromotionStatus(fewSets, "test-mov", 90, { bodyweightKg: 91 });
+  // FIXTURE_DRIFT-korjaus 2026-07-03: fixture-päivät ovat absoluuttisia (2026-05-01 /
+  // 2026-04-30) mutta todayISO jäi pinnaamatta → 28 pv ankkuriikkuna (VBT_ANCHOR_WINDOW_DAYS,
+  // ratifioitu v4.34.27 c745adb) sulki setit ulos 2026-05-29 alkaen (aikapommi, ei koodivika).
+  // Pinnataan sama deterministinen todayISO "2026-05-10" jota saman funktion freshness-testit
+  // jo käyttävät. Odotukset (5 → not-eligible; 10 + pieni diff → promoted) ovat ennallaan
+  // ratifioidun designin mukaiset.
+  const r2 = computeVBTPromotionStatus(fewSets, "test-mov", 90, { bodyweightKg: 91, todayISO: "2026-05-10" });
   assertEqual(r2.status, "not-eligible", "VBT: 5/10 ankkuria → not-eligible");
   assertEqual(r2.anchorCount, 5, "VBT: anchorCount = 5");
 
@@ -1878,6 +1884,7 @@ function testVBTPromotionStatus() {
   // Regression slope/intercept johdettava — testin oletettu cross-check ~85-95 kg.
   const r3 = computeVBTPromotionStatus(goodSets, "test-mov", 88, {
     bodyweightKg: 91, isBarbell: false, movementName: "Lisäpainoleuanveto",
+    todayISO: "2026-05-10",
   });
   assert(r3.anchorCount === 10, "VBT: 10 ankkuria");
   assert(r3.status === "promoted" || r3.status === "candidate",
@@ -1887,6 +1894,7 @@ function testVBTPromotionStatus() {
   // Pakottaen iso diff: e1RM 200 vs cross-check ~85
   const r4 = computeVBTPromotionStatus(goodSets, "test-mov", 200, {
     bodyweightKg: 91, isBarbell: false, movementName: "Lisäpainoleuanveto",
+    todayISO: "2026-05-10",
   });
   assert(r4.status === "candidate" || r4.status === "not-eligible",
     "VBT: e1RM 200 vs cross-check ~85 → candidate (diff > 5%)");
@@ -1904,7 +1912,7 @@ function testVBTPromotionStatus() {
   }
   const r5withHysteresis = computeVBTPromotionStatus(sets6pct, "test-mov", 90, {
     bodyweightKg: 91, isBarbell: false, movementName: "Lisäpainoleuanveto",
-    previouslyPromoted: true,
+    previouslyPromoted: true, todayISO: "2026-05-10",
   });
   // Diff voi olla 5-8% välillä — hysteresis-tilassa pidetään promoted
   // Tärkeintä että funktio ei kraashaa ja palauttaa järkevän objektin
@@ -5121,14 +5129,19 @@ function testAdaptiveSuggestions() {
       "T8 TARGET-parity: deltaPct identtinen");
   }
 
-  // T9: SAFE-spacing — 1.5% kevyempi + +1 Vx
+  // T9: SAFE-spacing — 1.5% kevyempi, SAMA Vx (K-A2 e1RM-monotonia).
+  // TEST_STALE-korjaus 2026-07-03: alkuperäinen +1 Vx -design hylättiin deedc1a:ssa
+  // (2026-05-19, VX_OFFSET=0 SAFE:lle) K-A2-invariantin takia: +1 Vx pelkällä −1,5 %
+  // kuormalla NOSTAA Epley-e1RM:ää (69×5@V3 e1RM 87,4 < safe 68×5@V4 e1RM 88,4 —
+  // Akselin kenttähavainto KH-5) → safe.e1RM ≤ target.e1RM vaatii saman Vx:n.
+  // Testin odotus jäi päivittämättä deedc1a:ssa; korjattu koodin (ratifioitu) suuntaan.
   {
     const result = generateSuggestions(baseCtx);
     const safe = result.suggestions.find(s => s.id === "safe");
     assertClose(safe.targetExternalLoad, 98.5, 0.5,
       "T9 SAFE: 100 × 0.985 = 98.5 kg");
-    assertEqual(safe.targetVx, 3,
-      "T9 SAFE: targetVx = TARGET +1 = 3");
+    assertEqual(safe.targetVx, 2,
+      "T9 SAFE: targetVx = TARGET (K-A2 e1RM-monotonia, VX_OFFSET=0 deedc1a)");
   }
 
   // T10: AGGRESSIVE-spacing — 1.5% raskaampi + -1 Vx
