@@ -5577,12 +5577,20 @@ async function recommend(options = {}) {
   }
 
   // 12. Set prescription
+  // K1-E2 (OBS-B1, retro-kenttä): sarjamäärä MATERIALISOIDUSTA primary-slotista (mitä atletti
+  // oikeasti tekee) — ei dayType-reseptivakiosta. Kortti näytti "5×3" (heavy-resepti = 5) kun
+  // päivän slotti oli 4×3 → "TYÖSARJA 1/4" -eripari (kaksi lähdettä ilman ristiintarkistusta,
+  // sama vikaluokka kuin slot.targetVx vs weekDef). Resepti jää fallbackiksi ilman dayPlania.
   let setCount;
-  const recipe = DAY_TYPE_SET_RECIPES[dayType];
-  if (recipe) {
-    setCount = Array.isArray(recipe.sets) ? recipe.sets[0] : recipe.sets;
+  if (primarySlotMeta && typeof primarySlotMeta.sets === "number" && primarySlotMeta.sets > 0) {
+    setCount = primarySlotMeta.sets;
   } else {
-    setCount = 3;
+    const recipe = DAY_TYPE_SET_RECIPES[dayType];
+    if (recipe) {
+      setCount = Array.isArray(recipe.sets) ? recipe.sets[0] : recipe.sets;
+    } else {
+      setCount = 3;
+    }
   }
 
   // 13. Vara feedback
