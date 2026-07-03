@@ -3989,6 +3989,7 @@ function generateSuggestions(ctx) {
     dayType,
     preferredBias,
     aggressivenessLearned,
+    lastSessionDemonstratedKg,
   } = ctx;
 
   const SAFE_SPACING = 0.015;       // 1.5 pp kevyempi
@@ -4013,17 +4014,31 @@ function generateSuggestions(ctx) {
   // tämän väsyneenä ilman engine-veto-oikeutta.
   let safeSuggestion = null;
   if (loadIsNumeric) {
-    const safeLoad = roundToHalf(targetExternalLoad * (1 - SAFE_SPACING));
+    const safeLoadBase = roundToHalf(targetExternalLoad * (1 - SAFE_SPACING));
+    // K3-4 (retro-kenttä OBS-B2): historia-tietoinen VAROVAINEN. Pelkkä −1,5 pp targetista
+    // ei erotu (kenttäcase: "varovainen vain 1 kg kevyempi") ja voi jopa YLITTÄÄ viime
+    // session tason kun progressio nostaa targetia (kenttäcase: safe 165 = +5 kg vs viime
+    // viikko). Konservatiivinen vaihtoehto = korkeintaan viime session demonstroitu kesto-
+    // taso (viimeinen target-Vx:n täyttänyt sarja / mediaani). Vain alaspäin — jos historia
+    // puuttuu tai on targetia korkeampi (esim. paluuramppi), spacing-taso säilyy.
+    const historyCap = (typeof lastSessionDemonstratedKg === "number" && lastSessionDemonstratedKg > 0)
+      ? roundToHalf(lastSessionDemonstratedKg) : null;
+    const historyCapped = historyCap !== null && historyCap < safeLoadBase;
+    const safeLoad = historyCapped ? historyCap : safeLoadBase;
     const safeVx = typeof targetVx === "number" ? targetVx : null;
     safeSuggestion = {
       id: "safe",
       label: "Varovainen",
-      deltaPct: (typeof deltaPct === "number" ? deltaPct : 0) - SAFE_SPACING,
+      deltaPct: (typeof deltaPct === "number" ? deltaPct : 0)
+        - (historyCapped ? (1 - safeLoad / targetExternalLoad) : SAFE_SPACING),
       targetVx: safeVx,
       targetExternalLoad: safeLoad,
       setCount,
       targetReps,
-      rationaleShort: "Konservatiivinen — enemmän varaa ja kevyempi kuorma",
+      historyCapped,
+      rationaleShort: historyCapped
+        ? "Konservatiivinen — viime session näytetty taso, ei progressiota"
+        : "Konservatiivinen — enemmän varaa ja kevyempi kuorma",
     };
   }
 
@@ -5071,6 +5086,10 @@ async function recommend(options = {}) {
   }
 
   let targetExternalLoad;
+  // K3-4: viime session demonstroitu kestotaso (viimeinen target-Vx:n täyttänyt työsarja,
+  // fallback session-mediaani). Jaettu SUSTAINABILITY_CAP:in ja historia-tietoisen
+  // VAROVAINEN-ehdotuksen kesken. null = ei anchor-historiaa (legacy-polku / cold start).
+  let lastDemonstratedLoad = null;
   // F-2 intensiteetti-tietoinen korjaus (2026-06-02): same-liike non-primary clampataan ≤ pää VAIN
   // jos slot suunniteltu kevyemmäksi/yhtä raskaaksi. Mittari = EFEKTIIVISET TOISTOT (reps+Vx):
   // enemmän toistoja = kevyempi (volyymi/back-off) → clamp; vähemmän = raskaampi by-design
@@ -5139,6 +5158,21 @@ async function recommend(options = {}) {
       const anchor = computeRateLimitAnchor(recentTopSets, { excludeBackoff: true });
       if (anchor) {
         const planTarget = targetExternalLoad;
+        // K3-4: demonstroitu kestotaso talteen (skannaus siirretty SUSTAINABILITY_CAP:ista
+        // ehdottomaksi jotta VAROVAINEN-ehdotus saa saman referenssin myös kun katto ei laukea).
+        {
+          const _susSessId = anchor.lastSession?.sessionId;
+          if (_susSessId) {
+            const _susLastSets = recentTopSets.filter(s => s.sessionId === _susSessId && s.setRole !== "readiness_test");
+            for (let i = _susLastSets.length - 1; i >= 0; i--) {
+              const _sv = _susLastSets[i].actualVx ?? _susLastSets[i].targetVx ?? null;
+              if (_sv !== null && _sv >= (targetVx ?? 2) && (_susLastSets[i].externalLoadKg || 0) > 0) {
+                lastDemonstratedLoad = _susLastSets[i].externalLoadKg; break;
+              }
+            }
+            if (lastDemonstratedLoad === null) lastDemonstratedLoad = anchor.lastSession.medianLoad ?? null;
+          }
+        }
         const cfgInfoForProg = getCfgBaselineForMovement(mesocycle, primarySlotMeta);
         // OBS-030: jos anchor-lastSession on planOverride, attribuoi se suunnitellulle
         // päivälle (planSourceDateISO) progression-laskennassa. Vain planOverride →
@@ -5225,18 +5259,7 @@ async function recommend(options = {}) {
           // Mediaani-Vx-lattia yksin oli sokea sessionsisäiselle rasitukselle (V0 + pudotus
           // eivät näy mediaanissa). Vain alaspäin — ei koskaan nosta.
           if (typeof planTarget === "number" && planTarget > 0 && targetExternalLoad > planTarget) {
-            let demonstrated = null;
-            const _susSessId = anchor.lastSession?.sessionId;
-            if (_susSessId) {
-              const _susLastSets = recentTopSets.filter(s => s.sessionId === _susSessId && s.setRole !== "readiness_test");
-              for (let i = _susLastSets.length - 1; i >= 0; i--) {
-                const _sv = _susLastSets[i].actualVx ?? _susLastSets[i].targetVx ?? null;
-                if (_sv !== null && _sv >= (targetVx ?? 2) && (_susLastSets[i].externalLoadKg || 0) > 0) {
-                  demonstrated = _susLastSets[i].externalLoadKg; break;
-                }
-              }
-              if (demonstrated === null) demonstrated = anchor.lastSession.medianLoad ?? null;
-            }
+            const demonstrated = lastDemonstratedLoad;
             const _susCap = roundToHalf(Math.max(demonstrated ?? 0, planTarget));
             if (_susCap < targetExternalLoad) {
               trace("SUSTAINABILITY_CAP",
@@ -6165,6 +6188,7 @@ async function recommend(options = {}) {
       dayType,
       preferredBias: settings.preferredSuggestionBias ?? "balanced",
       aggressivenessLearned: settings.aggressivenessLearned ?? 0,
+      lastSessionDemonstratedKg: lastDemonstratedLoad,
     });
     trace("SUGGESTIONS_GENERATED",
       { tierCount: suggestionsResult.suggestions.length, defaultId: suggestionsResult.defaultSuggestionId },
