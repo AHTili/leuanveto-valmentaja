@@ -1867,21 +1867,27 @@ function failureReaction(currentLoadKg, targetReps, isPrimary, consecutiveFailur
   }
 
   // Block-aware reactions (v4.32.8)
+  // K3-3 D1-v2 (retro-kenttä OBS-G): V0 → jäljellä olevat sarjat -5 % KAIKISSA blokeissa
+  // (Refalo 2023, tutkimusinvariantti). Strategia A/C:n ydin säilyy (stop-suositus +
+  // ensi viikon säätö), mutta JOS atletti jatkaa stop-suosituksesta huolimatta
+  // (kenttäcase: 165×3 V0 → seuraava sarja ei keventynyt), loput sarjat eivät saa
+  // toistaa kuormaa joka juuri vietiin failureen. Vain alaspäin.
   if (blockPhase === "foundation") {
+    const nextLoad = roundToHalf(currentLoadKg * 0.95);
     return {
-      nextSetLoad: currentLoadKg,  // säilytä kuorma — Strategia A
+      nextSetLoad: nextLoad,  // K3-3: -5% jos jatketaan (oli: säilytä kuorma)
       nextSetReps: isPrimary ? Math.max(targetReps - 1, 1) : targetReps,
       shouldStop: consecutiveFailures >= 1,  // 1× V0 foundationissa = stop, EI sallita 2x
       strategy: "A",
       message: consecutiveFailures >= 1
-        ? "Foundation V0 → lopeta liike. Foundation EI ole failure-protokolla. Ensi viikolla -2.5 kg."
-        : "Foundation V0 → kirjaa, jatka samalla kuormalla loppuun. Ensi viikolla -2.5 kg.",
+        ? `Foundation V0 → lopeta liike. Foundation EI ole failure-protokolla. Jos jatkat: ${nextLoad} kg (-5 %). Ensi viikolla -2.5 kg.`
+        : `Foundation V0 → loput sarjat ${nextLoad} kg (-5 %). Ensi viikolla -2.5 kg.`,
       nextWeekLoadAdjust: -0.025,
     };
   }
   if (blockPhase === "intensity" || blockPhase === "peaking") {
     return {
-      nextSetLoad: currentLoadKg,  // ei merkitystä, lopetetaan
+      nextSetLoad: roundToHalf(currentLoadKg * 0.95),  // K3-3: jos jatketaan stopista huolimatta, kevyempänä
       nextSetReps: 0,
       shouldStop: true,             // Strategia C — lopeta heti
       strategy: "C",

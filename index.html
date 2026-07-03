@@ -13761,20 +13761,22 @@ function bindWorkoutEvents() {
       }
     } else if (currentSet.targetVx !== null && currentSet.targetVx !== undefined &&
                selectedVara <= currentSet.targetVx - 2) {
-      // v4.22: Near-failure in-session varoitus. Jos todellinen Vx on 2+
-      // luokkaa tavoitetta alempi (esim. tavoite V3 → todellinen V1),
-      // kuorma on liian raskas. Kysy käyttäjältä: laskenko 5 % seuraavalle?
+      // v4.22 → K3-3 D1-v2: Near-failure in-session säätö. Jos todellinen Vx on 2+
+      // luokkaa tavoitetta alempi ILMAN V0:aa (esim. tavoite V3 → todellinen V1),
+      // kuorma on liian raskas mutta ei failure-tasoa → porrastettu vaste -2.5 %
+      // (V0-failure = -5 % failureReaction-polussa, Refalo 2023). Vanha -5/-10 %
+      // pelkästä deficitistä oli yli-aggressiivinen (nanny) suhteessa failure-vasteeseen.
       const deltaVx = currentSet.targetVx - selectedVara;
       const isPrimary = exercise.role === "primary" || exercise.role === "backoff" || exercise.role === "secondary";
       // Vain primary/backoff skaalautuu — accessory-liikkeet eivät ole niin
       // kriittisiä ja saattavat olla tarkoituksella "lähellä failurea"
       if (isPrimary) {
-        const suggestedDrop = deltaVx >= 3 ? 0.90 : 0.95;
+        const suggestedDrop = 0.975;
         const remainingSets = exercise.sets.slice(w.currentSetIdx + 1).filter(s => !s.completed);
         const affectedCount = remainingSets.length;
         if (affectedCount > 0) {
           const newLoad = roundToHalf((currentSet.loadKg || 0) * suggestedDrop);
-          const dropPct = Math.round((1 - suggestedDrop) * 100);
+          const dropPct = ((1 - suggestedDrop) * 100).toFixed(1);
           const ok = confirm(
             `Tämä sarja meni V${selectedVara} (tavoite V${currentSet.targetVx}) — ${deltaVx} luokkaa liian lähellä failurea.\n\n` +
             `Laske kuorma ${dropPct} % seuraavissa ${affectedCount} sarjassa?\n` +

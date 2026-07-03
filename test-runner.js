@@ -367,16 +367,20 @@ function testFailureReaction() {
   const reaction2 = failureReaction(70, 3, true, 2);
   assert(reaction2.shouldStop, "Failure: 2× consecutive strength → should stop");
 
-  // v4.32.8: Foundation V0 → Strategia A (säilytä kuorma, ensi vk -2.5%)
+  // v4.32.8 → K3-3 D1-v2: Foundation V0 → Strategia A:n ydin säilyy (stop + ensi vk -2.5%)
+  // mutta loput sarjat -5% (Refalo 2023) jos atletti jatkaa stop-suosituksesta huolimatta
+  // (kenttäcase OBS-G: 165×3 V0 → seuraava sarja ei keventynyt).
   const foundationReaction = failureReaction(70, 3, true, 1, "foundation");
-  assertClose(foundationReaction.nextSetLoad, 70.0, 0.1, "Foundation V0: säilytä kuorma 70 kg");
+  assertClose(foundationReaction.nextSetLoad, 66.5, 0.1, "Foundation V0 (K3-3): -5% → 66.5 kg jos jatketaan");
   assertEqual(foundationReaction.strategy, "A", "Foundation: Strategia A");
   assert(foundationReaction.shouldStop, "Foundation V0: 1× → stop liike (ei sallita 2x)");
+  assertEqual(foundationReaction.nextWeekLoadAdjust, -0.025, "Foundation V0: ensi vk -2.5% säilyy");
 
   // v4.32.8: Intensity V0 → Strategia C (lopeta liike heti)
   const intensityReaction = failureReaction(70, 3, true, 1, "intensity");
   assert(intensityReaction.shouldStop, "Intensity V0 → stop heti (Tuchscherer 2-failure)");
   assertEqual(intensityReaction.strategy, "C", "Intensity: Strategia C");
+  assertClose(intensityReaction.nextSetLoad, 66.5, 0.1, "Intensity V0 (K3-3): jatkokuorma -5% jos ei totella stopia");
 
   // v4.32.8: Peaking V0 → Strategia C
   const peakingReaction = failureReaction(70, 1, true, 1, "peaking");
