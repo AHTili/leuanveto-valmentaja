@@ -752,7 +752,13 @@
 //           kynnys −0.20 + peritty Vx · duplikaatti-rivien merge · MEV-advisory
 //           post-aktivointi-toastiksi · wizard-pilot Stop hookiin (+ splitFilter-
 //           _demotedPrimary-guard, pilotin 1. saalis) · RDL→OBS-044-addendum.
-const APP_VERSION = "4.52.54";
+// v4.52.55: Ohjelmointikone KORI 1+2 (Akselin 9 kenttähavaintoa, A1→ratifiointi) —
+//           E4 TÄNÄÄN TEHTY=toteuma · E3 swap-kuormat uuden liikkeen datasta +
+//           näkyvä palauta · E1 ramppi ykkösen eteen · E2 kortin sarjamäärä slotista ·
+//           E5 Haara C (eri-liike-apuliike omasta e1RM:stä) · K2c evidenssi-sort
+//           suorituspäivällä · K2a paluuramppi ei-primary-sloteille · K2b post-break-
+//           ankkurikatto (tuore evidenssi cappaa vanhan).
+const APP_VERSION = "4.52.55";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.
