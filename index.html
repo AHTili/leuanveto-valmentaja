@@ -13172,6 +13172,17 @@ async function startWorkout(backfillDateISO = null) {
     }
   }
 
+  // K1-E1 (OBS-A): ramppi liitetään päivän ENSIMMÄISEEN saman liikkeen raskaaseen slottiin —
+  // heavy-first-päivänä se on ykkönen (role "secondary", unshiftattu indeksiin 0 data.js:ssä),
+  // muuten primary itse. Aiemmin liitos oli kovakoodatusti role==="primary" → ykkönen renderöityi
+  // ENNEN lämmittelysarjoja (Akselin kenttälöydös). Ei-heavy-first: carrier === primary → ennallaan.
+  const _primaryMetaForRamp = rec?.dayPlan?.slots?.find(s => s.role === "primary") || null;
+  const _rampCarrierSlot = _primaryMetaForRamp
+    ? (rec.dayPlan.slots.find(s =>
+        (s.role === "primary" || s.role === "secondary" || s.role === "backoff") &&
+        s.defaultMovementName === _primaryMetaForRamp.defaultMovementName) || _primaryMetaForRamp)
+    : null;
+
   // Build exercises from day plan
   if (rec?.dayPlan?.slots) {
     for (const slot of rec.dayPlan.slots) {
@@ -13256,11 +13267,12 @@ async function startWorkout(backfillDateISO = null) {
         };
       });
 
-      // Prepend warmup sets to primary exercise (not a separate exercise)
-      const finalSets = (isPrimary && warmupSets.length > 0)
+      // K1-E1: Prepend warmup sets to the ramp-carrier exercise (heavy-first: ykkönen; muuten primary)
+      const _isRampCarrier = slot === _rampCarrierSlot;
+      const finalSets = (_isRampCarrier && warmupSets.length > 0)
         ? [...warmupSets, ...setsList].map((s, i) => ({ ...s, idx: i }))
         : setsList;
-      if (isPrimary && warmupSets.length > 0) warmupSets = []; // consume once
+      if (_isRampCarrier && warmupSets.length > 0) warmupSets = []; // consume once
 
       exercises.push({
         movementId: movId,
