@@ -6681,6 +6681,14 @@ function renderActiveWorkout() {
     : "";
   const canSwapVariant = (exercise.role === "primary" || exercise.role === "backoff") && exercise.category === "vertikaaliveto";
   const swapHTML = `<span class="swap" id="btn-swap-exercise" title="Vaihda liike">🔄</span>`;
+  // K1-E3/OBS-I: aktiivinen substituutio → NÄKYVÄ palautus-chip (aiemmin palautus oli
+  // piilossa 🔄-napin modaalihaarassa → atletti ei löytänyt sitä).
+  const _subsMapHdr = state.mesocycle?.movementSubstitutions || {};
+  const _activeSubOrig = exercise._substituted?.originalName
+    || Object.keys(_subsMapHdr).find(k => _subsMapHdr[k] && !_subsMapHdr[k].endedISO && _subsMapHdr[k].replacementName === exercise.name);
+  const revertHTML = (_activeSubOrig && _subsMapHdr[_activeSubOrig] && !_subsMapHdr[_activeSubOrig].endedISO)
+    ? `<span class="swap" id="btn-revert-sub" title="Palauta ${escapeHtml(_activeSubOrig)}" style="border:1px solid var(--warn);border-radius:6px;padding:0 4px">↩ Palauta</span>`
+    : "";
   let subBits = [];
   if (exercise.variantName) {
     const tempo = exercise.tempoNote ? ` · <span class="tempo">${exercise.tempoNote}</span>` : "";
@@ -7120,7 +7128,7 @@ function renderActiveWorkout() {
       <div class="ex-role">${roleLabel} ${progressTag}</div>
       <div class="ex-name">
         ${exercise.name}
-        ${swapHTML}
+        ${swapHTML}${revertHTML}
         <span class="info" id="btn-info-exercise" title="Tietoja liikkeestä">ⓘ</span>
         <span class="info ${exercise.exerciseNote ? "has-note" : ""}" id="btn-exercise-note" title="${exercise.exerciseNote ? "Muokkaa muistiinpanoa" : "Lisää muistiinpano"}" style="${exercise.exerciseNote ? "color:var(--acc)" : ""}">📝</span>
         ${exercise.movementId ? `<span class="info" id="btn-exercise-history" data-prior-sessions="${exercise.movementId}" data-prior-name="${(exercise.name || "").replace(/"/g, "&quot;")}" title="Liikkeen treenihistoria">📊</span>` : ""}
@@ -14684,6 +14692,69 @@ function bindWorkoutEvents() {
   });
 
   // Swap exercise (slot-aware in v4.11, eliittitaso v4.32.1, primary-suoja v4.32.2)
+  // ── K1-E3 (OBS-C2): swap-kuorman re-resolve — uusi liike saa OMAT kuormansa ─────────────
+  // Ei koskaan edellisen liikkeen kuormia (Akselin kenttälöydös: CSR 72,5 kg = leuanvedon
+  // kuorma, oma historia 105 kg). Resoluutio: 1) MovementProgress.suggestedLoadKg (F-3:
+  // sallittu eri-liike-apuliikkeille), 2) kanoninen Best-e1RM × vReps(reps+Vx) (system-load-
+  // muunnos), 3) ei dataa → null = tyhjä kenttä (rehellinen; sama kuin cold-start-accessory).
+  const _isSystemLoadName = (name) => {
+    const n = (name || "").toLowerCase();
+    if (/laite|kone|machine|prässi|smith|talja|cable/.test(n)) return false; // laite-versiot = external stack
+    return /leuanveto|leuka|dippi|muscle-up|push-?up|hspu|nordic/.test(n);   // kehonpaino+lisäpaino-perhe
+  };
+  async function resolveSwapLoadKg(mov, refSet) {
+    try {
+      const prog = await getMovementProgress(mov.movementId);
+      if (prog && typeof prog.suggestedLoadKg === "number" && prog.suggestedLoadKg > 0) {
+        return { load: roundToHalf(prog.suggestedLoadKg), source: "progressio" };
+      }
+    } catch (_) {}
+    try {
+      const movSets = (state.allSets || []).filter(s =>
+        s.movementId === mov.movementId && !s.isWarmup && s.setRole !== "readiness_test");
+      if (movSets.length) {
+        const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
+        const best = computeMovementE1RMBest(movSets, state.sessions || [], state.mesocycle, mov, bw);
+        const e1rmExt = best?.value;
+        const reps = refSet?.targetReps ?? refSet?.reps ?? 8;
+        const vx = (typeof refSet?.targetVx === "number") ? refSet.targetVx : 2;
+        const pct = vRepsToExpectedPct(reps + vx);
+        if (e1rmExt && e1rmExt > 0 && pct !== null) {
+          const load = _isSystemLoadName(mov.name) ? (e1rmExt + bw) * pct - bw : e1rmExt * pct;
+          if (load > 0) return { load: roundToHalf(load), source: "e1RM" };
+        }
+      }
+    } catch (_) {}
+    return { load: null, source: null };
+  }
+  // Kuorma vain TEKEMÄTTÖMIIN työsarjoihin — tehdyt sarjat ovat historiallista totuutta.
+  function applySwapLoad(exercise, newLoad) {
+    exercise.loadKg = newLoad;
+    for (const s of (exercise.sets || [])) {
+      if (s.isWarmup || s.completed) continue;
+      s.loadKg = newLoad;
+    }
+  }
+  // Jaettu palautus-flow (OBS-I): päättää substituution + palauttaa live-treenin liikkeen
+  // + re-resolvoi kuormat ALKUPERÄISEN liikkeen omasta datasta.
+  async function endPrimarySubstitution(exercise, origName, activeSub) {
+    activeSub.endedISO = todayISO();
+    await saveMesocycle(state.mesocycle);
+    const origMov = state.movements.find(m => m.name === origName);
+    if (origMov && exercise) {
+      exercise.name = origMov.name;
+      exercise.movementId = origMov.movementId;
+      exercise.category = origMov.category;
+      delete exercise._substituted;
+      const refSet = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
+      const { load } = await resolveSwapLoadKg(origMov, refSet);
+      applySwapLoad(exercise, load);
+      savePendingWorkoutLocal(state.workout);
+    }
+    showToast(`${origName} palautettu. Paluuohje: 1. paluusessio kevennettynä (−15–20 % ehdotuksesta), ei kalibrointisettiä, ei V0-grindiä — sovellus ramppaa itse takaisin.`, "ok", 8000);
+    render();
+  }
+
   const swapBtn = $("#btn-swap-exercise");
   if (swapBtn) swapBtn.addEventListener("click", async () => {
     const exercise = w.exercises[w.currentExerciseIdx];
@@ -14708,10 +14779,8 @@ function bindWorkoutEvents() {
           ]
         );
         if (ri === 0) {
-          activeSub.endedISO = todayISO();
-          await saveMesocycle(state.mesocycle);
-          showToast(`${origName} palautettu. Paluuohje: 1. paluusessio kevennettynä (−15–20 % ehdotuksesta), ei kalibrointisettiä, ei V0-grindiä — sovellus ramppaa itse takaisin.`, "ok", 8000);
-          render();
+          // K1-E3/OBS-I: jaettu palautus — päättää subin + palauttaa live-liikkeen + re-resolvoi kuormat.
+          await endPrimarySubstitution(exercise, origName, activeSub);
         }
         return;
       }
@@ -14741,13 +14810,20 @@ function bindWorkoutEvents() {
         replacementName: chosenSub.name, reason: subReason, startedISO: todayISO(), endedISO: null,
       };
       await saveMesocycle(state.mesocycle);
-      // Päivitä käynnissä oleva treeni in-place — kuorman atletti tarkistaa itse tänään
+      // Päivitä käynnissä oleva treeni in-place.
       exercise.name = chosenSub.name;
       exercise.movementId = chosenSub.movementId;
       exercise.category = chosenSub.category;
       exercise._substituted = { originalName: origName, reason: subReason, startedISO: todayISO() };
+      // K1-E3 (OBS-C2): kuorma re-resolvoituu HETI korvaajan omasta datasta — ei vanhan liikkeen
+      // kuormia. Ei dataa → tyhjä kenttä (rehellinen), atletti syöttää itse.
+      const refSetP = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
+      const { load: subLoad, source: subSrc } = await resolveSwapLoadKg(chosenSub, refSetP);
+      applySwapLoad(exercise, subLoad);
       savePendingWorkoutLocal(state.workout);
-      showToast(`${origName} → ${chosenSub.name} vaivan ajaksi. Tarkista kuorma napauttamalla lukua tänään — seuraavasta treenistä sovellus laskee sen ${chosenSub.name}-datastasi. Sarjat/toistot säilyvät ohjelman mukaisina.`, "ok", 8000);
+      showToast(subLoad !== null
+        ? `${origName} → ${chosenSub.name} vaivan ajaksi. Kuorma ${subLoad} kg laskettu ${chosenSub.name}-datastasi (${subSrc}). Sarjat/toistot säilyvät ohjelman mukaisina.`
+        : `${origName} → ${chosenSub.name} vaivan ajaksi. ${chosenSub.name}-dataa ei vielä ole — syötä kuorma napauttamalla lukua. Sarjat/toistot säilyvät ohjelman mukaisina.`, "ok", 8000);
       render();
       return;
     }
@@ -14822,14 +14898,22 @@ function bindWorkoutEvents() {
       );
       const opts = [...variantRanking.map(v => v.mov), ...sameCat, ...others];
 
+      // K1-E3/OBS-I: kun slotilla on käyttäjä-override, tarjoa NÄKYVÄ palautus ohjelman
+      // oletusliikkeeseen listan ENSIMMÄISENÄ. Aiemmin palautusta ei ollut lainkaan
+      // (accessorySlotOverrides jäi voimaan; piti tietää vaihtaa "takaisin" käsin) —
+      // Akselin kenttälöydös: lisäpainodippi→laitedippi, paluu ei onnistunut.
+      const slotOverride = state.mesocycle?.accessorySlotOverrides?.[exercise.slotId] || null;
+      const catEntry0 = ACCESSORY_SLOT_CATALOG?.[exercise.slotId] || null;
+      const phase0 = phaseForWeek(state.recommendation?.weekNum || 1);
+      const slotDefaultName = catEntry0?.phaseVariants?.[phase0]?.[0] || exercise.slotVariants?.[0] || null;
+      const hasRestore = !!(slotOverride && slotDefaultName && exercise.name !== slotDefaultName);
+
       // Modaalin otsikko: stagnaatio-varoitus jos havaittu
       const modalTitle = stagnationWarning
         ? `${stagnationWarning}\n\nVaihda ${exercise.slotFunction || exercise.name}`
         : `Vaihda ${exercise.slotFunction || exercise.name}`;
 
-      const idx = await showListModal(
-        modalTitle,
-        opts.map((m, i) => {
+      const modalItems = opts.map((m, i) => {
           const ranking = variantRanking.find(v => v.mov.movementId === m.movementId);
           if (ranking) {
             // Slot-variantti: näytä kasvu-data
@@ -14849,14 +14933,44 @@ function bindWorkoutEvents() {
             label: m.name,
             desc: m.category === exercise.category ? `${m.category} (sama kategoria)` : m.category,
           };
-        })
-      );
-      if (idx !== null && idx >= 0 && idx < opts.length) {
-        const chosen = opts[idx];
+        });
+      if (hasRestore) modalItems.unshift({
+        icon: "↩", label: `Palauta ohjelman oletus: ${slotDefaultName}`,
+        desc: "Poistaa vaihdon — slotti palaa ohjelman mukaiseen liikkeeseen",
+      });
+      const idx = await showListModal(modalTitle, modalItems);
+      if (idx === null || idx < 0) return;
+      // Palautus-haara (OBS-I)
+      if (hasRestore && idx === 0) {
+        delete state.mesocycle.accessorySlotOverrides[exercise.slotId];
+        await saveMesocycle(state.mesocycle);
+        const defMov = state.movements.find(m => m.name === slotDefaultName);
+        if (defMov) {
+          exercise.name = defMov.name;
+          exercise.movementId = defMov.movementId;
+          exercise.category = defMov.category;
+          exercise.slotSource = "catalog";
+          const refSetA = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
+          const { load: defLoad } = await resolveSwapLoadKg(defMov, refSetA);
+          applySwapLoad(exercise, defLoad);
+          savePendingWorkoutLocal(state.workout);
+        }
+        showToast(`Palautettu ohjelman oletus: ${slotDefaultName}`, "ok");
+        render();
+        return;
+      }
+      const effIdx = hasRestore ? idx - 1 : idx;
+      if (effIdx >= 0 && effIdx < opts.length) {
+        const chosen = opts[effIdx];
         exercise.name = chosen.name;
         exercise.movementId = chosen.movementId;
         exercise.category = chosen.category;
         exercise.slotSource = "user-override";
+        // K1-E3 (OBS-C2): kuorma re-resolvoituu heti valitun liikkeen OMASTA datasta.
+        const refSetB = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
+        const { load: accLoad } = await resolveSwapLoadKg(chosen, refSetB);
+        applySwapLoad(exercise, accLoad);
+        savePendingWorkoutLocal(state.workout);
         // Persist override on mesocycle
         if (state.mesocycle) {
           if (!state.mesocycle.accessorySlotOverrides) state.mesocycle.accessorySlotOverrides = {};
@@ -14895,8 +15009,35 @@ function bindWorkoutEvents() {
       exercise.name = options[idx].name;
       exercise.movementId = options[idx].movementId;
       exercise.category = options[idx].category;
+      // K1-E3 (OBS-C2): myös legacy-swap re-resolvoi kuorman uuden liikkeen datasta.
+      const refSetL = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
+      const { load: legLoad } = await resolveSwapLoadKg(options[idx], refSetL);
+      applySwapLoad(exercise, legLoad);
+      savePendingWorkoutLocal(state.workout);
       render();
     }
+  });
+
+  // K1-E3/OBS-I: näkyvä palautus-chip (↩) primaari-perheen aktiiviselle substituutiolle —
+  // sama flow kuin 🔄-napin palautus-haara, mutta löydettävissä ilman piilopolkua.
+  const revertBtn = $("#btn-revert-sub");
+  if (revertBtn) revertBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const exercise = w.exercises[w.currentExerciseIdx];
+    if (!exercise) return;
+    const subsMap = state.mesocycle?.movementSubstitutions || {};
+    const origName = exercise._substituted?.originalName
+      || Object.keys(subsMap).find(k => subsMap[k] && !subsMap[k].endedISO && subsMap[k].replacementName === exercise.name);
+    const activeSub = origName && subsMap[origName] && !subsMap[origName].endedISO ? subsMap[origName] : null;
+    if (!activeSub) return;
+    const ri = await showListModal(
+      `${origName} on korvattu: ${activeSub.replacementName}${activeSub.reason ? " · " + activeSub.reason : ""}`,
+      [
+        { icon: "↩", label: `Palauta ${origName} ohjelmaan`, desc: "Vaiva ohi — korvaus päättyy, kuorma lasketaan alkuperäisen liikkeen datasta" },
+        { icon: "✗", label: "Peruuta", desc: "Korvaus jatkuu" },
+      ]
+    );
+    if (ri === 0) await endPrimarySubstitution(exercise, origName, activeSub);
   });
 
   // Info modal (v4.12) — liikeselostus + slot-perustelu
