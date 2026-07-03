@@ -5228,16 +5228,24 @@ async function recommend(options = {}) {
       : null;
     const primaryMovementName = primarySlotMeta?.defaultMovementName || null;
 
-    // Haetaan liikeluettelo kerran (tarvitaan cross-reference-haaralle)
+    // Haetaan liikeluettelo kerran (tarvitaan cross-reference- + Haara C -haaroille)
     let allMovsForResolve = null;
-    const needsAllMovs = dayPlan.slots.some(s => s.loadPctReferenceMovementName);
+    const needsAllMovs = dayPlan.slots.some(s => s.loadPctReferenceMovementName)
+      // K1-E5 (Haara C): eri-liike-accessoryt tarvitsevat liikeluettelon oma-e1RM-resoluutioon
+      || dayPlan.slots.some(s => s.role === "accessory" && s.defaultMovementName
+           && s.defaultMovementName !== (primarySlotMeta?.defaultMovementName || null));
     if (needsAllMovs) {
       allMovsForResolve = options.allMovements || await getAllMovements();
     }
 
     for (const slot of dayPlan.slots) {
       if (slot.role === "primary") continue;
-      if (slot.loadPct === undefined || slot.loadPct === null || slot.loadPct <= 0) continue;
+      // K1-E5 (Haara C): eri-liike-accessory ILMAN loadPct:tä jatkaa Haara C:hen (oma-e1RM-
+      // resoluutio) — aiemmin guard skippasi sen tässä → slotilla ei ollut MITÄÄN engine-
+      // resoluutiota. Muut roolit ilman loadPct:tä skippaavat kuten ennen (bit-exact).
+      const _slotNoLoadPct = (slot.loadPct === undefined || slot.loadPct === null || slot.loadPct <= 0);
+      if (_slotNoLoadPct && !(slot.role === "accessory" && slot.defaultMovementName
+            && slot.defaultMovementName !== primaryMovementName)) continue;
 
       // v4.34.15 FIX #2: CALIBRATION-SLOT RESOLVER + PR-CAP.
       // HUOM (OBS-048-korjaus 2026-06-17): aiempi premissi "cal-päivissä ei ole primarya"
@@ -5538,6 +5546,56 @@ async function recommend(options = {}) {
             referenceMovement: slot.loadPctReferenceMovementName },
           { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct, refE1RM: refE1RM.toFixed(1) },
           `${slot.defaultMovementName}: ${(slot.loadPct*100).toFixed(0)}% × ${slot.loadPctReferenceMovementName}-e1RM (${refE1RM.toFixed(1)} kg) = ${slot.resolvedLoadKg} kg`);
+        continue;
+      }
+
+      // Haara C (K1-E5, retro-kenttä OBS-C1): ERI-liike-apuliike ILMAN loadPct:tä/ristiviitettä —
+      // resolvoi liikkeen OMASTA historiasta: e1RM (viim. 6 setin mediaani) × vReps(reps+Vx).
+      // Aiemmin näillä sloteilla ei ollut MITÄÄN engine-resoluutiota → UI putosi progress-
+      // jäänteeseen (kenttäevidenssi: Chest-supported row 72,5 kg ≈ saman päivän leuanvedon
+      // kuorma, vaikka oma CSR-historia 105 kg × 8 / e1RM ext 134,9). e1RM×vReps sopeutuu
+      // vaiheen reps/Vx-skeemaan (toisin kuin last-session-jäänne) → kanoninen lähde.
+      // Kuormaperhe: laite/talja → suora Epley (external); leuanveto/dippi-perhe → BW-muunnos.
+      if (slot.role === "accessory"
+          && typeof slot.resolvedLoadKg !== "number"
+          && !slot.loadPctReferenceMovementName
+          && slot.defaultMovementName
+          && primaryMovementName
+          && slot.defaultMovementName !== primaryMovementName
+          && slot.reps != null
+          && allMovsForResolve) {
+        const ownMov = allMovsForResolve.find(m => m.name === slot.defaultMovementName);
+        if (ownMov) {
+          const ownSets = allSets
+            .filter(s => s.movementId === ownMov.movementId
+                    && (s.externalLoadKg || 0) > 0
+                    && s.setRole !== "readiness_test")
+            .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""))
+            .slice(-6);
+          if (ownSets.length) {
+            const nL = slot.defaultMovementName.toLowerCase();
+            const ownIsBWFamily = !/laite|kone|machine|prässi|smith|talja|cable/.test(nL)
+              && /leuanveto|leuka|dippi|muscle-up|hspu/.test(nL);
+            const ownVals = ownSets.map(s => {
+              const vara = s.actualVx ?? s.targetVx ?? 1;
+              return ownIsBWFamily
+                ? e1rmExternal(bodyweightKg, s.externalLoadKg || 0, s.reps || s.targetReps || 5, vara)
+                : e1rmAccessory(s.externalLoadKg || 0, s.reps || s.targetReps || 5, vara);
+            }).filter(v => v !== null && v > 0);
+            const ownE1RM = ownVals.length ? median(ownVals) : null;
+            const ownPct = vRepsToExpectedPct((slot.reps ?? 0) + (slot.targetVx ?? 2));
+            if (ownE1RM && ownPct !== null) {
+              slot.resolvedLoadKg = roundToHalf(Math.max(0, ownIsBWFamily
+                ? (ownE1RM + bodyweightKg) * ownPct - bodyweightKg
+                : ownE1RM * ownPct));
+              trace("SLOT_LOAD_RESOLVED_OWN",
+                { slotRole: slot.role, slotMovement: slot.defaultMovementName },
+                { resolvedLoadKg: slot.resolvedLoadKg, ownE1RM: ownE1RM.toFixed(1),
+                  pct: ownPct.toFixed(3), bwFamily: ownIsBWFamily, fromSets: ownSets.length },
+                `${slot.defaultMovementName}: oma e1RM ${ownE1RM.toFixed(1)} kg × ${(ownPct * 100).toFixed(0)} % (vReps ${slot.reps ?? 0}+${slot.targetVx ?? 2})${ownIsBWFamily ? " − BW" : ""} = ${slot.resolvedLoadKg} kg [Haara C: eri-liike-apuliike omasta datasta]`);
+            }
+          }
+        }
       }
     }
   }
