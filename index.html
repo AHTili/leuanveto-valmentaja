@@ -1214,7 +1214,7 @@ import {
   isInsertedDeloadWeek, isReplacedDeloadWeek, isDeloadOverrideWeek,
   getEffectiveWeekCount, resolveMesocyclePosition,
   // β Round B-α-1.8 Osa B: Sykli-näkymä runtime-laskenta tier 1/2/3 → Lähde 1
-  vRepsToExpectedPct, resolveTier,
+  vRepsToExpectedPct, acrossSetAllowance, resolveTier,
   // v4.52.15 H-006b B1 (A1): liike-spesifi primer-rajaus
   isPrimerEnabledForMovement,
   // v4.52.15 H-006b B2 (A2): primer-pohjainen sys-1RM-päivitys
@@ -14714,7 +14714,7 @@ function bindWorkoutEvents() {
     if (/laite|kone|machine|prässi|smith|talja|cable/.test(n)) return false; // laite-versiot = external stack
     return /leuanveto|leuka|dippi|muscle-up|push-?up|hspu|nordic/.test(n);   // kehonpaino+lisäpaino-perhe
   };
-  async function resolveSwapLoadKg(mov, refSet) {
+  async function resolveSwapLoadKg(mov, refSet, workSetsCount) {
     try {
       const prog = await getMovementProgress(mov.movementId);
       if (prog && typeof prog.suggestedLoadKg === "number" && prog.suggestedLoadKg > 0) {
@@ -14730,7 +14730,8 @@ function bindWorkoutEvents() {
         const e1rmExt = best?.value;
         const reps = refSet?.targetReps ?? refSet?.reps ?? 8;
         const vx = (typeof refSet?.targetVx === "number") ? refSet.targetVx : 2;
-        const pct = vRepsToExpectedPct(reps + vx);
+        // K3-1: sama across-set-väsymysvara kuin engine-preskriptiossa (viimeinenkin sarja kestää).
+        const pct = vRepsToExpectedPct(reps + vx + acrossSetAllowance(workSetsCount));
         if (e1rmExt && e1rmExt > 0 && pct !== null) {
           const load = _isSystemLoadName(mov.name) ? (e1rmExt + bw) * pct - bw : e1rmExt * pct;
           if (load > 0) return { load: roundToHalf(load), source: "e1RM" };
@@ -14759,7 +14760,7 @@ function bindWorkoutEvents() {
       exercise.category = origMov.category;
       delete exercise._substituted;
       const refSet = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
-      const { load } = await resolveSwapLoadKg(origMov, refSet);
+      const { load } = await resolveSwapLoadKg(origMov, refSet, (exercise.sets || []).filter(s => !s.isWarmup).length);
       applySwapLoad(exercise, load);
       savePendingWorkoutLocal(state.workout);
     }
@@ -14830,7 +14831,7 @@ function bindWorkoutEvents() {
       // K1-E3 (OBS-C2): kuorma re-resolvoituu HETI korvaajan omasta datasta — ei vanhan liikkeen
       // kuormia. Ei dataa → tyhjä kenttä (rehellinen), atletti syöttää itse.
       const refSetP = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
-      const { load: subLoad, source: subSrc } = await resolveSwapLoadKg(chosenSub, refSetP);
+      const { load: subLoad, source: subSrc } = await resolveSwapLoadKg(chosenSub, refSetP, (exercise.sets || []).filter(s => !s.isWarmup).length);
       applySwapLoad(exercise, subLoad);
       savePendingWorkoutLocal(state.workout);
       showToast(subLoad !== null
@@ -14963,7 +14964,7 @@ function bindWorkoutEvents() {
           exercise.category = defMov.category;
           exercise.slotSource = "catalog";
           const refSetA = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
-          const { load: defLoad } = await resolveSwapLoadKg(defMov, refSetA);
+          const { load: defLoad } = await resolveSwapLoadKg(defMov, refSetA, (exercise.sets || []).filter(s => !s.isWarmup).length);
           applySwapLoad(exercise, defLoad);
           savePendingWorkoutLocal(state.workout);
         }
@@ -14980,7 +14981,7 @@ function bindWorkoutEvents() {
         exercise.slotSource = "user-override";
         // K1-E3 (OBS-C2): kuorma re-resolvoituu heti valitun liikkeen OMASTA datasta.
         const refSetB = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
-        const { load: accLoad } = await resolveSwapLoadKg(chosen, refSetB);
+        const { load: accLoad } = await resolveSwapLoadKg(chosen, refSetB, (exercise.sets || []).filter(s => !s.isWarmup).length);
         applySwapLoad(exercise, accLoad);
         savePendingWorkoutLocal(state.workout);
         // Persist override on mesocycle
@@ -15023,7 +15024,7 @@ function bindWorkoutEvents() {
       exercise.category = options[idx].category;
       // K1-E3 (OBS-C2): myös legacy-swap re-resolvoi kuorman uuden liikkeen datasta.
       const refSetL = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
-      const { load: legLoad } = await resolveSwapLoadKg(options[idx], refSetL);
+      const { load: legLoad } = await resolveSwapLoadKg(options[idx], refSetL, (exercise.sets || []).filter(s => !s.isWarmup).length);
       applySwapLoad(exercise, legLoad);
       savePendingWorkoutLocal(state.workout);
       render();

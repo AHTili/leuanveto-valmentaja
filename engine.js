@@ -272,6 +272,38 @@ function vRepsToExpectedPct(maxReps) {
   return 1 / (1 + maxReps / 30);
 }
 
+// K3-1 (retro-kenttä OBS-B3/F): ACROSS-SET-VÄSYMYSMALLI — symmetrinen, keskiarvo-semantiikka.
+// Litteä per-sarja-Vx oletti V1:n kestävän sarjasta toiseen; atletin cal-data todisti suoraan
+// ettei kestä (73 kg: V1 → V1 → V0 → itsekorjattu pudotus 70:een ≈ 0,5 eff-toistoa/sarja).
+// Malli (// HEURISTIC, kenttäkalibroitu):
+//   • Väsymyskustannus 0,5 efektiivistä toistoa / sarja (cap +2,5).
+//   • PRESKRIPTIO: target-Vx = sarjojen KESKIARVO → vara = 0,5 × (sets−1)/2 = 0,25 × (sets−1),
+//     cap 1,25 (1. sarja hieman target-Vx:ää helpompi, viimeinen hieman tiukempi — rehellinen
+//     multi-set-semantiikka; "viimeinen sarja target-Vx:ssä" olisi ylikonservatiivinen kun
+//     estimointi käyttää saman session mediaania).
+//   • ESTIMOINTI (e1RM tehdyistä sarjoista): sarjapositio-krediitti +0,5 × (positio−1), cap
+//     +2,5 — väsyneenä tehty 5. sarja @V1 todistaa KORKEAMMAN tuoreen kapasiteetin kuin 1.
+//     Symmetria pitää mallin steady-state-neutraalina (demonstroitu taso ≈ kestävä taso →
+//     progressio virtaa) ja rasittunut sessio korjaa preskription alas (kestävyys-katto).
+// Yksisarjaiset (top single, cal-setti positiossa 1, opener) → 0/0 (ennallaan).
+const ACROSS_SET_FATIGUE_REPS_PER_SET = 0.5;
+const ACROSS_SET_FATIGUE_CAP = 2.5;
+function acrossSetAllowance(sets) {
+  const n = Number(sets);
+  if (!Number.isFinite(n) || n <= 1) return 0;
+  return Math.min(ACROSS_SET_FATIGUE_CAP / 2, (n - 1) * (ACROSS_SET_FATIGUE_REPS_PER_SET / 2));
+}
+// Estimointi-puolen positio-krediitti: sortedSets (perf-järjestyksessä) → credits[i] =
+// 0,5 × (positio samassa sessiossa − 1), cap 2,5.
+function withinSessionFatigueCredits(sortedSets) {
+  const seen = {};
+  return (sortedSets || []).map(s => {
+    const k = s.sessionId || "?";
+    seen[k] = (seen[k] || 0) + 1;
+    return Math.min(ACROSS_SET_FATIGUE_CAP, (seen[k] - 1) * ACROSS_SET_FATIGUE_REPS_PER_SET);
+  });
+}
+
 // OBS-051 (2026-06-17): PLAN_BASED-e1RM:n loadPct-Vx-johdonmukaisuus-toleranssi.
 // PLAN_BASED (plan_e1rm = load / loadPct) luottaa slotin loadPct:hen tosi-%1RM-ankkurina.
 // Jos slotin loadPct ALITTAA Vx-implikoidun intensiteetin (vReps(reps+Vx)) yli tämän
@@ -4352,10 +4384,15 @@ async function recommend(options = {}) {
 
   // e1RM from last 4-6 top sets
   // Barbell lifts (squat): external-load-only formula. CKC lifts: system load (BW + ext).
+  // K3-1: sarjapositio-krediitti — väsyneenä tehty myöhempi sarja todistaa korkeamman tuoreen
+  // kapasiteetin. Krediitit lasketaan TÄYDESTÄ topSets-järjestyksestä (positio ei ala keskeltä
+  // sessiota slice-ikkunan takia).
+  const _fatigueCreditsAll = withinSessionFatigueCredits(topSets);
   const recentTopSets = topSets.slice(-6);
+  const _recentCredits = _fatigueCreditsAll.slice(-6);
   const e1rmValues = recentTopSets
-    .map((s) => {
-      const vara = s.actualVx ?? s.targetVx ?? 1;
+    .map((s, i) => {
+      const vara = (s.actualVx ?? s.targetVx ?? 1) + (_recentCredits[i] || 0);
       if (isBarbell) {
         return e1rmAccessory(s.externalLoadKg || 0, s.reps || s.targetReps || 3, vara);
       }
@@ -4389,9 +4426,12 @@ async function recommend(options = {}) {
   let currentE1RMSystem;
   let e1rmSource = "median";
   if (recentCalibSets.length > 0) {
-    const calibE1rms = recentCalibSets.map(s => {
+    // K3-1: positio-krediitti myös cal-sarjoille (cal-sessio on sekventiaalinen — 3. cal-sarja
+    // väsyneenä @V0 todistaa korkeamman tuoreen kapasiteetin kuin 1.).
+    const _calCredits = withinSessionFatigueCredits(recentCalibSets);
+    const calibE1rms = recentCalibSets.map((s, i) => {
       // v4.32.8: fallback chain — actualVx (raportoitu) → targetVx (V1 uudessa, V0 vanhassa) → 1
-      const vara = s.actualVx ?? s.targetVx ?? 1;
+      const vara = (s.actualVx ?? s.targetVx ?? 1) + (_calCredits[i] || 0);
       if (isBarbell) {
         return e1rmAccessory(s.externalLoadKg || 0, s.reps || 1, vara);
       }
@@ -5061,7 +5101,8 @@ async function recommend(options = {}) {
       let pctForResolve = pct;
       let resolveSource = "loadPct";
       if (typeof primaryTier === "number" && (primaryTier === 1 || primaryTier === 2 || primaryTier === 3)) {
-        const maxReps = targetReps + targetVx;
+        // K3-1: + across-set-väsymysvara — kuorma jonka VIIMEINENkin sarja kestää target-Vx:llä.
+        const maxReps = targetReps + targetVx + acrossSetAllowance(primarySlotMeta?.sets);
         const expectedPct = vRepsToExpectedPct(maxReps);
         if (expectedPct !== null) {
           pctForResolve = expectedPct;
@@ -5174,6 +5215,37 @@ async function recommend(options = {}) {
                 newVx: targetVx ?? 2,
                 floor: anchor.lastSession.medianLoad },
               `Floor-cap: ${beforeFloor} → ${targetExternalLoad} kg (regression-suoja: viim. sessio ${anchor.lastSession.medianLoad.toFixed(1)} kg @V${anchor.lastSession.medianVx.toFixed(1)} meni targetin Vx:llä — uutta sessiota ei pudoteta tämän alle).`);
+          }
+
+          // K3-1b (retro-kenttä OBS-B3): KESTÄVYYS-KATTO — progressio ei saa nostaa kuormaa YLI
+          // sen minkä across-set-Vx-malli (planTarget = e1RM × vReps(reps+Vx+vara)) sanoo koko
+          // skeemalle kestäväksi. Demonstroitu taso säilyy lattiana: viime session VIIMEINEN
+          // target-Vx:n täyttänyt työsarja = atletin itsekorjattu kestotaso (kenttäcase: cal
+          // 73 → V1,V1,V0 → itsekorjaus 70 → seuraava 5×3 ankkuroituu ~70:een, EI 75:een).
+          // Mediaani-Vx-lattia yksin oli sokea sessionsisäiselle rasitukselle (V0 + pudotus
+          // eivät näy mediaanissa). Vain alaspäin — ei koskaan nosta.
+          if (typeof planTarget === "number" && planTarget > 0 && targetExternalLoad > planTarget) {
+            let demonstrated = null;
+            const _susSessId = anchor.lastSession?.sessionId;
+            if (_susSessId) {
+              const _susLastSets = recentTopSets.filter(s => s.sessionId === _susSessId && s.setRole !== "readiness_test");
+              for (let i = _susLastSets.length - 1; i >= 0; i--) {
+                const _sv = _susLastSets[i].actualVx ?? _susLastSets[i].targetVx ?? null;
+                if (_sv !== null && _sv >= (targetVx ?? 2) && (_susLastSets[i].externalLoadKg || 0) > 0) {
+                  demonstrated = _susLastSets[i].externalLoadKg; break;
+                }
+              }
+              if (demonstrated === null) demonstrated = anchor.lastSession.medianLoad ?? null;
+            }
+            const _susCap = roundToHalf(Math.max(demonstrated ?? 0, planTarget));
+            if (_susCap < targetExternalLoad) {
+              trace("SUSTAINABILITY_CAP",
+                { targetExternalLoad },
+                { targetExternalLoad: _susCap, planTarget, demonstrated,
+                  sets: primarySlotMeta?.sets ?? null, targetVx: targetVx ?? null },
+                `Kestävyys-katto: progressio ${targetExternalLoad} kg > across-set-kestävä ${planTarget} kg → ${_susCap} kg (lattiana viime session viimeinen target-Vx:n täyttänyt sarja ${demonstrated ?? "—"} kg — demonstroitu ei putoa, mutta yli kestävän ei nosteta)`);
+              targetExternalLoad = _susCap;
+            }
           }
         }
       }
@@ -5405,7 +5477,7 @@ async function recommend(options = {}) {
         const isTopSingle = slot.reps === 1 && !slot.attemptsPct;
         if (!isTopSingle &&
             typeof slotTierA === "number" && (slotTierA === 1 || slotTierA === 2 || slotTierA === 3)) {
-          const slotMaxReps = (slot.reps ?? 0) + (slot.targetVx ?? 0);
+          const slotMaxReps = (slot.reps ?? 0) + (slot.targetVx ?? 0) + acrossSetAllowance(slot.sets); // K3-1
           const slotExpectedPct = vRepsToExpectedPct(slotMaxReps);
           if (slotExpectedPct !== null) {
             slotPctForResolveA = slotExpectedPct;
@@ -5622,18 +5694,19 @@ async function recommend(options = {}) {
           && allMovsForResolve) {
         const ownMov = allMovsForResolve.find(m => m.name === slot.defaultMovementName);
         if (ownMov) {
-          const ownSets = allSets
+          const ownAll = allSets
             .filter(s => s.movementId === ownMov.movementId
                     && (s.externalLoadKg || 0) > 0
                     && s.setRole !== "readiness_test")
-            .sort(_evidenceSort) // K2c: suorituspäivä-sort
-            .slice(-6);
+            .sort(_evidenceSort); // K2c: suorituspäivä-sort
+          const ownSets = ownAll.slice(-6);
+          const ownCredits = withinSessionFatigueCredits(ownAll).slice(-6); // K3-1: positio-krediitti
           if (ownSets.length) {
             const nL = slot.defaultMovementName.toLowerCase();
             const ownIsBWFamily = !/laite|kone|machine|prässi|smith|talja|cable/.test(nL)
               && /leuanveto|leuka|dippi|muscle-up|hspu/.test(nL);
-            const ownValsRaw = ownSets.map(s => {
-              const vara = s.actualVx ?? s.targetVx ?? 1;
+            const ownValsRaw = ownSets.map((s, i) => {
+              const vara = (s.actualVx ?? s.targetVx ?? 1) + (ownCredits[i] || 0);
               return ownIsBWFamily
                 ? e1rmExternal(bodyweightKg, s.externalLoadKg || 0, s.reps || s.targetReps || 5, vara)
                 : e1rmAccessory(s.externalLoadKg || 0, s.reps || s.targetReps || 5, vara);
@@ -5664,7 +5737,7 @@ async function recommend(options = {}) {
                 }
               }
             }
-            const ownPct = vRepsToExpectedPct((slot.reps ?? 0) + (slot.targetVx ?? 2));
+            const ownPct = vRepsToExpectedPct((slot.reps ?? 0) + (slot.targetVx ?? 2) + acrossSetAllowance(slot.sets)); // K3-1
             if (ownE1RM && ownPct !== null) {
               slot.resolvedLoadKg = roundToHalf(Math.max(0, ownIsBWFamily
                 ? (ownE1RM + bodyweightKg) * ownPct - bodyweightKg
@@ -9243,6 +9316,7 @@ export {
   e1rmAccessory,
   targetLoadFromE1RM,
   vRepsToExpectedPct,
+  acrossSetAllowance, // K3-1: across-set-väsymysvara (jaettu UI-swap-helperin kanssa)
   // H-017 D1 — intra-session-alaspäin-re-resolve (puhdas; UI-handler kutsuu + tracaa)
   resolveIntraSessionAdjustedLoad,
   resolveTier,
