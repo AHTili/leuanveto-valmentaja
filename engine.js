@@ -4080,6 +4080,19 @@ function generateSuggestions(ctx) {
  * Input: mesocycle state, e1RM, readiness, settings
  * Output: recommended load, set prescription, decisionTrace
  */
+// K2c (retro-kenttä OBS-D): evidenssi-sort SUORITUSpäivällä (session.dateISO), kirjaus-timestamp
+// vain tiebreakerina. Jaettu factory recommend()- ja recommendPeaking()-poluille.
+function makeEvidenceSort(sessions) {
+  const byId = {};
+  for (const s of (sessions || [])) { if (s && s.sessionId) byId[s.sessionId] = s.dateISO || null; }
+  const perfDate = (x) => byId[x.sessionId] || (x.timestamp || "").slice(0, 10);
+  return (a, b) => {
+    const d = perfDate(a).localeCompare(perfDate(b));
+    if (d !== 0) return d;
+    return (a.timestamp || "").localeCompare(b.timestamp || "");
+  };
+}
+
 async function recommend(options = {}) {
   const settings = options.settings || (await getSettings());
   const bodyweightKg = options.bodyweightKg || settings.bodyweightKg || 91;
@@ -4317,6 +4330,14 @@ async function recommend(options = {}) {
     catch (e) { primaryTier = null; /* virheellinen tier-määrittely → fallback */ }
   }
 
+  // K2c (retro-kenttä OBS-D, "engine juuttuu muokattuun treeniin"): KAIKKI evidenssi-ikkunat
+  // järjestetään SUORITUSpäivällä (session.dateISO), kirjaus-timestamp vain tiebreakerina.
+  // Aiemmin puhdas timestamp-sort → backfillattu/jälkikäteen muokattu VANHA treeni naamioitui
+  // "tuoreimmaksi" evidenssiksi (kirjaushetki uusin) ja e1RM-ikkuna + PLAN_BASED-valinta
+  // ankkuroituivat siihen arvioimatta edustavuutta. dateISO == kirjausjärjestys normaalisti
+  // → live-käytös ennallaan; vain backfill/muokkaus asettuu oikeaan kohtaan aikajanaa.
+  const _evidenceSort = makeEvidenceSort(sessions);
+
   // Filter to primary movement top sets, sorted by date
   // v4.27.15: calibration-setit (AMRAP-testit deload-viikoilla) lasketaan mukaan
   // e1RM-laskentaan. Niillä actualVx === 0 (tekninen failure), jolloin Epley+Vara
@@ -4327,10 +4348,7 @@ async function recommend(options = {}) {
       if (primaryMovementId && s.movementId !== primaryMovementId) return false;
       return s.setRole === "top" || s.setRole === "readiness_test" || s.setRole === "calibration";
     })
-    .sort((a, b) => {
-      // Sort by session date via sessionId lookup or timestamp
-      return (a.timestamp || "").localeCompare(b.timestamp || "");
-    });
+    .sort(_evidenceSort);
 
   // e1RM from last 4-6 top sets
   // Barbell lifts (squat): external-load-only formula. CKC lifts: system load (BW + ext).
@@ -5384,7 +5402,7 @@ async function recommend(options = {}) {
         const refSets = allSets
           .filter(s => s.movementId === refMov.movementId &&
                        (s.setRole === "top" || s.setRole === "readiness_test"))
-          .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+          .sort(_evidenceSort); // K2c: suorituspäivä-sort
         if (refSets.length === 0) continue;
         const refIsBarbell = slot.isBarbell === true;
         const refRecent = refSets.slice(-6);
@@ -5431,7 +5449,7 @@ async function recommend(options = {}) {
         if (selfMov) {
           const selfSets = allSets
             .filter(s => s.movementId === selfMov.movementId && s.externalLoadKg > 0)
-            .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+            .sort(_evidenceSort); // K2c: suorituspäivä-sort
           const selfAnchor = computeRateLimitAnchor(selfSets);
           if (selfAnchor) {
             // v4.35.0 — Eliittitason progressio cross-reference-sloteille.
@@ -5570,7 +5588,7 @@ async function recommend(options = {}) {
             .filter(s => s.movementId === ownMov.movementId
                     && (s.externalLoadKg || 0) > 0
                     && s.setRole !== "readiness_test")
-            .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""))
+            .sort(_evidenceSort) // K2c: suorituspäivä-sort
             .slice(-6);
           if (ownSets.length) {
             const nL = slot.defaultMovementName.toLowerCase();
@@ -5781,7 +5799,7 @@ async function recommend(options = {}) {
       if (muMov) {
         const muSets = allSets
           .filter(s => s.movementId === muMov.movementId && (s.setRole === "top" || !s.setRole))
-          .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""))
+          .sort(_evidenceSort) // K2c: suorituspäivä-sort
           .slice(-6);
         const adj = adjustMULoad(muSets);
         if (adj.suggestedDeltaKg !== 0) {
@@ -7307,13 +7325,15 @@ async function recommendPeaking(options = {}) {
   // e1RM from sets
   const allSets = options.allSets || (await getAllSets());
   const primaryMovementId = options.primaryMovementId || null;
+  // K2c: suorituspäivä-sort myös peaking-polussa (oma sessions-haku — peaking ei muuten tarvitse).
+  const _evidenceSort = makeEvidenceSort(options.sessions || (await getAllSessions()));
   // v4.27.15: calibration-setit mukaan topSets-filtteriin myös peaking-polussa.
   const topSets = allSets
     .filter(s => {
       if (primaryMovementId && s.movementId !== primaryMovementId) return false;
       return s.setRole === "top" || s.setRole === "readiness_test" || s.setRole === "calibration";
     })
-    .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+    .sort(_evidenceSort); // K2c: suorituspäivä-sort
 
   const recentTopSets = topSets.slice(-6);
   // Detect barbell-only lift (squat): no bodyweight added to system load
