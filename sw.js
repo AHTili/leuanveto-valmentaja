@@ -758,7 +758,13 @@
 //           E5 Haara C (eri-liike-apuliike omasta e1RM:stä) · K2c evidenssi-sort
 //           suorituspäivällä · K2a paluuramppi ei-primary-sloteille · K2b post-break-
 //           ankkurikatto (tuore evidenssi cappaa vanhan).
-const APP_VERSION = "4.52.55";
+// v4.52.56: Ohjelmointikone KORI 3+4 — K3-1 across-set-väsymysmalli (symmetrinen:
+//           preskriptio-allowance + estimointi-positiokrediitit + kestävyys-katto) ·
+//           K3-4 VAROVAINEN historia-tietoiseksi (≤ viime session demonstroitu) ·
+//           K3-3 D1-v2 sarjasta-sarjaan (V0 → −5 % kaikissa blokeissa, deficit ≥2 →
+//           −2,5 %) · K3-2 ykkösen tulos re-ankkuroi työsarjat · K4-1 viikkovolyymi
+//           lihasryhmittäin (Sykli-kortti) · K4-2 cold-start-accessoryn rehellinen UX.
+const APP_VERSION = "4.52.56";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.
