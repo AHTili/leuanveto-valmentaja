@@ -4402,6 +4402,44 @@ async function recommend(options = {}) {
   } else {
     currentE1RMSystem = e1rmValues.length > 0 ? median(e1rmValues) : null;
   }
+
+  // K2b (retro-kenttä OBS-D): POST-BREAK-ANKKURIKATTO — tauon jälkeinen TUORE evidenssi cappaa
+  // vanhan ankkurin. Yksi paluusuoritus ei syrjäyttänyt tauko-edeltävää mediaania (kenttä:
+  // dipin 1RM-arvio 103,1 tauko-edeltävästä datasta vaikka paluu = yksi kolmonen). Sääntö:
+  // jos evidenssi-ikkunassa (viim. 6 topia) on ≥ RELOAD-kynnyksen suoritusPÄIVÄ-gap JA tauon
+  // jälkeisiä settejä → ankkuri = min(nykyinen, post-break-paras × 1.05). VAIN alaspäin
+  // (konservatiivinen; +5 % headroom ei jumita atleettia paluutasoon). Post-break-cal sisältyy
+  // post-ikkunaan luonnostaan (re-entry-testi = tuorein evidenssi → cap ≥ cal, ei leikkaa).
+  // Primer-override (alla) EI capata — se on eksplisiittinen TÄMÄN PÄIVÄN mittaus.
+  if (currentE1RMSystem !== null && recentTopSets.length >= 2) {
+    const _pbMap = {};
+    for (const s of sessions) if (s && s.sessionId) _pbMap[s.sessionId] = s.dateISO || null;
+    const _pbTime = (x) => new Date(_pbMap[x.sessionId] || (x.timestamp || "").slice(0, 10)).getTime();
+    let _pbBreakIdx = -1;
+    for (let i = recentTopSets.length - 1; i >= 1; i--) {
+      if ((_pbTime(recentTopSets[i]) - _pbTime(recentTopSets[i - 1])) / 86400000 >= RELOAD_CONFIG.thresholdDays) { _pbBreakIdx = i; break; }
+    }
+    if (_pbBreakIdx > 0) {
+      const _pbPost = recentTopSets.slice(_pbBreakIdx).map((s) => {
+        const vara = s.actualVx ?? s.targetVx ?? 1;
+        return isBarbell
+          ? e1rmAccessory(s.externalLoadKg || 0, s.reps || s.targetReps || 3, vara)
+          : e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || s.targetReps || 3, vara);
+      }).filter(v => v !== null && v > 0);
+      if (_pbPost.length) {
+        const _pbCap = Math.max(..._pbPost) * 1.05;
+        if (currentE1RMSystem > _pbCap) {
+          trace("POST_BREAK_ANCHOR_CAP",
+            { e1rmSystem: currentE1RMSystem.toFixed(1), source: e1rmSource },
+            { e1rmSystem: _pbCap.toFixed(1), postBreakSets: _pbPost.length, headroomPct: 5 },
+            `Post-break-ankkurikatto: tauko evidenssi-ikkunassa → ankkuri ${currentE1RMSystem.toFixed(1)} → ${_pbCap.toFixed(1)} kg (tauon jälkeinen paras × 1,05 — tuore evidenssi ajaa, vanha ei nosta)`);
+          currentE1RMSystem = _pbCap;
+          e1rmSource = e1rmSource + "+post-break-cap";
+        }
+      }
+    }
+  }
+
   let currentE1RMExternal = currentE1RMSystem !== null
     ? (isBarbell ? currentE1RMSystem : Math.max(0, currentE1RMSystem - bodyweightKg))
     : null;
@@ -5594,13 +5632,38 @@ async function recommend(options = {}) {
             const nL = slot.defaultMovementName.toLowerCase();
             const ownIsBWFamily = !/laite|kone|machine|prässi|smith|talja|cable/.test(nL)
               && /leuanveto|leuka|dippi|muscle-up|hspu/.test(nL);
-            const ownVals = ownSets.map(s => {
+            const ownValsRaw = ownSets.map(s => {
               const vara = s.actualVx ?? s.targetVx ?? 1;
               return ownIsBWFamily
                 ? e1rmExternal(bodyweightKg, s.externalLoadKg || 0, s.reps || s.targetReps || 5, vara)
                 : e1rmAccessory(s.externalLoadKg || 0, s.reps || s.targetReps || 5, vara);
-            }).filter(v => v !== null && v > 0);
-            const ownE1RM = ownVals.length ? median(ownVals) : null;
+            });
+            const ownVals = ownValsRaw.filter(v => v !== null && v > 0); // K2b: raw säilyy indeksi-alignattuna ownSetsiin
+            let ownE1RM = ownVals.length ? median(ownVals) : null;
+            // K2b: post-break-ankkurikatto myös Haara C:lle — tauon jälkeinen tuore evidenssi
+            // cappaa pre-break-dominoidun mediaanin (min, ×1,05 headroom; vain alaspäin).
+            if (ownE1RM !== null && ownSets.length >= 2) {
+              const _cbMap = {};
+              for (const s2 of sessions) if (s2 && s2.sessionId) _cbMap[s2.sessionId] = s2.dateISO || null;
+              const _cbTime = (x) => new Date(_cbMap[x.sessionId] || (x.timestamp || "").slice(0, 10)).getTime();
+              let _cbIdx = -1;
+              for (let i2 = ownSets.length - 1; i2 >= 1; i2--) {
+                if ((_cbTime(ownSets[i2]) - _cbTime(ownSets[i2 - 1])) / 86400000 >= RELOAD_CONFIG.thresholdDays) { _cbIdx = i2; break; }
+              }
+              if (_cbIdx > 0) {
+                const _cbPost = ownValsRaw.slice(_cbIdx).filter(v => v !== null && v > 0);
+                if (_cbPost.length) {
+                  const _cbCap = Math.max(..._cbPost) * 1.05;
+                  if (ownE1RM > _cbCap) {
+                    trace("POST_BREAK_ANCHOR_CAP_SLOT",
+                      { slotMovement: slot.defaultMovementName, ownE1RM: ownE1RM.toFixed(1) },
+                      { ownE1RM: _cbCap.toFixed(1), postBreakSets: _cbPost.length },
+                      `${slot.defaultMovementName}: post-break-katto ${ownE1RM.toFixed(1)} → ${_cbCap.toFixed(1)} kg (tuore evidenssi ajaa)`);
+                    ownE1RM = _cbCap;
+                  }
+                }
+              }
+            }
             const ownPct = vRepsToExpectedPct((slot.reps ?? 0) + (slot.targetVx ?? 2));
             if (ownE1RM && ownPct !== null) {
               slot.resolvedLoadKg = roundToHalf(Math.max(0, ownIsBWFamily
