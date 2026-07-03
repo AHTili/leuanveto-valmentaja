@@ -1179,6 +1179,8 @@ import {
   // v4.38.5: kisaliikkeiden tunnistus nimellä (fallback isCompetitionLift-flagille)
   isCompetitionLiftMovement,
   weeklyStimulus, checkStagnation,
+  // K4-1: viikkovolyymi lihasryhmittäin (Sykli-kortti)
+  computeWeeklyMuscleVolume,
   getMesocycleWeek, getWeekDef, getTodayPlan,
   breakAnalysis, speedDayLoad,
   varaFeedback,
@@ -8397,6 +8399,34 @@ function renderMesocycle() {
 
     ${thisWeekHTML}
     ${nextWeekHTML}
+
+    <!-- K4-1 (OBS-D): viikkovolyymi lihasryhmittäin — ohjelman suunniteltu volyymi näkyväksi -->
+    ${(() => {
+      try {
+        if (!currentWeek) return "";
+        const vol = computeWeeklyMuscleVolume(meso, currentWeek);
+        if (!vol.found || !vol.groups.length) return "";
+        const bandStyle = {
+          "ylläpito":  "color:var(--muted);border:1px solid var(--muted)",
+          "matala":    "color:var(--warn);border:1px solid var(--warn)",
+          "kehittävä": "color:var(--ok);border:1px solid var(--ok)",
+          "korkea":    "color:var(--bad);border:1px solid var(--bad)",
+        };
+        const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+        const fmtN = n => (Math.round(n * 10) % 10 === 0 ? String(Math.round(n)) : n.toFixed(1)).replace(".", ",");
+        const rows = vol.groups.map(g => `
+          <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--card2)">
+            <span style="flex:1;font-size:13px;font-weight:600">${cap(g.muscle)}</span>
+            <span style="font-size:12px;color:var(--muted)">${fmtN(g.effective)} sarjaa${g.indirect > 0 ? ` <span style="opacity:0.7">(${g.direct} + ${g.indirect}×½)</span>` : ""}</span>
+            <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:9px;${bandStyle[g.band] || bandStyle["ylläpito"]}">${g.band}</span>
+          </div>`).join("");
+        return `<div class="card">
+          <div class="card-title">💪 Viikkovolyymi lihasryhmittäin <span style="font-size:11px;font-weight:400;color:var(--muted)">— vk ${currentWeek} suunniteltu</span></div>
+          ${rows}
+          <div style="font-size:10px;color:var(--muted);opacity:0.75;margin-top:8px;line-height:1.4">Suorat sarjat + epäsuorat ×½ (esim. leuanveto lasketaan hauikselle puolikkaana). Bandit/vk: ylläpito &lt;4 · matala 4–9 · kehittävä 10–20 · korkea &gt;20. Näkyvyys, ei rajoitin.</div>
+        </div>`;
+      } catch (e) { console.warn("K4-1 volume card failed:", e); return ""; }
+    })()}
 
     <!-- 1b. OHJELMAN IDEA — v4.26.3: tarkoitus + käyttötapa kaikille ohjelmatyypeille -->
     ${(() => {

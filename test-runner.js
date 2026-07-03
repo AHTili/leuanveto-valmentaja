@@ -18,6 +18,7 @@ import {
   // H-017 D1 (2026-06-14): intra-session-alaspäin-re-resolve (puhdas funktio)
   resolveIntraSessionAdjustedLoad,
   resolveTopSingleReanchor,
+  computeWeeklyMuscleVolume, muscleVolumeBand,
   calibrateMesocycle,
   varaFeedback, varaTrendCorrection,
   // v4.34.34
@@ -899,6 +900,44 @@ function testTopSingleReanchor() {
   // T4 — esiehdot: puuttuva single tai suunniteltu → no-op.
   assertEqual(resolveTopSingleReanchor({ singleLoadKg: 0, singleActualVx: 1, isBarbell: true, bodyweightKg: 91, plannedLoadKg: 100, targetReps: 3, targetVx: 1, workSetsCount: 5 }).adjusted, false, "K32-T4a: ei singleä → no-op");
   assertEqual(resolveTopSingleReanchor({ singleLoadKg: 172.5, singleActualVx: 1, isBarbell: true, bodyweightKg: 91, plannedLoadKg: 0, targetReps: 3, targetVx: 1, workSetsCount: 5 }).adjusted, false, "K32-T4b: ei suunniteltua → no-op");
+}
+
+// K4-1 (OBS-D, 2026-07-03): viikkovolyymi lihasryhmittäin (suunniteltu, live-ohjelma).
+// Suorat sarjat 1,0 + epäsuorat 0,5 (RP-konventio: veto lasketaan hauikselle puolikkaana).
+// Bandit: ylläpito <4 / matala 4–9 / kehittävä 10–20 / korkea >20.
+function testWeeklyMuscleVolume() {
+  const meso = { weekPlans: [{ week: 1, days: [
+    { dayOfWeek: 1, slots: [
+      { role: "primary",   category: "vertikaaliveto",   sets: 5 },
+      { role: "accessory", category: "hauisfleksio",     sets: 2 },
+      { role: "warmup",    category: "vertikaaliveto",   sets: 3 }, // EI volyymiin
+    ]},
+    { dayOfWeek: 4, slots: [
+      { role: "backoff",   category: "vertikaaliveto",   sets: 3 },
+      { role: "accessory", category: "horisontaalityöntö", sets: 4 },
+      { role: "accessory", category: "calf-isolation",   sets: 2 },
+    ]},
+  ]}]};
+  const vol = computeWeeklyMuscleVolume(meso, 1);
+  assertEqual(vol.found, true, "K41-T1: viikko löytyy");
+  const g = Object.fromEntries(vol.groups.map(x => [x.muscle, x]));
+  // Hauis: 2 suoraa + 8 epäsuoraa (veto) ×0,5 = 6,0 → matala (kenttäkysymys näkyväksi)
+  assertEqual(g["hauis"].direct, 2, "K41-T2: hauis suorat = 2");
+  assertEqual(g["hauis"].indirect, 8, "K41-T2: hauis epäsuorat = 8 (vedot)");
+  assertClose(g["hauis"].effective, 6, 0.01, "K41-T2: hauis efektiivinen = 2 + 8×0,5 = 6");
+  assertEqual(g["hauis"].band, "matala", "K41-T2: hauis-band = matala (4–9)");
+  // Selkä: 8 suoraa → matala; rinta 4 → matala; pohje 2 → ylläpito
+  assertClose(g["selkä"].effective, 8, 0.01, "K41-T3: selkä = 8 suoraa");
+  assertEqual(g["pohje"].band, "ylläpito", "K41-T4: pohje 2/vk → ylläpito (<4)");
+  // Warmup-slot ei kirjaudu: selkä olisi 11 jos kirjautuisi
+  assert(g["selkä"].effective < 9, "K41-T5: warmup-slot ei kirjaudu volyymiin");
+  // Band-rajat: 3,9 ylläpito / 4 matala / 10 kehittävä / 20,5 korkea
+  assertEqual(muscleVolumeBand(3.9), "ylläpito", "K41-T6a: 3,9 → ylläpito");
+  assertEqual(muscleVolumeBand(4), "matala", "K41-T6b: 4 → matala");
+  assertEqual(muscleVolumeBand(10), "kehittävä", "K41-T6c: 10 → kehittävä");
+  assertEqual(muscleVolumeBand(20.5), "korkea", "K41-T6d: 20,5 → korkea");
+  // Puuttuva viikko → found:false
+  assertEqual(computeWeeklyMuscleVolume(meso, 9).found, false, "K41-T7: puuttuva viikko → found:false");
 }
 
 // H-018 OSA 1 (OBS-040, 2026-06-13): e1RM-kortin kanoninen lähde-lukko.
@@ -4352,6 +4391,7 @@ export async function runTests() {
   // H-017 D1: intra-session-alaspäin-re-resolve (puhdas funktio, mittari-ensin)
   testIntraSessionReResolve();
   testTopSingleReanchor();
+  testWeeklyMuscleVolume();
   // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
   testE1rmCardCanonicalSource();
   testE1rmCardPlanBasedGate();

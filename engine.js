@@ -6404,6 +6404,95 @@ function weeklyStimulus(sets, movements) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// K4-1 (retro-kenttä OBS-D) — VIIKKOVOLYYMI LIHASRYHMITTÄIN (live-ohjelma)
+// ═══════════════════════════════════════════════════════════════
+//
+// Kenttäkysymys: "riittääkö hauis 2 sarjaa/vk?" — ohjelman viikkovolyymi per
+// lihasryhmä ei ollut näkyvissä missään. Valmentaja laskee sekä SUORAT sarjat
+// (liike kohdistuu lihakseen) että EPÄSUORAT (compound kuormittaa sivussa,
+// paino 0,5 — RP/Israetel-konventio: leuanveto lasketaan hauikselle puolikkaana).
+//
+// Bandit (efektiiviset sarjat/vk, MEV/MAV-linjaus): ylläpito <4 · matala 4–9 ·
+// kehittävä 10–20 · korkea >20. Nämä ovat NÄKYVYYS-työkalu (ei cap) — engine
+// näyttää, atletti päättää (valmentaja, ei nanny).
+const CATEGORY_MUSCLE_MAP = {
+  "vertikaaliveto":          [["selkä", 1], ["hauis", 0.5]],
+  "horisontaaliveto":        [["selkä", 1], ["hauis", 0.5]],
+  "pull-volume":             [["selkä", 1], ["hauis", 0.5]],
+  "pull-horizontal-heavy":   [["selkä", 1], ["hauis", 0.5]],
+  "pull-vertical-explosive": [["selkä", 1], ["hauis", 0.5]],
+  "horisontaalityöntö":      [["rinta", 1], ["ojentaja", 0.5], ["olkapää", 0.5]],
+  "vertikaalityöntö":        [["olkapää", 1], ["ojentaja", 0.5]],
+  "hauisfleksio":            [["hauis", 1]],
+  "ojentajaekstensio":       [["ojentaja", 1]],
+  "ojentaja-ext":            [["ojentaja", 1]],
+  "alaraaja":                [["jalat", 1]],
+  "lonkkahingaus":           [["jalat", 1]],
+  "hamstring-isolation":     [["jalat", 1]],
+  "knee-dominant-isolation": [["jalat", 1]],
+  "calf-isolation":          [["pohje", 1]],
+  "shoulder-isolation":      [["olkapää", 1]],
+  "scapular-control":        [["olkapää", 0.5], ["selkä", 0.5]],
+  "core":                    [["core", 1]],
+  "core-hollow":             [["core", 1]],
+  "core-antirotation":       [["core", 1]],
+};
+
+const MUSCLE_VOLUME_BANDS = [
+  { max: 4,        id: "ylläpito",  label: "ylläpito" },
+  { max: 10,       id: "matala",    label: "matala" },
+  { max: 20.0001,  id: "kehittävä", label: "kehittävä" },
+  { max: Infinity, id: "korkea",    label: "korkea" },
+];
+
+function muscleVolumeBand(effectiveSets) {
+  const n = Number(effectiveSets) || 0;
+  for (const b of MUSCLE_VOLUME_BANDS) { if (n < b.max) return b.id; }
+  return "korkea";
+}
+
+/**
+ * Laskee viikon SUUNNITELLUN volyymin lihasryhmittäin materialisoidusta
+ * viikko-ohjelmasta (mesocycle.weekPlans → days → slots). Lämmittelyt eivät
+ * kuulu volyymiin. Puhdas funktio — UI (Sykli-kortti) renderöi tuloksen.
+ *
+ * @param {object} mesocycle — aktiivinen mesosykli (weekPlans materialisoituna)
+ * @param {number} weekNum   — 1-pohjainen viikkonumero
+ * @returns {{found:boolean, weekNum:number, groups:Array<{muscle:string,
+ *            direct:number, indirect:number, effective:number, band:string}>}}
+ */
+function computeWeeklyMuscleVolume(mesocycle, weekNum) {
+  const wp = (mesocycle?.weekPlans || []).find(w => w.week === weekNum);
+  if (!wp) return { found: false, weekNum, groups: [] };
+  const acc = {}; // muscle → {direct, indirect, effective}
+  for (const day of (wp.days || [])) {
+    for (const slot of (day.slots || [])) {
+      if (!slot || slot.role === "warmup" || slot.isWarmup) continue;
+      const sets = Number(slot.sets);
+      if (!Number.isFinite(sets) || sets <= 0) continue;
+      const targets = CATEGORY_MUSCLE_MAP[slot.category];
+      if (!targets) continue; // "muu" / tuntematon → ei attribuutiota
+      for (const [muscle, weight] of targets) {
+        if (!acc[muscle]) acc[muscle] = { direct: 0, indirect: 0, effective: 0 };
+        if (weight >= 1) acc[muscle].direct += sets;
+        else acc[muscle].indirect += sets;
+        acc[muscle].effective += sets * weight;
+      }
+    }
+  }
+  const groups = Object.entries(acc)
+    .map(([muscle, v]) => ({
+      muscle,
+      direct: v.direct,
+      indirect: v.indirect,
+      effective: Math.round(v.effective * 10) / 10,
+      band: muscleVolumeBand(v.effective),
+    }))
+    .sort((a, b) => b.effective - a.effective);
+  return { found: true, weekNum, groups };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // STAGNATION DETECTION
 // ═══════════════════════════════════════════════════════════════
 
@@ -9477,6 +9566,8 @@ export {
   computeStreetliftingFinalProjection,
   // Weekly
   weeklyStimulus,
+  computeWeeklyMuscleVolume, // K4-1: viikkovolyymi lihasryhmittäin (Sykli-kortti)
+  muscleVolumeBand,
   // Stagnation
   checkStagnation,
   // Accessory slot resolution (v4.11)
