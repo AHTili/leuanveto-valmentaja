@@ -6907,6 +6907,25 @@ function renderActiveWorkout() {
     ? renderSuggestionCardsHTML(rec, w, exercise)
     : "";
 
+  // K4-2 (OBS-D2): cold-start-accessoryn rehellinen kuorma-UX. Kun accessorylla ei ole
+  // historiaa eikä resolvoitua kuormaa, pelkkä "0 kg / –" ei kerro atletille mitä tehdä.
+  // Valmentaja sanoo ääneen: ei dataa → valitse kuorma jolla target-Vx jää varaan, ja
+  // engine oppii tästä sessiosta eteenpäin (accessory-e1RM syntyy 1. kirjauksesta).
+  let coldStartHintHTML = "";
+  if (!isWarmupSet
+      && (exercise.role === "accessory" || exercise.role === "support")
+      && !isBwOnlyMovement && !(loadKg > 0)) {
+    try {
+      const hasHistory = !!computePriorSessionSummary(exercise.movementId, w.sessionId);
+      if (!hasHistory) {
+        const vxHint = (targetVx !== null && targetVx !== undefined)
+          ? `jolla ~V${targetVx} jää varaan (≈ ${targetVx} toistoa tankissa sarjan lopussa)`
+          : "jolla jää 2–3 toistoa varaan viimeisessä sarjassa";
+        coldStartHintHTML = `<div style="font-size:11px;color:var(--warn);margin-top:4px;line-height:1.45">📭 Ei vielä dataa tälle liikkeelle — valitse kuorma ${vxHint}. Engine oppii tästä kirjauksesta.</div>`;
+      }
+    } catch (e) { /* hint on nice-to-have — ei saa kaataa workout-renderiä */ }
+  }
+
   // Work-set hero
   const heroHTML = isWarmupSet ? "" : `<div class="load-hero">
     <div class="set-line">
@@ -6919,6 +6938,7 @@ function renderActiveWorkout() {
       ${deltaChipHTML}
     </div>
     <div class="load-edit-hint">Napauta lukua muokataksesi painoa</div>
+    ${coldStartHintHTML}
     ${prevGhostHTML}
     ${targetRowHTML}
     ${intraTagHTML}
