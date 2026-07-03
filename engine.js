@@ -5616,6 +5616,45 @@ async function recommend(options = {}) {
         }
       }
     }
+
+    // ── K2a (retro-kenttä OBS-D): H-016-paluuramppi myös EI-primary-sloteille ─────────────
+    // v1 rajasi accessoryt ulos (ratifioitu rajaus: "Ei koske cal-slotteja eikä accessoryja").
+    // Kenttäevidenssi purki rajauksen (Akseli ratifioi KORI 2): dippi MA-vetopäivän accessoryna
+    // palasi tauolta yhdellä kolmosella → engine ankkuroi tauko-edeltävään e1RM:ään täydellä
+    // kuormalla (1RM-arvio 103,1 → 8·V3 @ 67,5) ILMAN kuormakorjausta — vain varoitusbanneri.
+    // Sama min-precedence + sama cal-re-entry-ohitus + DORMANTTI-semantiikka kuin primaryllä;
+    // VAIN alaspäin. Same-liike-slotit (backoff/secondary) perivät primaryn kevennyksen jo
+    // sessionEffectiveE1RM-säteilystä (§6.2) → ohitetaan tuplakevennyksen estämiseksi.
+    if (allMovsForResolve) {
+      const _reloadCache = {};
+      for (const slot of dayPlan.slots) {
+        if (!(slot.role === "accessory" || slot.role === "secondary" || slot.role === "backoff")) continue;
+        if (!slot.defaultMovementName || slot.defaultMovementName === primaryMovementName) continue;
+        if (typeof slot.resolvedLoadKg !== "number" || slot.resolvedLoadKg <= 0) continue;
+        let info = _reloadCache[slot.defaultMovementName];
+        if (info === undefined) {
+          const m = allMovsForResolve.find(x => x.name === slot.defaultMovementName);
+          info = m ? computeMovementReload(allSets, m.name, m.movementId, mesocycle, dateISO) : null;
+          _reloadCache[slot.defaultMovementName] = info;
+        }
+        if (!info) continue;
+        const reloadTarget = roundToHalf(Math.max(0, info.targetKg));
+        if (reloadTarget < slot.resolvedLoadKg) {
+          trace("BREAK_RELOAD_SLOT",
+            { slotRole: slot.role, slotMovement: slot.defaultMovementName, resolvedLoadKg: slot.resolvedLoadKg },
+            { resolvedLoadKg: reloadTarget, breakDays: info.breakDays, reloadPct: info.reloadPct,
+              anchorKg: info.anchorKg, phase: info.phase, step: info.step, stepsTotal: info.stepsTotal,
+              reason: info.reason },
+            `Paluuramppi (${slot.defaultMovementName}, ${slot.role}): tauko ${info.breakDays} pv → ` +
+            `${info.phase === "first-return"
+              ? `kevennys −${(info.reloadPct * 100).toFixed(1)} % ankkurista ${info.anchorKg} kg`
+              : `porras ${info.step}/${info.stepsTotal} kohti ${info.anchorKg} kg`} ` +
+            `= ${reloadTarget} kg (min-precedence; normaali ${slot.resolvedLoadKg} kg)${info.reason === "vaiva" ? " · vaiva: etene vain oireettomana" : ""}`);
+          slot.resolvedLoadKg = reloadTarget;
+          slot._reload = info;
+        }
+      }
+    }
   }
 
   trace("TARGET_LOAD", {}, {
