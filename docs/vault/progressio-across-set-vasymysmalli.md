@@ -1,0 +1,19 @@
+# Across-set-väsymysmalli ja kestävyyskatto (K3-1)
+
+**Status:** TOTEUTETTU-HEURISTIIKKA (kenttäkalibroitu, retro-kenttä OBS-B3/F 2026-07-03)
+**Lähteet:** ei suoraa vertaisarvioitua lähdettä — kalibroitu atletin cal-datasta (73 kg: V1 → V1 → V0 → itsekorjattu pudotus 70 kg:aan ≈ 0,5 eff-toistoa/sarja); yhteensopiva Epley-vReps-aritmetiikan kanssa
+**Koodiankkurit:** engine.js:275–295 (`ACROSS_SET_FATIGUE_REPS_PER_SET = 0.5`, `ACROSS_SET_FATIGUE_CAP = 2.5`, `acrossSetAllowance`), engine.js:298–305 (`withinSessionFatigueCredits`), engine.js:5200 (preskriptio: maxReps + allowance), engine.js:5165–5168 + 5237–5251 (`lastDemonstratedLoad`, K3-4-skannaus), engine.js:5330–5348 (`SUSTAINABILITY_CAP`, K3-1b), engine.js:4476 + 4518 (positio-krediitti e1RM-estimoinnissa, ml. cal-sarjat), test-runner.js:1467 (S10: katto ei laukea koherentilla planTargetilla)
+
+Litteä per-sarja-Vx-malli oletti että V1 kestää sarjasta toiseen; kenttädata todisti suoraan ettei kestä. K3-1 tekee mallista **symmetrisen** kahdella puoliskolla:
+
+**Preskriptio (kuorman määräys):** target-Vx tulkitaan sarjojen KESKIARVOKSI → vara = `0,5 × (sets−1)/2` = **0,25 × (sets−1), cap 1,25** (`acrossSetAllowance`; cap = ACROSS_SET_FATIGUE_CAP/2). Kuorma = `e1RM × vRepsToExpectedPct(reps + Vx + allowance)` — 1. sarja hieman target-Vx:ää helpompi, viimeinen hieman tiukempi. "Viimeinen sarja target-Vx:ssä" olisi ylikonservatiivinen, koska estimointi käyttää saman session mediaania. Yksisarjaiset (top single, opener, cal positiossa 1) → allowance 0.
+
+**Estimointi (e1RM tehdyistä sarjoista):** sarjapositio-krediitti `+0,5 × (positio−1), cap +2,5` (`withinSessionFatigueCredits`) — väsyneenä tehty 5. sarja @V1 todistaa korkeamman *tuoreen* kapasiteetin kuin 1. sarja. Symmetria pitää mallin steady-state-neutraalina: demonstroitu taso ≈ kestävä taso → progressio virtaa, eikä malli itsessään deflatoi eikä inflatoi.
+
+**Kestävyyskatto (K3-1b, `SUSTAINABILITY_CAP`):** progressio (`computeProgressionTarget`-tulos) ei saa nostaa kuormaa YLI sen minkä across-set-malli sanoo koko skeemalle kestäväksi (`planTarget = e1RM × vReps(reps+Vx+vara)`). Lattiana **demonstroitu taso** (K3-4): viime session viimeinen target-Vx:n täyttänyt työsarja (fallback session-mediaani) — atletin itsekorjattu kestotaso ei putoa, mutta yli kestävän ei nosteta. Kenttäcase: cal 73 → V1,V1,V0 → itsekorjaus 70 → seuraava 5×3 ankkuroituu ~70:een, ei 75:een. Mediaani-Vx-lattia yksin oli sokea sessionsisäiselle rasitukselle (V0 + pudotus eivät näy mediaanissa). Katto on vain alaspäin.
+
+Sama `lastDemonstratedLoad`-referenssi jaetaan historia-tietoisen VAROVAINEN-ehdotuksen kanssa (skannaus tehdään ehdottomasti, ei vain katon lauetessa — engine.js:5237). S10-regressio muistuttaa kytkennästä: PLAN_BASED-inversion system-%-kontraktivirhe manifestoitui juuri kestävyyskatossa ("progressio jäätyy tehtyyn kuormaan"), ja S10-testi lukitsee ettei katto laukea koherentilla planTargetilla.
+
+**8a-prior:** `learnedAcrossSetFatigue`: prior 0,5 eff-toistoa/sarja, ehdotetut rajat [0,25; 0,75] (SD = 0,125 → clamp ±0,25). HUOM: preskription ja estimoinnin kertoimien on opittava YHDESSÄ (symmetria on mallin neutraalius-invariantti) — erilliset posteriorit rikkoisivat steady-staten ja aiheuttaisivat systemaattisen driftin.
+
+**Linkit:** [[progressio-computeprogressiontarget]], [[progressio-heavy-first-reankkurointi]], [[progressio-suggestion-tierit]], [[e1rm-epley-vara-kaava]], [[failure-refalo-kuormapudotus]]
