@@ -859,35 +859,21 @@ export function auditInvariants(trace, profile = null) {
     }
   }
 
-  // ─── K-A1: intra-session-feedback rooli-leikkaus (AC-A1) ─────
-  // R-kierros 1 / mittari-infra. STAATTINEN detektio (audit-puolinen, read-only):
-  // jos sessio sisältää secondary-roolisen slot:n jolla on targetVx-tavoite ja
-  // sets > 1, UI:n intra-session-filter (index.html:12882
-  // `isPrimary = role === "primary" || "backoff"`) jättää sen ulkopuolelle.
-  // Rooli-leikkaus on rakenteellinen, ei tilannekohtainen — joten staattinen
-  // konfiguraatiotarkistus riittää detektoimaan ilmiön. EI muutosta engineen.
-  const slotsForA1 = trace.output?.slots || [];
-  for (const slot of slotsForA1) {
-    if (slot.role !== "secondary") continue;
-    if (typeof slot.targetVx !== "number") continue;
-    const setCount = typeof slot.sets === "number" ? slot.sets : 1;
-    if (setCount < 2) continue;
-    flags.push(
-      flag(
-        "INVARIANT_VIOLATION_K_A1",
-        "🐛 ERROR",
-        `K-A1 intra-session rooli-leikkaus: secondary-rooli "${slot.movementName || "?"}" (targetVx=${slot.targetVx}, sets=${setCount}) jää intra-session-säädön ulkopuolelle (UI primary/backoff -only filter, index.html:12882).`,
-        {
-          channel: "k_a1",
-          ac: "A1",
-          role: slot.role,
-          movementName: slot.movementName,
-          targetVx: slot.targetVx,
-          sets: setCount,
-        },
-      ),
-    );
-  }
+  // ─── K-A1: intra-session-feedback rooli-leikkaus (AC-A1) — SULJETTU 2026-07-04 ─────
+  // R-kierros 1 / mittari-infra loi tämän STAATTISEN detektion olettaen että UI:n
+  // intra-session-filter on primary/backoff-only. Kanava flagasi ehdoitta JOKAISEN
+  // secondary-slotin (targetVx + sets ≥ 2) verifioimatta UI:n todellista tilaa →
+  // detektori vanheni: nykyinen kattavuus (verifioitu koodista, KORI 5 -triage):
+  //   1. Near-failure-säätö (deficit ≥2 → −2,5 %, index.html ~13796) kattaa roolit
+  //      primary + backoff + SECONDARY.
+  //   2. V0-failurereaktio (K3-3 D1-v2: loput sarjat −5 % kaikissa blokeissa) kattaa
+  //      KAIKKI roolit — ei roolifiltteriä.
+  //   3. Top-single-re-ankkurointi (K3-2) kattaa primary/secondary/backoff.
+  //   4. H-017 D1 (cross-slot backoff-re-resolve) on tarkoituksella backoff-only —
+  //      ratifioitu rajaus (raskaita openereita ei kosketa), EI AC-A1:n aukko.
+  // → AC-A1:n vaatima intra-session-feedback secondary-rooleille TOTEUTUU. Kanava
+  // eläkkeistetty (10 väärää 🐛-flagia/16 vk poistuu). Jos secondary-kattavuus joskus
+  // regressoituu, oikea vahti on selaintesti UI-filtterille — ei sokea staattinen flag.
 
   // ─── K-A6D: velocity-stop ↔ Vx-tavoite -ristiriita (AC-A6-DET) ─
   // R-kierros 1 / mittari-infra. STAATINEN konfiguraatiotarkistus: jos slot:lla
