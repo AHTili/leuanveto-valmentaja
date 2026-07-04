@@ -5035,8 +5035,16 @@ async function recommend(options = {}) {
 
   // 6. deltaPct calculation
   const dayMult = DAY_TYPE_MULTIPLIERS[dayType] ?? 1.0;
-  let deltaPctRawValue = (weekDef?.deltaPctBase || 0) * dayMult;
-  trace("DELTA_PCT_RAW", {}, { deltaPctRaw: deltaPctRawValue }, `deltaPct_raw = ${weekDef?.deltaPctBase || 0} × ${dayMult}`);
+  // K5-7 (audit-invariantti C ×4, 2026-07-04): day-kerroin EI saa laimentaa NEGATIIVISTA
+  // basea. Deload-viikon volume-päivä sai −0.20 × 0.6 = −12 % → Helms-lattia (−15…−30 %,
+  // PMID 30153841) rikki; vk4/vk8 osuivat rajalle vain sattumalta (−0.25 × 0.6 = −15.0).
+  // Deloadin SYVYYS on tutkimusinvariantti — päivätyyppi-differentiointi tehdään
+  // toistoilla/Vx:llä, ei kevennystä syömällä. Positiivinen progressio skaalautuu ennallaan.
+  const _deltaBase = weekDef?.deltaPctBase || 0;
+  const _deltaMult = _deltaBase < 0 ? 1.0 : dayMult;
+  let deltaPctRawValue = _deltaBase * _deltaMult;
+  trace("DELTA_PCT_RAW", {}, { deltaPctRaw: deltaPctRawValue },
+    `deltaPct_raw = ${_deltaBase} × ${_deltaMult}${_deltaBase < 0 && dayMult !== 1.0 ? " (negatiivinen base: day-kerroin ohitettu, K5-7 Helms-lattia)" : ""}`);
 
   // 7. Vara trend correction (asymmetric: aggressive up, conservative down)
   const varaCorr = varaTrendCorrection(recentTopSets);
@@ -5846,6 +5854,34 @@ async function recommend(options = {}) {
                 { resolvedLoadKg: slot.resolvedLoadKg, ownE1RM: ownE1RM.toFixed(1),
                   pct: ownPct.toFixed(3), bwFamily: ownIsBWFamily, fromSets: ownSets.length },
                 `${slot.defaultMovementName}: oma e1RM ${ownE1RM.toFixed(1)} kg × ${(ownPct * 100).toFixed(0)} % (vReps ${slot.reps ?? 0}+${slot.targetVx ?? 2})${ownIsBWFamily ? " − BW" : ""} = ${slot.resolvedLoadKg} kg [Haara C: eri-liike-apuliike omasta datasta]`);
+
+              // K5-1 (retro-kenttä OBS-HT, la vk10): APULIIKE-REGRESSION-LATTIA. Mediaani-6
+              // voi ulottua edellisen (kevyemmän) session yli ja pudottaa ehdotuksen ALLE
+              // juuri demonstroidun tason (hip thrust: 62,5×10 V4 ×3 → mediaani ehdotti
+              // 59,5). Primaryllä sama suoja on PROGRESSION_FLOOR_CAP — apuliikkeiltä se
+              // puuttui. Lattia: viime session mediaanikuorma JOS session mediaani-Vx ≥
+              // slotin target-Vx JA mediaanitoistot ≥ slotin toistot (teki vähintään saman
+              // työn vähintään samalla varalla). Vain nostaa — paluuramppi (BREAK_RELOAD_SLOT)
+              // ajaa tämän YLI toisessa passissa (min-precedence), joten tauko-kevennys säilyy.
+              const _afSessId = ownSets[ownSets.length - 1]?.sessionId;
+              if (_afSessId && typeof slot.resolvedLoadKg === "number") {
+                const _afSets = ownAll.filter(s => s.sessionId === _afSessId);
+                const _afLoads = _afSets.map(s => s.externalLoadKg).filter(v => v > 0);
+                const _afVx = _afSets.map(s => s.actualVx ?? s.targetVx).filter(v => v != null);
+                const _afReps = _afSets.map(s => s.reps ?? s.targetReps).filter(v => v != null);
+                if (_afLoads.length && _afVx.length && _afReps.length) {
+                  const _afMet = median(_afVx) >= (slot.targetVx ?? 2) && median(_afReps) >= (slot.reps ?? 0);
+                  const _afFloor = roundToHalf(median(_afLoads));
+                  if (_afMet && slot.resolvedLoadKg < _afFloor) {
+                    trace("ACCESSORY_FLOOR_CAP",
+                      { slotMovement: slot.defaultMovementName, resolvedLoadKg: slot.resolvedLoadKg },
+                      { resolvedLoadKg: _afFloor, lastSessionMedian: _afFloor,
+                        lastMedianVx: median(_afVx), lastMedianReps: median(_afReps) },
+                      `${slot.defaultMovementName}: regression-lattia ${slot.resolvedLoadKg} → ${_afFloor} kg (viime sessio ${_afFloor} kg meni V${median(_afVx)} / ${median(_afReps)} toistoa — demonstroitua ei pudoteta)`);
+                    slot.resolvedLoadKg = _afFloor;
+                  }
+                }
+              }
             }
           }
         }
