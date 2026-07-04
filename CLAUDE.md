@@ -17,7 +17,7 @@ LeVe AI on suomenkielinen voimaharjoittelusovellus (PWA, paikallinen IndexedDB, 
 - `index.html` — UI + CSS + workout-flow
 - `wizard/` — kysymys-vastaus → ohjelma-mappaus (32 kysymystä, 17 ohjelmointityyliä)
 - `tools/engine-pilot/` — regression-pilot-harness (8 profiilia × 148 sessiota)
-- `test-runner.js` — selain-yksikkötestit (586 testitapausta, ?test=1)
+- `test-runner.js` — selain-yksikkötestit (854 testitapausta, ?test=1; headless-ajo: `tools/browser-test/`)
 - `sw.js` — service worker (PWA auto-update)
 
 **Versio:** kts. `sw.js` APP_VERSION.
@@ -71,10 +71,11 @@ Esimerkki (8a, opittava parametri):
 1. `node tools/engine-pilot/lib/smoke-test.mjs` — sanity check
 2. `node tools/engine-pilot/run-pilot.mjs --profile=akseli-elite-streetlifter --scenario=full-16w` — bittitarkka regressio
 3. `node tools/wizard-pilot.mjs` — wizard-materialisaation rakenteelliset invariantit (11 profiilia: kalusto/MEV/cap/alaraaja/primaarit/duplikaatit; K5, retroauditti — engine-pilot + selaintestit ovat sokeita tälle pinnalle)
+4. `node tools/browser-test/run-browser-tests.mjs` — KOKO selain-testisuite (854 testitapausta, ?test=1) headless-selaimessa (riippuvuudeton CDP-ajuri, järjestelmän Edge/Chrome, ~3 s). Joka ajo tuoreella väliaikaisprofiililla → service worker -cache ei voi tuottaa stale-tuloksia (S10-premissivirheen 2026-07-03 oppi).
 
 Jos mikä tahansa epäonnistuu (exit ≠ 0), hook palauttaa `exit 1` → Claude jatkaa työskentelyä eikä voi pinnata "valmis":ksi.
 
-Selain-tasoiset testit (`?test=1`, 586 testitapausta) ajetaan manuaalisesti tai osana laajempaa /goal-kierrosta — niitä ei voi ajaa CLI:stä ilman headless-selainta.
+Selaintestit voi ajaa myös manuaalisesti selaimessa (`?test=1`) — mutta vertailuajoissa muista SW-purge, tai käytä headless-ajuria (kohta 4) joka on aina puhdas.
 
 ---
 
