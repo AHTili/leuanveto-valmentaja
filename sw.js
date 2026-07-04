@@ -764,7 +764,11 @@
 //           K3-3 D1-v2 sarjasta-sarjaan (V0 → −5 % kaikissa blokeissa, deficit ≥2 →
 //           −2,5 %) · K3-2 ykkösen tulos re-ankkuroi työsarjat · K4-1 viikkovolyymi
 //           lihasryhmittäin (Sykli-kortti) · K4-2 cold-start-accessoryn rehellinen UX.
-const APP_VERSION = "4.52.56";
+// v4.52.57: S10-juurikorjaus — PLAN_BASED-inversio system-%-kontraktiin (1c978a9:n
+//           unohtunut 9. lokus): 4 lokusta jaetulla planBasedInvertE1RM-helperillä
+//           (recommend-ydin, kortti-Best/F-3, inflation-streak, cfg-drift) + S10-fixture
+//           re-ankkurointi + uusi F-3-lukkotesti (kortti=live BW-plan-based). 854/854.
+const APP_VERSION = "4.52.57";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.

@@ -328,6 +328,21 @@ function isLoadPctVxConsistent(loadPct, slotReps, slotVx) {
   return vxImplied === null || loadPct >= vxImplied * (1 - PLAN_BASED_VX_TOL);
 }
 
+// S10-juurikorjaus (2026-07-04): PLAN_BASED-inversio noudattaa loadPct=system-%-kontraktia
+// (1c978a9: BW-ankkuroiduilla kuorma resolvoidaan pct × (BW + extE1RM) − BW → inversion on
+// oltava saman kontraktin peilikuva: e1RM_sys = (medLoad + BW) / loadPct, ext = sys − BW).
+// Vanha muoto medLoad/loadPct invertoi external-%:na → sekasemantiikka jossa +3,5 %:n
+// plan-pct-askel TUOTTI −18 %:n plan-kuorman (round-trip rikki) — latentti 1c978a9:stä,
+// manifestoitui K3-1-kestävyyskatossa. Barbell-haara identtinen vanhaan (ext == sys).
+// JAETTU HELPER 4 inversiolokukselle (recommend-ydin, kortti-Best, inflation-streak,
+// cfg-drift) — estää lokus-driftin toistumisen (isLoadPctVxConsistent-presedentti).
+function planBasedInvertE1RM(medLoad, loadPct, isBarbell, bodyweightKg) {
+  if (!(medLoad > 0) || !(loadPct > 0)) return null;
+  const bw = bodyweightKg > 0 ? bodyweightKg : 0;
+  const system = (isBarbell ? medLoad : medLoad + bw) / loadPct;
+  return { system, external: isBarbell ? system : system - bw };
+}
+
 // OBS-052 v2: tuoreusikkuna cal-ajurille. ~1,5 mesosykliä — kattaa kanonisen cal-välin
 // (vk4→vk8 = 28 pv) + puskuri jos seuraava cal viivästyy/skipataan. Yli tämän cal vanhenee
 // AJURINA (currentE1RM ei enää saa cal-arvoa), mutta DEFLATION-lattia (cal-min/cfg-PR ×0,95)
@@ -693,10 +708,12 @@ function computePerfectStreakCeilingBonus(topSets, sessions, mesocycle, isBarbel
     if (!isLoadPctVxConsistent(loadPct, primarySlot?.reps, primarySlot?.targetVx)) break;
 
     // PLAN_BASED-e1RM tämän session medianloadista
+    // S10-korjaus: system-%-inversio (jaettu helper) — vertailu external-baseCeilingiin
+    // external-muodossa (baseCeiling = ceiling_ext).
     const loads = sets.map(x => x.externalLoadKg).filter(v => v > 0);
     if (loads.length === 0) break;
     const medLoad = median(loads);
-    const planBasedE1RM = medLoad / loadPct;
+    const planBasedE1RM = planBasedInvertE1RM(medLoad, loadPct, isBarbell, bodyweightKg)?.external ?? 0;
 
     if (planBasedE1RM > baseCeiling) {
       streak++;
@@ -868,10 +885,11 @@ function computeCfgDrift(topSets, sessions, mesocycle, isBarbell, bodyweightKg, 
     if (!isLoadPctVxConsistent(loadPct, primSlotDrift?.reps, primSlotDrift?.targetVx)) break;
 
     // PLAN_BASED-e1RM
+    // S10-korjaus: system-%-inversio (jaettu helper) — cfgBaseline on external → vertaa ext.
     const loads = sets.map(x => x.externalLoadKg).filter(v => v > 0);
     if (loads.length === 0) break;
     const medLoad = median(loads);
-    const planBasedE1RM = medLoad / loadPct;
+    const planBasedE1RM = planBasedInvertE1RM(medLoad, loadPct, isBarbell, bodyweightKg)?.external ?? 0;
 
     if (planBasedE1RM > cfgBaseline * 1.10) counter++;
     else break;
@@ -4696,7 +4714,9 @@ async function recommend(options = {}) {
             // Vain positiivinen overshoot saa bonuksen (negatiivinen = grindas → ei rangaistus
             // tässä, perfect-execution-ehto sen jo suodattaa)
             const vxBonusPct = Math.max(0, meanOvershoot) * 0.025;
-            const planBasedExternal = (lastMedianLoad / lastLoadPct) * (1 + vxBonusPct);
+            // S10-korjaus: inversio system-%-kontraktilla (planBasedInvertE1RM, 1c978a9).
+            // Bonus sovelletaan external-estimaattiin (growthPct + trace pysyvät ext-vs-ext).
+            const planBasedExternal = planBasedInvertE1RM(lastMedianLoad, lastLoadPct, isBarbell, bodyweightKg).external * (1 + vxBonusPct);
             // v4.34.30 PÄIVITETTY: korvaa Epley+Vara plan-based-arvolla AINA kun perfect
             // execution. Älä käytä MAX:ia — Epley voi sekä yli- että aliarvioida e1RM:n
             // ja luottaminen suunnitelmaan on luotettavampaa kuin formula-extrapolointi.
@@ -7175,7 +7195,8 @@ function computeMovementE1RMBest(movementSets, sessions, mesocycle, movement, bo
                 const meanOvershoot = lastSessionSets.reduce((sum, s) =>
                   sum + ((s.actualVx ?? 0) - (s.targetVx ?? 0)), 0) / lastSessionSets.length;
                 const vxBonusPct = Math.max(0, meanOvershoot) * 0.025;
-                const planBasedExternal = (lastMedianLoad / lastLoadPct) * (1 + vxBonusPct);
+                // S10-korjaus: sama system-%-inversio kuin recommend()-ydin (F-3: kortti = live).
+                const planBasedExternal = planBasedInvertE1RM(lastMedianLoad, lastLoadPct, isBarbell, bodyweightKg).external * (1 + vxBonusPct);
                 // v4.35.3: yksikkö-yhteensopivuus — palauta SAMA yksikkö kuin computeMovementE1RM:
                 //   barbell → ext (planBasedExternal suoraan)
                 //   system-load → system (= ext + bodyweight, kuten engine.js:2572)

@@ -1396,10 +1396,14 @@ async function testRecommendScenarios() {
 
   // S10: PLAN_BASED_E1RM — perfect execution viim. session → e1RM nostetaan suunnitelmasta
   // Käyttäjäpalaute 2026-05-05: "4×6 V3 @120 kg, miksi vk 2 sama paino vaikka suunnitelma sanoo +3.5%?"
+  // S10-re-ankkurointi 2026-07-04: fixture-loadPct SYSTEM-prosenteiksi (1c978a9-kontrakti:
+  // BW-ankkuroiduilla loadPct = system-%). Vanhat 0.686/0.71 olivat external-%-semantiikkaa
+  // (pre-1c978a9); ratifioidulla kontraktilla sama narratiivi = sys-% 0.7935/0.8213
+  // ((120+91)/265.9 ja +3.5 %) → e1RM_ext 174.9 säilyy, vk2 target 127.4 (plan-floor).
   await scenario("PLAN_BASED_E1RM — perfect execution → e1RM plan-based", async () => {
     const movId = PRIMARY_MOV_ID;
     // Mock streetlifting_16w-tyyppinen mesocycle vaatii loadPct slotissa.
-    // Käytetään kustomia: meso jossa vk 1 day 1 primary loadPct = 0.686
+    // Käytetään kustomia: meso jossa vk 1 day 1 primary loadPct = 0.7935 (sys-%)
     const customMeso = {
       mesocycleId: 'mock-sl16w',
       type: 'streetlifting_16w',
@@ -1411,21 +1415,21 @@ async function testRecommendScenarios() {
       ],
       weekPlans: [
         { week: 1, days: [{
-          dayOfWeek: 1, dayType: 'heavy', label: 'MA — Leuka 4×6 @68.6%',
+          dayOfWeek: 1, dayType: 'heavy', label: 'MA — Leuka 4×6 @79.4% sys',
           slots: [{
             role: 'primary', category: 'vertikaaliveto',
             defaultMovementName: 'Lisäpainoleuanveto',
             sets: 4, reps: 6, targetVx: 3,
-            loadPct: 0.686, suggestedLoadKg: 60,
+            loadPct: 0.7935, suggestedLoadKg: 60,
           }],
         }]},
         { week: 2, days: [{
-          dayOfWeek: 1, dayType: 'heavy', label: 'MA — Leuka 4×6 @71%',
+          dayOfWeek: 1, dayType: 'heavy', label: 'MA — Leuka 4×6 @82.1% sys',
           slots: [{
             role: 'primary', category: 'vertikaaliveto',
             defaultMovementName: 'Lisäpainoleuanveto',
             sets: 4, reps: 6, targetVx: 3,
-            loadPct: 0.71, suggestedLoadKg: 62,
+            loadPct: 0.8213, suggestedLoadKg: 62,
           }],
         }]},
       ],
@@ -1447,22 +1451,77 @@ async function testRecommendScenarios() {
     });
     const rec = await recommend(ctx);
     assert(!rec.error, 'S10: ei error');
-    // Plan-based: e1RM = 120 / 0.686 = 174.9 kg (suunnitelma-uskollinen,
-    // EI Epley+Vara 156 system-aliarvio eikä 183 system-yliarvio)
+    // Plan-based system-%-inversio: e1RM_sys = (120+91)/0.7935 = 265.9 → ext 174.9 kg
+    // (suunnitelma-uskollinen, EI Epley+Vara 183 ext-arvio)
     assert(rec.e1rmExternal !== null && rec.e1rmExternal >= 173 && rec.e1rmExternal <= 177,
-      `S10: plan-based e1RM ~174.9 (= 120/0.686) — got ${rec.e1rmExternal}`);
+      `S10: plan-based e1RM ~174.9 (= (120+91)/0.7935 − 91) — got ${rec.e1rmExternal}`);
     assert(hasTrace(rec, 'PLAN_BASED_E1RM'),
       'S10: PLAN_BASED_E1RM-trace olemassa');
-    // Vk 2 target = 174.9 × 0.71 = 124.2 kg → suunnitelma-uskollinen +3.5% nousu vk 1:stä
+    // Vk 2 target = 0.8213 × 265.9 − 91 = 127.4 kg → suunnitelma-uskollinen +3.5 %
+    // system-askel vk 1:stä (120 → 127.5 ext). Kestävyys-katto EI saa laueta
+    // (koherentti planTarget ≥ autoreg) — S10:n alkuperäinen käyttäjävalitus oli
+    // juuri "progressio jäätyy tehtyyn kuormaan".
     if (rec.targetExternalLoad !== null) {
-      assert(rec.targetExternalLoad >= 123 && rec.targetExternalLoad <= 125,
-        `S10: vk 2 target ~124 kg (suunnitelma-uskollinen) — got ${rec.targetExternalLoad}`);
+      assert(rec.targetExternalLoad >= 126 && rec.targetExternalLoad <= 129,
+        `S10: vk 2 target ~127.5 kg (suunnitelma-uskollinen sys-askel) — got ${rec.targetExternalLoad}`);
+      assert(!hasTrace(rec, 'SUSTAINABILITY_CAP'),
+        'S10: kestävyys-katto ei laukea koherentilla planTargetilla');
     }
+  });
+
+  // S10b (F-3-lukko, 2026-07-04): PLAN_BASED-lähde BW-ankkuroidulla liikkeellä —
+  // kortin kanoninen Best JA liven recommend()-e1RM tulevat SAMASTA system-%-inversiosta.
+  // Aukko jonka S10-juurikorjaus paljasti: aiemmat F-3-lukot (testKotiEqualsLiveAccessory,
+  // testSp2SlotLoadInvariant) vertaavat live-sisäistä resoluutiota eivätkä kutsu
+  // computeMovementE1RMBest:iä; ainoa kortti-plan-based-testi oli tankoliike (yksikkö-
+  // invariantti). Tämä lukitsee BW-haaran: kortti ei saa divergoitua livestä.
+  await scenario("PLAN_BASED F-3-lukko — kortti-Best = live-e1RM (BW-ankkuroitu)", async () => {
+    const movId = PRIMARY_MOV_ID;
+    const customMeso = {
+      mesocycleId: 'mock-sl16w-f3', type: 'streetlifting_16w',
+      startDateISO: '2026-04-20', weekCount: 16,
+      weekDefs: [
+        { week: 1, deltaPctBase: 0, label: 'vk 1' },
+        { week: 2, deltaPctBase: 0.025, label: 'vk 2' },
+      ],
+      weekPlans: [
+        { week: 1, days: [{ dayOfWeek: 1, dayType: 'heavy', label: 'MA',
+          slots: [{ role: 'primary', category: 'vertikaaliveto',
+            defaultMovementName: 'Lisäpainoleuanveto',
+            sets: 4, reps: 6, targetVx: 3, loadPct: 0.7935, suggestedLoadKg: 60 }] }]},
+        { week: 2, days: [{ dayOfWeek: 1, dayType: 'heavy', label: 'MA',
+          slots: [{ role: 'primary', category: 'vertikaaliveto',
+            defaultMovementName: 'Lisäpainoleuanveto',
+            sets: 4, reps: 6, targetVx: 3, loadPct: 0.8213, suggestedLoadKg: 62 }] }]},
+      ],
+    };
+    const oldSession = { sessionId: 'sess-f3-vk1', dateISO: '2026-04-20', completed: true };
+    const oldSets = Array.from({ length: 4 }, (_, i) => ({
+      setId: `f3s${i}`, sessionId: 'sess-f3-vk1', movementId: movId,
+      movementName: 'Lisäpainoleuanveto',
+      externalLoadKg: 120, reps: 6, actualVx: 3, targetVx: 3, targetReps: 6,
+      setRole: 'top', isWarmup: false, completed: true,
+      timestamp: '2026-04-20T17:00:00Z',
+    }));
+    const ctx = makeRecommendCtx({
+      dateISO: '2026-04-27', mesocycle: customMeso,
+      sessions: [oldSession], allSets: oldSets,
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error && hasTrace(rec, 'PLAN_BASED_E1RM'), 'S10b: live plan-based aktiivinen');
+    const movement = { movementId: movId, name: 'Lisäpainoleuanveto',
+      category: 'vertikaaliveto', isPrimary: true, loadType: 'system' };
+    const best = computeMovementE1RMBest(oldSets, [oldSession], customMeso, movement, 91);
+    assert(best && best.source === 'plan-based', `S10b: kortti-lähde plan-based — got ${best?.source}`);
+    // Best palauttaa system-loadille SYSTEM-arvon; live rec.e1rmExternal on external.
+    // F-3: sama inversio → best.value = rec.e1rmExternal + BW (±0.1).
+    assert(Math.abs(best.value - (rec.e1rmExternal + 91)) < 0.1,
+      `S10b F-3: kortti ${best.value?.toFixed(1)} = live ${rec.e1rmExternal?.toFixed(1)} + 91 (sama system-inversio)`);
   });
 
   // OBS-051: PLAN_BASED loadPct-Vx-consistency gate. Volyymi-label-loadPct (0.58 «
   // vReps(reps+Vx)=0.81) EI saa inflatoida e1RM:ää (140/0.58=241). Gate skippaa →
-  // Epley-Vara säilyy. S10 (loadPct 0.686, consistent) on tämän known-negative.
+  // Epley-Vara säilyy. S10 (loadPct 0.7935 sys-%, consistent) on tämän known-negative.
   await scenario("OBS-051 PLAN_BASED_VX_GATED — inkonsistentti loadPct ei inflatoi", async () => {
     const movId = PRIMARY_MOV_ID;
     // Mesocycle: vk 1 primary 3×3 @ V4, loadPct 0.58 (volyymi-label, EI tosi-%1RM).
@@ -1564,7 +1623,8 @@ async function testRecommendScenarios() {
     const startISO = "2026-04-27";
     const meso = makeStreetMeso(startISO);
     const sessions = [{ sessionId: "s-vk1", dateISO: "2026-04-27" }];
-    // Vk 1 MA loadPct=0.686, 4×6 V3 perfect @ 75 kg → PLAN_BASED 75/0.686 = 109.3 > 88×1.10=96.8
+    // Vk 1 MA loadPct=0.686, 4×6 V3 perfect @ 75 kg → PLAN_BASED (sys-inversio)
+    // (75+91)/0.686 − 91 = 151.0 > 88×1.10=96.8
     const setsOld = Array.from({length: 4}, (_, i) => ({
       setId: `s-vk1-${i}`, sessionId: "s-vk1", movementId: PRIMARY_MOV_ID,
       externalLoadKg: 75, reps: 6, targetReps: 6, targetVx: 3, actualVx: 3,
@@ -1595,8 +1655,8 @@ async function testRecommendScenarios() {
       { sessionId: "s-vk1", dateISO: "2026-04-27" },
       { sessionId: "s-vk2", dateISO: "2026-05-04" },
     ];
-    // Vk 1: 80 kg V3 perfect → PLAN_BASED 80/0.686 = 116.6 > 96.8 ✓
-    // Vk 2: 85 kg V3 perfect → PLAN_BASED 85/0.71 = 119.7 > 96.8 ✓
+    // Vk 1: 80 kg V3 perfect → PLAN_BASED sys-inversio (80+91)/0.686−91 = 158.3 > 96.8 ✓
+    // Vk 2: 85 kg V3 perfect → PLAN_BASED sys-inversio (85+91)/0.71−91 = 156.9 > 96.8 ✓
     const setsVk1 = Array.from({length: 4}, (_, i) => ({
       setId: `s-vk1-${i}`, sessionId: "s-vk1", movementId: PRIMARY_MOV_ID,
       externalLoadKg: 80, reps: 6, targetReps: 6, targetVx: 3, actualVx: 3,
@@ -1631,8 +1691,8 @@ async function testRecommendScenarios() {
       { sessionId: "s-vk2", dateISO: "2026-05-04" },
       { sessionId: "s-vk3", dateISO: "2026-05-11" },
     ];
-    // 3 sessio:ta perfect, kuorma > cfg×1.10 = 88×1.10 = 96.8 (PLAN_BASED)
-    // Vk 1: 80kg/0.686 = 116.6 ✓, Vk 2: 85/0.71 = 119.7 ✓, Vk 3: 90/0.75 = 120 ✓
+    // 3 sessio:ta perfect, kuorma > cfg×1.10 = 88×1.10 = 96.8 (PLAN_BASED sys-inversio)
+    // Vk 1: (80+91)/0.686−91 = 158.3 ✓, Vk 2: (85+91)/0.71−91 = 156.9 ✓, Vk 3: (90+91)/0.75−91 = 150.3 ✓
     const mkSets = (sid, dateISO, load) => Array.from({length: 4}, (_, i) => ({
       setId: `${sid}-${i}`, sessionId: sid, movementId: PRIMARY_MOV_ID,
       externalLoadKg: load, reps: 6, targetReps: 6, targetVx: 3, actualVx: 3,
