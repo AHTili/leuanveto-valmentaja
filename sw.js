@@ -768,7 +768,11 @@
 //           unohtunut 9. lokus): 4 lokusta jaetulla planBasedInvertE1RM-helperillä
 //           (recommend-ydin, kortti-Best/F-3, inflation-streak, cfg-drift) + S10-fixture
 //           re-ankkurointi + uusi F-3-lukkotesti (kortti=live BW-plan-based). 854/854.
-const APP_VERSION = "4.52.57";
+// v4.52.58: KORI 5 (la vk10 -kenttähavainnot + audit-triage) — K5-1 apuliike-regression-
+//           lattia · K5-2 ramppi-mikrokuormalattia (BW-variantti <10 kg) · K5-3 SAFE=TARGET-
+//           dedupe · K5-4 label-kg-strippaus · K5-5 toteuma-layout · K5-6 stale K-A1-kanava
+//           eläkkeelle · K5-7 deload-day-kerroin (negatiivista basea ei laimenneta, Helms).
+const APP_VERSION = "4.52.58";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.

@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.57" />
+  <meta name="app-version" content="4.52.58" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -1702,19 +1702,28 @@ function stripRedundantDayPrefix(label) {
 //   harhaanjohtava (kuorma ei ole 78% vaan ~87% e1RM:stä). Kaksi rehellistys-kerrosta
 //   ei tarvita → STRIPATAAN "@X%" otsikosta tier 1/2/3:lle. Muut otsikot ennallaan.
 function honestifyLoadLabel(label, slots, meso) {
-  if (!label || typeof label !== "string" || !/@\s*\d/.test(label)) return label;
+  if (!label || typeof label !== "string") return label;
+  // K5-4 (retro-kenttä OBS-MU la vk10): stripataan myös staattiset "+N kg" -maininnat —
+  // template-label ("MU +10 kg + pin squat") ei elä paluurampin/reloadin mukana ja
+  // näytti +10 kg kun todellinen ehdotus oli 2 kg. Kuorman totuus tulee AINA
+  // recommend()-resoluutiosta (per-slot-rivi / työsarjanäkymä), ei otsikosta.
+  // Varovainen regex: vain "+N kg" -muoto (plus-etuliite) → "MU + pin squat" -jäänne
+  // siistitään erikseen; liikenimet joissa on kg ilman plussaa eivät osu.
+  let out = label.replace(/\s*\+\s*\d+(?:[.,]\d+)?\s*kg/gi, "");
+  out = out.replace(/\s{2,}/g, " ").replace(/\s+\+\s*$/, "").trim();
+  if (!/@\s*\d/.test(out)) return out;
   const primary = (slots || []).find(s => s.role === "primary");
-  if (!primary || primary.reps == null || primary.targetVx == null) return label;
+  if (!primary || primary.reps == null || primary.targetVx == null) return out;
   const movement = state.movements?.find(m => m.name === primary.defaultMovementName);
-  if (!movement) return label;
+  if (!movement) return out;
   try {
     const tier = resolveTier(movement, meso);
     if ((tier === 1 || tier === 2 || tier === 3)) {
       // Poista "@X%" (+ ympäröivä väli) — per-slot-rivi (B1) kantaa todellisen kuorman.
-      return label.replace(/\s*@\s*\d+(?:[.,]\d+)?\s*%/, "").trim();
+      return out.replace(/\s*@\s*\d+(?:[.,]\d+)?\s*%/, "").trim();
     }
   } catch { /* tier-kenttä puuttuu → jätä label ennalleen */ }
-  return label;
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -4376,7 +4385,9 @@ function renderDashboard() {
     ? `<span class="plan-override-chip">🔀 Vaihdettu · ${dayNamesShort[overrideDow]}</span>`
     : "";
 
-  const heroTitle = stripRedundantDayPrefix(rec?.dayPlan?.label) || dayTypeFi;
+  // K5-4: myös Koti-heron otsikko honestifyn läpi (staattiset "+N kg"/"@X%" pois —
+  // kuorman totuus tulee recommend()-resoluutiosta, ei template-labelista).
+  const heroTitle = stripRedundantDayPrefix(honestifyLoadLabel(rec?.dayPlan?.label, rec?.dayPlan?.slots, meso)) || dayTypeFi;
   const slots = rec?.dayPlan?.slots || [];
   const workSlotCount = slots.filter(s => s.role !== "warmup").length || slots.length;
   const estDur = estimateDurationMin(slots);
@@ -4595,16 +4606,19 @@ function renderDashboard() {
         if (!g) { g = { movementId: s.movementId, sets: [] }; byMove.push(g); }
         g.sets.push(s);
       }
+      // K5-5 (retro-kenttä la vk10): pinottu layout — kapea nimisarake rivitti pitkät
+      // liikenimet ("Band-assisted muscle-up" → 5 riviä) ja sarjat ahtautuivat oikealle.
+      // Nimi omalle täysleveälle rivilleen, sarjat chip-rivinä alle (wrap-turvallinen).
       slotRowsHTML = `<div class="muted" style="font-size:11px;letter-spacing:0.5px;padding:2px 0 6px">✔ TOTEUMA — kirjatut sarjat</div>` +
         byMove.map(g => {
           const mov = (state.movements || []).find(m => m.movementId === g.movementId);
-          const setsStr = g.sets.map(s => {
-            const vx = (s.actualVx === null || s.actualVx === undefined) ? "" : ` V${s.actualVx}`;
-            return `${s.externalLoadKg ?? 0} kg×${s.reps ?? 0}${vx}`;
-          }).join(" · ");
-          return `<div class="slot-row">
-            <div class="slot-main"><div class="slot-name">${escapeHtml(mov?.name || "?")}</div></div>
-            <div class="slot-detail"><div class="slot-sets">${setsStr}</div></div>
+          const setChips = g.sets.map(s => {
+            const vx = (s.actualVx === null || s.actualVx === undefined) ? "" : ` <span style="opacity:0.75">V${s.actualVx}</span>`;
+            return `<span style="display:inline-block;background:var(--card2);border-radius:6px;padding:2px 7px;margin:2px 4px 2px 0;font-size:12px;white-space:nowrap">${s.externalLoadKg ?? 0} kg × ${s.reps ?? 0}${vx}</span>`;
+          }).join("");
+          return `<div style="padding:7px 0;border-bottom:1px solid var(--card2)">
+            <div style="font-size:13px;font-weight:600;margin-bottom:3px">${escapeHtml(mov?.name || "?")} <span class="muted" style="font-weight:400;font-size:11px">· ${g.sets.length} sarjaa</span></div>
+            <div style="line-height:1.7">${setChips}</div>
           </div>`;
         }).join("");
     }
@@ -6408,9 +6422,27 @@ function renderSuggestionCardsHTML(rec, w, exercise) {
   const selectedId = w.selectedSuggestionId
     || rec.defaultSuggestionId
     || "target";
-  const cards = rec.suggestions.map(s => {
-    const isSelected = s.id === selectedId;
-    const isDefault = s.id === rec.defaultSuggestionId;
+  // K5-3 (retro-kenttä OBS-MU la vk10): mikrokuormilla SAFE pyöristyy targetiin
+  // (2 × 0,985 = 1,97 → 2,0) → kaksi identtistä korttia on kohinaa. Piilotetaan
+  // duplikaatti: jos SAFE = TARGET kuormaltaan, Vx:ltään ja toistoiltaan, näytetään
+  // vain TARGET (ja jos default oli safe, TARGET perii Suositus-badgen defaultId:n
+  // kautta — pick-arvot ovat joka tapauksessa identtiset).
+  let _renderSuggs = rec.suggestions;
+  const _sSafe = rec.suggestions.find(s => s.id === "safe");
+  const _sTarget = rec.suggestions.find(s => s.id === "target");
+  if (_sSafe && _sTarget
+      && typeof _sSafe.targetExternalLoad === "number" && typeof _sTarget.targetExternalLoad === "number"
+      && roundToHalf(_sSafe.targetExternalLoad) === roundToHalf(_sTarget.targetExternalLoad)
+      && _sSafe.targetVx === _sTarget.targetVx
+      && _sSafe.targetReps === _sTarget.targetReps) {
+    _renderSuggs = rec.suggestions.filter(s => s.id !== "safe");
+  }
+  const _dedupActive = _renderSuggs !== rec.suggestions;
+  const _dedupSelectedId = (_dedupActive && selectedId === "safe") ? "target" : selectedId;
+  const _dedupDefaultId = (_dedupActive && rec.defaultSuggestionId === "safe") ? "target" : rec.defaultSuggestionId;
+  const cards = _renderSuggs.map(s => {
+    const isSelected = s.id === _dedupSelectedId;
+    const isDefault = s.id === _dedupDefaultId;
     const loadStr = typeof s.targetExternalLoad === "number"
       ? `${roundToHalf(s.targetExternalLoad)} kg`
       : "—";
@@ -8146,7 +8178,7 @@ function renderMesocycle() {
   // β Round B-α-1.9: näkyvä versio-indikaattori + bullet-merkki fallback-seedissä
   // jotta voidaan visuaalisesti erottaa "vanha cached koodi" vs "uusi koodi + null
   // fallback" tilanteet. Sync MANUAALISESTI sw.js:n APP_VERSION:in kanssa.
-  const _syRenderAppVersion = "4.52.57";
+  const _syRenderAppVersion = "4.52.58";
   const _syRenderBW = state.settings?.bodyweightKg || 91;
   const _syRenderE1rmCache = new Map();
   const _syRenderComputeKg = (slot) => {
@@ -13175,7 +13207,19 @@ async function startWorkout(backfillDateISO = null) {
     const skeletonRamp = Array.isArray(primarySlotForWarmup?.warmupSets) && primarySlotForWarmup.warmupSets.length > 0
       ? primarySlotForWarmup.warmupSets
       : null;
-    const warmupPcts = skeletonRamp && wuLoad
+    // K5-2 (retro-kenttä OBS-MU la vk10): MIKROKUORMA-LATTIA. %-ramppi työkuormasta
+    // tuottaa BW-ankkuroidulla liikkeellä merkityksettömiä mikrokuormia kun lisäpaino
+    // on pieni (MU +2 kg × 50 % = "1 kg × 5" — ei realistinen lämmittely). Todellinen
+    // kuorma on BW + lisäpaino, joten oikea ramppi on KEHONPAINO-variantti. Alle 10 kg
+    // lisäpainolla ohitetaan %-ramppi → BW-fallback (alla), yksitoisto-skeemalle
+    // matalat toistot.
+    const _wuIsBWAdded = primarySlotForWarmup && (
+      primarySlotForWarmup.category === "vertikaaliveto" ||
+      (primarySlotForWarmup.category === "horisontaalityöntö" && primarySlotForWarmup.defaultMovementName?.toLowerCase().includes("dippi"))
+    );
+    const _wuMicroLoad = _wuIsBWAdded && typeof wuLoad === "number" && wuLoad > 0 && wuLoad < 10;
+    const warmupPcts = _wuMicroLoad ? null
+      : skeletonRamp && wuLoad
       ? [0, ...skeletonRamp.map(r => r.pct).filter(p => typeof p === "number")]
       : wuLoad && wuLoad >= 60
         ? [0, 0.30, 0.55, 0.75, 0.90]
@@ -13207,16 +13251,20 @@ async function startWorkout(backfillDateISO = null) {
       // kylmänä. Käytetään liikkeen primary-slotin defaultMovementNamea
       // tunnistamaan onko kyseessä lisäpainoliike (BW-based) vai tangolla
       // tehtävä (vanity rep warmup).
-      const primarySlot = rec?.dayPlan?.slots?.find(s => s.role === "primary");
-      const isBodyweightAdded = primarySlot && (
-        primarySlot.category === "vertikaaliveto" ||
-        primarySlot.category === "horisontaalityöntö" && primarySlot.defaultMovementName?.toLowerCase().includes("dippi")
-      );
+      const primarySlot = primarySlotForWarmup;
+      const isBodyweightAdded = _wuIsBWAdded;
+      // K5-2: yksitoisto-skill-skeemalle (esim. MU-singlet) matalat lämmittelytoistot.
+      const _wuSingleScheme = (primarySlot?.reps ?? 3) <= 1;
       warmupSets = isBodyweightAdded
-        ? [
-            { idx: 0, targetReps: 5, targetVx: null, loadKg: 0, reps: null, actualVx: null, velocity: null, completed: false, isWarmup: true, note: "Kehonpaino × 5" },
-            { idx: 1, targetReps: 3, targetVx: null, loadKg: 0, reps: null, actualVx: null, velocity: null, completed: false, isWarmup: true, note: "Kehonpaino × 3 räjähtävästi" },
-          ]
+        ? (_wuSingleScheme
+          ? [
+              { idx: 0, targetReps: 3, targetVx: null, loadKg: 0, reps: null, actualVx: null, velocity: null, completed: false, isWarmup: true, note: "Kehonpaino × 3" },
+              { idx: 1, targetReps: 1, targetVx: null, loadKg: 0, reps: null, actualVx: null, velocity: null, completed: false, isWarmup: true, note: "Kehonpaino × 1 räjähtävästi" },
+            ]
+          : [
+              { idx: 0, targetReps: 5, targetVx: null, loadKg: 0, reps: null, actualVx: null, velocity: null, completed: false, isWarmup: true, note: "Kehonpaino × 5" },
+              { idx: 1, targetReps: 3, targetVx: null, loadKg: 0, reps: null, actualVx: null, velocity: null, completed: false, isWarmup: true, note: "Kehonpaino × 3 räjähtävästi" },
+            ])
         : [
             { idx: 0, targetReps: 8, targetVx: null, loadKg: 0, reps: null, actualVx: null, velocity: null, completed: false, isWarmup: true, note: "Tyhjä tanko × 8" },
             { idx: 1, targetReps: 5, targetVx: null, loadKg: 0, reps: null, actualVx: null, velocity: null, completed: false, isWarmup: true, note: "Tee liike rauhassa, tunnustele" },
