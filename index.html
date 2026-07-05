@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.58" />
+  <meta name="app-version" content="4.52.59" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -1710,19 +1710,14 @@ function honestifyLoadLabel(label, slots, meso) {
   // Varovainen regex: vain "+N kg" -muoto (plus-etuliite) → "MU + pin squat" -jäänne
   // siistitään erikseen; liikenimet joissa on kg ilman plussaa eivät osu.
   let out = label.replace(/\s*\+\s*\d+(?:[.,]\d+)?\s*kg/gi, "");
-  out = out.replace(/\s{2,}/g, " ").replace(/\s+\+\s*$/, "").trim();
-  if (!/@\s*\d/.test(out)) return out;
-  const primary = (slots || []).find(s => s.role === "primary");
-  if (!primary || primary.reps == null || primary.targetVx == null) return out;
-  const movement = state.movements?.find(m => m.name === primary.defaultMovementName);
-  if (!movement) return out;
-  try {
-    const tier = resolveTier(movement, meso);
-    if ((tier === 1 || tier === 2 || tier === 3)) {
-      // Poista "@X%" (+ ympäröivä väli) — per-slot-rivi (B1) kantaa todellisen kuorman.
-      return out.replace(/\s*@\s*\d+(?:[.,]\d+)?\s*%/, "").trim();
-    }
-  } catch { /* tier-kenttä puuttuu → jätä label ennalleen */ }
+  // K6-5a (retro-kenttä 5.7: otsikko "4×3 @87%" vs Sykli "3×2 @91%"): staattiset
+  // sarjat×toistot- ja @%-maininnat stripataan EHDOTTOMASTI — ne kuvaavat template-
+  // hetken designia eivätkä elä viikon/reloadin/resoluution mukana. Kuorman ja
+  // skeeman totuus tulee AINA per-slot-riveiltä ja työsarjanäkymästä. (Aiempi
+  // tier-ehtoinen strippaus jätti otsikon valehtelemaan reunatapauksissa.)
+  out = out.replace(/\s*\d+\s*[×x]\s*\d+/g, "");
+  out = out.replace(/\s*@\s*\d+(?:[.,]\d+)?\s*%/g, "");
+  out = out.replace(/\s{2,}/g, " ").replace(/\s+\+\s*$/, "").replace(/[\s·—–-]+$/, "").trim();
   return out;
 }
 
@@ -2954,11 +2949,14 @@ async function showPlanOverrideModal() {
     const date = new Date(base);
     date.setDate(date.getDate() + offset);
     const iso = date.toISOString().slice(0, 10);
-    const dayLabel = stripRedundantDayPrefix(d.label) || DAY_TYPE_LABELS_MAP[d.dayType] || d.dayType || "?";
+    const dayLabel = stripRedundantDayPrefix(honestifyLoadLabel(d.label, d.slots, meso)) || DAY_TYPE_LABELS_MAP[d.dayType] || d.dayType || "?";
     const isToday = d.dayOfWeek === todayDow;
     const descBits = [];
     if (isToday) descBits.push("alkuperäinen (tänään)");
-    if (offset < 0) descBits.push(`${Math.abs(offset)} pv sitten`);
+    // K6-5b (retro-kenttä 5.7): mennyt kuluvan viikon päivä erottuu selvästi ensi
+    // viikon vastaavasta — atletti valitsi su-iltana kuluvan viikon (menneen) MA:n
+    // ja sai vk N:n designin kun tarkoitti vk N+1:n (⏭-rivi listan lopussa).
+    if (offset < 0) descBits.push(`⚠ MENNYT tämän viikon päivä (${Math.abs(offset)} pv sitten) — huomisen treeni on ⏭-rivillä`);
     else if (offset > 0) descBits.push(`${offset} pv eteenpäin`);
     options.push({
       icon: isToday ? "📍" : "📅",
@@ -6711,7 +6709,25 @@ function renderActiveWorkout() {
     : exercise.role === "accessory" ? "💪 Apuliike"
     : exercise.role === "calibration" ? "🎯 Kalibrointi (AMRAP)"
     : (exercise.category || "");
-  const progressTag = isLoadIncrease ? '<span class="text-ok">· Progressio ↑</span>' : "";
+  // K6-4 (retro-kenttä 5.7: "PROGRESSIO ↑" 96 kg:lla kun viime viikolla tehtiin 100):
+  // badgen suunta lasketaan TODELLISESTA kuormasta vs viime session raskain — ei
+  // irrallisesta progressSuggestion-lipusta. Rehellinen kolmijako: ↑ / Kalibrointi ↓ /
+  // Ylläpito →. Lippu säilyy fallbackina kun historiaa ei ole.
+  let progressTag = "";
+  {
+    const _ptPrior = computePriorSessionSummary(exercise.movementId, w.sessionId);
+    const _ptPrev = _ptPrior?.heaviest?.externalLoadKg ?? null;
+    const _ptCurSet = exercise.sets.find(s => !s.isWarmup && !s.completed) || exercise.sets.find(s => !s.isWarmup);
+    const _ptCur = _ptCurSet?.loadKg ?? null;
+    if (_ptPrev != null && _ptCur != null && _ptPrev > 0) {
+      const _ptD = _ptCur - _ptPrev;
+      progressTag = _ptD > 0.25 ? '<span class="text-ok">· Progressio ↑</span>'
+        : _ptD < -0.25 ? '<span class="text-warn">· Kalibrointi ↓</span>'
+        : '<span class="muted">· Ylläpito →</span>';
+    } else if (isLoadIncrease) {
+      progressTag = '<span class="text-ok">· Progressio ↑</span>';
+    }
+  }
   const lockHTML = exercise.slotId
     ? `<span class="lock" id="btn-lock-slot" title="Lukitse/vapauta tämä tukiliike">${(state.mesocycle?.accessorySlotOverrides?.[exercise.slotId]?.locked) ? "🔒" : "🔓"}</span>`
     : "";
@@ -6958,6 +6974,57 @@ function renderActiveWorkout() {
     } catch (e) { /* hint on nice-to-have — ei saa kaataa workout-renderiä */ }
   }
 
+  // K6-1 (Akselin ydinvaatimus 5.7: "perustelu-nappi jokaisen painon taakse"):
+  // jokainen työsarjakuorma perustelee itsensä — viime kerta + Δ + päivän säännöt
+  // suoraan decision-traceista, MYÖS apuliikkeille (primaryllä oli jo trace-paneeli;
+  // apuliikkeiltä puuttui kokonaan → atletti joutui tekemään vertailun päässään).
+  let loadRationaleHTML = "";
+  if (!isWarmupSet && exercise.role !== "warmup") {
+    try {
+      const _rrPrior = computePriorSessionSummary(exercise.movementId, w.sessionId);
+      const _rrPrev = _rrPrior?.heaviest?.externalLoadKg ?? null;
+      const _rrCur = currentSet.loadKg ?? null;
+      let _rrHead = "";
+      if (_rrPrev != null && _rrCur != null && _rrPrev > 0) {
+        const _rrD = _rrCur - _rrPrev;
+        const _rrPct = Math.round((_rrCur / _rrPrev - 1) * 100);
+        _rrHead = _rrD > 0.25 ? `viime kerta ${_rrPrev} → nyt ${_rrCur} kg (+${_rrPct} %)`
+          : _rrD < -0.25 ? `viime kerta ${_rrPrev} → nyt ${_rrCur} kg (${_rrPct} %)`
+          : `sama taso kuin viime kerralla (${_rrPrev} kg)`;
+      } else if (_rrCur != null) {
+        _rrHead = `ensimmäinen kirjaus tälle liikkeelle`;
+      }
+      const _rrName = exercise.name;
+      const _rrPrimaryChain = ["LOAD_PCT_RESOLVED", "PROGRESSION_TARGET", "SUSTAINABILITY_CAP",
+        "POST_BREAK_ANCHOR_CAP", "ANCHOR_DELOAD_SKIP", "PLAN_BASED_E1RM", "E1RM_DEFLATION_CAP",
+        "E1RM_INFLATION_CAP", "RETURN_FROM_BREAK", "DELOAD_OVERRIDE"];
+      const _rrTraces = (rec?.traces || []).filter(t => {
+        const _tm = t.before?.slotMovement || t.after?.slotMovement || t.before?.movement || t.after?.movement;
+        if (_tm && _tm === _rrName) return true;
+        return exercise.role === "primary" && _rrPrimaryChain.includes(t.ruleId);
+      }).slice(0, 6);
+      const _rrRows = _rrTraces.map(t =>
+        `<div style="padding:3px 0;font-size:11px;line-height:1.45;border-top:1px solid rgba(255,255,255,0.04)"><b>${escapeHtml(RULE_LABELS_FI[t.ruleId] || t.ruleId)}</b> — ${escapeHtml((t.why || "").slice(0, 200))}</div>`).join("");
+      // K6-4b: double progression -vaihtoehto apuliikkeille kun viime kerta oli helppo
+      // (kaikki keinot vahvistua eivät ole +2,5 kg — toistolisäys on usein parempi).
+      let _rrAlt = "";
+      if ((exercise.role === "accessory" || exercise.role === "support") && _rrPrior?.sets?.length) {
+        const _rrVxs = _rrPrior.sets.map(s => s.actualVx).filter(v => v != null);
+        const _rrMedVx = _rrVxs.length ? _rrVxs.sort((a, b) => a - b)[Math.floor(_rrVxs.length / 2)] : null;
+        if (_rrMedVx != null && targetVx != null && _rrMedVx >= targetVx + 1 && (targetReps ?? 0) < 15) {
+          _rrAlt = `<div style="padding:4px 0 1px;font-size:11px;color:var(--ok)">💡 Vaihtoehto: pidä kuorma ja lisää +1 toisto/sarja (viime kerta meni V${_rrMedVx} — varaa on). Kuormalisäys vasta kun toistohaarukan yläpää täyttyy.</div>`;
+        }
+      }
+      if (_rrHead || _rrRows) {
+        loadRationaleHTML = `<details class="load-rationale" style="margin-top:6px;background:var(--card2);border-radius:8px;padding:6px 10px">
+          <summary style="cursor:pointer;font-size:11.5px;color:var(--muted);list-style:none">🧭 <b>Miksi tämä paino?</b>${_rrHead ? ` · ${escapeHtml(_rrHead)}` : ""}</summary>
+          ${_rrRows || `<div class="muted" style="font-size:11px;padding:4px 0">Kuorma tulee suoraan ohjelman resoluutiosta — ei erillisiä säätöjä tälle liikkeelle tänään.</div>`}
+          ${_rrAlt}
+        </details>`;
+      }
+    } catch (e) { /* perustelu on lisäarvo — ei kaada renderiä */ }
+  }
+
   // Work-set hero
   const heroHTML = isWarmupSet ? "" : `<div class="load-hero">
     <div class="set-line">
@@ -6971,6 +7038,7 @@ function renderActiveWorkout() {
     </div>
     <div class="load-edit-hint">Napauta lukua muokataksesi painoa</div>
     ${coldStartHintHTML}
+    ${loadRationaleHTML}
     ${prevGhostHTML}
     ${targetRowHTML}
     ${intraTagHTML}
@@ -8178,7 +8246,7 @@ function renderMesocycle() {
   // β Round B-α-1.9: näkyvä versio-indikaattori + bullet-merkki fallback-seedissä
   // jotta voidaan visuaalisesti erottaa "vanha cached koodi" vs "uusi koodi + null
   // fallback" tilanteet. Sync MANUAALISESTI sw.js:n APP_VERSION:in kanssa.
-  const _syRenderAppVersion = "4.52.58";
+  const _syRenderAppVersion = "4.52.59";
   const _syRenderBW = state.settings?.bodyweightKg || 91;
   const _syRenderE1rmCache = new Map();
   const _syRenderComputeKg = (slot) => {
@@ -11899,7 +11967,12 @@ function bind() {
       state.planOverrideDateISO = choice.dateISO;
       await computeRecommendation(choice.dateISO);
       render();
-      showToast(`Plani vaihdettu: ${choice.label}`, "ok");
+      // K6-5b: tulevan päivän plani etukäteen → attribuutio näkyväksi (kirjaus tälle
+      // päivälle, progressio/viikko attribuoituu suunnitellulle: planSourceDateISO).
+      const _poFuture = choice.dateISO > today;
+      showToast(_poFuture
+        ? `⏭ ${choice.label} ladattu etukäteen — kirjaus attribuoituu suunnitellulle päivälle (${choice.dateISO})`
+        : `Plani vaihdettu: ${choice.label}`, "ok", _poFuture ? 5000 : 3000);
     } catch (e) {
       console.error("Plan override failed:", e);
       state.planOverrideDateISO = null;

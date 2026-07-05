@@ -772,7 +772,12 @@
 //           lattia · K5-2 ramppi-mikrokuormalattia (BW-variantti <10 kg) · K5-3 SAFE=TARGET-
 //           dedupe · K5-4 label-kg-strippaus · K5-5 toteuma-layout · K5-6 stale K-A1-kanava
 //           eläkkeelle · K5-7 deload-day-kerroin (negatiivista basea ei laimenneta, Helms).
-const APP_VERSION = "4.52.58";
+// v4.52.59: KORI 6 (Akselin 5.7-havainnot + luottamusinfra) — K6-2 PRESCRIPTION_SANITY-
+//           vahti · K6-2b deload-ankkuriohitus (vahdin 1. saalis: post-deload-romahdus) ·
+//           K6-3 yksi e1RM-totuus (loadType 14 BW-presettiin) · K6-1 perustelu-lohko
+//           jokaiseen kuormaan · K6-4 rehellinen progressio-badge + double progression -vihje ·
+//           K6-5 otsikkototuus + ensi viikon päivävalinta selkeäksi.
+const APP_VERSION = "4.52.59";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.
