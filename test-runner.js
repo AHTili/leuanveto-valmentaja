@@ -1519,6 +1519,48 @@ async function testRecommendScenarios() {
       `S10b F-3: kortti ${best.value?.toFixed(1)} = live ${rec.e1rmExternal?.toFixed(1)} + 91 (sama system-inversio)`);
   });
 
+  // K6-2b (vahdin 1. saalis, 2026-07-05): DELOAD-SESSIOT EIVÄT KELPAA PROGRESSION
+  // ANKKURIKSI. Ilman ohitusta rate-limit ankkuroitui deload-viikon suppressoituihin
+  // kuormiin → koko seuraava blokki alkoi romahtaneesta tasosta (pilotissa vk9
+  // primary 12,5 kg @ e1RM ext 101; korjauksen jälkeen 69 kg). Deload = suunniteltua
+  // kevennystä (Helms), ei kapasiteettievidenssiä.
+  await scenario("K6-2b — deload-sessio ei ankkuroi progressiota", async () => {
+    const mkA = (sid, iso, load, vx) => ({ setId: 'a' + Math.random(), sessionId: sid,
+      movementId: PRIMARY_MOV_ID, setRole: 'top', externalLoadKg: load, reps: 3,
+      targetReps: 3, targetVx: vx, actualVx: vx, timestamp: iso });
+    const meso = { mesocycleId: 'm-k62b', type: 'custom', startDateISO: '2026-06-15', weekCount: 4,
+      weekDefs: [
+        { week: 1, deltaPctBase: 0, label: 'norm' },
+        { week: 2, deltaPctBase: -0.25, label: 'Deload' },
+        { week: 3, deltaPctBase: 0.025, label: 'norm2' },
+      ],
+      weekPlans: [1, 2, 3].map(w => ({ week: w, days: [{ dayOfWeek: 1, dayType: 'heavy', label: 'MA',
+        slots: [{ role: 'primary', category: 'vertikaaliveto',
+          defaultMovementName: 'Lisäpainoleuanveto', sets: 3, reps: 3, targetVx: 2,
+          isBarbell: false, loadPct: 0.85 }] }] })) };
+    const sessions = [
+      { sessionId: 'W1', dateISO: '2026-06-15' }, { sessionId: 'W2', dateISO: '2026-06-22' },
+    ];
+    const allSets = [
+      mkA('W1', '2026-06-15T10:00:00Z', 70, 2), mkA('W1', '2026-06-15T10:05:00Z', 70, 2),
+      mkA('W1', '2026-06-15T10:10:00Z', 70, 2),
+      // Deload-viikko tehty ohjelman mukaan kevyenä (50 kg V4)
+      mkA('W2', '2026-06-22T10:00:00Z', 50, 4), mkA('W2', '2026-06-22T10:05:00Z', 50, 4),
+      mkA('W2', '2026-06-22T10:10:00Z', 50, 4),
+    ];
+    const ctx = makeRecommendCtx({ dateISO: '2026-06-29', mesocycle: meso,
+      sessions, allSets });
+    const rec = await recommend(ctx);
+    assert(!rec.error, 'K62b: ei error');
+    assert(hasTrace(rec, 'ANCHOR_DELOAD_SKIP'),
+      'K62b: ANCHOR_DELOAD_SKIP-trace — deload-sarjat ohitettu ankkurivalinnassa');
+    const prog = rec.traces.find(t => t.ruleId === 'PROGRESSION_TARGET');
+    assert(prog && prog.after?.lastLoad === 70,
+      `K62b: ankkuri = viimeinen NORMAALI sessio (70 kg), ei deload (50) — got ${prog?.after?.lastLoad}`);
+    assert(rec.targetExternalLoad >= 65,
+      `K62b: vk3 target normaalitasolla (≥65), ei deload-romahdusta — got ${rec.targetExternalLoad}`);
+  });
+
   // K6-3 (retro-kenttä 5.7, Heavy negative): YKSI e1RM-TOTUUS PER LIIKE.
   // Juuri: BW-varianttiperhe (Heavy negative leuka ym.) ilman loadType-kenttää →
   // kortti laski external-Epleyllä (85,3) ja Haara C nimi-regexillä (sys) — sama

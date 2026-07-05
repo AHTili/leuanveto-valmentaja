@@ -5239,7 +5239,43 @@ async function recommend(options = {}) {
       // profiilin (medianLoad, medianVx, isCalibration, dateISO) jonka
       // computeProgressionTarget tarvitsee. Excludaa backoff (v4.34.35) jotta
       // anchor.medianVx ei sotkeudu V5-V6-backoff-sarjoista.
-      const anchor = computeRateLimitAnchor(recentTopSets, { excludeBackoff: true });
+      //
+      // K6-2b (vahdin 1. saalis, 2026-07-05): DELOAD-SESSIOT EIVÄT KELPAA ANKKURIKSI.
+      // Deload on SUUNNITELTUA kevennystä (Helms 2018), ei kapasiteettievidenssiä —
+      // silti rate-limit/floor ankkuroitui deload-viikon suppressoituihin kuormiin →
+      // koko seuraava blokki alkoi romahtaneesta tasosta ja "toipui" hard-capilla
+      // (+15 %/vk lähes nollasta; pilotissa vk9 primary 12,5 kg @ e1RM ext 101, ja
+      // F-2 säteilytti romahduksen backoffeihin: PRESCRIPTION_SANITY 🐛 ×4).
+      // Valmentaja ankkuroi uuden blokin viimeiseen NORMAALIIN sessioon — deload-
+      // viikon (weekDef.deltaPctBase ≤ −0,10) sessiot ohitetaan ankkurivalinnassa.
+      // Cal-sessiot deload-viikolla SÄILYVÄT (kalibrointi on kapasiteettievidenssiä).
+      // Fallback: jos KAIKKI evidenssi on deload-viikoilta, käytetään sitä (parempi
+      // kuin ei mitään). Kytkeytyy: SUSTAINABILITY_CAP:in demonstroitu-taso ja K3-4:n
+      // VAROVAINEN perivät ohituksen automaattisesti (sama anchor).
+      // Tunnistus setin OMASTA päivämäärästä (timestamp/dateISO) — sessionId vain
+      // fallback-lookupina. Peruste: settien sessionId voi olla null (mm. pilot-
+      // simulaattori, importoitu data) eikä ankkurisuoja saa riippua siitä.
+      const _deloadDateMemo = {};
+      const _isDeloadSet = (s) => {
+        const d = s.dateISO || (s.timestamp || "").slice(0, 10)
+          || (s.sessionId ? (sessions.find(x => x && x.sessionId === s.sessionId)?.dateISO ?? null) : null);
+        if (!d) return false;
+        if (_deloadDateMemo[d] === undefined) {
+          const wk2 = getMesocycleWeek(mesocycle, d);
+          const def2 = (wk2 != null) ? mesocycle?.weekDefs?.[wk2 - 1] : null;
+          _deloadDateMemo[d] = !!(def2 && typeof def2.deltaPctBase === "number" && def2.deltaPctBase <= -0.10);
+        }
+        return _deloadDateMemo[d];
+      };
+      const _anchorSets = recentTopSets.filter(s =>
+        s.setRole === "calibration" || !_isDeloadSet(s));
+      const _anchorPool = _anchorSets.length ? _anchorSets : recentTopSets;
+      if (_anchorSets.length < recentTopSets.length && _anchorSets.length) {
+        trace("ANCHOR_DELOAD_SKIP", { skipped: recentTopSets.length - _anchorSets.length },
+          { anchorSets: _anchorSets.length },
+          `Progression ankkuri ohittaa ${recentTopSets.length - _anchorSets.length} deload-viikon sarjaa (suunniteltu kevennys ≠ kapasiteettievidenssi) → ankkuri viimeisestä normaalista sessiosta`);
+      }
+      const anchor = computeRateLimitAnchor(_anchorPool, { excludeBackoff: true });
       if (anchor) {
         const planTarget = targetExternalLoad;
         // K3-4: demonstroitu kestotaso talteen (skannaus siirretty SUSTAINABILITY_CAP:ista
