@@ -1167,6 +1167,200 @@ function combineReadiness(velocityR, hrvR, varaR) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// K7-1 — SUBJEKTIIVINEN CHECK-IN (4. readiness-kanava, laitteeton fallback)
+// ═══════════════════════════════════════════════════════════════
+//
+// Valmentaja-linssin KRIITTINEN aukko: ilman Enodea/Ouraa engine oletti atleetin
+// aina vihreäksi ("null → GREEN on vastakohta hyvälle valmennukselle"). 15 sekunnin
+// aamucheck-in (uni, stressi, lihasarkuus, motivaatio; kukin 1–5, 5 = paras) on
+// validoitu monitorointimenetelmä: Hooper & Mackinnon 1995 (wellness-indeksi),
+// McLean 2010 (päivittäisen wellness-kyselyn herkkyys kuormitusvasteille).
+// Summa 4–20 → luokka: ≥16 GREEN · 12–15 YELLOW · <12 RED. Cap-only-periaate
+// säilyy: check-in RAJOITTAA (capLevel) muttei koskaan pakota nostamaan.
+function computeSubjectiveReadiness(checkin) {
+  if (!checkin) return { class: null, score: null, source: "checkin" };
+  const f = (v) => (typeof v === "number" && v >= 1 && v <= 5 ? v : null);
+  const parts = [f(checkin.sleep), f(checkin.stress), f(checkin.soreness), f(checkin.motivation)];
+  if (parts.some((p) => p === null)) return { class: null, score: null, source: "checkin" };
+  const score = parts.reduce((a, b) => a + b, 0);
+  const cls = score >= 16 ? "GREEN" : score >= 12 ? "YELLOW" : "RED";
+  return { class: cls, score, source: "checkin",
+    detail: { sleep: parts[0], stress: parts[1], soreness: parts[2], motivation: parts[3] } };
+}
+
+// Laajennettu yhdistely: valinnainen 4. kanava (subjektiivinen check-in).
+// TAAKSEPÄIN-YHTEENSOPIVA: 3 kanavalla käytös identtinen combineReadinessin kanssa
+// (GREEN-kynnys > active/2 = 2/3; RED-säännöt ennallaan). 4 aktiivisella kanavalla
+// GREEN vaatii aidon enemmistön (3/4) — kaksi keltaista ei enää huku vihreisiin.
+function combineReadinessAll(velocityR, hrvR, varaR, subjR = null) {
+  const base = combineReadiness(velocityR, hrvR, varaR);
+  if (!subjR || subjR.class === null) {
+    return { ...base, channels: { ...base.channels, subjective: subjR || { class: null } },
+      noData: base.channels.velocity.class === null && base.channels.hrv.class === null
+        && base.channels.vara.class === null };
+  }
+  const channels = [velocityR, hrvR, varaR, subjR];
+  const active = channels.filter((c) => c && c.class !== null);
+  const counts = { GREEN: 0, YELLOW: 0, RED: 0 };
+  for (const ch of active) counts[ch.class]++;
+  let combined;
+  if (counts.GREEN > active.length / 2) combined = "GREEN";
+  else if (counts.RED >= 2 || (counts.RED >= 1 && counts.YELLOW >= 1)) combined = "RED";
+  else combined = "YELLOW";
+  // Velocity-veto ennallaan (mittausdata voittaa subjektiivisen)
+  if (velocityR.class === "RED") {
+    if (combined === "GREEN") combined = "YELLOW";
+    const others = [hrvR, varaR, subjR].filter((c) => c.class === "YELLOW" || c.class === "RED").length;
+    if (others >= 1) combined = "RED";
+  }
+  const capLevel = combined === "GREEN" ? 0 : combined === "YELLOW" ? 1 : 2;
+  return { combined, capLevel, noData: false,
+    channels: { velocity: velocityR, hrv: hrvR, vara: varaR, subjective: subjR } };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// K7-2 — VÄSYMYSAGGREGAATTI (automaattinen deload-ehdotus)
+// ═══════════════════════════════════════════════════════════════
+//
+// Signaalit olivat hajallaan (failure-lukot, Vara-drift, stagnaatio per liike) mutta
+// MIKÄÄN ei aggregoinut niitä yli liikkeiden päätökseksi "nyt deload". Valmentaja
+// kutsuu audible-deloadin kun useampi liike junnaa ja atleetti grindaa — engine
+// jatkoi +2,5 %/vk kunnes weekDef sanoi muuta. ADVISORY-ONLY (cap-only-periaate):
+// palauttaa ehdotuksen + syyt; UI näyttää bannerin ja yhden napin deload-insertin
+// (olemassa oleva insertedDeloads-mekanismi). Ei kosketa recommend()-kuormiin.
+// Ikkuna 14 pv. Kynnykset konservatiivisia (elite-atletti, ei nanny — pisteytys
+// vaatii USEAN riippumattoman signaalin).
+function computeFatigueAggregate(allSets, sessions, dateISO, opts = {}) {
+  const windowDays = opts.windowDays ?? 14;
+  const now = new Date(dateISO + "T23:59:59Z").getTime();
+  const cutoff = now - windowDays * 86400000;
+  const sessDate = {};
+  for (const s of sessions || []) if (s?.sessionId) sessDate[s.sessionId] = s.dateISO || null;
+  const recent = (allSets || []).filter((s) => {
+    const d = s.dateISO || (s.timestamp || "").slice(0, 10) || sessDate[s.sessionId];
+    if (!d) return false;
+    const t = new Date(d).getTime();
+    return t >= cutoff && t <= now && s.setRole !== "readiness_test" && !s.isWarmup;
+  });
+  if (recent.length < 12) {
+    return { suggest: false, score: 0, reason: "liian vähän dataa 14 pv ikkunassa", signals: {} };
+  }
+  // Signaali 1: V0-failuret (ei-isolaatio ei eroteltavissa ilman movement-dataa → kaikki;
+  // kynnys sietää isolaatio-V0:t)
+  const v0Count = recent.filter((s) => s.actualVx === 0).length;
+  // Signaali 2: grindi-osuus (toteuma ≥2 luokkaa alle targetin)
+  const withTarget = recent.filter((s) => s.actualVx != null && s.targetVx != null);
+  const grindShare = withTarget.length
+    ? withTarget.filter((s) => s.actualVx <= s.targetVx - 2).length / withTarget.length : 0;
+  // Signaali 3: negatiivinen Vara-trendi (keskimääräinen overshoot < −0,5 luokkaa)
+  const meanOvershoot = withTarget.length
+    ? withTarget.reduce((sum, s) => sum + (s.actualVx - s.targetVx), 0) / withTarget.length : 0;
+  let score = 0;
+  const signals = {};
+  if (v0Count >= 4) { score += 2; signals.v0Count = v0Count; }
+  else if (v0Count >= 2) { score += 1; signals.v0Count = v0Count; }
+  if (grindShare >= 0.25) { score += 2; signals.grindSharePct = Math.round(grindShare * 100); }
+  else if (grindShare >= 0.15) { score += 1; signals.grindSharePct = Math.round(grindShare * 100); }
+  if (meanOvershoot <= -0.75) { score += 2; signals.meanOvershoot = Number(meanOvershoot.toFixed(2)); }
+  else if (meanOvershoot <= -0.4) { score += 1; signals.meanOvershoot = Number(meanOvershoot.toFixed(2)); }
+  const suggest = score >= 3;
+  const why = suggest
+    ? `Kumuloitunut väsymys 14 pv ikkunassa: ${signals.v0Count ? signals.v0Count + "× V0" : ""}${signals.grindSharePct ? " · grindi " + signals.grindSharePct + " % sarjoista" : ""}${signals.meanOvershoot != null ? " · Vara-trendi " + signals.meanOvershoot : ""} → harkitse deload-viikkoa (🌿 Kevennys -nappi lisää sen ensi viikolle).`
+    : null;
+  return { suggest, score, signals, why };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// K7-6 — KISAPÄIVÄN YRITYSVALINTA (in-meet-aivot)
+// ═══════════════════════════════════════════════════════════════
+//
+// Valmentaja-linssin KRIITTINEN aukko: opener/2./3. yritys laskettiin KERRAN päivän
+// alussa staattisena prosenttitaulukkona — lämmittelyhuoneessa valmentaja päivittää
+// jokaisen yrityksen jälkeen. Päivän 1RM-estimaatti päivittyy yritystuloksista:
+// onnistunut yritys grindi-luokalla (1 = nopea, 2 = työläs, 3 = grindi) implikoi
+// varaa Epley-käänteisesti; hylätty yritys cappaa estimaatin. Strategia:
+// "varma" (9/9, kisan varmistus) · "normaali" · "aggressiivinen" (ennätysjahti).
+// Ei koskaan ehdota alle viimeisimmän onnistuneen (+0,5 kg minimikorotus).
+function computeNextAttempt({ e1rmDayStart, attempts = [], strategy = "normaali" }) {
+  let est = typeof e1rmDayStart === "number" && e1rmDayStart > 0 ? e1rmDayStart : null;
+  let lastSuccess = null;
+  for (const a of attempts) {
+    if (!a || !(a.loadKg > 0)) continue;
+    if (a.success) {
+      lastSuccess = Math.max(lastSuccess ?? 0, a.loadKg);
+      const grind = a.grindClass === 1 ? 1.5 : a.grindClass === 3 ? 0.3 : 0.8; // RIR-proxy tankonopeudesta
+      const implied = a.loadKg * (1 + grind / 30);
+      est = est === null ? implied : Math.max(est, implied);
+    } else {
+      est = est === null ? a.loadKg * 0.995 : Math.min(est, a.loadKg * 0.995);
+    }
+  }
+  if (est === null) return { day1RM: null, nextLoadKg: null, rationale: "Ei estimaattia — kirjaa opener ensin." };
+  const mult = strategy === "varma" ? 0.955 : strategy === "aggressiivinen" ? 0.99 : 0.975;
+  let next = roundToHalf(est * mult);
+  const lastAttempt = attempts[attempts.length - 1];
+  if (lastAttempt && !lastAttempt.success) {
+    // Hylätty: nopeus ratkaisee — grindi 3 → sama uusiksi ei kannata ilman syytä
+    next = lastAttempt.grindClass === 3
+      ? roundToHalf(lastAttempt.loadKg) // toisto vain jos tekninen syy; viesti kertoo
+      : roundToHalf(lastAttempt.loadKg); // tekninen/nopea hylky → sama uudelleen
+    return { day1RM: roundToHalf(est), nextLoadKg: next,
+      rationale: lastAttempt.grindClass === 3
+        ? `Hylätty grindillä → älä nosta. Toista ${next} kg VAIN jos hylkäys oli tekninen (esim. painuma/ote) — muuten kisa on tässä.`
+        : `Hylätty ilman grindiä (tekninen?) → toista ${next} kg. Päivän 1RM-estimaatti ${roundToHalf(est)} kg.` };
+  }
+  if (lastSuccess !== null && next <= lastSuccess) next = roundToHalf(lastSuccess + 0.5);
+  return { day1RM: roundToHalf(est), nextLoadKg: next,
+    rationale: `Päivän 1RM-estimaatti ${roundToHalf(est)} kg (yritystuloksista päivitetty) × ${(mult * 100).toFixed(1).replace(".", ",")} % [${strategy}] → ${next} kg.` };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// K7-7 — SYKLIN LOPPUANALYYSI → SEURAAVAN BLOKIN SUOSITUS (makrosyklin siemen)
+// ═══════════════════════════════════════════════════════════════
+//
+// Valmentaja-linssin KRIITTINEN aukko: ohjelmointi loppui 16 viikkoon — ei heikkous-
+// diagnoosia, ei blokkien välistä päätöksentekoa. Analysoi kisaliikkeiden kehityksen
+// syklin sisällä (kanoninen Best alkupää vs loppupää), failure-tiheyden ja tuottaa
+// RANKATUN heikkousdiagnoosin + seuraavan blokin suosituksen. Kisapäivämäärä-
+// tietoisuus: jos targetCompetitionDateISO ≤ 8 vk päässä → peaking-suositus.
+function analyzeCycleForNextBlock(allSets, sessions, mesocycle, movements, bodyweightKg, opts = {}) {
+  const lifts = (movements || []).filter((m) => m.isCompetitionLift);
+  if (!lifts.length || !mesocycle?.startDateISO) return { perLift: [], recommendation: null };
+  const startT = new Date(mesocycle.startDateISO).getTime();
+  const midT = startT + 8 * 7 * 86400000; // alkupää = vk 1–8
+  const perLift = [];
+  for (const m of lifts) {
+    const sets = (allSets || []).filter((s) => s.movementId === m.movementId && (s.externalLoadKg || 0) > 0 && (s.reps || 0) >= 1);
+    if (sets.length < 6) { perLift.push({ lift: m.name, insufficient: true }); continue; }
+    const early = sets.filter((s) => new Date(s.timestamp || s.dateISO || 0).getTime() <= midT);
+    const bestNow = computeMovementE1RMBest(sets, sessions, mesocycle, m, bodyweightKg);
+    const bestEarly = early.length >= 3 ? computeMovementE1RMBest(early, sessions, mesocycle, m, bodyweightKg) : null;
+    const deltaPct = bestEarly && bestEarly.value > 0 && bestNow
+      ? (bestNow.value - bestEarly.value) / bestEarly.value : null;
+    const v0 = sets.filter((s) => s.actualVx === 0).length;
+    perLift.push({ lift: m.name, e1rmNow: bestNow?.value ?? null, e1rmEarly: bestEarly?.value ?? null,
+      deltaPct: deltaPct !== null ? Number((deltaPct * 100).toFixed(1)) : null,
+      v0Count: v0, setCount: sets.length });
+  }
+  const ranked = perLift.filter((p) => !p.insufficient && p.deltaPct !== null)
+    .sort((a, b) => a.deltaPct - b.deltaPct);
+  const weakest = ranked[0] || null;
+  let blockType = "streetlifting_16w";
+  let note = weakest
+    ? `Heikoin kehitys: ${weakest.lift} (${weakest.deltaPct >= 0 ? "+" : ""}${weakest.deltaPct} % syklissä${weakest.v0Count ? `, ${weakest.v0Count}× V0` : ""}). Seuraava blokki: painota ${weakest.lift} — +1 laatusarja/vk (frequency ennen intensiteettiä) ja aloita blokki cal-viikolla (uusi baseline ennen kuormia).`
+    : "Kehitysdata ei riitä heikkousdiagnoosiin — aja cal-viikko ja jatka tasapainoisella blokilla.";
+  const compISO = opts.targetCompetitionDateISO || null;
+  if (compISO) {
+    const weeksToComp = Math.round((new Date(compISO).getTime() - new Date(opts.dateISO || mesocycle.startDateISO).getTime()) / (7 * 86400000));
+    if (weeksToComp > 0 && weeksToComp <= 8) {
+      blockType = "peaking";
+      note = `Kisa ${compISO} on ${weeksToComp} vk päässä → seuraava blokki on PEAKING (4 vk: intensification → realization → taper → kisa)${weakest ? `. Heikkousdiagnoosi (${weakest.lift} ${weakest.deltaPct} %) siirtyy kisan jälkeisen blokin painotukseksi.` : "."}`;
+    }
+  }
+  return { perLift, weakest, recommendation: { blockType, note } };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // MESOCYCLE LOGIC
 // ═══════════════════════════════════════════════════════════════
 
@@ -1890,8 +2084,69 @@ function mesocycleBreakReset(mesocycle, skippedWeeks) {
 //
 // Block-aware-parametri valinnainen — vanhat kutsut (ilman blockPhase) saavat
 // legacy-Strategia-B:n (5% drop) yhteensopivuuden vuoksi.
-// Opts-parametri valinnainen: { isIsolation: bool, isLastSet: bool }.
+// Opts-parametri valinnainen: { isIsolation: bool, isLastSet: bool, failureCause: string }.
+
+// K7-4 (valmentaja-linssi): MUSCLE-UP ON TAITOLIIKE. Failure-syyn skill-luokat kantavat
+// spesifin regressio-drillin — valmentaja NÄKEE että veto nousi mutta ranne ei kääntynyt;
+// engine näki ennen vain V0:n. Drillit ovat ohjaustekstiä (ei ohjelmamutaatiota v1:ssä):
+// atletti tekee drillin lämmittelyissä/skill-blokissa omalla päätöksellään.
+const MU_SKILL_REGRESSIONS = Object.freeze({
+  "veto-korkeus": {
+    label: "vetokorkeus ei riitä",
+    drill: "Räjähtävä leuka rintaan 3×3 (kevyt lisäpaino) + high pull tangon yli -intentio. Kuorma-MU:ta vasta kun BW-veto nousee rinnan alaosaan.",
+  },
+  "transitio": {
+    label: "transitio (ranteen kääntö) hajoaa",
+    drill: "Band-assisted MU 3×3 hitaalla transitiolla + false grip -roikunta 2×20 s. Transitio on taito — tee tuoreena, ei väsyneenä.",
+  },
+  "dippi-ulostyonto": {
+    label: "dippi-ulostyöntö jää vajaaksi",
+    drill: "Korkea tanko-dippi (MU-lopetusasennosta) 3×3 + pause-dippi pohjalla. Ulostyöntövoima rakennetaan dippiliikkeillä.",
+  },
+});
+
 function failureReaction(currentLoadKg, targetReps, isPrimary, consecutiveFailures, blockPhase = null, opts = {}) {
+  // K7-3 (valmentaja-linssi, 2026-07-05): FAILURE-SYYN EROTTELU. Tekninen failure,
+  // voimafailure, kipufailure ja otefailure saivat aiemmin saman −5 %-reseptin —
+  // valmentaja reagoi näihin täysin eri tavoin. opts.failureCause (atletin yhden
+  // napautuksen raportti) ohittaa kuormaheuristiikan, koska se on ground truth:
+  //   "tekniikka"  → kuorma SÄILYY (voima ei loppunut), ei ensi viikon säätöä; ohje
+  //                  keskittyä suoritukseen tai keventää itse tekniikkasyistä.
+  //   "kipu"       → STOP liike heti + korvaus/skip-ohjaus (H-015-flow); EI kuorma-
+  //                  rangaistusta ensi viikolle (kipu ≠ voimatason muutos).
+  //   "ote"        → kuorma säilyy, vihje ote-/magnesiumratkaisuihin; ei säätöä.
+  //   "voima" / ei raportoitu → nykyinen tutkimuspohjainen ketju (Refalo/blokit).
+  // K7-4 (MU-skill): muscle-up-perheen skill-syyt käyttäytyvät kuten "tekniikka"
+  // mutta kantavat spesifin regressio-drillin viestissä (MU_SKILL_REGRESSIONS).
+  const _fc = opts.failureCause || null;
+  if (_fc && _fc !== "voima") {
+    if (_fc === "kipu") {
+      return {
+        nextSetLoad: currentLoadKg, nextSetReps: targetReps, shouldStop: true,
+        strategy: "PAIN",
+        message: "Kipu-failure → lopeta tämä liike tänään. Korvaa liike (🔄) tai skippaa — kipu ei ole voimafailure, joten ensi viikon kuormaan ei kosketa. Jos kipu toistuu, merkitse vaiva-tagi korvauksen yhteydessä.",
+        nextWeekLoadAdjust: 0, promptSubstitution: true,
+      };
+    }
+    if (_fc === "ote") {
+      return {
+        nextSetLoad: currentLoadKg, nextSetReps: targetReps, shouldStop: false,
+        strategy: "GRIP",
+        message: "Ote petti (ei voima) → kuorma säilyy. Magnesium/vetoremmit tai lyhyempi lepo otteelle — ensi viikon kuormaan ei kosketa.",
+        nextWeekLoadAdjust: 0,
+      };
+    }
+    // "tekniikka" + MU-skill-syyt (veto-korkeus / transitio / dippi-ulostyöntö)
+    const _drill = MU_SKILL_REGRESSIONS[_fc] || null;
+    return {
+      nextSetLoad: currentLoadKg, nextSetReps: targetReps, shouldStop: false,
+      strategy: _drill ? "SKILL" : "TECH",
+      message: _drill
+        ? `Skill-failure (${_drill.label}) → kuorma säilyy, voima ei loppunut. Drilli: ${_drill.drill}`
+        : "Tekniikka petti (ei voima) → kuorma säilyy. Keskity suoritukseen; kevennä itse jos tekniikka vaatii. Ei ensi viikon säätöä.",
+      nextWeekLoadAdjust: 0, skillCause: _fc,
+    };
+  }
   // v4.34.25: Isolation-haara — etusija block-aware-logiikan EDESSÄ koska isolation-
   // luokitus pätee kaikissa blokeissa (foundation/strength/intensity/peaking).
   // v4.34.28: Multi-set V0 -tunnistus (cowork-audit kohta 4.4 vaihtoehto c).
@@ -9615,6 +9870,13 @@ export {
   _isTrendEmptyStatus,
   _formatTrendStatusFi,
   combineReadiness,
+  // K7 (valmentaja-linssin aukot 2026-07-05)
+  computeSubjectiveReadiness,   // K7-1: 15 s check-in (Hooper/McLean) — 4. kanava
+  combineReadinessAll,          // K7-1: 4-kanavainen yhdistely (3-kanavainen bittitarkka)
+  computeFatigueAggregate,      // K7-2: cross-movement väsymys → deload-ehdotus (advisory)
+  computeNextAttempt,           // K7-6: kisapäivän yritysvalinta (in-meet)
+  analyzeCycleForNextBlock,     // K7-7: syklin loppuanalyysi → seuraavan blokin suositus
+  MU_SKILL_REGRESSIONS,         // K7-4: MU-skill-regressiodrillit
   // Mesocycle
   getMesocycleWeek,
   getWeekDef,

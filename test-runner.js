@@ -19,6 +19,8 @@ import {
   resolveIntraSessionAdjustedLoad,
   resolveTopSingleReanchor,
   computeWeeklyMuscleVolume, muscleVolumeBand,
+  computeSubjectiveReadiness, combineReadinessAll, computeFatigueAggregate,
+  computeNextAttempt, analyzeCycleForNextBlock,
   calibrateMesocycle,
   varaFeedback, varaTrendCorrection,
   // v4.34.34
@@ -902,7 +904,74 @@ function testTopSingleReanchor() {
   assertEqual(resolveTopSingleReanchor({ singleLoadKg: 172.5, singleActualVx: 1, isBarbell: true, bodyweightKg: 91, plannedLoadKg: 0, targetReps: 3, targetVx: 1, workSetsCount: 5 }).adjusted, false, "K32-T4b: ei suunniteltua → no-op");
 }
 
-// K4-1 (OBS-D, 2026-07-03): viikkovolyymi lihasryhmittäin (suunniteltu, live-ohjelma).
+// K7 (valmentaja-linssin aukot, 2026-07-05): check-in, failure-syyt, väsymysaggregaatti,
+// yritysvalinta, sykli-analyysi.
+function testCoachGapEngines() {
+  // K7-1: subjektiivinen check-in (Hooper-tyyli)
+  assertEqual(computeSubjectiveReadiness({ sleep: 5, stress: 4, soreness: 4, motivation: 5 }).class,
+    "GREEN", "K71: 18/20 → GREEN");
+  assertEqual(computeSubjectiveReadiness({ sleep: 3, stress: 3, soreness: 3, motivation: 4 }).class,
+    "YELLOW", "K71: 13/20 → YELLOW");
+  assertEqual(computeSubjectiveReadiness({ sleep: 2, stress: 2, soreness: 3, motivation: 2 }).class,
+    "RED", "K71: 9/20 → RED (valvottu yö + deadline näkyy vihdoin)");
+  assertEqual(computeSubjectiveReadiness(null).class, null, "K71: ei check-iniä → null-kanava");
+  // K7-1b: 4-kanavainen yhdistely — 3-kanavainen käytös identtinen
+  const g = { class: "GREEN", z: 0.1 }, y = { class: "YELLOW", z: -0.6 }, n = { class: null };
+  const c3 = combineReadiness(g, g, y);
+  const c4none = combineReadinessAll(g, g, y, null);
+  assertEqual(c4none.combined, c3.combined, "K71b: ilman check-iniä identtinen combineReadinessin kanssa");
+  const c4 = combineReadinessAll(g, g, y, { class: "YELLOW", score: 13 });
+  assertEqual(c4.combined, "YELLOW", "K71b: 2G+2Y (4 kanavaa) → YELLOW (aito enemmistö vaaditaan GREENiin)");
+  assertEqual(combineReadinessAll(n, n, n, { class: "RED", score: 9 }).combined, "YELLOW",
+    "K71b: laitteeton atleetti — check-in RED capaa YELLOWiin (yksi kanava ei yksin pakota punaista; null→GREEN-aukko silti kiinni)");
+  assertEqual(combineReadinessAll(n, n, n, null).noData, true,
+    "K71b: ei mitään dataa → noData-lippu (UI nudgaa check-iniin, engine pysyy cap-onlyna)");
+  // K7-3: failure-syyn erottelu
+  const tech = failureReaction(100, 3, true, 1, "strength", { failureCause: "tekniikka" });
+  assertEqual(tech.strategy, "TECH", "K73: tekniikka-failure → TECH-strategia");
+  assertClose(tech.nextSetLoad, 100, 0.01, "K73: tekniikka → kuorma SÄILYY (ei −5 %)");
+  assertEqual(tech.nextWeekLoadAdjust, 0, "K73: tekniikka → ei ensi viikon säätöä");
+  const pain = failureReaction(100, 3, true, 1, "strength", { failureCause: "kipu" });
+  assert(pain.shouldStop && pain.promptSubstitution, "K73: kipu → STOP + korvausohjaus");
+  assertEqual(pain.nextWeekLoadAdjust, 0, "K73: kipu ei ole voimafailure → ei kuormarangaistusta");
+  const voima = failureReaction(100, 3, true, 1, "strength", { failureCause: "voima" });
+  assertClose(voima.nextSetLoad, 95, 0.01, "K73: voima → nykyinen Refalo-ketju (−5 %)");
+  // K7-4: MU-skill-syy kantaa drillin
+  const mu = failureReaction(10, 1, true, 1, "intensity", { failureCause: "transitio" });
+  assertEqual(mu.strategy, "SKILL", "K74: transitio-failure → SKILL");
+  assert(/false grip|Band-assisted/i.test(mu.message), "K74: viesti kantaa regressio-drillin");
+  assertClose(mu.nextSetLoad, 10, 0.01, "K74: skill-failure ei pudota kuormaa (voima ei loppunut)");
+  // K7-2: väsymysaggregaatti
+  const mkF = (i, vx, tvx, d) => ({ setId: "f" + i, sessionId: "FS" + d, externalLoadKg: 70, reps: 3,
+    targetReps: 3, actualVx: vx, targetVx: tvx, setRole: "top", timestamp: `2026-07-0${d}T10:00:00Z` });
+  const tired = [];
+  for (let d = 1; d <= 4; d++) for (let i = 0; i < 4; i++)
+    tired.push(mkF(d * 10 + i, i === 0 ? 0 : 1, 3, d)); // joka päivä 1× V0 + grindi (V1 vs target V3)
+  const fat = computeFatigueAggregate(tired, [], "2026-07-05");
+  assert(fat.suggest === true && fat.score >= 3,
+    `K72: 4× V0 + grindi → deload-ehdotus (score ${fat.score})`);
+  const fresh = [];
+  for (let d = 1; d <= 4; d++) for (let i = 0; i < 4; i++) fresh.push(mkF(d * 10 + i, 3, 3, d));
+  assertEqual(computeFatigueAggregate(fresh, [], "2026-07-05").suggest, false,
+    "K72: tuore atleetti → ei ehdotusta (ei nanny)");
+  // K7-6: yritysvalinta
+  const a1 = computeNextAttempt({ e1rmDayStart: 95, attempts: [{ loadKg: 87.5, success: true, grindClass: 1 }], strategy: "normaali" });
+  assert(a1.day1RM >= 91.5 && a1.nextLoadKg > 87.5,
+    `K76: nopea opener nostaa päivän estimaattia (1RM ${a1.day1RM}, seuraava ${a1.nextLoadKg})`);
+  const a2 = computeNextAttempt({ e1rmDayStart: 95, attempts: [
+    { loadKg: 87.5, success: true, grindClass: 1 }, { loadKg: 92.5, success: false, grindClass: 3 }] });
+  assert(a2.nextLoadKg <= 92.5 && /älä nosta/i.test(a2.rationale),
+    "K76: grindi-hylky → EI nosteta (in-meet-järki)");
+  const a3 = computeNextAttempt({ e1rmDayStart: 95, attempts: [{ loadKg: 94, success: true, grindClass: 3 }], strategy: "varma" });
+  assert(a3.nextLoadKg >= 94.5, "K76: seuraava aina ≥ viimeisin onnistunut + 0,5");
+  // K7-7: sykli-analyysi (kisapäivä-tietoisuus)
+  const an = analyzeCycleForNextBlock([], [], { startDateISO: "2026-03-30", weekPlans: [] },
+    [{ movementId: "x", name: "Lisäpainoleuanveto", isCompetitionLift: true }], 91,
+    { targetCompetitionDateISO: "2026-08-15", dateISO: "2026-07-05" });
+  assertEqual(an.recommendation.blockType, "peaking",
+    "K77: kisa 6 vk päässä → peaking-blokki (ei uutta 16 vk volyymiblokkia)");
+}
+
 // Suorat sarjat 1,0 + epäsuorat 0,5 (RP-konventio: veto lasketaan hauikselle puolikkaana).
 // Bandit: ylläpito <4 / matala 4–9 / kehittävä 10–20 / korkea >20.
 function testWeeklyMuscleVolume() {
@@ -4556,6 +4625,7 @@ export async function runTests() {
   testIntraSessionReResolve();
   testTopSingleReanchor();
   testWeeklyMuscleVolume();
+  testCoachGapEngines();
   // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
   testE1rmCardCanonicalSource();
   testE1rmCardPlanBasedGate();
