@@ -288,19 +288,24 @@ function vRepsToExpectedPct(maxReps) {
 // Yksisarjaiset (top single, cal-setti positiossa 1, opener) → 0/0 (ennallaan).
 const ACROSS_SET_FATIGUE_REPS_PER_SET = 0.5;
 const ACROSS_SET_FATIGUE_CAP = 2.5;
-function acrossSetAllowance(sets) {
+// 8a (V1): per-sarja-rate on OPITTAVA (learnedAcrossSetFatigue, prior 0.5, clamp
+// [0.25,0.75]). Ko-opittavuus-invariantti: preskriptio (tämä), estimointi
+// (withinSessionFatigueCredits) JA re-ankkurointi (resolveTopSingleReanchor) käyttävät
+// SAMAA ratePerSet-arvoa — erilliset arvot rikkoisivat steady-state-neutraaliuden.
+// Default = ACROSS_SET_FATIGUE_REPS_PER_SET → cold-start bittitarkasti nykyinen.
+function acrossSetAllowance(sets, ratePerSet = ACROSS_SET_FATIGUE_REPS_PER_SET) {
   const n = Number(sets);
   if (!Number.isFinite(n) || n <= 1) return 0;
-  return Math.min(ACROSS_SET_FATIGUE_CAP / 2, (n - 1) * (ACROSS_SET_FATIGUE_REPS_PER_SET / 2));
+  return Math.min(ACROSS_SET_FATIGUE_CAP / 2, (n - 1) * (ratePerSet / 2));
 }
 // Estimointi-puolen positio-krediitti: sortedSets (perf-järjestyksessä) → credits[i] =
-// 0,5 × (positio samassa sessiossa − 1), cap 2,5.
-function withinSessionFatigueCredits(sortedSets) {
+// ratePerSet × (positio samassa sessiossa − 1), cap 2,5. (8a: ratePerSet opittava, ks. yllä.)
+function withinSessionFatigueCredits(sortedSets, ratePerSet = ACROSS_SET_FATIGUE_REPS_PER_SET) {
   const seen = {};
   return (sortedSets || []).map(s => {
     const k = s.sessionId || "?";
     seen[k] = (seen[k] || 0) + 1;
-    return Math.min(ACROSS_SET_FATIGUE_CAP, (seen[k] - 1) * ACROSS_SET_FATIGUE_REPS_PER_SET);
+    return Math.min(ACROSS_SET_FATIGUE_CAP, (seen[k] - 1) * ratePerSet);
   });
 }
 
@@ -518,14 +523,16 @@ function resolveIntraSessionAdjustedLoad(p) {
  */
 function resolveTopSingleReanchor(p) {
   const { singleLoadKg, singleActualVx, isBarbell, bodyweightKg,
-          plannedLoadKg, targetReps, targetVx, workSetsCount } = p || {};
+          plannedLoadKg, targetReps, targetVx, workSetsCount, ratePerSet } = p || {};
   if (!(singleLoadKg > 0) || !Number.isFinite(singleActualVx)) {
     return { adjusted: false, reason: "no-single" };
   }
   if (!(plannedLoadKg > 0)) return { adjusted: false, reason: "no-planned-load" };
   const bw = bodyweightKg > 0 ? bodyweightKg : 0;
   const e1rmSingle = (isBarbell ? singleLoadKg : bw + singleLoadKg) * (1 + (1 + singleActualVx) / 30);
-  const pct = vRepsToExpectedPct((targetReps ?? 3) + (targetVx ?? 1) + acrossSetAllowance(workSetsCount));
+  // 8a ko-opittavuus: re-ankkurointi käyttää samaa opittua ratePerSet-arvoa kuin
+  // preskriptio/estimointi (kutsuja välittää p.ratePerSet; puuttuu → prior 0.5).
+  const pct = vRepsToExpectedPct((targetReps ?? 3) + (targetVx ?? 1) + acrossSetAllowance(workSetsCount, ratePerSet ?? ACROSS_SET_FATIGUE_REPS_PER_SET));
   const derivedRaw = isBarbell ? e1rmSingle * pct : e1rmSingle * pct - bw;
   if (!(derivedRaw > 0)) return { adjusted: false, reason: "derived-nonpositive", e1rmSingle };
   const derivedTarget = roundToHalf(derivedRaw);
@@ -4473,6 +4480,10 @@ async function recommend(options = {}) {
   const settings = options.settings || (await getSettings());
   const bodyweightKg = options.bodyweightKg || settings.bodyweightKg || 91;
   const dateISO = options.dateISO || todayISO();
+  // 8a (V1): across-set-väsymyksen per-sarja-rate — jaettu preskriptio/estimointi/
+  // re-ankkurointi -kuluttajille (ko-opittavuus-invariantti). C0: kiinteä prior 0.5
+  // (byte-identtinen). C1: luetaan settings.learnedParams:sta clampattuna.
+  const acrossSetRate = ACROSS_SET_FATIGUE_REPS_PER_SET;
 
   const traces = [];
   function trace(ruleId, before, after, why) {
@@ -4731,7 +4742,7 @@ async function recommend(options = {}) {
   // K3-1: sarjapositio-krediitti — väsyneenä tehty myöhempi sarja todistaa korkeamman tuoreen
   // kapasiteetin. Krediitit lasketaan TÄYDESTÄ topSets-järjestyksestä (positio ei ala keskeltä
   // sessiota slice-ikkunan takia).
-  const _fatigueCreditsAll = withinSessionFatigueCredits(topSets);
+  const _fatigueCreditsAll = withinSessionFatigueCredits(topSets, acrossSetRate);
   const recentTopSets = topSets.slice(-6);
   const _recentCredits = _fatigueCreditsAll.slice(-6);
   const e1rmValues = recentTopSets
@@ -4772,7 +4783,7 @@ async function recommend(options = {}) {
   if (recentCalibSets.length > 0) {
     // K3-1: positio-krediitti myös cal-sarjoille (cal-sessio on sekventiaalinen — 3. cal-sarja
     // väsyneenä @V0 todistaa korkeamman tuoreen kapasiteetin kuin 1.).
-    const _calCredits = withinSessionFatigueCredits(recentCalibSets);
+    const _calCredits = withinSessionFatigueCredits(recentCalibSets, acrossSetRate);
     const calibE1rms = recentCalibSets.map((s, i) => {
       // v4.32.8: fallback chain — actualVx (raportoitu) → targetVx (V1 uudessa, V0 vanhassa) → 1
       const vara = (s.actualVx ?? s.targetVx ?? 1) + (_calCredits[i] || 0);
@@ -5460,7 +5471,7 @@ async function recommend(options = {}) {
       let resolveSource = "loadPct";
       if (typeof primaryTier === "number" && (primaryTier === 1 || primaryTier === 2 || primaryTier === 3)) {
         // K3-1: + across-set-väsymysvara — kuorma jonka VIIMEINENkin sarja kestää target-Vx:llä.
-        const maxReps = targetReps + targetVx + acrossSetAllowance(primarySlotMeta?.sets);
+        const maxReps = targetReps + targetVx + acrossSetAllowance(primarySlotMeta?.sets, acrossSetRate);
         const expectedPct = vRepsToExpectedPct(maxReps);
         if (expectedPct !== null) {
           pctForResolve = expectedPct;
@@ -5875,7 +5886,7 @@ async function recommend(options = {}) {
         const isTopSingle = slot.reps === 1 && !slot.attemptsPct;
         if (!isTopSingle &&
             typeof slotTierA === "number" && (slotTierA === 1 || slotTierA === 2 || slotTierA === 3)) {
-          const slotMaxReps = (slot.reps ?? 0) + (slot.targetVx ?? 0) + acrossSetAllowance(slot.sets); // K3-1
+          const slotMaxReps = (slot.reps ?? 0) + (slot.targetVx ?? 0) + acrossSetAllowance(slot.sets, acrossSetRate); // K3-1
           const slotExpectedPct = vRepsToExpectedPct(slotMaxReps);
           if (slotExpectedPct !== null) {
             slotPctForResolveA = slotExpectedPct;
@@ -6098,7 +6109,7 @@ async function recommend(options = {}) {
                     && s.setRole !== "readiness_test")
             .sort(_evidenceSort); // K2c: suorituspäivä-sort
           const ownSets = ownAll.slice(-6);
-          const ownCredits = withinSessionFatigueCredits(ownAll).slice(-6); // K3-1: positio-krediitti
+          const ownCredits = withinSessionFatigueCredits(ownAll, acrossSetRate).slice(-6); // K3-1: positio-krediitti
           if (ownSets.length) {
             const nL = slot.defaultMovementName.toLowerCase();
             // K6-3 (retro-kenttä 5.7: Heavy negative 85,3-kortti vs sys-resoluutio):
@@ -6142,7 +6153,7 @@ async function recommend(options = {}) {
                 }
               }
             }
-            const ownPct = vRepsToExpectedPct((slot.reps ?? 0) + (slot.targetVx ?? 2) + acrossSetAllowance(slot.sets)); // K3-1
+            const ownPct = vRepsToExpectedPct((slot.reps ?? 0) + (slot.targetVx ?? 2) + acrossSetAllowance(slot.sets, acrossSetRate)); // K3-1
             if (ownE1RM && ownPct !== null) {
               slot.resolvedLoadKg = roundToHalf(Math.max(0, ownIsBWFamily
                 ? (ownE1RM + bodyweightKg) * ownPct - bodyweightKg
