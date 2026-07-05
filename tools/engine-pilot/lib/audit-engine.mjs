@@ -1112,7 +1112,81 @@ export function auditProfile(profileResult, profile = null) {
   // Cross-trace audits (esim. progression-monotonisuus, K4)
   crossTraceProgression(profileResult, allFlags);
 
+  // K6-2: preskriptio-sanity (jokainen iso kuormamuutos selittyy tai flagataan)
+  crossTracePrescriptionSanity(profileResult, allFlags, profile);
+
   return allFlags;
+}
+
+// ─── K6-2 (2026-07-05, Akselin ratifioima "vahti ensin"): PRESCRIPTION_SANITY ───
+// Kenttäjuuri: atletti joutui korjaamaan kuormia käsin joka treenissä (Heavy negative
+// 69,5 vs tehty 77,5; hammer curl 42,5 vs 24) — "outous" ei jäänyt koneellisesti kiinni.
+// Kanava vertaa saman liikkeen PERÄKKÄISIÄ preskriptioita SAMALLA toistomäärällä
+// (pilotissa simulaattorin toteuma ≈ preskriptio → proxy "viime toteumalle"; sama
+// vertailu jonka atletti tekee päässään). Muutos alle −10 % tai yli +15 % vaatii
+// SELITTÄVÄN säännön saman päivän traceista: selitetty → 📋-jälki (audit trail),
+// selittämätön → 🐛 PRESCRIPTION_SANITY. v1-epätarkkuus dokumentoitu: selittäjä-
+// joukko on päivätasoinen (ei slot-kohtainen) — riittää kenttäluokan kiinniottoon.
+function crossTracePrescriptionSanity(profileResult, allFlags, profile = null) {
+  const DOWN_RULES = new Set([
+    "BREAK_RELOAD_SLOT", "RETURN_FROM_BREAK", "BREAK_MODIFIER",
+    "POST_BREAK_ANCHOR_CAP", "POST_BREAK_ANCHOR_CAP_SLOT", "SUSTAINABILITY_CAP",
+    "MU_AUTO_REGULATE", "DELOAD_OVERRIDE", "E1RM_DEFLATION_CAP",
+    "VARA_TREND_CORRECTION", "INTRA_SESSION_ADJUST", "READINESS_CAP",
+  ]);
+  const UP_RULES = new Set([
+    "PLAN_BASED_E1RM", "ACCESSORY_FLOOR_CAP", "FIRST_SET_CAPACITY_BONUS",
+    "E1RM_INFLATION_CAP", "CFG_DRIFT_APPLIED", "CAL_OVERRIDE", "CALIBRATION_E1RM",
+    "PROGRESSION_FLOOR_CAP",
+  ]);
+  const DOWN_T = 0.90, UP_T = 1.15;
+  const last = new Map(); // "movement|reps" → { load, weekNum, dayOfWeek, deload }
+  const deloadWeeks = new Set(); // blokkiraja-selittäjä: deload-viikko edellisen ja nykyisen välissä
+  for (const trace of profileResult.traces) {
+    const slots = trace.output?.slots || [];
+    const ruleIds = new Set((trace.traces || []).map((x) => x.ruleId));
+    const deltaPct = trace.output?.deltaPct;
+    const capLevel = trace.output?.capLevel || 0;
+    const deloadWeek = typeof deltaPct === "number" && deltaPct <= -0.10;
+    if (deloadWeek) deloadWeeks.add(trace.weekNum);
+    for (const slot of slots) {
+      if (!slot.movementName || typeof slot.resolvedLoadKg !== "number" || slot.resolvedLoadKg <= 0) continue;
+      // Kalibrointi/attempt-protokollakuormat ja lämmittelyt eivät kuulu vertailuun.
+      if (["warmup", "calibration", "opener", "attempt2", "attempt3"].includes(slot.role)) continue;
+      const key = slot.movementName + "|" + (slot.reps ?? "?");
+      const prev = last.get(key);
+      last.set(key, { load: slot.resolvedLoadKg, weekNum: trace.weekNum, dayOfWeek: trace.dayOfWeek, deload: deloadWeek });
+      if (!prev || prev.load <= 0) continue;
+      // BW-KALLIO: pienillä lisäkuormilla (< 20 kg) external-suhde on harhaanjohtava
+      // (dippi 10,5 → 0,5 kg = −95 % ext MUTTA −10 % system-kuormana, jonka atleetti
+      // tuntee). Kallion alueella verrataan system-kuormia (ext + BW).
+      const _bw = profile?.meta?.bodyweightKg ?? 91;
+      const _cliff = Math.min(prev.load, slot.resolvedLoadKg) < 20;
+      const ratio = _cliff
+        ? (slot.resolvedLoadKg + _bw) / (prev.load + _bw)
+        : slot.resolvedLoadKg / prev.load;
+      if (ratio >= DOWN_T && ratio <= UP_T) continue;
+      const isDown = ratio < DOWN_T;
+      // Deload-rajat ovat legitiimiä ohjelmadynamiikkaa molempiin suuntiin:
+      // deload-viikon sisällä pudotus selittyy deltaPct:llä; deload-viikon JÄLKEEN
+      // nousu on paluu suunnitelmaan (vertailukohta oli suppressoitu kuorma).
+      // BLOKKIRAJA: deload-viikko edellisen ja nykyisen havainnon VÄLISSÄ →
+      // intensiteettiprofiili vaihtuu ohjelmadesignista (esim. strength-backoff 70 %
+      // → intensity-backoff 85 %) — selitetty molempiin suuntiin.
+      const blockBoundary = [...deloadWeeks].some((w) => w > prev.weekNum && w < trace.weekNum);
+      const explained = isDown
+        ? (deloadWeek || blockBoundary || capLevel >= 1 || [...ruleIds].some((r) => DOWN_RULES.has(r)))
+        : (prev.deload || blockBoundary || [...ruleIds].some((r) => UP_RULES.has(r)));
+      allFlags.push({
+        weekNum: trace.weekNum, dayOfWeek: trace.dayOfWeek, dateISO: trace.dateISO,
+        code: explained ? "PRESCRIPTION_DELTA_EXPLAINED" : "PRESCRIPTION_SANITY",
+        severity: explained ? "📋 INFO" : "🐛 ERROR",
+        msg: `${slot.movementName} (${slot.sets ?? "?"}×${slot.reps ?? "?"}): ${prev.load} → ${slot.resolvedLoadKg} kg (${((ratio - 1) * 100).toFixed(0)} % vs vk${prev.weekNum}/pv${prev.dayOfWeek})${explained ? " — selitetty" : " — EI selittävää sääntöä päivän traceissa"}.`,
+        movement: slot.movementName, prevLoad: prev.load, newLoad: slot.resolvedLoadKg,
+        ratio: Number(ratio.toFixed(3)), explained,
+      });
+    }
+  }
 }
 
 // Cross-trace: tarkista progression-monotonisuus per liike
