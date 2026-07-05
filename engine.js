@@ -288,6 +288,19 @@ function vRepsToExpectedPct(maxReps) {
 // Yksisarjaiset (top single, cal-setti positiossa 1, opener) → 0/0 (ennallaan).
 const ACROSS_SET_FATIGUE_REPS_PER_SET = 0.5;
 const ACROSS_SET_FATIGUE_CAP = 2.5;
+// 8a (V1): opitun across-set-raten priori-clamp = ±2 SD (SD 0.125 → [0.25, 0.75]).
+// Tämä on tutkimusraja (CLAUDE.md §2 sääntö 3): posterior saa terävöityä vain tähän
+// haarukkaan; karkaava raaka-estimaatti → LEARNED_PARAM_OUTLIER + clamp.
+const ACROSS_SET_FATIGUE_RATE_MIN = 0.25;
+const ACROSS_SET_FATIGUE_RATE_MAX = 0.75;
+// Bayes-shrinkage priori-vahvuus (pseudosessiot): ~5 kelpaavaa sessiota siirtää
+// posteriorin puoliväliin priorista dataan. Jaettu CI-laskennan kanssa.
+const LEARNED_PARAM_TAU = 5;
+function clampAcrossSetRate(v) {
+  return (typeof v === "number" && Number.isFinite(v))
+    ? Math.max(ACROSS_SET_FATIGUE_RATE_MIN, Math.min(ACROSS_SET_FATIGUE_RATE_MAX, v))
+    : ACROSS_SET_FATIGUE_REPS_PER_SET;
+}
 // 8a (V1): per-sarja-rate on OPITTAVA (learnedAcrossSetFatigue, prior 0.5, clamp
 // [0.25,0.75]). Ko-opittavuus-invariantti: preskriptio (tämä), estimointi
 // (withinSessionFatigueCredits) JA re-ankkurointi (resolveTopSingleReanchor) käyttävät
@@ -532,7 +545,7 @@ function resolveTopSingleReanchor(p) {
   const e1rmSingle = (isBarbell ? singleLoadKg : bw + singleLoadKg) * (1 + (1 + singleActualVx) / 30);
   // 8a ko-opittavuus: re-ankkurointi käyttää samaa opittua ratePerSet-arvoa kuin
   // preskriptio/estimointi (kutsuja välittää p.ratePerSet; puuttuu → prior 0.5).
-  const pct = vRepsToExpectedPct((targetReps ?? 3) + (targetVx ?? 1) + acrossSetAllowance(workSetsCount, ratePerSet ?? ACROSS_SET_FATIGUE_REPS_PER_SET));
+  const pct = vRepsToExpectedPct((targetReps ?? 3) + (targetVx ?? 1) + acrossSetAllowance(workSetsCount, clampAcrossSetRate(ratePerSet)));
   const derivedRaw = isBarbell ? e1rmSingle * pct : e1rmSingle * pct - bw;
   if (!(derivedRaw > 0)) return { adjusted: false, reason: "derived-nonpositive", e1rmSingle };
   const derivedTarget = roundToHalf(derivedRaw);
@@ -4481,9 +4494,14 @@ async function recommend(options = {}) {
   const bodyweightKg = options.bodyweightKg || settings.bodyweightKg || 91;
   const dateISO = options.dateISO || todayISO();
   // 8a (V1): across-set-väsymyksen per-sarja-rate — jaettu preskriptio/estimointi/
-  // re-ankkurointi -kuluttajille (ko-opittavuus-invariantti). C0: kiinteä prior 0.5
-  // (byte-identtinen). C1: luetaan settings.learnedParams:sta clampattuna.
-  const acrossSetRate = ACROSS_SET_FATIGUE_REPS_PER_SET;
+  // re-ankkurointi -kuluttajille (ko-opittavuus-invariantti). Luetaan opittu arvo
+  // settings.learnedParams:sta clampattuna prioriin [0.25,0.75]; puuttuu/ei-dataa →
+  // prior 0.5 (cold-start bittitarkka). Oppiminen KIRJOITTAA vain treenin päätöksessä
+  // (data.js:updateLearnedAcrossSetFatigue) — recommend() on puhdas luku.
+  const _asfLearned = settings.learnedParams?.acrossSetFatigue || null;
+  const acrossSetRate = clampAcrossSetRate(_asfLearned?.value);
+  const learnedAcrossSetFatigueCI = (_asfLearned && _asfLearned.n > 0)
+    ? _asfLearned.n / (_asfLearned.n + LEARNED_PARAM_TAU) : 0;
 
   const traces = [];
   function trace(ruleId, before, after, why) {
@@ -6695,6 +6713,10 @@ async function recommend(options = {}) {
       aggressivenessLearned: settings.aggressivenessLearned ?? 0,
       effectiveBias: typeof suggestionsResult.effectiveBias === "number"
         ? suggestionsResult.effectiveBias : 0,
+      // 8a (V1): opittu across-set-rate (efektiivinen, clampattu) + luottamus
+      // (n/(n+τ) ∈ [0,1), 0 = cold-start) — read-only auditointipinta UI:lle.
+      learnedAcrossSetFatigue: acrossSetRate,
+      learnedParamsCI: { acrossSetFatigue: learnedAcrossSetFatigueCI },
     },
     // v4.34.43: cfg-drift result. UI persistoi mesocycleen jos driftPct > 0.
     cfgDriftApplied: cfgDriftResult,

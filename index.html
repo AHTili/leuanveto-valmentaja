@@ -14273,6 +14273,9 @@ function bindWorkoutEvents() {
               plannedLoadKg: s.loadKg ?? s.plannedLoadKg,
               targetReps: s.targetReps, targetVx: s.targetVx,
               workSetsCount: txWork.length,
+              // 8a ko-opittavuus: re-ankkurointi käyttää samaa opittua across-set-ratea
+              // kuin preskriptio/estimointi (engine clamppaa; puuttuu → prior 0.5).
+              ratePerSet: state.settings?.learnedParams?.acrossSetFatigue?.value,
             });
             if (res.adjusted) {
               if (adjFromLoad === null) adjFromLoad = s.loadKg;

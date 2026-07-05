@@ -1344,6 +1344,28 @@ async function testRecommendScenarios() {
       "S1: targetExternalLoad on numero tai null (riippuu seedauksesta)");
   });
 
+  // 8a-A1 (known-neg, bittitarkkuuslukko): learnedParams PUUTTUU == arvo 0.5 →
+  // identtinen kuorma. Tämä lukitsee cold-start-neutraaliuden selaintestisuiteen
+  // (Stop-hook-portti) — proseduraalisen pilot-LOAD-DIFF:n täydennys.
+  await scenario("8a A1: cold-start == prior 0.5 (identiteetti)", async () => {
+    const recAbsent = await recommend(makeRecommendCtx({ dateISO: "2026-01-05", settings: { bodyweightKg: 91 } }));
+    const recPrior = await recommend(makeRecommendCtx({ dateISO: "2026-01-05", settings: { bodyweightKg: 91, learnedParams: { acrossSetFatigue: { value: 0.5, n: 0, mean: 0.5 } } } }));
+    assertEqual(recAbsent.targetExternalLoad, recPrior.targetExternalLoad, "8a A1: targetExternalLoad identtinen (absent == 0.5)");
+    assertEqual(recAbsent.targetVx, recPrior.targetVx, "8a A1: targetVx identtinen");
+    assertEqual(recAbsent.deltaPct, recPrior.deltaPct, "8a A1: deltaPct identtinen");
+    assertEqual(recAbsent.suggestionContext?.learnedAcrossSetFatigue, 0.5, "8a A1: echo = 0.5 (absent → prior)");
+    assertEqual(recAbsent.suggestionContext?.learnedParamsCI?.acrossSetFatigue, 0, "8a A6: CI = 0 cold-start");
+  });
+
+  // 8a-A6 (surface): opittu arvo + n virtaa suggestionContextiin (echo + CI + luku-clamp).
+  await scenario("8a A6: learnedParams surface (echo + CI + clamp)", async () => {
+    const rec = await recommend(makeRecommendCtx({ dateISO: "2026-01-05", settings: { bodyweightKg: 91, learnedParams: { acrossSetFatigue: { value: 0.7, n: 10, mean: 0.7 } } } }));
+    assertEqual(rec.suggestionContext?.learnedAcrossSetFatigue, 0.7, "8a A6: echo = opittu 0.7");
+    assertClose(rec.suggestionContext?.learnedParamsCI?.acrossSetFatigue, 10 / 15, 1e-9, "8a A6: CI = n/(n+τ) = 0.667");
+    const recHi = await recommend(makeRecommendCtx({ dateISO: "2026-01-05", settings: { bodyweightKg: 91, learnedParams: { acrossSetFatigue: { value: 0.9, n: 3 } } } }));
+    assertEqual(recHi.suggestionContext?.learnedAcrossSetFatigue, 0.75, "8a A6: luku-clamp 0.9 → 0.75 (±2SD)");
+  });
+
   // S2: Vk 2 MA, RED+RED → CAP_RED tracessa, deltaPct ≤ 0
   await scenario("vk 2 MA RED+RED → CAP_RED", async () => {
     const ctx = makeRecommendCtx({

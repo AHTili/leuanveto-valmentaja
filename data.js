@@ -2268,6 +2268,11 @@ async function getSettings() {
     // preferredBias:iin effectiveBias-laskennassa.
     preferredSuggestionBias: "balanced",
     aggressivenessLearned: 0,
+    // 8a (V1): opittavat parametrit (tutkimusrajojen sisällä, auditoitavasti).
+    // Muoto: { acrossSetFatigue: { value, n, mean } }. Tyhjä → engine käyttää
+    // prioria (cold-start bittitarkka). Kirjoitetaan treenin päätöksessä
+    // (updateLearnedAcrossSetFatigue), luetaan recommend():issä clampattuna.
+    learnedParams: {},
   };
   if (!s) return defaults;
   // Täytä puuttuvat kentät oletuksilla (esim. päivitetylle käyttäjälle)
