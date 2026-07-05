@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.52.59" />
+  <meta name="app-version" content="4.53.0" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -1181,6 +1181,9 @@ import {
   weeklyStimulus, checkStagnation,
   // K4-1: viikkovolyymi lihasryhmittäin (Sykli-kortti)
   computeWeeklyMuscleVolume,
+  // K7 (valmentaja-linssin aukot): check-in, väsymysaggregaatti, yritysvalinta, sykli-analyysi
+  computeSubjectiveReadiness, combineReadinessAll, computeFatigueAggregate,
+  computeNextAttempt, analyzeCycleForNextBlock,
   getMesocycleWeek, getWeekDef, getTodayPlan,
   breakAnalysis, speedDayLoad,
   varaFeedback,
@@ -1556,7 +1559,17 @@ async function computeReadiness() {
     .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
   const varaR = varaReadiness(topSets, settings.readinessVaraWindowN || 5);
 
-  state.readiness = combineReadiness(velR, hrvR, varaR);
+  // K7-1: subjektiivinen check-in 4. kanavana (Hooper/McLean). Ilman check-iniä
+  // 3-kanavainen käytös on bittitarkka vanhaan; noData-lippu ajaa Koti-nudgen.
+  let subjR = { class: null };
+  try {
+    const today = todayISO();
+    const checkins = await getMeasurementsByType("checkin");
+    const todayCheckin = (checkins || []).find(m => (m.dateISO || "") === today);
+    subjR = computeSubjectiveReadiness(todayCheckin || null);
+    state.todayCheckin = todayCheckin || null;
+  } catch (e) { /* check-in on lisäkanava — ei kaada readinessiä */ }
+  state.readiness = combineReadinessAll(velR, hrvR, varaR, subjR);
 }
 
 async function computeRecommendation(forDateISO = null) {
@@ -4632,6 +4645,41 @@ function renderDashboard() {
   const missedSessions = meso ? findMissedPriorSessions(meso, state.sessions, today, 3) : [];
   const missedBannerHTML = renderMissedBanner(missedSessions[0], missedSessions.length);
 
+  // K7-1: 15 s check-in-kortti — 4. readiness-kanava + laitteettoman atleetin ainoa
+  // aamusignaali ("null → GREEN" -aukko: valvottu yö + deadline-viikko oli enginelle
+  // näkymätön ilman 300 € sormusta). Näytetään kunnes tämän päivän check-in on tehty.
+  const checkinCardHTML = (() => {
+    try {
+      if (state.todayCheckin) {
+        const s = state.readiness?.channels?.subjective;
+        return s && s.class ? `<div class="muted" style="font-size:11px;margin:2px 0 8px">✅ Check-in tehty · ${s.score}/20 (${s.class === "GREEN" ? "hyvä valmius" : s.class === "YELLOW" ? "kohtalainen — engine cappaa varovaisesti" : "heikko — kevyt päivä suositeltu"})</div>` : "";
+      }
+      const row = (key, label) => `<div style="display:flex;align-items:center;gap:6px;margin:4px 0">
+        <span style="flex:0 0 92px;font-size:12px">${label}</span>
+        ${[1, 2, 3, 4, 5].map(v => `<button data-checkin="${key}:${v}" style="flex:1;padding:6px 0;font-size:12px;border-radius:6px">${v}</button>`).join("")}
+      </div>`;
+      return `<div class="card" id="checkin-card" style="border-color:var(--ok)">
+        <div class="card-title" style="font-size:13px">🌅 Aamucheck-in <span style="font-size:11px;font-weight:400;color:var(--muted)">— 15 s · ohjaa päivän kuormia (1 = huono · 5 = loistava)</span></div>
+        ${row("sleep", "😴 Uni")}${row("stress", "🧠 Stressi*")}${row("soreness", "💢 Lihasarkuus*")}${row("motivation", "🔥 Motivaatio")}
+        <div class="muted" style="font-size:10px;margin-top:4px">* 5 = ei stressiä / ei arkuutta. Tallentuu kun kaikki neljä valittu.</div>
+      </div>`;
+    } catch (e) { return ""; }
+  })();
+
+  // K7-2: automaattinen deload-ehdotus — cross-movement väsymysaggregaatti (advisory,
+  // cap-only: banneri + olemassa oleva 🌿 Kevennys -nappi hoitaa insertin).
+  const fatigueBannerHTML = (() => {
+    try {
+      if (deloadMode) return "";
+      const fat = computeFatigueAggregate(state.allSets || [], state.sessions || [], today);
+      if (!fat.suggest) return "";
+      return `<div class="card" style="border-color:var(--warn);margin-bottom:10px">
+        <div class="text-warn" style="font-weight:600;font-size:13px">🌿 Deload-ehdotus (väsymyssignaalit)</div>
+        <div style="font-size:12px;margin-top:4px;line-height:1.5">${escapeHtml(fat.why || "")}</div>
+      </div>`;
+    } catch (e) { return ""; }
+  })();
+
   const phaseTimelineHTML = buildPhaseTimelineHTML(meso, typeof weekNum === "number" ? weekNum : null, deloadMode);
 
   // v4.32.4 (C): Variant-rotaation tilarivi — kertoo missä ME-rotaation vaiheessa
@@ -4754,6 +4802,8 @@ function renderDashboard() {
     ${breakHTML}
     ${renderMaintenanceBanner()}
     ${renderPeakingDecisionTreeCard()}
+    ${checkinCardHTML}
+    ${fatigueBannerHTML}
     ${missedBannerHTML}
     ${renderExternalBackupReminderBanner()}
 
@@ -7148,6 +7198,19 @@ function renderActiveWorkout() {
       <label style="margin-top:0">Yritetty toistoja (failure)</label>
       <input type="number" inputmode="numeric" min="1" max="30" id="input-attempted-reps" value="${(currentSet.targetReps || 3) + 1}" placeholder="esim. 3">
       <div class="muted" style="font-size:11px">Montako toistoa yritettiin? (epäonnistunut yritys mukaan)</div>
+      ${(() => {
+        // K7-3/K7-4: failure-syyn yhden napautuksen erottelu — valmentaja reagoi
+        // voimaan, tekniikkaan, kipuun ja otteeseen ERI tavoin. MU-perhe saa
+        // skill-spesifit syyt (veto-korkeus/transitio/ulostyöntö).
+        const _fcIsMU = /muscle[- ]?up/i.test(exercise.name || "");
+        const _fcOpts = _fcIsMU
+          ? [["voima", "💪 Voima"], ["veto-korkeus", "📏 Vetokorkeus"], ["transitio", "🔄 Transitio"], ["dippi-ulostyonto", "🆙 Ulostyöntö"], ["kipu", "⚠ Kipu"], ["ote", "🤚 Ote"]]
+          : [["voima", "💪 Voima"], ["tekniikka", "🎯 Tekniikka"], ["kipu", "⚠ Kipu"], ["ote", "🤚 Ote"]];
+        return `<div class="input-label" style="margin-top:10px;font-size:11px">Mikä petti? <span class="hint">ohjaa reaktion</span></div>
+        <div class="vara-row" id="failure-cause-btns" style="flex-wrap:wrap;gap:6px">
+          ${_fcOpts.map(([v, l], i) => `<button data-failure-cause="${v}" class="${i === 0 ? "target" : ""}" style="font-size:11px;padding:6px 9px">${l}</button>`).join("")}
+        </div>`;
+      })()}
     </div>
 
     ${velocityPanelHTML}
@@ -7252,7 +7315,7 @@ function renderActiveWorkout() {
       <div class="ex-role">${roleLabel} ${progressTag}</div>
       <div class="ex-name">
         ${exercise.name}
-        ${swapHTML}${revertHTML}
+        ${swapHTML}${revertHTML}${!isWarmupSet && exercise.role !== "warmup" ? `<span class="swap" id="btn-pain-flow" title="Kipu tässä liikkeessä — liikennevalopäätös" style="border:1px solid var(--warn);border-radius:6px;padding:0 4px">⚠ Kipu</span>` : ""}
         <span class="info" id="btn-info-exercise" title="Tietoja liikkeestä">ⓘ</span>
         <span class="info ${exercise.exerciseNote ? "has-note" : ""}" id="btn-exercise-note" title="${exercise.exerciseNote ? "Muokkaa muistiinpanoa" : "Lisää muistiinpano"}" style="${exercise.exerciseNote ? "color:var(--acc)" : ""}">📝</span>
         ${exercise.movementId ? `<span class="info" id="btn-exercise-history" data-prior-sessions="${exercise.movementId}" data-prior-name="${(exercise.name || "").replace(/"/g, "&quot;")}" title="Liikkeen treenihistoria">📊</span>` : ""}
@@ -8246,7 +8309,7 @@ function renderMesocycle() {
   // β Round B-α-1.9: näkyvä versio-indikaattori + bullet-merkki fallback-seedissä
   // jotta voidaan visuaalisesti erottaa "vanha cached koodi" vs "uusi koodi + null
   // fallback" tilanteet. Sync MANUAALISESTI sw.js:n APP_VERSION:in kanssa.
-  const _syRenderAppVersion = "4.52.59";
+  const _syRenderAppVersion = "4.53.0";
   const _syRenderBW = state.settings?.bodyweightKg || 91;
   const _syRenderE1rmCache = new Map();
   const _syRenderComputeKg = (slot) => {
@@ -11636,6 +11699,33 @@ function renderSettingsView() {
     })()}
 
     ${(() => {
+      // K7-7 (valmentaja-linssi): SYKLIN LOPPUANALYYSI → seuraavan blokin suositus.
+      // Ohjelmointi ei enää lopu 16 viikkoon: kisaliikkeiden kehitys (Best alku vs
+      // loppu) → rankattu heikkousdiagnoosi + blokkisuositus; kisapäivä ≤8 vk →
+      // peaking. Näkyy viimeisellä viikolla ja syklin päätyttyä.
+      try {
+        const meso7 = state.mesocycle;
+        if (!meso7) return "";
+        const wk7 = state.recommendation?.weekNum;
+        const ended7 = state.recommendation?.error === "mesocycle-ended"
+          || (typeof wk7 === "number" && wk7 >= (meso7.weekCount || 16));
+        if (!ended7) return "";
+        const an7 = analyzeCycleForNextBlock(state.allSets || [], state.sessions || [], meso7,
+          state.movements || [], state.latestBodyweight || state.settings?.bodyweightKg || 91,
+          { targetCompetitionDateISO: state.settings?.targetCompetitionDateISO || null, dateISO: todayISO() });
+        if (!an7.recommendation) return "";
+        const rows7 = an7.perLift.filter(p => !p.insufficient).map(p =>
+          `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--card2)"><span>${escapeHtml(p.lift)}</span><span>${p.deltaPct != null ? (p.deltaPct >= 0 ? "+" : "") + String(p.deltaPct).replace(".", ",") + " %" : "—"}${p.v0Count ? ` · ${p.v0Count}×V0` : ""}</span></div>`).join("");
+        return `<div class="card" style="border-color:var(--ok)">
+          <div class="card-title">🧭 Seuraava blokki — heikkousdiagnoosi</div>
+          ${rows7 || '<div class="muted" style="font-size:12px">Kehitysdata ei riitä liikekohtaiseen diagnoosiin — aja cal-viikko.</div>'}
+          <div style="font-size:12px;line-height:1.55;margin-top:8px;padding:8px;background:var(--card2);border-radius:8px">${escapeHtml(an7.recommendation.note)}</div>
+          ${!state.settings?.targetCompetitionDateISO ? '<div class="muted" style="font-size:10px;margin-top:6px">💡 Kun asetat kisapäivän (Asetukset), suositus huomioi peaking-ajoituksen automaattisesti.</div>' : ""}
+        </div>`;
+      } catch (e) { return ""; }
+    })()}
+
+    ${(() => {
       // v4.34.0 AI-Block-Tuning -kortti
       // v4.34.48: laajennettu kaikille mesotyypeille — streetlifting_16w käyttää
       // hardkoodattua deload-mappia, muut weekDef.deltaPctBase < 0 -heuristiikkaa.
@@ -11910,6 +12000,31 @@ function bind() {
   // Korjaus: kun chosen.dateISO < today, kysytään käyttäjältä:
   //   - BACKFILL: session.dateISO = chosen.dateISO (treeni KIRJATAAN menneenä päivänä)
   //   - PLAN-OVERRIDE: session.dateISO = today (treeni TEHDÄÄN tänään, plan toiselta päivältä)
+  // K7-1: check-in-valinnat — tallennus kun kaikki 4 valittu → readiness + suositus
+  // lasketaan uusiksi (check-in voi capata päivän kuormat heti aamusta).
+  const _ciCard = $("#checkin-card");
+  if (_ciCard) {
+    const _ciDraft = {};
+    _ciCard.querySelectorAll("[data-checkin]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const [key, val] = btn.dataset.checkin.split(":");
+        _ciDraft[key] = parseInt(val);
+        _ciCard.querySelectorAll(`[data-checkin^="${key}:"]`).forEach(b => b.classList.remove("target"));
+        btn.classList.add("target");
+        if (["sleep", "stress", "soreness", "motivation"].every(k => _ciDraft[k] >= 1)) {
+          try {
+            await saveMeasurement({ dateISO: todayISO(), type: "checkin", ..._ciDraft });
+            const _ciRes = computeSubjectiveReadiness(_ciDraft);
+            showToast(`🌅 Check-in ${_ciRes.score}/20 → ${_ciRes.class === "GREEN" ? "hyvä valmius" : _ciRes.class === "YELLOW" ? "kohtalainen — kuormat capataan varovaisesti" : "heikko — kevyempi päivä"}`, _ciRes.class === "RED" ? "warn" : "ok", 4500);
+            await computeReadiness();
+            await computeRecommendation();
+            render();
+          } catch (e) { console.warn("check-in save failed:", e); showToast("Check-in-tallennus epäonnistui", "bad"); }
+        }
+      });
+    });
+  }
+
   const planOverrideBtn = $("#btn-plan-override");
   if (planOverrideBtn) planOverrideBtn.addEventListener("click", async () => {
     if (state.workout) {
@@ -13629,6 +13744,49 @@ function bindWorkoutEvents() {
     });
   });
 
+  // K7-5: kipu-liikennevalo (Silbernagel-tyyppinen kipumonitorointi: lievä tuttu kipu
+  // joka laantuu = jatka modifioituna; kohtalainen/paheneva = korvaa; kova/terävä =
+  // lopeta tänään). Kytkeytyy olemassa oleviin H-015 (korvaus + vaiva-tagi) ja
+  // skip-mekanismeihin — kipu EI koskaan vaikuta ensi viikon kuormiin (≠ voimafailure).
+  const painBtn = $("#btn-pain-flow");
+  if (painBtn) painBtn.addEventListener("click", async () => {
+    const idx = await showListModal("⚠ Kipu — liikennevalopäätös", [
+      { icon: "🟢", label: "Lievä (≤3/10), tuttu, laantuu", desc: "Jatka modifioituna — loput sarjat −10 %" },
+      { icon: "🟡", label: "Kohtalainen (4–6/10) tai paheneva", desc: "Korvaa liike tältä päivältä (🔄 → vaiva-tagi → paluuramppi hoitaa paluun)" },
+      { icon: "🔴", label: "Kova (≥7/10) TAI terävä/äkillinen", desc: "Lopeta tämä liike tänään — loput sarjat skipataan" },
+      { icon: "✗", label: "Peruuta", desc: "" },
+    ]);
+    if (idx === null || idx === 3) return;
+    const ex = w.exercises[w.currentExerciseIdx];
+    if (!ex) return;
+    if (idx === 0) {
+      let n = 0;
+      ex.sets.forEach((s, i) => { if (i >= w.currentSetIdx && !s.completed && !s.isWarmup && (s.loadKg || 0) > 0) { s.loadKg = roundToHalf(s.loadKg * 0.90); n++; } });
+      ex._painModified = true;
+      showToast(`🟢 Lievä kipu: loput ${n} sarjaa −10 %. Jos kipu pahenee kesken sarjan, avaa ⚠ uudelleen.`, "warn", 4500);
+      savePendingWorkoutLocal(state.workout); render();
+    } else if (idx === 1) {
+      showToast("🟡 Korvaa liike 🔄-napista ja valitse syyksi vaiva — paluuramppi aktivoituu automaattisesti kun palaat liikkeeseen.", "warn", 6000);
+      $("#btn-swap-exercise")?.click();
+    } else {
+      let n = 0;
+      ex.sets.forEach((s, i) => { if (i >= w.currentSetIdx && !s.completed && !s.isWarmup) { s.skipped = true; s.skipReason = "kipu"; n++; } });
+      showToast(`🔴 Liike lopetettu (${n} sarjaa skipattu, syy: kipu). Älä testaa kipua tänään.`, "bad", 6000);
+      savePendingWorkoutLocal(state.workout);
+      if (w.currentExerciseIdx < w.exercises.length - 1) { w.currentExerciseIdx++; w.currentSetIdx = 0; }
+      render();
+    }
+  });
+
+  // K7-3: failure-syy-chipit (näkyvät vain V0:lla attempted-reps-alueessa)
+  $$("[data-failure-cause]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      $$("[data-failure-cause]").forEach(b => b.classList.remove("target"));
+      btn.classList.add("target");
+      w._failureCause = btn.dataset.failureCause;
+    });
+  });
+
   function checkNextSetEnabled() {
     const nextBtn = $("#btn-next-set");
     if (!nextBtn) return;
@@ -13876,12 +14034,21 @@ function bindWorkoutEvents() {
       const previousSetVxs = workSets
         .filter((s, i) => i < currentWorkSetIdx && s.completed)
         .map(s => s.actualVx);
-      const reaction = failureReaction(currentSet.loadKg || 0, currentSet.targetReps, isPrimary, consecutiveFailures, blockPhase, { isIsolation, isLastSet, previousSetVxs });
+      // K7-3/K7-4: atletin raportoima failure-syy (chipit attempted-reps-alueella)
+      // ohjaa reaktion — tekniikka/skill/kipu/ote ≠ voimafailure.
+      const _fcCause = w._failureCause || "voima";
+      currentSet.failureCause = _fcCause;
+      w._failureCause = null;
+      const reaction = failureReaction(currentSet.loadKg || 0, currentSet.targetReps, isPrimary, consecutiveFailures, blockPhase, { isIsolation, isLastSet, previousSetVxs, failureCause: _fcCause });
 
       if (reaction.shouldStop) {
         showToast(reaction.message || "Failure — lopetatko liikkeeseen?", "bad", 6000);
       } else {
         showToast(reaction.message, "warn");
+      }
+      // K7-3: kipu-failure → ohjaa H-015-korvausflow'hun (🔄-nappi hoitaa loput)
+      if (reaction.promptSubstitution) {
+        setTimeout(() => showToast("⚠ Kipu: käytä 🔄-nappia liikkeen korvaamiseen (vaiva-tagi tallentuu paluuramppia varten) tai ⏭ skippaa loput sarjat.", "warn", 6000), 700);
       }
       // v4.34.28: Multi-set V0 -varoitus näkyy lisätoasti-ilmoituksena (4 sek)
       if (reaction.warning) {
@@ -14145,6 +14312,46 @@ function bindWorkoutEvents() {
         }
       }
     } catch (e) { console.warn("K3-2 top-single-reanchor failed:", e); }
+
+    // ── K7-6 (valmentaja-linssi): KISAPÄIVÄN IN-MEET-AIVOT ──
+    // Yritystulos (onnistui nopea/työläs/grindi · hylätty) päivittää päivän 1RM-
+    // estimaatin ja SEURAAVAN yrityksen kuorman (computeNextAttempt) — staattinen
+    // prosenttitaulukko → elävä yritysvalinta lämmittelyhuoneessa.
+    if (["opener", "attempt2", "attempt3"].includes(exercise.role) && !currentSet.isWarmup) {
+      (async () => {
+        try {
+          const resIdx = await showListModal(`🏆 ${exercise.name} ${currentSet.loadKg} kg — miten meni?`, [
+            { icon: "🟢", label: "Onnistui — nopea", desc: "selvästi varaa" },
+            { icon: "🟡", label: "Onnistui — työläs", desc: "hidastui muttei grindannut" },
+            { icon: "🔴", label: "Onnistui — grindi", desc: "äärirajalla" },
+            { icon: "✗", label: "Hylätty", desc: "ei ylös" },
+          ]);
+          if (resIdx === null) return;
+          w._meetAttempts = w._meetAttempts || {};
+          const _maKey = exercise.movementId || exercise.name;
+          (w._meetAttempts[_maKey] = w._meetAttempts[_maKey] || []).push({
+            loadKg: currentSet.loadKg, success: resIdx <= 2,
+            grindClass: resIdx === 0 ? 1 : resIdx === 1 ? 2 : 3,
+          });
+          const _maNext = computeNextAttempt({
+            e1rmDayStart: state.recommendation?.e1rmExternal ?? null,
+            attempts: w._meetAttempts[_maKey],
+            strategy: state.settings?.meetStrategy || "normaali",
+          });
+          const _maOrder = { opener: 1, attempt2: 2, attempt3: 3 };
+          const _maNextEx = w.exercises.find(x => _maOrder[x.role] === (_maOrder[exercise.role] || 0) + 1
+            && (x.movementId === exercise.movementId || x.name === exercise.name)
+            && x.sets.some(s => !s.completed && !s.isWarmup));
+          if (_maNextEx && _maNext.nextLoadKg) {
+            _maNextEx.sets.forEach(s => { if (!s.completed && !s.isWarmup) s.loadKg = _maNext.nextLoadKg; });
+            showToast(`🏆 ${_maNext.rationale}`, "ok", 6500);
+            savePendingWorkoutLocal(state.workout); render();
+          } else if (_maNext.rationale) {
+            showToast(`🏆 ${_maNext.rationale}`, "ok", 5000);
+          }
+        } catch (e) { console.warn("K7-6 attempt flow failed:", e); }
+      })();
+    }
 
     // Start rest timer
     startRestTimer();

@@ -777,7 +777,14 @@
 //           K6-3 yksi e1RM-totuus (loadType 14 BW-presettiin) · K6-1 perustelu-lohko
 //           jokaiseen kuormaan · K6-4 rehellinen progressio-badge + double progression -vihje ·
 //           K6-5 otsikkototuus + ensi viikon päivävalinta selkeäksi.
-const APP_VERSION = "4.52.59";
+// v4.53.0: KORI 7 — VALMENTAJA-LINSSIN AUKOT KIINNI (milestone). K7-1 aamucheck-in
+//          4. readiness-kanavana (Hooper/McLean; laitteeton atleetti ei ole enää aina
+//          GREEN) · K7-2 automaattinen deload-ehdotus (cross-movement väsymysaggregaatti,
+//          advisory) · K7-3 failure-syyn erottelu (voima/tekniikka/kipu/ote → eri reaktiot) ·
+//          K7-4 MU-skill-syyt + regressio-drillit · K7-5 kipu-liikennevalo (Silbernagel) ·
+//          K7-6 kisapäivän in-meet-yritysvalinta · K7-7 syklin loppuanalyysi → seuraavan
+//          blokin heikkousdiagnoosi + kisapäivä-tietoisuus.
+const APP_VERSION = "4.53.0";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.
