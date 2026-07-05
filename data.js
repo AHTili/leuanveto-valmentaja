@@ -160,7 +160,7 @@ const PRESET_MOVEMENTS = [
   { name: "Ylätalja", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
   { name: "Lat pulldown", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
   { name: "Pullover kone", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
-  { name: "Leuanveto (kehonpaino)", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Leuanveto (kehonpaino)", category: "vertikaaliveto", isPrimary: false, isPreset: true, loadType: "system", tier: 3 },
   { name: "Ylätalja neutraaliote", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
   { name: "Single-arm lat pulldown", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
   // ─── Horizontal pull ───
@@ -269,31 +269,31 @@ const PRESET_MOVEMENTS = [
   { name: "Lisäpainodippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true, isCompetitionLift: true, loadType: "system", tier: 2 },
   { name: "Takakyykky", category: "alaraaja", isPrimary: false, isPreset: true, isCompetitionLift: true, loadType: "external", tier: 1 },
   // ─── Streetlifting-spesifiset tukiliikkeet (v4.11) ───
-  { name: "Leuanveto chest-to-bar", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 2 },
-  { name: "False grip pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Leuanveto chest-to-bar", category: "vertikaaliveto", isPrimary: false, isPreset: true, loadType: "system", tier: 2 },
+  { name: "False grip pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, loadType: "system", tier: 3 },
   { name: "False grip row", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 3 },
-  { name: "Archer pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
-  { name: "Scapular pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
-  { name: "Band-assisted muscle-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Archer pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, loadType: "system", tier: 3 },
+  { name: "Scapular pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, loadType: "system", tier: 3 },
+  { name: "Band-assisted muscle-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, loadType: "system", tier: 3 },
   // Räjähtävä leuka: tier 2 cross-reference Lisäpainoleuanveto-e1RM:iin + V4-stop-rule UI-erityislogiikka (L47 A.i).
-  { name: "Räjähtävä leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Räjähtävä leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true, loadType: "system", tier: 2 },
   // v4.29.0 (P3): ME-rotaatio yläosalla — vaihtuvat pää-leuka-variantit foundation/strength-blokeille
-  { name: "Vastaote-leuanveto", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 2 },
-  { name: "Paused pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 2 },
+  { name: "Vastaote-leuanveto", category: "vertikaaliveto", isPrimary: false, isPreset: true, loadType: "system", tier: 2 },
+  { name: "Paused pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, loadType: "system", tier: 2 },
   // v4.30.0: Tempo pull-up (ei grippi-spesifi) korvaa Fat-bar pull-upin ME-rotaation
   // viim. vaiheessa — käyttäjä on meritoitunut leuanvetäjä, grippi ei ole rajoittava.
-  { name: "Tempo pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 2 },
-  { name: "Fat-bar pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Tempo pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, loadType: "system", tier: 2 },
+  { name: "Fat-bar pull-up", category: "vertikaaliveto", isPrimary: false, isPreset: true, loadType: "system", tier: 3 },
   // v4.29.0 (P4): Overload-liikkeet — eliitti­tason heikon kohdan ylikuormitus.
   // Heavy negative leuka + Board dippi: tier "special" — supramaksimi-overload, kuormat
   // ratkaistaan in-session, ei e1RM/L-V-pohjalta (L48 ratifiointi C.iii).
-  { name: "Heavy negative leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: "special" },
-  { name: "Board dippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: "special" },
+  { name: "Heavy negative leuka", category: "vertikaaliveto", isPrimary: false, isPreset: true, loadType: "system", tier: "special" },
+  { name: "Board dippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true, loadType: "system", tier: "special" },
   // v4.31.0: BW dippi — käytetään lähinnä warmup/neural-primer-rooleissa.
   // HUOM: kuormitetulle dippaajalle (kuten käyttäjä, penkki 180 kg) BW on V8–V10,
   // ei sovellu varsinaisena tertiary-primer-roolina (V5). Tertiary käyttää
   // Lisäpainodippiä ~50 % 1RM @ V5.
-  { name: "BW dippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "BW dippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true, loadType: "system", tier: 3 },
   { name: "Pendlay row", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 2 },
   { name: "Weighted inverted row", category: "horisontaaliveto", isPrimary: false, isPreset: true, tier: 2 },
   // v4.28.2: Ring dip poistettu — kalustorajoite (atleetilla ei ole renkaita).

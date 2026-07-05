@@ -1519,6 +1519,60 @@ async function testRecommendScenarios() {
       `S10b F-3: kortti ${best.value?.toFixed(1)} = live ${rec.e1rmExternal?.toFixed(1)} + 91 (sama system-inversio)`);
   });
 
+  // K6-3 (retro-kenttä 5.7, Heavy negative): YKSI e1RM-TOTUUS PER LIIKE.
+  // Juuri: BW-varianttiperhe (Heavy negative leuka ym.) ilman loadType-kenttää →
+  // kortti laski external-Epleyllä (85,3) ja Haara C nimi-regexillä (sys) — sama
+  // liike, kaksi totuutta. Fix: loadType:"system" dataan + Haara C loadType-first +
+  // K5-1-lattia hyväksyy V1-demonstraation vapaa-Vx-slotille.
+  await scenario("K6-3 — yksi e1RM-totuus (loadType ajaa, lattia demonstroituun)", async () => {
+    const mkS = (sid, iso, load, reps, vx) => ({ setId: 's' + Math.random(), sessionId: sid,
+      movementId: 'mov-hn', setRole: 'top', externalLoadKg: load, reps, targetReps: reps,
+      targetVx: vx, actualVx: vx, timestamp: iso });
+    const sessions = [
+      { sessionId: 'HN1', dateISO: '2026-06-22' }, { sessionId: 'HN2', dateISO: '2026-06-29' },
+      { sessionId: 'HP1', dateISO: '2026-06-28' },
+    ];
+    const hnSets = [
+      mkS('HN1', '2026-06-22T10:00:00Z', 75, 3, 1), mkS('HN1', '2026-06-22T10:05:00Z', 75, 3, 2),
+      mkS('HN1', '2026-06-22T10:10:00Z', 75, 3, 2),
+      mkS('HN2', '2026-06-29T10:00:00Z', 77.5, 2, 1), mkS('HN2', '2026-06-29T10:05:00Z', 77.5, 2, 1),
+      mkS('HN2', '2026-06-29T10:10:00Z', 77.5, 2, 1),
+    ];
+    const priSet = { setId: 'hp1', sessionId: 'HP1', movementId: PRIMARY_MOV_ID,
+      setRole: 'top', externalLoadKg: 80, reps: 1, targetReps: 1, targetVx: 1, actualVx: 1,
+      timestamp: '2026-06-28T10:00:00Z' };
+    const hnMov = { movementId: 'mov-hn', name: 'Heavy negative leuka',
+      category: 'vertikaaliveto', isPrimary: false, loadType: 'system', tier: 'special' };
+    const meso = { mesocycleId: 'm-k63', type: 'custom', startDateISO: '2026-06-29', weekCount: 4,
+      weekDefs: [{ week: 1, deltaPctBase: 0, label: 'vk1' }],
+      weekPlans: [{ week: 1, days: [{ dayOfWeek: 7, dayType: 'heavy', label: 'SU', slots: [
+        { role: 'primary', category: 'vertikaaliveto', defaultMovementName: 'Lisäpainoleuanveto',
+          sets: 4, reps: 3, targetVx: 1, isBarbell: false },
+        { role: 'accessory', category: 'vertikaaliveto', defaultMovementName: 'Heavy negative leuka',
+          sets: 3, reps: 2, targetVx: null },
+      ] }] }] };
+    const ctx = makeRecommendCtx({
+      dateISO: '2026-07-05', mesocycle: meso, sessions,
+      allSets: [...hnSets, priSet],
+      allMovements: [...MOCK_MOVEMENTS, hnMov],
+    });
+    const rec = await recommend(ctx);
+    assert(!rec.error, 'K63: ei error');
+    const hnSlot = rec.dayPlan?.slots?.find(s => s.defaultMovementName === 'Heavy negative leuka');
+    const ownTr = rec.traces.find(t => t.ruleId === 'SLOT_LOAD_RESOLVED_OWN'
+      && t.before?.slotMovement === 'Heavy negative leuka');
+    assert(ownTr && ownTr.after?.bwFamily === true,
+      'K63: loadType system → Haara C BW-perhe (sys-matikka), ei nimi-regexiä');
+    assert(hasTrace(rec, 'ACCESSORY_FLOOR_CAP'),
+      'K63: vapaa-Vx-slotin V1-demonstraatio kelpaa regression-lattiaan');
+    assert(hnSlot && Math.abs(hnSlot.resolvedLoadKg - 77.5) < 0.01,
+      `K63: ehdotus = demonstroitu 77.5 (EI 69.5-luokan pudotus) — got ${hnSlot?.resolvedLoadKg}`);
+    // Kortti = resoluutio: Best palauttaa system-yksikön (ext+BW), sama perusta.
+    const best = computeMovementE1RMBest(hnSets, sessions, meso, hnMov, 91);
+    assert(best && best.value > 150,
+      `K63 F-3: kortti-Best system-yksikössä (~187, EI ext-Epley ~85) — got ${best?.value?.toFixed(1)}`);
+  });
+
   // OBS-051: PLAN_BASED loadPct-Vx-consistency gate. Volyymi-label-loadPct (0.58 «
   // vReps(reps+Vx)=0.81) EI saa inflatoida e1RM:ää (140/0.58=241). Gate skippaa →
   // Epley-Vara säilyy. S10 (loadPct 0.7935 sys-%, consistent) on tämän known-negative.

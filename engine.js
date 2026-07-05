@@ -5810,8 +5810,15 @@ async function recommend(options = {}) {
           const ownCredits = withinSessionFatigueCredits(ownAll).slice(-6); // K3-1: positio-krediitti
           if (ownSets.length) {
             const nL = slot.defaultMovementName.toLowerCase();
-            const ownIsBWFamily = !/laite|kone|machine|prässi|smith|talja|cable/.test(nL)
-              && /leuanveto|leuka|dippi|muscle-up|hspu/.test(nL);
+            // K6-3 (retro-kenttä 5.7: Heavy negative 85,3-kortti vs sys-resoluutio):
+            // BW-perhe-luokitus tulee ENSISIJAISESTI liikkeen loadType-kentästä
+            // (isSystemLoadMovement — sama totuus jota kortti/computeMovementE1RMBest
+            // käyttää → F-3: kortti = live). Nimi-regex säilyy VAIN fallbackina
+            // käyttäjän itse luomille liikkeille joilla ei ole loadType-kenttää.
+            const ownIsBWFamily = ownMov.loadType != null
+              ? isSystemLoadMovement(ownMov)
+              : (!/laite|kone|machine|prässi|smith|talja|cable/.test(nL)
+                 && /leuanveto|leuka|dippi|muscle-up|hspu/.test(nL));
             const ownValsRaw = ownSets.map((s, i) => {
               const vara = (s.actualVx ?? s.targetVx ?? 1) + (ownCredits[i] || 0);
               return ownIsBWFamily
@@ -5870,7 +5877,10 @@ async function recommend(options = {}) {
                 const _afVx = _afSets.map(s => s.actualVx ?? s.targetVx).filter(v => v != null);
                 const _afReps = _afSets.map(s => s.reps ?? s.targetReps).filter(v => v != null);
                 if (_afLoads.length && _afVx.length && _afReps.length) {
-                  const _afMet = median(_afVx) >= (slot.targetVx ?? 2) && median(_afReps) >= (slot.reps ?? 0);
+                  // K6-3-tarkennus (retro-kenttä 5.7: Heavy negative 'vapaa'-Vx): kun slotin
+                  // targetVx on null ("vapaa"), V1-demonstraatio kelpaa lattiaan — vain
+                  // V0-grindi ei. Eksplisiittinen target säilyy ennallaan tiukkana ehtona.
+                  const _afMet = median(_afVx) >= (slot.targetVx ?? 1) && median(_afReps) >= (slot.reps ?? 0);
                   const _afFloor = roundToHalf(median(_afLoads));
                   if (_afMet && slot.resolvedLoadKg < _afFloor) {
                     trace("ACCESSORY_FLOOR_CAP",
