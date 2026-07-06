@@ -1792,6 +1792,17 @@ async function resetAggressivenessLearned() {
   return 0;
 }
 
+// 8a (V1): nollaa opittu across-set-väsymys → engine palaa prioriin (settings UI -painike).
+// Poistaa vain acrossSetFatigue-avaimen; muut learnedParams säilyvät.
+async function resetLearnedAcrossSetFatigue() {
+  const settings = await getSettings();
+  if (settings.learnedParams && settings.learnedParams.acrossSetFatigue) {
+    delete settings.learnedParams.acrossSetFatigue;
+    await saveSettings(settings);
+  }
+  return 0.5;
+}
+
 async function deleteSession(sessionId) {
   // Delete associated sets
   const sets = await dbGetByIndex(STORES.sets, "sessionId", sessionId);
@@ -7866,6 +7877,7 @@ export {
   // v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion auto-learn
   updateAggressivenessLearned,
   resetAggressivenessLearned,
+  resetLearnedAcrossSetFatigue,
   // v4.51.2: migration helper — lisää uudet preset-liikkeet olemassa oleviin DB:ihin
   ensureNewPresetMovements,
   // Backup / Restore

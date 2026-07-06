@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.53.0" />
+  <meta name="app-version" content="4.53.1" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -1076,7 +1076,7 @@ import {
   getAllSessions, getSession, saveSession, deleteSession,
   getSetsForSession, getAllSets, saveSet, saveSets, deleteSet,
   // v4.51.0 (Track B 2D-δ-C): Adaptive multi-suggestion auto-learn
-  updateAggressivenessLearned, resetAggressivenessLearned,
+  updateAggressivenessLearned, resetAggressivenessLearned, resetLearnedAcrossSetFatigue,
   // v4.51.2: migration helper — uudet preset-liikkeet olemassa olevaan DB:hen
   ensureNewPresetMovements,
   // v4.38.1 (Phase 2D): saveDecisionTrace VL_CAP_TRIGGERED-loggaukseen
@@ -7067,10 +7067,25 @@ function renderActiveWorkout() {
           _rrAlt = `<div style="padding:4px 0 1px;font-size:11px;color:var(--ok)">💡 Vaihtoehto: pidä kuorma ja lisää +1 toisto/sarja (viime kerta meni V${_rrMedVx} — varaa on). Kuormalisäys vasta kun toistohaarukan yläpää täyttyy.</div>`;
         }
       }
+      // 8a (V1): opitun across-set-väsymyksen legibiliteetti. Näytetään vain primaarin
+      // monisarjaisella työllä kun opittu arvo ≠ prior (jotain on todella opittu). Suora
+      // vastaus atletin epäilyyn "adaptoituuko se edellisten sarjojen perusteella".
+      let _rrLearn = "";
+      const _asfLP = state.settings?.learnedParams?.acrossSetFatigue;
+      if (exercise.role === "primary" && workSetCount > 1 && _asfLP
+          && typeof _asfLP.value === "number" && Math.abs(_asfLP.value - 0.5) > 0.001) {
+        const _asfN = _asfLP.n ?? 0;
+        const _asfCI = _asfN > 0 ? Math.round(100 * _asfN / (_asfN + 5)) : 0;
+        const _dir = _asfLP.value < 0.5
+          ? "kestät kuormaa sarjasta toiseen keskimääräistä paremmin — työsarjat mitoitettu hieman raskaammiksi"
+          : "väsyt sarjoissa keskimääräistä nopeammin — työsarjat mitoitettu kestämään kaikki sarjat";
+        _rrLearn = `<div style="padding:4px 0 1px;font-size:11px;color:var(--muted)">🔬 Sarjaväsymys opittu treeneistäsi (${_asfN} treeniä, luottamus ${_asfCI} %): ${_dir}.</div>`;
+      }
       if (_rrHead || _rrRows) {
         loadRationaleHTML = `<details class="load-rationale" style="margin-top:6px;background:var(--card2);border-radius:8px;padding:6px 10px">
           <summary style="cursor:pointer;font-size:11.5px;color:var(--muted);list-style:none">🧭 <b>Miksi tämä paino?</b>${_rrHead ? ` · ${escapeHtml(_rrHead)}` : ""}</summary>
           ${_rrRows || `<div class="muted" style="font-size:11px;padding:4px 0">Kuorma tulee suoraan ohjelman resoluutiosta — ei erillisiä säätöjä tälle liikkeelle tänään.</div>`}
+          ${_rrLearn}
           ${_rrAlt}
         </details>`;
       }
@@ -8311,7 +8326,7 @@ function renderMesocycle() {
   // β Round B-α-1.9: näkyvä versio-indikaattori + bullet-merkki fallback-seedissä
   // jotta voidaan visuaalisesti erottaa "vanha cached koodi" vs "uusi koodi + null
   // fallback" tilanteet. Sync MANUAALISESTI sw.js:n APP_VERSION:in kanssa.
-  const _syRenderAppVersion = "4.53.0";
+  const _syRenderAppVersion = "4.53.1";
   const _syRenderBW = state.settings?.bodyweightKg || 91;
   const _syRenderE1rmCache = new Map();
   const _syRenderComputeKg = (slot) => {
@@ -11397,6 +11412,20 @@ function renderSettingsView() {
           </div>
           <div class="muted" style="font-size:11px;margin-top:6px">Tulkinta: <b>${learnedLabel}</b>. Päivittyy automaattisesti session-historian perusteella (3 peräkkäistä saman tier:n valintaa siirtää bias-arvoa; failure/RED-cap palauttaa varovaisemmaksi).</div>
           <button class="btn btn-sm btn-outline" id="btn-reset-aggressiveness" style="margin-top:8px">↺ Nollaa oppimistila</button>
+          ${(() => {
+            // 8a (V1): opittu across-set-väsymys (näkyy vasta kun jotain on opittu).
+            const asf = s.learnedParams?.acrossSetFatigue;
+            if (!asf || typeof asf.value !== "number") return "";
+            const n = asf.n ?? 0;
+            const ci = n > 0 ? Math.round(100 * n / (n + 5)) : 0;
+            const interp = Math.abs(asf.value - 0.5) < 0.03 ? "kuten keskimäärin"
+              : asf.value < 0.5 ? "kestät sarjat keskimääräistä paremmin → työsarjat hieman raskaammat"
+              : "väsyt sarjoissa keskimääräistä nopeammin → työsarjat mitoitettu kestämään kaikki";
+            return `<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
+              <div style="font-size:11px;color:var(--muted)">Sarjaväsymys (opittu): <b>${asf.value.toFixed(2)}</b> eff-toistoa/sarja — ${interp} (${n} treeniä, luottamus ${ci} %).</div>
+              <button class="btn btn-sm btn-outline" id="btn-reset-across-set" style="margin-top:8px">↺ Nollaa sarjaväsymys</button>
+            </div>`;
+          })()}
         </div>
       </div>`;
     })()}
@@ -13041,6 +13070,18 @@ function bind() {
     await resetAggressivenessLearned();
     state.settings.aggressivenessLearned = 0;
     showToast("Oppimistila nollattu", "ok", 1800);
+    render();
+  });
+
+  // 8a (V1): opitun across-set-väsymyksen nollaus (engine palaa prioriin 0.5).
+  const resetAsfBtn = $("#btn-reset-across-set");
+  if (resetAsfBtn) resetAsfBtn.addEventListener("click", async () => {
+    const ok = confirm("Nollataanko opittu sarjaväsymys? Engine palaa neutraaliin lähtötasoon ja oppii uudelleen tulevista treeneistä.");
+    if (!ok) return;
+    await resetLearnedAcrossSetFatigue();
+    if (state.settings.learnedParams) delete state.settings.learnedParams.acrossSetFatigue;
+    await computeRecommendation();
+    showToast("Sarjaväsymys nollattu", "ok", 1800);
     render();
   });
 

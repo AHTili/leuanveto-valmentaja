@@ -80,8 +80,8 @@ Tämä on **luonnos-esimerkki** siitä, miltä 8a-implementoinnin AC-tiedosto n�
 - **Lähde:** β C2 (data-vaatimus n ≥ 50), tools/engine-pilot/lib/audit-baselines.mjs
 
 ### A4: Posterior-clamping aktivoituu kun arvo ylittäisi priori-rajan
-- **Mitattu miten:** edge-case-testi (uusi tarvitaan, ENG-15 backlog) simuloi ekstreemi-input-sekvenssin jossa naive learning ylittäisi rajan
-- **Onnistumisen ehto:** engine emittoi `LEARNED_PARAM_CLAMPED`-tracen + clamppaa arvon takaisin
+- **Mitattu miten:** pura-funktiotesti `test8aLearnedParamMath` (test-runner.js): syöttää ekstreemi-havaintosekvenssin jossa naive shrinkage-estimaatti ylittäisi rajan → `updateLearnedParam` palauttaa `outlier:true` + clampatun arvon
+- **Onnistumisen ehto:** engine merkitsee `LEARNED_PARAM_OUTLIER` (kanoninen nimi, CLAUDE.md §2 sääntö 3; aiempi luonnos `LEARNED_PARAM_CLAMPED` korvattu) + clamppaa arvon takaisin priori-rajaan [±2 SD]. TOTEUTETTU 8a V1:ssä (`updateLearnedParam.outlier`).
 - **Lähde:** CLAUDE.md osio 2, sääntö 3
 
 ### A5: Stop hook -ketju passaa

@@ -784,7 +784,15 @@
 //          K7-4 MU-skill-syyt + regressio-drillit · K7-5 kipu-liikennevalo (Silbernagel) ·
 //          K7-6 kisapäivän in-meet-yritysvalinta · K7-7 syklin loppuanalyysi → seuraavan
 //          blokin heikkousdiagnoosi + kisapäivä-tietoisuus.
-const APP_VERSION = "4.53.0";
+// v4.53.1: VAIHE 8a V1 — ENSIMMÄINEN OPITTAVA PARAMETRI (learnedAcrossSetFatigue).
+//          Engine oppii SINUN sarjasta-sarjaan-väsymyksesi (mediaani (reps+Vx)-erotuksista,
+//          deload-sessiot pois) ja mitoittaa työsarjat kestäväsi mukaan — tutkimusrajoissa
+//          (prior 0.5, clamp ±2 SD [0.25,0.75], LEARNED_PARAM_OUTLIER). Ko-opittavuus:
+//          sama arvo preskriptioon/estimointiin/re-ankkurointiin. Oppii treenin päätöksessä
+//          (settings.learnedParams); recommend() pysyy puhtaana → cold-start bittitarkka.
+//          Legibiliteetti: 🧭-perustelu + Asetukset-näyttö + nollaus. Uudelleenkäytettävä
+//          learnedParams-koneisto (updateLearnedParam) seuraaville 8a-parametreille.
+const APP_VERSION = "4.53.1";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.
