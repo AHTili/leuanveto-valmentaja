@@ -1183,6 +1183,8 @@ import {
   computeWeeklyMuscleVolume,
   // 8a (V1): opittu across-set-väsymys (treenin päätöksessä)
   computeLearnedAcrossSetFatigue,
+  // KORI 8: progressio-monipuolisuus (advisory-työkalut jumitukseen)
+  suggestProgressionTool,
   // K7 (valmentaja-linssin aukot): check-in, väsymysaggregaatti, yritysvalinta, sykli-analyysi
   computeSubjectiveReadiness, combineReadinessAll, computeFatigueAggregate,
   computeNextAttempt, analyzeCycleForNextBlock,
@@ -7057,14 +7059,24 @@ function renderActiveWorkout() {
       }).slice(0, 6);
       const _rrRows = _rrTraces.map(t =>
         `<div style="padding:3px 0;font-size:11px;line-height:1.45;border-top:1px solid rgba(255,255,255,0.04)"><b>${escapeHtml(RULE_LABELS_FI[t.ruleId] || t.ruleId)}</b> — ${escapeHtml((t.why || "").slice(0, 200))}</div>`).join("");
-      // K6-4b: double progression -vaihtoehto apuliikkeille kun viime kerta oli helppo
-      // (kaikki keinot vahvistua eivät ole +2,5 kg — toistolisäys on usein parempi).
+      // KORI 8: progressio-monipuolisuus (#6). Kun liike on TASANNE-tilassa (kuorma ei
+      // noussut vs viime raskain EIKÄ pudonnut = ei deload/cal, "Ylläpito →"), tarjoa
+      // oikea EI-kuorma-progressiotyökalu KAIKILLE rooleille valmentajan tikapuiden
+      // mukaan (toistot/sarjat/tiheys/tempo). K6-4:n toistolisäys on nyt ladderin osa.
+      // Advisory — atletti päättää. Näkyy 🧭-lohkossa (ei tunge esille).
       let _rrAlt = "";
-      if ((exercise.role === "accessory" || exercise.role === "support") && _rrPrior?.sets?.length) {
-        const _rrVxs = _rrPrior.sets.map(s => s.actualVx).filter(v => v != null);
-        const _rrMedVx = _rrVxs.length ? _rrVxs.sort((a, b) => a - b)[Math.floor(_rrVxs.length / 2)] : null;
-        if (_rrMedVx != null && targetVx != null && _rrMedVx >= targetVx + 1 && (targetReps ?? 0) < 15) {
-          _rrAlt = `<div style="padding:4px 0 1px;font-size:11px;color:var(--ok)">💡 Vaihtoehto: pidä kuorma ja lisää +1 toisto/sarja (viime kerta meni V${_rrMedVx} — varaa on). Kuormalisäys vasta kun toistohaarukan yläpää täyttyy.</div>`;
+      {
+        const _rrFlat = _rrPrev != null && _rrCur != null && _rrPrev > 0
+          && Math.abs(_rrCur - _rrPrev) <= 0.25;
+        if (_rrFlat) {
+          const _rrVxs = (_rrPrior?.sets || []).map(s => s.actualVx).filter(v => v != null);
+          const _rrMedVx = _rrVxs.length ? _rrVxs.slice().sort((a, b) => a - b)[Math.floor(_rrVxs.length / 2)] : null;
+          const _tool = suggestProgressionTool({
+            role: exercise.role, targetReps, targetVx, lastMedianVx: _rrMedVx, sets: workSetCount,
+          });
+          if (_tool) {
+            _rrAlt = `<div style="padding:4px 0 1px;font-size:11px;color:var(--ok)">💪 Muut keinot edetä — <b>${escapeHtml(_tool.label)}</b>: ${escapeHtml(_tool.rationale)}</div>`;
+          }
         }
       }
       // 8a (V1): opitun across-set-väsymyksen legibiliteetti. Näytetään vain primaarin
