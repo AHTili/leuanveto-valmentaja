@@ -8,6 +8,8 @@ import {
   computeAcrossSetDecay, updateLearnedParam, computeLearnedAcrossSetFatigue, ACROSS_SET_FATIGUE_SPEC,
   // KORI 8: progressio-monipuolisuus
   suggestProgressionTool,
+  // MULL-2 (#8): volyymimaamerkit (MEV/MRV advisory)
+  analyzeVolumeLandmarks,
   e1rmSystem, e1rmExternal, e1rmAccessory, targetLoadFromE1RM,
   computeBaseline, classifyReadinessZ,
   velocityReadiness, hrvReadiness, varaReadiness, upperBodyMpvReadiness, combineReadiness,
@@ -1103,6 +1105,31 @@ function test8bProgressionVariety() {
   assert(a1.label && a2.label && a4.label, "K8: jokaisella työkalulla label");
   assertEqual(suggestProgressionTool(null), null, "K8: null-ctx → null");
   assertEqual(suggestProgressionTool({ targetReps: 0 }), null, "K8: invalid reps → null");
+}
+
+// MULL-2 (#8): volyymimaamerkit — ali-annostus (synergisti) + yli-annostus (MRV).
+function test8cVolumeLandmarks() {
+  const meso = { weekPlans: [{ week: 1, days: [{ slots: [
+    { role: "primary", category: "vertikaaliveto", sets: 5 },   // selkä 5, hauis 2.5
+    { role: "primary", category: "vertikaaliveto", sets: 5 },   // → selkä 10, hauis 5
+    { role: "accessory", category: "alaraaja", sets: 24 },      // jalat 24 → korkea
+  ] }] }] };
+  const r = analyzeVolumeLandmarks(meso, 1);
+  assert(r.found, "MULL2: found");
+  // hauis = leuanvedon synergisti (epäsuora), 5 eff-sarjaa (matala) → ali (soft).
+  assert(r.under.some(u => u.muscle === "hauis" && u.severity === "soft"), "MULL2-A: hauis synergisti ali-annostus (matala/soft)");
+  // selkä = 10 eff (kehittävä) → EI flagia.
+  assert(!r.under.some(u => u.muscle === "selkä"), "MULL2-B: selkä kehittävä → ei ali-flagia");
+  // jalat = 24 eff (korkea) → yli-annostus.
+  assert(r.over.some(o => o.muscle === "jalat"), "MULL2-C: jalat korkea → yli-annostus (MRV)");
+  // ylläpito-taso relevantille → strong severity.
+  const meso2 = { weekPlans: [{ week: 1, days: [{ slots: [
+    { role: "primary", category: "hauisfleksio", sets: 3 },     // hauis 3 (ylläpito), suora primaari
+  ] }] }] };
+  const r2 = analyzeVolumeLandmarks(meso2, 1);
+  assert(r2.under.some(u => u.muscle === "hauis" && u.severity === "strong"), "MULL2-D: ylläpito-taso relevantille → strong");
+  // ei mesosykliä → found:false, ei kaadu.
+  assertEqual(analyzeVolumeLandmarks(null, 1).found, false, "MULL2-E: ei mesoa → found:false");
 }
 
 // H-018 OSA 1 (OBS-040, 2026-06-13): e1RM-kortin kanoninen lähde-lukko.
@@ -4748,6 +4775,8 @@ export async function runTests() {
   test8aLearnedParamMath();
   // KORI 8: progressio-monipuolisuus-ladder (advisory-työkalut jumitukseen)
   test8bProgressionVariety();
+  // MULL-2 (#8): volyymimaamerkit (MEV/MRV advisory)
+  test8cVolumeLandmarks();
   // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
   testE1rmCardCanonicalSource();
   testE1rmCardPlanBasedGate();

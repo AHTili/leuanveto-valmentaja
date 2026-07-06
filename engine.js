@@ -6981,6 +6981,47 @@ function computeWeeklyMuscleVolume(mesocycle, weekNum) {
   return { found: true, weekNum, groups };
 }
 
+// MULL-2 (#8, lainalaisuus: volyymimaamerkit MEV/MAV/MRV): K4-1 LASKI volyymin
+// muttei tulkinnut sitä tavoitteeseen nähden — valmentaja hallitsee annosvälin
+// aktiivisesti. analyzeVolumeLandmarks lisää TULKINNAN (advisory, ei cap):
+//   • ALI-annostus: tavoitteen kannalta relevantti lihas (primaarin suora TAI
+//     synergisti = epäsuora, esim. hauis leuanvedossa) joka jää kehittävän bandin
+//     alle ("ylläpito"/"matala"). Vastaa #8: "riittääkö hauis 2 sarjaa/vk?" — ei,
+//     jos veto on kehityskohde. severity: ylläpito=voimakas, matala=lievä.
+//   • YLI-annostus: mikä tahansa lihas "korkea"-bandissa (>20 eff-sarjaa) = lähellä
+//     palautuskattoa (MRV). Suoritus/palautumisriski.
+// relevantMuscles = KAIKKI primaarin/sekundaarin kategorian kohteet (suora+epäsuora)
+// → synergisti-limitointi tunnistuu (hauis on leuanvedon rajoittava tekijä).
+function analyzeVolumeLandmarks(mesocycle, weekNum) {
+  const vol = computeWeeklyMuscleVolume(mesocycle, weekNum);
+  if (!vol.found) return { found: false, weekNum, under: [], over: [] };
+  const wp = (mesocycle?.weekPlans || []).find(w => w.week === weekNum);
+  const relevant = new Set();
+  for (const day of (wp?.days || [])) {
+    for (const slot of (day?.slots || [])) {
+      if (slot?.role !== "primary" && slot?.role !== "secondary") continue;
+      const targets = CATEGORY_MUSCLE_MAP[slot.category];
+      if (!targets) continue;
+      for (const [muscle] of targets) relevant.add(muscle);
+    }
+  }
+  const under = [];
+  const over = [];
+  for (const g of vol.groups) {
+    if (g.band === "korkea") {
+      over.push({ muscle: g.muscle, effective: g.effective, band: g.band, severity: "over",
+        message: `${g.muscle}: ${g.effective} tehollista sarjaa/vk — lähellä palautuskattoa. Seuraa palautumista; harkitse siirtoa toiselle lihakselle.` });
+    } else if (relevant.has(g.muscle) && (g.band === "ylläpito" || g.band === "matala")) {
+      under.push({ muscle: g.muscle, effective: g.effective, band: g.band,
+        severity: g.band === "ylläpito" ? "strong" : "soft",
+        message: g.band === "ylläpito"
+          ? `${g.muscle}: vain ${g.effective} tehollista sarjaa/vk — alle kehittävän tason, kasvua ei juuri tapahdu. Tämä lihas osallistuu tavoiteliikkeeseesi — lisää suoraa työtä jos se on kehityskohde.`
+          : `${g.muscle}: ${g.effective} tehollista sarjaa/vk — ylläpitävä, ei kehittävä. Nosta suoraa työtä jos tämä rajoittaa tavoiteliikettäsi.` });
+    }
+  }
+  return { found: true, weekNum, under, over, relevantMuscles: [...relevant] };
+}
+
 // ═══════════════════════════════════════════════════════════════
 // STAGNATION DETECTION
 // ═══════════════════════════════════════════════════════════════
@@ -10132,6 +10173,7 @@ export {
   weeklyStimulus,
   computeWeeklyMuscleVolume, // K4-1: viikkovolyymi lihasryhmittäin (Sykli-kortti)
   muscleVolumeBand,
+  analyzeVolumeLandmarks, // MULL-2 (#8): MEV-lattia + MRV-katto advisory (ali/yli-annostus)
   // Stagnation
   checkStagnation,
   // KORI 8: progressio-monipuolisuus (advisory-työkalut jumitukseen)
