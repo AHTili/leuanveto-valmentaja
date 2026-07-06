@@ -6,6 +6,8 @@ import {
   // 8a (V1): across-set-väsymyksen oppiminen + jaettu K3-1-estimointi
   acrossSetAllowance, withinSessionFatigueCredits,
   computeAcrossSetDecay, updateLearnedParam, computeLearnedAcrossSetFatigue, ACROSS_SET_FATIGUE_SPEC,
+  // KORI 8: progressio-monipuolisuus
+  suggestProgressionTool,
   e1rmSystem, e1rmExternal, e1rmAccessory, targetLoadFromE1RM,
   computeBaseline, classifyReadinessZ,
   velocityReadiness, hrvReadiness, varaReadiness, upperBodyMpvReadiness, combineReadiness,
@@ -1079,6 +1081,28 @@ function test8aLearnedParamMath() {
   assertEqual(computeAcrossSetDecay(mixed), 1.0, "8a: sekakuorma → dominoiva 100kg-ryhmä");
   const withWarmup = [mkSet({ actualVx: 5, isWarmup: true, timestamp: "2026-01-05T09:59:00Z" }), ...neu];
   assertEqual(computeAcrossSetDecay(withWarmup), V, "8a: warmup/ei-top ei kelpaa havaintoon");
+}
+
+// KORI 8: progressio-monipuolisuus-ladder (suggestProgressionTool). Advisory — ei
+// recommend()-kuormaa. A1-A5: oikea työkalu per (rooli/reps/varaa/volyymi/stagnaatio).
+function test8bProgressionVariety() {
+  const tool = (ctx) => suggestProgressionTool(ctx);
+  const a1 = tool({ role: "primary", targetReps: 3, targetVx: 2, lastMedianVx: 2 });
+  assertEqual(a1.tool, "tempo", "K8-A1: voimaliike-primary (reps 3) → tempo (EI reps)");
+  const a2 = tool({ role: "accessory", targetReps: 8, targetVx: 2, lastMedianVx: 3 });
+  assertEqual(a2.tool, "reps", "K8-A2: varaa (lastVx≥target+1) + reps<12 → reps");
+  const a3 = tool({ role: "accessory", targetReps: 12, targetVx: 2, lastMedianVx: 2, volumeBand: "kehittävä" });
+  assertEqual(a3.tool, "sets", "K8-A3: reps katossa (12) + volyymi ei-korkea → sets");
+  const a4 = tool({ role: "accessory", targetReps: 12, targetVx: 2, lastMedianVx: 2, volumeBand: "korkea" });
+  assertEqual(a4.tool, "density", "K8-A4: reps katossa + MRV (korkea) → density");
+  const a5 = tool({ role: "primary", targetReps: 3, targetVx: 2, lastMedianVx: 2, stagnationWeeks: 6 });
+  assert(a5.rationale.includes("variantin vaihtoa"), "K8-A5: stagnationWeeks≥6 → variantinvaihto-liite");
+  // Reunatapaukset:
+  assertEqual(tool({ role: "primary", targetReps: 3, targetVx: 2, lastMedianVx: 2, tempoInUse: true }).tool, "microload", "K8: voimaliike + tempo jo käytössä → microload");
+  assertEqual(tool({ role: "accessory", targetReps: 8, targetVx: 2, lastMedianVx: 2 }).tool, "sets", "K8: moderate reps ilman varaa → sets");
+  assert(a1.label && a2.label && a4.label, "K8: jokaisella työkalulla label");
+  assertEqual(suggestProgressionTool(null), null, "K8: null-ctx → null");
+  assertEqual(suggestProgressionTool({ targetReps: 0 }), null, "K8: invalid reps → null");
 }
 
 // H-018 OSA 1 (OBS-040, 2026-06-13): e1RM-kortin kanoninen lähde-lukko.
@@ -4722,6 +4746,8 @@ export async function runTests() {
   testCoachGapEngines();
   // 8a (V1): across-set-väsymyksen oppiminen (clamp/outlier, signaali, ko-opittavuus)
   test8aLearnedParamMath();
+  // KORI 8: progressio-monipuolisuus-ladder (advisory-työkalut jumitukseen)
+  test8bProgressionVariety();
   // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
   testE1rmCardCanonicalSource();
   testE1rmCardPlanBasedGate();

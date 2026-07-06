@@ -7004,6 +7004,68 @@ function checkStagnation(progress) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// KORI 8: PROGRESSIO-MONIPUOLISUUS (progression variety)
+// ═══════════════════════════════════════════════════════════════
+// Huomio #6: engine kohteli jumitusta binäärisenä (progressio KUORMALLA tai
+// checkStagnation → "vaihda liike"). Väliltä puuttui valmentajan työkalupakki.
+// suggestProgressionTool antaa oikean EI-KUORMA-progressiotyökalun kontekstin
+// mukaan (toistot/sarjat/tiheys/tempo/mikrokuorma), ennen viimesijaista liikkeen
+// vaihtoa. ADVISORY — ei muuta recommend()-kuormaa (atletti = valmentaja).
+const PROGRESSION_TOOLS = {
+  reps:      { label: "Lisää toistoja", short: "+1 toisto/sarja" },
+  sets:      { label: "Lisää sarja",    short: "+1 työsarja" },
+  density:   { label: "Tiheys",         short: "lyhennä taukoa" },
+  tempo:     { label: "Tempo / tauko",  short: "hidasta laskua / pause" },
+  microload: { label: "Mikrokuorma",    short: "+1,25 kg" },
+};
+
+// Valmentajan progressiotikapuut: ensimmäinen sopiva työkalu voittaa.
+// ctx: { role, targetReps, targetVx, lastMedianVx, sets?, stagnationWeeks?,
+//        volumeBand? ("matala"|"kehittävä"|"korkea"), tempoInUse? }
+// → { tool, label, rationale } tai null. Reuse: K6-4-headroom (lastMedianVx ≥
+// targetVx+1), K4-1 volumeBand (MRV-tila), checkStagnation (≥6 vk → variantti-liite).
+function suggestProgressionTool(ctx) {
+  if (!ctx) return null;
+  const reps = Number(ctx.targetReps);
+  if (!Number.isFinite(reps) || reps <= 0) return null;
+  const role = ctx.role || "accessory";
+  const targetVx = Number(ctx.targetVx);
+  const lastVx = ctx.lastMedianVx;
+  const headroom = Number.isFinite(lastVx) && Number.isFinite(targetVx) && lastVx >= targetVx + 1;
+  const isStrength = reps <= 5;
+  const isPrimary = role === "primary" || role === "secondary";
+  const volumeBand = ctx.volumeBand || null;
+  const stagn = Number(ctx.stagnationWeeks) || 0;
+
+  let tool, rationale;
+  if (isStrength && isPrimary) {
+    // Voimaliike: ei jahdata toistoja — kovenna suoritusta tai pienennä hyppyä.
+    if (ctx.tempoInUse) {
+      tool = "microload";
+      rationale = "Kokeile pienempää hyppyä (+1,25 kg) jos levyt riittävät — pienemmät askeleet pitävät progression käynnissä.";
+    } else {
+      tool = "tempo";
+      rationale = "Hidasta laskuvaihe (n. 3 s) tai lisää tauko pohjalle — liike vaikeutuu samalla kuormalla ilman lisäpainoa.";
+    }
+  } else if (headroom && reps < 12) {
+    // Varaa toistoihin → double progression (K6-4 nyt ladderin osana).
+    tool = "reps";
+    rationale = `Pidä kuorma ja lisää +1 toisto/sarja (viime kerta meni varalla). Kun yläpää (~${reps + 2}) täyttyy, nosta kuormaa.`;
+  } else if (volumeBand === "korkea") {
+    // Toistot/volyymi katossa (MRV) → tiheys.
+    tool = "density";
+    rationale = "Toistot ja volyymi katossa — sama työ lyhyemmällä tauolla (esim. −30 s) on tiheysprogressio.";
+  } else {
+    // Kuorma ei nouse, toistoissa ei varaa, volyymissä tilaa → lisää sarja.
+    tool = "sets";
+    rationale = "Kuorma ei nouse eikä toistoissa ole varaa — lisää yksi työsarja. Volyymi ajaa kasvua kun intensiteetti ei nouse.";
+  }
+
+  if (stagn >= 6) rationale += " Jos nämä eivät auta muutamassa viikossa, harkitse variantin vaihtoa.";
+  return { tool, label: PROGRESSION_TOOLS[tool].label, rationale };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ACCESSORY SLOT RESOLUTION (v4.11)
 // Each accessory slot has a function (role) + phase variants. Engine resolves
 // movement at render time: priority 1) user lock, 2) user soft-override,
@@ -10072,6 +10134,8 @@ export {
   muscleVolumeBand,
   // Stagnation
   checkStagnation,
+  // KORI 8: progressio-monipuolisuus (advisory-työkalut jumitukseen)
+  suggestProgressionTool, PROGRESSION_TOOLS,
   // Accessory slot resolution (v4.11)
   phaseForWeek,
   resolveAccessorySlot,
