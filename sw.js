@@ -792,7 +792,14 @@
 //          (settings.learnedParams); recommend() pysyy puhtaana → cold-start bittitarkka.
 //          Legibiliteetti: 🧭-perustelu + Asetukset-näyttö + nollaus. Uudelleenkäytettävä
 //          learnedParams-koneisto (updateLearnedParam) seuraaville 8a-parametreille.
-const APP_VERSION = "4.53.1";
+// v4.54.0: KORI 8 — PROGRESSIO-MONIPUOLISUUS (#6: "muita keinoja tulla vahvemmaksi").
+//          Engine kohteli jumitusta binäärisenä (progressio kuormalla TAI vaihda liike).
+//          Nyt kun liike on tasanteella (kuorma ei nouse), engine ehdottaa oikean
+//          EI-kuorma-työkalun kontekstin mukaan: toistot (double progression) / sarjat /
+//          tiheys / tempo·tauko / mikrokuorma — valmentajan tikapuut ennen liikkeen vaihtoa.
+//          Deterministinen advisory (ei opittava, ei kompoundautumisriskiä); recommend()-
+//          kuorma koskematon. Näkyy 🧭 "Miksi tämä paino?" -lohkossa kaikille liikkeille.
+const APP_VERSION = "4.54.0";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.
