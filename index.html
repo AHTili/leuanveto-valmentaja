@@ -1181,6 +1181,8 @@ import {
   weeklyStimulus, checkStagnation,
   // K4-1: viikkovolyymi lihasryhmittäin (Sykli-kortti)
   computeWeeklyMuscleVolume,
+  // 8a (V1): opittu across-set-väsymys (treenin päätöksessä)
+  computeLearnedAcrossSetFatigue,
   // K7 (valmentaja-linssin aukot): check-in, väsymysaggregaatti, yritysvalinta, sykli-analyysi
   computeSubjectiveReadiness, combineReadinessAll, computeFatigueAggregate,
   computeNextAttempt, analyzeCycleForNextBlock,
@@ -14898,6 +14900,23 @@ function bindWorkoutEvents() {
       }
     } catch (e) {
       console.warn("[aggressiveness-learn] failed:", e?.message || e);
+    }
+    // 8a (V1): opi across-set-väsymys tämän session jälkeen (idempotentti re-compute
+    // koko historiasta, deload-sessiot pois). recommend() pysyy puhtaana lukuna —
+    // oppiminen KIRJOITTAA vain tässä. Tulos → settings.learnedParams.acrossSetFatigue.
+    try {
+      const [sess8a, sets8a, meso8a] = await Promise.all([getAllSessions(), getAllSets(), getActiveMesocycle()]);
+      const asf = computeLearnedAcrossSetFatigue({ sessions: sess8a, allSets: sets8a, mesocycle: meso8a });
+      const st8a = await getSettings();
+      const prev8a = st8a.learnedParams?.acrossSetFatigue || null;
+      if (!prev8a || prev8a.value !== asf.value || prev8a.n !== asf.n) {
+        st8a.learnedParams = { ...(st8a.learnedParams || {}), acrossSetFatigue: { value: asf.value, n: asf.n, mean: asf.mean } };
+        await saveSettings(st8a);
+        state.settings = st8a;
+        console.log("[8a across-set-learn]", { value: asf.value, n: asf.n, mean: asf.mean, raw: asf.raw, outlier: asf.outlier });
+      }
+    } catch (e) {
+      console.warn("[8a across-set-learn] failed:", e?.message || e);
     }
     showToast("Treeni tallennettu!", "ok");
     state.workout = null;

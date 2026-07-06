@@ -322,6 +322,103 @@ function withinSessionFatigueCredits(sortedSets, ratePerSet = ACROSS_SET_FATIGUE
   });
 }
 
+// ── 8a (V1): across-set-väsymyksen OPPIMINEN (learnedAcrossSetFatigue) ───────────
+// Puhtaat funktiot; kutsutaan treenin päätöksessä (index.html completion handler),
+// EI recommend():issä (joka pysyy puhtaana lukuna). Tulos → settings.learnedParams.
+const ACROSS_SET_LEARN_MIN_SETS = 3;   // väh. samakuormaista työsarjaa/sessio havaintoon
+const ACROSS_SET_LEARN_MAX_OBS = 20;   // trailing-ikkuna kelpaavia sessioita (seuraa adaptaatiota)
+const ACROSS_SET_FATIGUE_SPEC = {
+  prior: ACROSS_SET_FATIGUE_REPS_PER_SET, // 0.5
+  min: ACROSS_SET_FATIGUE_RATE_MIN,       // 0.25 (−2 SD)
+  max: ACROSS_SET_FATIGUE_RATE_MAX,       // 0.75 (+2 SD)
+  tau: LEARNED_PARAM_TAU,                 // 5 pseudosessiota
+  maxObs: ACROSS_SET_LEARN_MAX_OBS,       // 20
+};
+
+// Yhden session+liike-ryhmän havaittu across-set-väsymys: mediaani peräkkäisistä
+// (reps+Vx)-erotuksista SAMALLA kuormalla tehdyistä työsarjoista (sessiojärjestys).
+// Palauttaa raten (eff-toistoa/sarja) tai null jos ryhmä ei kelpaa (<3 samakuormaista
+// sarjaa). Mediaani = robusti n=3:lla + immuuni yhdelle saturoivalle V0-sarjalle.
+function computeAcrossSetDecay(sets) {
+  const qual = (sets || []).filter(s =>
+    s && s.setRole === "top" && s.completed && !s.isWarmup
+    && s.actualVx != null && Number.isFinite(s.externalLoadKg) && s.externalLoadKg > 0
+    && Number.isFinite(s.reps) && s.reps > 0);
+  if (qual.length < ACROSS_SET_LEARN_MIN_SETS) return null;
+  // Ryhmittele kuorman mukaan; ota dominoiva ≥3-ryhmä (litteä samakuormainen työ).
+  const byLoad = {};
+  for (const s of qual) {
+    const k = String(roundToHalf(s.externalLoadKg));
+    (byLoad[k] = byLoad[k] || []).push(s);
+  }
+  let group = null;
+  for (const k of Object.keys(byLoad)) {
+    if (byLoad[k].length >= ACROSS_SET_LEARN_MIN_SETS
+        && (!group || byLoad[k].length > group.length)) group = byLoad[k];
+  }
+  if (!group) return null;
+  const ordered = group.slice().sort((a, b) =>
+    ((a.timestamp || "") < (b.timestamp || "") ? -1 : 1));
+  const effReps = ordered.map(s => s.reps + (s.actualVx ?? s.targetVx ?? 1));
+  const diffs = [];
+  for (let i = 1; i < effReps.length; i++) diffs.push(effReps[i - 1] - effReps[i]);
+  return median(diffs);
+}
+
+// Geneerinen priori-ankkuroitu shrinkage-päivitys opittaville parametreille (8a-koneisto).
+// spec = { prior, min, max, tau, maxObs }; observations = per-sessio-havainnot.
+// raw = (τ·prior + n·x̄)/(τ+n) → value = clamp(raw, min, max). outlier = raw karkasi
+// tutkimusrajasta (±2 SD) → clampataan (CLAUDE.md §2 sääntö 3: LEARNED_PARAM_OUTLIER).
+function updateLearnedParam(spec, observations) {
+  const obs = (observations || []).filter(x => typeof x === "number" && Number.isFinite(x));
+  const recent = spec.maxObs ? obs.slice(-spec.maxObs) : obs;
+  const n = recent.length;
+  const mean = n > 0 ? recent.reduce((a, b) => a + b, 0) / n : spec.prior;
+  const raw = (spec.tau * spec.prior + n * mean) / (spec.tau + n);
+  const value = Math.max(spec.min, Math.min(spec.max, raw));
+  const outlier = raw < spec.min || raw > spec.max;
+  return { value, n, mean, raw, outlier };
+}
+
+// 8a (V1) orkestrointi (puhdas, idempotentti re-compute koko historiasta): ryhmittelee
+// työsarjat (sessionId, movementId), sulkee pois deload-sessiot (getMesocycleWeek →
+// weekDef.deltaPctBase ≤ −0.10, K6-2b-presedentti — deload ei kelpaa ankkuriksi), laskee
+// per-ryhmä-havainnon, ottaa viimeiset ≤20 kronologisesti ja shrinkaa prioriin.
+// Palauttaa { value, n, mean, raw, outlier } (kirjoitetaan settingsiin kutsujassa).
+function computeLearnedAcrossSetFatigue({ sessions, allSets, mesocycle } = {}) {
+  const sess = sessions || [];
+  const sets = allSets || [];
+  const deloadSessionIds = new Set();
+  const sessDateById = {};
+  for (const s of sess) {
+    if (!s || !s.sessionId) continue;
+    const d = s.dateISO || (s.timestamp || "").slice(0, 10);
+    sessDateById[s.sessionId] = d;
+    if (d && mesocycle) {
+      const wk = getMesocycleWeek(mesocycle, d);
+      const def = (wk != null) ? mesocycle?.weekDefs?.[wk - 1] : null;
+      if (def && typeof def.deltaPctBase === "number" && def.deltaPctBase <= -0.10) {
+        deloadSessionIds.add(s.sessionId);
+      }
+    }
+  }
+  const groups = {};
+  for (const st of sets) {
+    if (!st || st.setRole !== "top" || !st.sessionId || deloadSessionIds.has(st.sessionId)) continue;
+    const key = st.sessionId + "|" + (st.movementId ?? "?");
+    (groups[key] = groups[key] || []).push(st);
+  }
+  const obsWithDate = [];
+  for (const key of Object.keys(groups)) {
+    const rate = computeAcrossSetDecay(groups[key]);
+    if (rate == null) continue;
+    const sid = key.split("|")[0];
+    obsWithDate.push({ date: sessDateById[sid] || "", rate });
+  }
+  obsWithDate.sort((a, b) => (a.date < b.date ? -1 : 1));
+  return updateLearnedParam(ACROSS_SET_FATIGUE_SPEC, obsWithDate.map(o => o.rate));
+}
+
 // OBS-051 (2026-06-17): PLAN_BASED-e1RM:n loadPct-Vx-johdonmukaisuus-toleranssi.
 // PLAN_BASED (plan_e1rm = load / loadPct) luottaa slotin loadPct:hen tosi-%1RM-ankkurina.
 // Jos slotin loadPct ALITTAA Vx-implikoidun intensiteetin (vReps(reps+Vx)) yli tämän
@@ -9877,6 +9974,11 @@ export {
   targetLoadFromE1RM,
   vRepsToExpectedPct,
   acrossSetAllowance, // K3-1: across-set-väsymysvara (jaettu UI-swap-helperin kanssa)
+  withinSessionFatigueCredits, // K3-1: estimointi-positio-krediitti (8a-testien ko-opittavuus)
+  computeAcrossSetDecay, // 8a: yhden session havaittu across-set-rate (oppimissignaali)
+  updateLearnedParam, // 8a: geneerinen priori-shrinkage-päivitys (clamp + outlier)
+  computeLearnedAcrossSetFatigue, // 8a: koko historian orkestrointi → opittu rate
+  ACROSS_SET_FATIGUE_SPEC, // 8a: prior/clamp/tau-spec (testit + reset)
   // H-017 D1 — intra-session-alaspäin-re-resolve (puhdas; UI-handler kutsuu + tracaa)
   resolveIntraSessionAdjustedLoad,
   resolveTopSingleReanchor, // K3-2 — ykkösen tulos re-ankkuroi työsarjat (vain alaspäin)

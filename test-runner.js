@@ -3,6 +3,9 @@
 
 import {
   median, mad, madSigma, zScore, avg, clamp, roundToHalf,
+  // 8a (V1): across-set-väsymyksen oppiminen + jaettu K3-1-estimointi
+  acrossSetAllowance, withinSessionFatigueCredits,
+  computeAcrossSetDecay, updateLearnedParam, computeLearnedAcrossSetFatigue, ACROSS_SET_FATIGUE_SPEC,
   e1rmSystem, e1rmExternal, e1rmAccessory, targetLoadFromE1RM,
   computeBaseline, classifyReadinessZ,
   velocityReadiness, hrvReadiness, varaReadiness, upperBodyMpvReadiness, combineReadiness,
@@ -1007,6 +1010,75 @@ function testWeeklyMuscleVolume() {
   assertEqual(muscleVolumeBand(20.5), "korkea", "K41-T6d: 20,5 → korkea");
   // Puuttuva viikko → found:false
   assertEqual(computeWeeklyMuscleVolume(meso, 9).found, false, "K41-T7: puuttuva viikko → found:false");
+}
+
+// 8a (V1): across-set-väsymyksen oppimisen pura-funktiot (A3 clamp/outlier, A4 signaali,
+// A5 ko-opittavuus/neutraalius). recommend-tason A1/A6 ovat testRecommendScenarios:issa.
+function test8aLearnedParamMath() {
+  const mkSet = (o) => ({ setRole: "top", completed: true, isWarmup: false,
+    externalLoadKg: 100, sessionId: "n1", movementId: "m1", reps: 3, ...o });
+
+  // A4 (signaali, fast-decay): effReps 6→5→4→3 (Vx 3,2,1,0) → havainto 1.0 → posterior > prior.
+  const fast = [
+    mkSet({ actualVx: 3, timestamp: "2026-01-05T10:01:00Z" }),
+    mkSet({ actualVx: 2, timestamp: "2026-01-05T10:02:00Z" }),
+    mkSet({ actualVx: 1, timestamp: "2026-01-05T10:03:00Z" }),
+    mkSet({ actualVx: 0, timestamp: "2026-01-05T10:04:00Z" }),
+  ];
+  assertClose(computeAcrossSetDecay(fast), 1.0, 1e-9, "8a A4: fast-decay havainto = 1.0 (effReps 6→3)");
+  const fastPost = updateLearnedParam(ACROSS_SET_FATIGUE_SPEC, [computeAcrossSetDecay(fast)]);
+  assert(fastPost.value > 0.5, "8a A4: fast → posterior > prior (" + fastPost.value.toFixed(3) + ")");
+
+  // A4 (sustained): effReps vakio (Vx 2,2,2) → havainto 0 → posterior < prior.
+  const sust = [
+    mkSet({ actualVx: 2, timestamp: "2026-01-05T10:01:00Z" }),
+    mkSet({ actualVx: 2, timestamp: "2026-01-05T10:02:00Z" }),
+    mkSet({ actualVx: 2, timestamp: "2026-01-05T10:03:00Z" }),
+  ];
+  assertEqual(computeAcrossSetDecay(sust), 0, "8a A4: sustained havainto = 0 (effReps vakio)");
+  const sustPost = updateLearnedParam(ACROSS_SET_FATIGUE_SPEC, [computeAcrossSetDecay(sust)]);
+  assert(sustPost.value < 0.5, "8a A4: sustained → posterior < prior (" + sustPost.value.toFixed(3) + ")");
+
+  // A3 (clamp + outlier): raaka karkaa ±2 SD -rajasta → clamp + outlier=true.
+  const hi = updateLearnedParam(ACROSS_SET_FATIGUE_SPEC, Array(20).fill(0.9)); // raw 0.82
+  assertEqual(hi.value, 0.75, "8a A3: raaka>0.75 → clamp 0.75");
+  assert(hi.outlier === true, "8a A3: outlier=true (ylös)");
+  const lo = updateLearnedParam(ACROSS_SET_FATIGUE_SPEC, Array(20).fill(0.05)); // raw 0.14
+  assertEqual(lo.value, 0.25, "8a A3: raaka<0.25 → clamp 0.25");
+  assert(lo.outlier === true, "8a A3: outlier=true (alas)");
+  const inr = updateLearnedParam(ACROSS_SET_FATIGUE_SPEC, Array(10).fill(0.6)); // raw 8.5/15
+  assert(inr.outlier === false, "8a A3: outlier=false in-range");
+  assertClose(inr.value, 8.5 / 15, 1e-9, "8a A3: in-range value = shrinkage(0.6, n=10)");
+  // cold-start: ei havaintoja → value = prior, n=0.
+  const cold = updateLearnedParam(ACROSS_SET_FATIGUE_SPEC, []);
+  assertEqual(cold.value, 0.5, "8a A3: ei dataa → prior 0.5");
+  assertEqual(cold.n, 0, "8a A3: n=0 cold-start");
+
+  // A5 (ko-opittavuus/neutraalius): positio-krediitti V kumoaa V-decayn TÄSMÄLLEEN →
+  // korjatut effReps vakio (estimointi position-invariantti). Mitattu decay = V → silmukka
+  // sulkeutuu: sama arvo preskriptioon/estimointiin/re-ankkurointiin ei inflatoi/deflatoi.
+  const V = 1.0;
+  const neu = [
+    mkSet({ actualVx: 3, timestamp: "2026-01-05T10:01:00Z" }),
+    mkSet({ actualVx: 2, timestamp: "2026-01-05T10:02:00Z" }),
+    mkSet({ actualVx: 1, timestamp: "2026-01-05T10:03:00Z" }),
+  ];
+  assertEqual(computeAcrossSetDecay(neu), V, "8a A5: mitattu decay = V (neutraalius-silmukka)");
+  const credits = withinSessionFatigueCredits(neu, V);
+  const credited = neu.map((x, i) => x.reps + x.actualVx + credits[i]);
+  assert(credited.every(c => c === credited[0]), "8a A5: positio-krediitti V → korjatut effReps vakio");
+
+  // Qualifying-filtterit: <3 samakuormaista → null; sekakuorma → dominoiva ryhmä; warmup pois.
+  assertEqual(computeAcrossSetDecay(fast.slice(0, 2)), null, "8a: <3 sarjaa → null");
+  const mixed = [
+    mkSet({ actualVx: 3, externalLoadKg: 100, timestamp: "2026-01-05T10:01:00Z" }),
+    mkSet({ actualVx: 2, externalLoadKg: 100, timestamp: "2026-01-05T10:02:00Z" }),
+    mkSet({ actualVx: 1, externalLoadKg: 100, timestamp: "2026-01-05T10:03:00Z" }),
+    mkSet({ actualVx: 2, externalLoadKg: 80, reps: 5, timestamp: "2026-01-05T10:04:00Z" }),
+  ];
+  assertEqual(computeAcrossSetDecay(mixed), 1.0, "8a: sekakuorma → dominoiva 100kg-ryhmä");
+  const withWarmup = [mkSet({ actualVx: 5, isWarmup: true, timestamp: "2026-01-05T09:59:00Z" }), ...neu];
+  assertEqual(computeAcrossSetDecay(withWarmup), V, "8a: warmup/ei-top ei kelpaa havaintoon");
 }
 
 // H-018 OSA 1 (OBS-040, 2026-06-13): e1RM-kortin kanoninen lähde-lukko.
@@ -4648,6 +4720,8 @@ export async function runTests() {
   testTopSingleReanchor();
   testWeeklyMuscleVolume();
   testCoachGapEngines();
+  // 8a (V1): across-set-väsymyksen oppiminen (clamp/outlier, signaali, ko-opittavuus)
+  test8aLearnedParamMath();
   // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
   testE1rmCardCanonicalSource();
   testE1rmCardPlanBasedGate();
