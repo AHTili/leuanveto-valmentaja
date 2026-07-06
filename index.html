@@ -1181,6 +1181,8 @@ import {
   weeklyStimulus, checkStagnation,
   // K4-1: viikkovolyymi lihasryhmittäin (Sykli-kortti)
   computeWeeklyMuscleVolume,
+  // MULL-2 (#8): volyymimaamerkit (MEV/MRV advisory Sykli-kortissa)
+  analyzeVolumeLandmarks,
   // 8a (V1): opittu across-set-väsymys (treenin päätöksessä)
   computeLearnedAcrossSetFatigue,
   // KORI 8: progressio-monipuolisuus (advisory-työkalut jumitukseen)
@@ -8632,10 +8634,20 @@ function renderMesocycle() {
             <span style="font-size:12px;color:var(--muted)">${fmtN(g.effective)} sarjaa${g.indirect > 0 ? ` <span style="opacity:0.7">(${g.direct} + ${g.indirect}×½)</span>` : ""}</span>
             <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:9px;${bandStyle[g.band] || bandStyle["ylläpito"]}">${g.band}</span>
           </div>`).join("");
+        // MULL-2 (#8): volyymimaamerkkien TULKINTA — ali-annostus (tavoitteen synergisti
+        // kehittävän alle) + yli-annostus (>MRV). Advisory, ei rajoitin.
+        const _capMsg = m => m.charAt(0).toUpperCase() + m.slice(1);
+        const _lm = analyzeVolumeLandmarks(meso, currentWeek);
+        const _lmHTML = (_lm.under.length || _lm.over.length) ? `
+          <div style="margin-top:9px;padding-top:8px;border-top:1px solid var(--border)">
+            ${_lm.under.map(u => `<div style="font-size:11px;padding:3px 0;line-height:1.4;color:${u.severity === "strong" ? "var(--bad)" : "var(--warn)"}">⚠ ${escapeHtml(_capMsg(u.message))}</div>`).join("")}
+            ${_lm.over.map(o => `<div style="font-size:11px;padding:3px 0;line-height:1.4;color:var(--bad)">▲ ${escapeHtml(_capMsg(o.message))}</div>`).join("")}
+          </div>` : "";
         return `<div class="card">
           <div class="card-title">💪 Viikkovolyymi lihasryhmittäin <span style="font-size:11px;font-weight:400;color:var(--muted)">— vk ${currentWeek} suunniteltu</span></div>
           ${rows}
-          <div style="font-size:10px;color:var(--muted);opacity:0.75;margin-top:8px;line-height:1.4">Suorat sarjat + epäsuorat ×½ (esim. leuanveto lasketaan hauikselle puolikkaana). Bandit/vk: ylläpito &lt;4 · matala 4–9 · kehittävä 10–20 · korkea &gt;20. Näkyvyys, ei rajoitin.</div>
+          ${_lmHTML}
+          <div style="font-size:10px;color:var(--muted);opacity:0.75;margin-top:8px;line-height:1.4">Suorat sarjat + epäsuorat ×½ (esim. leuanveto lasketaan hauikselle puolikkaana). Bandit/vk: ylläpito &lt;4 · matala 4–9 · kehittävä 10–20 · korkea &gt;20. ⚠ = tavoitteen kannalta ali-annosteltu · ▲ = lähellä palautuskattoa.</div>
         </div>`;
       } catch (e) { console.warn("K4-1 volume card failed:", e); return ""; }
     })()}
