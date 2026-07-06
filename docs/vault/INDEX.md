@@ -52,11 +52,12 @@
 - [[e1rm-kalibrointiprotokolla]] — cal 92 % × 3 @ V1 (DiStasio ±2,7 kg), cal-as-driver + data-relatiivinen 42 pv tuoreusikkuna (OBS-052 v2), data-sykli-periaate.
 - [[e1rm-inflaatio-deflaatio-capit]] — ceiling 1,05 + B+ streak-bonus, floor 0,95, cfg-drift (tuotannossa oleva opittava) ja F-3-arvoresoluutiokartta lukkotesteineen.
 
-### Volyymi (3 noottia)
+### Volyymi (4 noottia)
 
 - [[volyymi-viikkovolyymi-lihasryhmittain]] — K4-1: suunniteltu viikkovolyymi lihasryhmittäin, suora/epäsuora-painot (1,0/0,5) ja MEV/MAV-bandit; näkyvyys, ei cap.
 - [[volyymi-mrv-kategoriakohtainen]] — MRV_SETS_PER_CATEGORY-katot (14–22 sarjaa/vk), puhtaasti visuaalinen käyttö ja volyymilandmarkkien drift-riski.
 - [[volyymi-weekly-stimulus]] — toteutuneen datan aggregaatit: vetosarjat, tonnage, heavy-altistukset (reps + Vx ≤ 4) ja eliteVolumeCheck-kynnykset.
+- [[volyymi-maamerkit-valvonta]] — MULL-2 (#8): `analyzeVolumeLandmarks` tulkitsee K4-1-volyymin tavoitteeseen nähden → ⚠ ali-annostellut synergistit (hauis leuanvedossa) + ▲ MRV-lähestyvät; advisory Sykli-kortissa.
 
 ### VBT (3 noottia)
 

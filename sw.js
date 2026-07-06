@@ -799,7 +799,12 @@
 //          tiheys / tempo·tauko / mikrokuorma — valmentajan tikapuut ennen liikkeen vaihtoa.
 //          Deterministinen advisory (ei opittava, ei kompoundautumisriskiä); recommend()-
 //          kuorma koskematon. Näkyy 🧭 "Miksi tämä paino?" -lohkossa kaikille liikkeille.
-const APP_VERSION = "4.54.0";
+// v4.55.0: MULL-2 — VOLYYMIMAAMERKIT (#8, lainalaisuus MEV/MAV/MRV). K4-1 laski
+//          viikkovolyymin muttei tulkinnut sitä tavoitteeseen nähden. Nyt Sykli-kortti
+//          näyttää ⚠ ali-annostellut tavoite-synergistit (esim. hauis leuanvedossa —
+//          #8:n täsmävastaus) + ▲ palautuskattoa (MRV) lähestyvät lihakset. Advisory,
+//          ei rajoitin (atletti = valmentaja). Askel kohti varauksetonta eliittitasoa.
+const APP_VERSION = "4.55.0";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.
