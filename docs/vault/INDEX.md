@@ -23,7 +23,7 @@
 - [[readiness-grindy-bias-detektio]] — ≥ 3/8 sessiota VBT_E1RM_CROSSCHECK SIGNIFICANT → hybridi target-RIR valitsee turvallisemman varan.
 - [[readiness-capacity-bump-ekan-sarjan-helppous]] — ekan sarjan helppous: next-session +1–1,5 % ja intra-session +2,5–5 % (confirm-pohjainen), vain heavy-primary.
 
-### Progressio (9 noottia)
+### Progressio (10 noottia)
 
 - [[progressio-mesosyklirakenne]] — 4 viikon blokki, deltaPctBase-viikkokertoimet (drift-varoitus: vk 3 = 0,035), DAY_TYPE_MULTIPLIERS ja maxDelta-hard-clamp.
 - [[progressio-helms-viikkoprogressio]] — Helms 2018: +2,5 %/vk PR-vaiheessa ja Vx-mismatch 2 %/Vx session-välillä (puolitettu); PLAN_BASED-kaksoiskirjaussuoja.
@@ -34,6 +34,7 @@
 - [[progressio-suggestion-tierit]] — SAFE/TARGET/AGGRESSIVE (±1,5 pp), K-A2 e1RM-monotonia, 6 suppression-syytä, effectiveBias + aggressivenessLearned.
 - [[progressio-heavy-first-reankkurointi]] — heavy-first-järjestys (M14) + K3-2: ykkösen e1RM re-ankkuroi työsarjat vain alaspäin samalla aritmetiikalla kuin recommend().
 - [[progressio-monipuolisuus-tikapuut]] — KORI 8: `suggestProgressionTool` deterministinen ladder (toistot/sarjat/tiheys/tempo/mikrokuorma) jumitukseen ennen liikkeen vaihtoa; advisory, ei kompoundautumisriskiä; UI-trigger = tasanne ("Ylläpito →").
+- [[progressio-within-session-ennakointi]] — MULL-3 (#16): `forecastSetSustainability` ennustaa viimeisen sarjan varannon opitusta across-set-decaysta → ⚠ kestävyys-varoitus + kestävä vaihtoehto ENNEN grindiä; reaktiivisesta ennakoivaan; UI-side, recommend() byte-identtinen.
 
 ### Failure (7 noottia)
 

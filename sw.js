@@ -804,7 +804,13 @@
 //          näyttää ⚠ ali-annostellut tavoite-synergistit (esim. hauis leuanvedossa —
 //          #8:n täsmävastaus) + ▲ palautuskattoa (MRV) lähestyvät lihakset. Advisory,
 //          ei rajoitin (atletti = valmentaja). Askel kohti varauksetonta eliittitasoa.
-const APP_VERSION = "4.55.0";
+// v4.56.0: MULL-3 — WITHIN-SESSION-ENNAKOINTI (#16, reaktiivisesta ennakoivaan).
+//          Engine säiti ennen vasta failuren jälkeen; nyt ENNUSTAA opitusta across-set-
+//          mallista jos mitoitettu tai ylikirjoitettu sarjasarja ei kestä (viimeinen sarja
+//          yli targetin) → ⚠ Kestävyys-ennuste + kestävä vaihtoehto (vähemmän sarjoja tai
+//          kevyempi kuorma) ENNEN grindiä. K3-1-kalibroitu kuorma ei false-fire. Advisory,
+//          UI-side (recommend() byte-identtinen). Sulkee auditin #16 = 2/3 varaukseton-eliitti.
+const APP_VERSION = "4.56.0";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.
