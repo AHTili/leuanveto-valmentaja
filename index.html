@@ -1185,6 +1185,8 @@ import {
   analyzeVolumeLandmarks,
   // 8a (V1): opittu across-set-väsymys (treenin päätöksessä)
   computeLearnedAcrossSetFatigue,
+  // MULL-3 (#16): within-session-ennakointi (kestävyys-ennuste)
+  forecastSetSustainability,
   // KORI 8: progressio-monipuolisuus (advisory-työkalut jumitukseen)
   suggestProgressionTool,
   // K7 (valmentaja-linssin aukot): check-in, väsymysaggregaatti, yritysvalinta, sykli-analyysi
@@ -7106,6 +7108,31 @@ function renderActiveWorkout() {
     } catch (e) { /* perustelu on lisäarvo — ei kaada renderiä */ }
   }
 
+  // MULL-3 (#16): within-session-ENNAKOINTI. Varoita ENNAKOIVASTI (ennen grindiä) jos
+  // mitoitettu TAI ylikirjoitettu sarjasarja ennustaa viimeisen sarjan menevän yli
+  // targetin (rep-failure). Vain primaari + monisarjainen; yksilöllistetty 8a-ratella.
+  // Advisory — ei muuta prescriptionia. K3-1-kalibroitu plan-kuorma ei false-fire.
+  let forecastHTML = "";
+  if (!isWarmupSet && exercise.role === "primary" && workSetCount >= 2 && rec?.targetExternalLoad > 0) {
+    try {
+      const _fcMov = (state.movements || []).find(m => m.movementId === exercise.movementId);
+      const _fcBar = _fcMov ? !isSystemLoadMovement(_fcMov) : (exercise.isBarbell === true);
+      const _fc = forecastSetSustainability({
+        planLoad: rec.targetExternalLoad, actualLoad: currentSet.loadKg,
+        reps: targetReps, sets: workSetCount, targetVx,
+        ratePerSet: state.settings?.learnedParams?.acrossSetFatigue?.value,
+        bodyweightKg: state.latestBodyweight || state.settings?.bodyweightKg || 91,
+        isBarbell: _fcBar,
+      });
+      if (_fc && _fc.unsustainable) {
+        const _opts = [];
+        if (_fc.sustainableSets < workSetCount) _opts.push(`${_fc.sustainableSets}×${targetReps} samalla kuormalla`);
+        if (_fc.loadDelta < 0) _opts.push(`${workSetCount}×${targetReps} kun ${Math.abs(_fc.loadDelta)} kg kevyempi`);
+        forecastHTML = `<div style="margin-top:8px;padding:8px 10px;background:rgba(245,158,11,0.12);border-left:3px solid var(--warn);border-radius:6px;font-size:11.5px;line-height:1.45">⚠ <b>Kestävyys-ennuste:</b> ${workSetCount}×${targetReps} @V${targetVx} tällä kuormalla ei ennusteen mukaan kestä — viimeiset sarjat menevät yli targetin.${_opts.length ? ` Kestävä: ${_opts.join(", tai ")}.` : ""}</div>`;
+      }
+    } catch (e) { /* ennuste = lisäarvo, ei kaada renderiä */ }
+  }
+
   // Work-set hero
   const heroHTML = isWarmupSet ? "" : `<div class="load-hero">
     <div class="set-line">
@@ -7119,6 +7146,7 @@ function renderActiveWorkout() {
     </div>
     <div class="load-edit-hint">Napauta lukua muokataksesi painoa</div>
     ${coldStartHintHTML}
+    ${forecastHTML}
     ${loadRationaleHTML}
     ${prevGhostHTML}
     ${targetRowHTML}
