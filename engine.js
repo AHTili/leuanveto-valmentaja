@@ -419,6 +419,40 @@ function computeLearnedAcrossSetFatigue({ sessions, allSets, mesocycle } = {}) {
   return updateLearnedParam(ACROSS_SET_FATIGUE_SPEC, obsWithDate.map(o => o.rate));
 }
 
+// MULL-3 (#16): within-session-ENNAKOINTI. Ennustaa monisarjaisen prescriptionin
+// viimeisen sarjan varannon opitusta across-set-decaysta ENNEN grindiä (reaktiivisesta
+// ennakoivaan). Ydinoivallus: plan-kuorma on K3-1-kalibroitu targetVx:ään → koodaa
+// implisiittisen e1RM:n, joten forecast lasketaan UI-side ilman erillistä e1RM-echoa
+// (recommend() pysyy byte-identtisenä). actualLoad heijastaa atletin ylikirjoitusta.
+// Advisory — EI muuta prescriptionia. ctx: { planLoad, actualLoad, reps, sets, targetVx,
+// ratePerSet, bodyweightKg, isBarbell }. → { unsustainable, predictedLastVx,
+// sustainableSets?, loadDelta? } tai null.
+function forecastSetSustainability(ctx) {
+  if (!ctx) return null;
+  const sets = Number(ctx.sets), reps = Number(ctx.reps), targetVx = Number(ctx.targetVx);
+  const planLoad = Number(ctx.planLoad), actualLoad = Number(ctx.actualLoad);
+  if (!Number.isFinite(sets) || sets < 2) return null;
+  if (!Number.isFinite(reps) || reps <= 0) return null;
+  if (!Number.isFinite(targetVx)) return null;
+  if (!(planLoad > 0) || !(actualLoad > 0)) return null;
+  const rate = clampAcrossSetRate(ctx.ratePerSet);
+  const bw = ctx.isBarbell ? 0 : (Number(ctx.bodyweightKg) || 0);
+  const sysPlan = planLoad + bw, sysActual = actualLoad + bw;
+  if (!(sysPlan > 0) || !(sysActual > 0)) return null;
+  const allowance = acrossSetAllowance(sets, rate);
+  const mPlan = reps + targetVx + allowance;                 // plan-implikoitu tuore max-yritys
+  const e1rmImplied = sysPlan * (1 + mPlan / 30);
+  const vx1 = 30 * (e1rmImplied / sysActual - 1) - reps;      // TUORE varanto ACTUAL-kuormalla
+  const predictedLastVx = Math.round((vx1 - rate * (sets - 1)) * 10) / 10;
+  if (predictedLastVx >= 0) return { unsustainable: false, predictedLastVx };
+  // Kestämätön → korjausehdotukset (kestävä sarjamäärä TAI kevennys).
+  const sustainableSets = Math.max(1, Math.floor(vx1 / rate) + 1);
+  const vx1Needed = rate * (sets - 1);
+  const sysLoadFix = e1rmImplied / (1 + (reps + vx1Needed) / 30);
+  const loadDelta = roundToHalf(sysLoadFix - sysActual);     // negatiivinen
+  return { unsustainable: true, predictedLastVx, sustainableSets, loadDelta };
+}
+
 // OBS-051 (2026-06-17): PLAN_BASED-e1RM:n loadPct-Vx-johdonmukaisuus-toleranssi.
 // PLAN_BASED (plan_e1rm = load / loadPct) luottaa slotin loadPct:hen tosi-%1RM-ankkurina.
 // Jos slotin loadPct ALITTAA Vx-implikoidun intensiteetin (vReps(reps+Vx)) yli tämän
@@ -10082,6 +10116,7 @@ export {
   updateLearnedParam, // 8a: geneerinen priori-shrinkage-päivitys (clamp + outlier)
   computeLearnedAcrossSetFatigue, // 8a: koko historian orkestrointi → opittu rate
   ACROSS_SET_FATIGUE_SPEC, // 8a: prior/clamp/tau-spec (testit + reset)
+  forecastSetSustainability, // MULL-3 (#16): within-session-ennakointi (viimeisen sarjan varanto)
   // H-017 D1 — intra-session-alaspäin-re-resolve (puhdas; UI-handler kutsuu + tracaa)
   resolveIntraSessionAdjustedLoad,
   resolveTopSingleReanchor, // K3-2 — ykkösen tulos re-ankkuroi työsarjat (vain alaspäin)

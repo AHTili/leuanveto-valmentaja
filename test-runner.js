@@ -10,6 +10,8 @@ import {
   suggestProgressionTool,
   // MULL-2 (#8): volyymimaamerkit (MEV/MRV advisory)
   analyzeVolumeLandmarks,
+  // MULL-3 (#16): within-session-ennakointi
+  forecastSetSustainability,
   e1rmSystem, e1rmExternal, e1rmAccessory, targetLoadFromE1RM,
   computeBaseline, classifyReadinessZ,
   velocityReadiness, hrvReadiness, varaReadiness, upperBodyMpvReadiness, combineReadiness,
@@ -1130,6 +1132,30 @@ function test8cVolumeLandmarks() {
   assert(r2.under.some(u => u.muscle === "hauis" && u.severity === "strong"), "MULL2-D: ylläpito-taso relevantille → strong");
   // ei mesosykliä → found:false, ei kaadu.
   assertEqual(analyzeVolumeLandmarks(null, 1).found, false, "MULL2-E: ei mesoa → found:false");
+}
+
+// MULL-3 (#16): within-session-ennakointi — viimeisen sarjan varanto-ennuste.
+function test8dSustainabilityForecast() {
+  const f = forecastSetSustainability;
+  // A1: K3-1-kalibroitu (plan==actual), targetVx 2, 5 sarjaa, rate 0.5 → sustainable (ei false-fire).
+  const a1 = f({ planLoad: 100, actualLoad: 100, reps: 3, sets: 5, targetVx: 2, ratePerSet: 0.5, isBarbell: true });
+  assert(a1 && a1.unsustainable === false, "MULL3-A1: kalibroitu plan → sustainable (predLast " + a1?.predictedLastVx + ")");
+  // A2: sama mutta actual ylikirjoitettu 110 → unsustainable, predLast < 0.
+  const a2 = f({ planLoad: 100, actualLoad: 110, reps: 3, sets: 5, targetVx: 2, ratePerSet: 0.5, isBarbell: true });
+  assert(a2 && a2.unsustainable === true && a2.predictedLastVx < 0, "MULL3-A2: ylikirjoitus → unsustainable");
+  // A3: aggressiivinen mitoitus (targetVx 0, 5 sarjaa) → unsustainable + sustainableSets < 5.
+  const a3 = f({ planLoad: 100, actualLoad: 100, reps: 3, sets: 5, targetVx: 0, ratePerSet: 0.5, isBarbell: true });
+  assert(a3 && a3.unsustainable === true && a3.sustainableSets < 5, "MULL3-A3: aggressiivinen → sustainableSets<5 (" + a3?.sustainableSets + ")");
+  // A4: loadDelta negatiivinen; kevennetyllä kuormalla predLast ≈ 0.
+  assert(a3.loadDelta < 0, "MULL3-A4a: loadDelta negatiivinen");
+  const a4 = f({ planLoad: 100, actualLoad: 100 + a3.loadDelta, reps: 3, sets: 5, targetVx: 0, ratePerSet: 0.5, isBarbell: true });
+  assert(Math.abs(a4.predictedLastVx) <= 0.6, "MULL3-A4b: korjattu kuorma → predLast ≈ 0 (" + a4.predictedLastVx + ")");
+  // A5: reunatapaukset → null.
+  assertEqual(f({ planLoad: 100, actualLoad: 100, reps: 3, sets: 1, targetVx: 2 }), null, "MULL3-A5a: sets<2 → null");
+  assertEqual(f({ planLoad: 0, actualLoad: 100, reps: 3, sets: 5, targetVx: 2 }), null, "MULL3-A5b: invalid load → null");
+  assertEqual(f(null), null, "MULL3-A5c: null-ctx → null");
+  // BW-ankkuroitu (lisäpainoleuka): ei kaadu, bw mukana laskennassa.
+  assert(f({ planLoad: 10, actualLoad: 15, reps: 3, sets: 5, targetVx: 1, ratePerSet: 0.5, isBarbell: false, bodyweightKg: 90 }) !== null, "MULL3: BW-ankkuroitu ei kaadu");
 }
 
 // H-018 OSA 1 (OBS-040, 2026-06-13): e1RM-kortin kanoninen lähde-lukko.
@@ -4777,6 +4803,8 @@ export async function runTests() {
   test8bProgressionVariety();
   // MULL-2 (#8): volyymimaamerkit (MEV/MRV advisory)
   test8cVolumeLandmarks();
+  // MULL-3 (#16): within-session-ennakointi (viimeisen sarjan varanto)
+  test8dSustainabilityForecast();
   // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
   testE1rmCardCanonicalSource();
   testE1rmCardPlanBasedGate();
