@@ -19,6 +19,11 @@
 // Käyttö:  node tools/browser-test/run-browser-tests.mjs
 // Env:     LEVE_BROWSER=<polku> (ohita selaimen autohaku)
 //          LEVE_BTEST_TIMEOUT_MS (oletus 180000)
+//          LEVE_BROWSER_SANDBOX=1 (Linux: pidä Chromiumin oma hiekkalaatikko;
+//          oletuksena se ohitetaan kontti-/pilviajoa varten, ks. spawn-kohta)
+//
+// Cloud: Ubuntu-sandbox-ajo (claude.ai/code) — ks. docs/CLOUD_SETUP.md +
+// tools/cloud-setup.sh (asentaa Chromiumin ja normalisoi polun).
 
 import http from "node:http";
 import fs from "node:fs";
@@ -72,7 +77,7 @@ function startServer() {
   });
 }
 
-// ── Selaimen haku (Edge ensisijainen Win11:llä, Chrome fallback) ──
+// ── Selaimen haku (Edge ensisijainen Win11:llä, Chrome fallback; Linux: cloud-sandbox) ──
 function findBrowser() {
   const candidates = [
     process.env.LEVE_BROWSER,
@@ -80,11 +85,18 @@ function findBrowser() {
     "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-    "/usr/bin/google-chrome", "/usr/bin/chromium-browser",
+    // Linux (Ubuntu-cloud-sandbox ym.): tools/cloud-setup.sh normalisoi asennuksen
+    // symlinkiksi ~/.cache/leve-browser/chromium → se on ensisijainen Linux-polku,
+    // koska se osoittaa aina --version-verifioituun binääriin (snap-stub-suoja).
+    path.join(os.homedir(), ".cache", "leve-browser", "chromium"),
+    "/usr/local/bin/chromium",
+    "/usr/bin/chromium", "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
+    "/opt/google/chrome/google-chrome", "/snap/bin/chromium",
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   ].filter(Boolean);
   for (const c of candidates) { if (fs.existsSync(c)) return c; }
-  throw new Error("Selainta ei löydy — aseta LEVE_BROWSER=<polku msedge.exe/chrome.exe>");
+  throw new Error("Selainta ei löydy — aseta LEVE_BROWSER=<polku msedge.exe/chrome.exe/chromium>");
 }
 
 // ── DevToolsActivePort-tiedoston pollaus (remote-debugging-port=0) ──
@@ -141,6 +153,17 @@ async function main() {
   const browserExe = findBrowser();
   // TUORE väliaikaisprofiili joka ajolle → ei service worker -cachea, ei tilaa.
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "leve-btest-"));
+  // Linux-lisäliput (kontti/pilvisandbox): Chromiumin setuid/userns-hiekkalaatikko
+  // ei toimi konteissa (Ubuntu 23.10+ rajoittaa unprivileged userns; root-ajo estyy
+  // kokonaan) → ilman --no-sandbox selain kuolee heti eikä DevToolsActivePort
+  // koskaan ilmesty. Ladattava sisältö on 100 % first-party (oma localhost-serveri
+  // repo-juuresta), joten hiekkalaatikon ohitus on tässä kontekstissa hyväksyttävä.
+  // --disable-dev-shm-usage: konttien pieni /dev/shm (64 Mt) kaataa rendererin.
+  // LEVE_BROWSER_SANDBOX=1 säilyttää hiekkalaatikon (esim. Linux-työasema).
+  // Windows/macOS-käytös bitilleen ennallaan (lippulista tyhjä).
+  const linuxArgs = (process.platform === "linux" && process.env.LEVE_BROWSER_SANDBOX !== "1")
+    ? ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+    : [];
   const browser = spawn(browserExe, [
     "--headless=new",
     "--remote-debugging-port=0",
@@ -148,6 +171,7 @@ async function main() {
     "--no-first-run", "--no-default-browser-check",
     "--disable-extensions", "--disable-background-networking",
     "--disable-sync", "--mute-audio",
+    ...linuxArgs,
     testUrl,
   ], { stdio: "ignore" });
 
