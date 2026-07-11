@@ -2851,9 +2851,121 @@ function createDefaultMesocycle(startDateISO) {
 // Vk2: 3×/vk kova intensiteetti, tukiliikkeet -30%
 // Vk3: 2×/vk taper, intensiteetti ylläpidossa, volyymi -50%, minimaaliset tukiliikkeet
 // Vk4: 2 päivää — opener-harjoitus + kilpailu
-function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg) {
+function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg, opts = {}) {
   const e1rm = e1rmExternal || 93;
   const bw = bodyweightKg || 91;
+
+  // ── H-019 OSA B (γ): KISA-PEAKING — 3 lajia, 5 vk, kisapäivä-ankkuri ──
+  // Aktivoituu VAIN opts.competition-objektilla (legacy 4 vk yhden liikkeen polku
+  // alla säilyy byte-identtisenä → vanhat kutsujat + pilotti eivät muutu, B9).
+  // Rakenne (B1): 4 vk kisatyötä + 1 vk taper; kisapäivä = taper-viikon lauantai.
+  // B2: vk 1–2 phase "intensity" (VL ≤ 15 %) · vk 3–5 phase "peaking" (VL ≤ 10 %) —
+  //     invariantti (taso 2) voittaa ROADMAP:in portaistuksen nimellisarvot.
+  // B3: taper = volyymi pois SARJOISTA (deltaPctBase 0 → kuormat säilyvät), frekvenssi
+  //     säilyy (4 treenipäivää); EI deload-semantiikkaa (label "Taper", delta > −10 %).
+  // B4: viimeinen raskas kisaliikkeille TI (4 vrk ennen la-kisaa). B5: kyykky alas
+  //     tukiliikkeenä — viimeinen raskas kyykky vk 4, taperissa ei kyykkyä.
+  // B6: MU = taitoliike — matalat toistot, targetVx ≥ 2 (ei failure-grindiä).
+  if (opts.competition) {
+    const comp = opts.competition;
+    const meetDateISO = comp.meetDateISO;
+    // lifts: [{ name, e1rmExternal }] kisajärjestyksessä (B8-UI esitäyttää kanonisesta
+    // Bestistä, atleetti muokkaa — ratifioitu hybridi). Fallback: streetlifting-kolmikko.
+    const lifts = (comp.lifts && comp.lifts.length ? comp.lifts : [
+      { name: "Muscle-up", e1rmExternal: null },
+      { name: "Lisäpainodippi", e1rmExternal: null },
+      { name: "Lisäpainoleuanveto", e1rmExternal: e1rm },
+    ]).map(l => ({ name: l.name, e1rmExternal: l.e1rmExternal ?? null, category: l.name === "Lisäpainodippi" ? "horisontaalityöntö" : "vertikaaliveto" }));
+    const strategy = comp.meetStrategy || "normaali";
+    // Yritysprosentit strategian mukaan (K7-6-semantiikan kanssa yhteensopivat).
+    const pcts = strategy === "varma" ? { opener: 0.90, second: 0.955, third: 1.0 }
+      : strategy === "aggressiivinen" ? { opener: 0.93, second: 0.99, third: 1.04 }
+      : { opener: 0.92, second: 0.97, third: 1.02 };
+    const peakingConfig = {
+      e1rmExternal: e1rm, bodyweightKg: bw,
+      openerPct: pcts.opener, secondPct: pcts.second, thirdPct: pcts.third,
+      warmupPcts: [0.40, 0.60, 0.75, 0.85, 0.90],
+      meetDateISO, meetStrategy: strategy, lifts,
+    };
+    // Kisaliikepäivien slot-rakentajat (työviikot; wk = 1..4).
+    const heavyPrimary = (lift, wk) => wk <= 2
+      ? [{ role: "primary", category: lift.category, defaultMovementName: lift.name, sets: 4, reps: 2, targetVx: 1 },
+         { role: "backoff", category: lift.category, defaultMovementName: lift.name, sets: 2, reps: 3, targetVx: 2 }]
+      : [{ role: "primary", category: lift.category, defaultMovementName: lift.name, sets: 3, reps: 1, targetVx: 1 },
+         { role: "backoff", category: lift.category, defaultMovementName: lift.name, sets: 2, reps: 2, targetVx: 2 }];
+    const [muLift, dipLift, pullLift] = [
+      lifts.find(l => /muscle/i.test(l.name)) || lifts[0],
+      lifts.find(l => /dippi|dip/i.test(l.name)) || lifts[1] || lifts[0],
+      lifts.find(l => /leuanveto|pull/i.test(l.name)) || lifts[lifts.length - 1],
+    ];
+    const workWeek = (wk) => ({
+      week: wk,
+      days: [
+        { dayOfWeek: 1, dayType: "heavy", label: `Kisaveto — raskas (vk ${wk})`, slots: [
+          ...heavyPrimary(pullLift, wk),
+          { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 6, targetVx: 3 },
+        ]},
+        { dayOfWeek: 2, dayType: "volume", label: wk === 4 ? "Kyykky — viimeinen raskas (B5)" : "Kyykky (tukiliike)", slots: [
+          { role: "primary", category: "alaraaja", defaultMovementName: "Takakyykky", sets: wk === 4 ? 3 : 4, reps: wk <= 2 ? 4 : 3, targetVx: 2 },
+          { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise", sets: 3, reps: 10, targetVx: null },
+        ]},
+        { dayOfWeek: 4, dayType: "heavy", label: `Kisadippi — raskas (vk ${wk})`, slots: [
+          ...heavyPrimary(dipLift, wk),
+          { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 6, targetVx: 3 },
+        ]},
+        { dayOfWeek: 6, dayType: "heavy", label: `Kisa-MU — tekninen terävyys (vk ${wk})`, slots: [
+          // B6: MU taitoliikkeenä — räjähtävät singlet/tuplat, EI grindiä (targetVx ≥ 2).
+          { role: "primary", category: "vertikaaliveto", defaultMovementName: muLift.name, sets: wk <= 2 ? 5 : 4, reps: wk <= 2 ? 2 : 1, targetVx: 2 },
+          { role: "accessory", category: "vertikaaliveto", defaultMovementName: "False grip pull-up", sets: 3, reps: 3, targetVx: 3 },
+        ]},
+      ],
+    });
+    // Taper-viikko (vk 5, B3/B4/B6): frekvenssi 4 pv säilyy, kisaliikesarjat ~−50 %
+    // työviikoista, kuormat säilyvät (deltaPctBase 0). TI = viimeinen raskas (B4).
+    const taperWeek = {
+      week: 5,
+      days: [
+        { dayOfWeek: 1, dayType: "volume", label: "Taper — kevyt kisaliiketuntuma", slots: [
+          { role: "primary", category: pullLift.category, defaultMovementName: pullLift.name, sets: 2, reps: 1, targetVx: 3 },
+          { role: "secondary", category: dipLift.category, defaultMovementName: dipLift.name, sets: 2, reps: 1, targetVx: 3 },
+        ]},
+        { dayOfWeek: 2, dayType: "heavy", label: "Taper — VIIMEINEN RASKAS (kisaliikkeet, B4)", slots: [
+          { role: "primary", category: pullLift.category, defaultMovementName: pullLift.name, sets: 2, reps: 1, targetVx: 1 },
+          { role: "secondary", category: dipLift.category, defaultMovementName: dipLift.name, sets: 2, reps: 1, targetVx: 1 },
+          { role: "secondary", category: muLift.category, defaultMovementName: muLift.name, sets: 2, reps: 1, targetVx: 2 },
+        ]},
+        { dayOfWeek: 4, dayType: "speed", label: "Taper — kevyt aktivointi", slots: [
+          { role: "primary", category: pullLift.category, defaultMovementName: pullLift.name, sets: 1, reps: 1, targetVx: 4 },
+          { role: "secondary", category: muLift.category, defaultMovementName: muLift.name, sets: 2, reps: 1, targetVx: 3 },
+        ]},
+        { dayOfWeek: 6, dayType: "competition", label: "KISAPÄIVÄ", slots: lifts.flatMap(l => ([
+          { role: "warmup", category: l.category, defaultMovementName: l.name, sets: 4, reps: 1, targetVx: null, loadPctE1RM: [0.40, 0.60, 0.75, 0.88] },
+          { role: "opener", category: l.category, defaultMovementName: l.name, sets: 1, reps: 1, targetVx: 0, loadPctE1RM: pcts.opener },
+          { role: "attempt2", category: l.category, defaultMovementName: l.name, sets: 1, reps: 1, targetVx: 0, loadPctE1RM: pcts.second },
+          { role: "attempt3", category: l.category, defaultMovementName: l.name, sets: 1, reps: 1, targetVx: 0, loadPctE1RM: pcts.third },
+        ]))},
+      ],
+    };
+    return {
+      mesocycleId: uid(),
+      type: "peaking",
+      startDateISO: startDateISO || todayISO(),
+      weekCount: 5,
+      peakingConfig,
+      // B2-viikkoleimat: phase ohjaa VL-cappia (intensity ≤ 15 % · peaking ≤ 10 %).
+      // Taper: deltaPctBase 0 (kuormat säilyvät, volyymi leikattu sarjoista) — EI
+      // deload-luokitusta (label ilman deload/kevennys-sanaa, delta > −10 %).
+      weekDefs: [
+        { week: 1, deltaPctBase: 0,    label: "Intensiteetti 1", phase: "intensity", heavyReps: 2, heavyTargetVx: 1 },
+        { week: 2, deltaPctBase: 0.02, label: "Intensiteetti 2", phase: "intensity", heavyReps: 2, heavyTargetVx: 1 },
+        { week: 3, deltaPctBase: 0.03, label: "Peaking 1",       phase: "peaking",   heavyReps: 1, heavyTargetVx: 1 },
+        { week: 4, deltaPctBase: 0.04, label: "Peaking 2",       phase: "peaking",   heavyReps: 1, heavyTargetVx: 1 },
+        { week: 5, deltaPctBase: 0,    label: "Taper",           phase: "peaking",   heavyReps: 1, heavyTargetVx: 1 },
+      ],
+      weekPlans: [workWeek(1), workWeek(2), workWeek(3), workWeek(4), taperWeek],
+      postCycleAnalysis: null,
+    };
+  }
 
   // Peaking config for attempt calculation
   const peakingConfig = {

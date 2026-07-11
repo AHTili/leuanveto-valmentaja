@@ -101,6 +101,8 @@ import {
   validateVelocity, validateMvReps, validateLoad, validateReps, validateHRV, validateBodyweight,
   isVelocityTypo, parseNumericInput,
   uid, createDefaultMesocycle,
+  // H-019 OSA B (γ): kisa-peaking-tehdas
+  createPeakingMesocycle,
   exportFullBackup, importFullBackup,
   initDB,
   shouldShowBackupReminder,
@@ -1127,6 +1129,69 @@ function test8bProgressionVariety() {
   assert(a1.label && a2.label && a4.label, "K8: jokaisella työkalulla label");
   assertEqual(suggestProgressionTool(null), null, "K8: null-ctx → null");
   assertEqual(suggestProgressionTool({ targetReps: 0 }), null, "K8: invalid reps → null");
+}
+
+// H-019 OSA B / B-C1 (γ-kisatehdas): rakenne-lukot B1–B6 + legacy-regressio.
+function test8eGammaPeakingFactory() {
+  const LIFTS = [
+    { name: "Muscle-up", e1rmExternal: 13 },
+    { name: "Lisäpainodippi", e1rmExternal: 95 },
+    { name: "Lisäpainoleuanveto", e1rmExternal: 94 },
+  ];
+  const g = createPeakingMesocycle("2026-07-20", 94, 91, {
+    competition: { meetDateISO: "2026-08-22", lifts: LIFTS, meetStrategy: "normaali" },
+  });
+  // B1: rakenne — 5 vk, alku 20.7., kisapäivä taper-viikon lauantaina.
+  assertEqual(g.weekCount, 5, "γ-B1: weekCount 5 (4 työtä + taper)");
+  assertEqual(g.startDateISO, "2026-07-20", "γ-B1: alku ma 20.7.");
+  assertEqual(g.peakingConfig.meetDateISO, "2026-08-22", "γ-B1: kisapäivä-ankkuri configissa");
+  const taper = g.weekPlans[4];
+  const meetDay = taper.days.find(d => d.dayType === "competition");
+  assert(meetDay && meetDay.dayOfWeek === 6, "γ-B1: kisapäivä = vk 5 lauantai (dayOfWeek 6)");
+  // B2: viikkoleimat — vk1–2 intensity, vk3–5 peaking (VL-cap-semantiikan ajuri).
+  assertEqual(g.weekDefs.map(w => w.phase).join(","), "intensity,intensity,peaking,peaking,peaking",
+    "γ-B2: phase-leimat [int,int,peak,peak,peak]");
+  // B3: taper — kisaliikkeiden toistovolyymi −40…−60 % työviikkojen keskiarvosta,
+  // kuormat säilyvät (deltaPctBase 0), frekvenssi säilyy (4 pv).
+  const liftNames = new Set(LIFTS.map(l => l.name));
+  const compReps = (wk) => wk.days.filter(d => d.dayType !== "competition")
+    .flatMap(d => d.slots).filter(s => liftNames.has(s.defaultMovementName) && ["primary", "secondary", "backoff"].includes(s.role))
+    .reduce((a, s) => a + s.sets * s.reps, 0);
+  const workAvg = (compReps(g.weekPlans[0]) + compReps(g.weekPlans[1]) + compReps(g.weekPlans[2]) + compReps(g.weekPlans[3])) / 4;
+  const taperReps = compReps(taper);
+  const cut = 1 - taperReps / workAvg;
+  assert(cut >= 0.40 && cut <= 0.60, `γ-B3: taper-leikkaus −40…−60 % (mitattu −${(cut * 100).toFixed(0)} %: ${taperReps}/${workAvg})`);
+  assertEqual(g.weekDefs[4].deltaPctBase, 0, "γ-B3: taper deltaPctBase 0 (kuormat säilyvät — volyymi sarjoista)");
+  assertEqual(taper.days.length, 4, "γ-B3: frekvenssi säilyy (4 päivää taperissa)");
+  assert(!/deload|kevennys|recovery/i.test(g.weekDefs[4].label), "γ-B3: taper EI deload-leimainen (oma tila)");
+  // B4: viimeinen raskas TI (4 vrk ennen la-kisaa); sen jälkeen kevyttä (targetVx ≥ 3).
+  const ti = taper.days.find(d => d.dayOfWeek === 2);
+  assert(ti && /VIIMEINEN RASKAS/i.test(ti.label) && ti.slots.every(s => s.targetVx <= 2),
+    "γ-B4: TI = viimeinen raskas (singlet V1–V2)");
+  const to = taper.days.find(d => d.dayOfWeek === 4);
+  assert(to && to.slots.every(s => s.targetVx >= 3), "γ-B4: TI:n jälkeen vain kevyt aktivointi (V3+)");
+  // B5: kyykky ei taperissa; vk 4 = viimeinen raskas kyykky (sets < vk 1).
+  assert(!taper.days.flatMap(d => d.slots).some(s => /kyykky/i.test(s.defaultMovementName || "")),
+    "γ-B5: taperissa EI kyykkyä");
+  const squatSets = (wk) => wk.days.flatMap(d => d.slots).filter(s => /takakyykky/i.test(s.defaultMovementName || "")).reduce((a, s) => a + s.sets, 0);
+  assert(squatSets(g.weekPlans[3]) < squatSets(g.weekPlans[0]), "γ-B5: vk 4 kyykky kevyempi kuin vk 1 (alasajo)");
+  // B6: MU-slotit (ei-kisapäivä) targetVx ≥ 2 — ei failure-grindiä taitoliikkeellä.
+  const muSlots = g.weekPlans.flatMap(w => w.days.filter(d => d.dayType !== "competition").flatMap(d => d.slots))
+    .filter(s => /muscle-up/i.test(s.defaultMovementName || "") && s.targetVx !== null);
+  assert(muSlots.length > 0 && muSlots.every(s => s.targetVx >= 2), "γ-B6: MU-työ V2+ (taitoliike, ei grindiä)");
+  // Kisapäivä: 3 lajia × (warmup + opener + attempt2 + attempt3) kisajärjestyksessä.
+  assertEqual(meetDay.slots.length, 12, "γ-kisa: 12 slottia (3 lajia × 4 roolia)");
+  assertEqual(meetDay.slots.filter(s => s.role === "opener").map(s => s.defaultMovementName).join(","),
+    "Muscle-up,Lisäpainodippi,Lisäpainoleuanveto", "γ-kisa: openerit kisajärjestyksessä");
+  assertClose(meetDay.slots.find(s => s.role === "opener").loadPctE1RM, 0.92, 1e-9, "γ-kisa: opener 92 % (normaali)");
+  // Strategia-variantti: varma → opener 90 %.
+  const gv = createPeakingMesocycle("2026-07-20", 94, 91, { competition: { meetDateISO: "2026-08-22", lifts: LIFTS, meetStrategy: "varma" } });
+  assertClose(gv.weekPlans[4].days.find(d => d.dayType === "competition").slots.find(s => s.role === "opener").loadPctE1RM, 0.90, 1e-9, "γ-kisa: varma-strategia opener 90 %");
+  // Legacy-regressio (B9/B11): ilman opts:ia vanha 4 vk yhden liikkeen rakenne ennallaan.
+  const legacy = createPeakingMesocycle("2026-01-05", 93, 91);
+  assertEqual(legacy.weekCount, 4, "γ-legacy: ilman optseja 4 vk (byte-compat)");
+  assertEqual(legacy.weekDefs[3].label, "Kilpailu", "γ-legacy: vk 4 = Kilpailu");
+  assert(legacy.peakingConfig.lifts === undefined, "γ-legacy: ei lifts-kenttää (vanha config-muoto)");
 }
 
 // MULL-2 (#8): volyymimaamerkit — ali-annostus (synergisti) + yli-annostus (MRV).
@@ -4864,6 +4929,8 @@ export async function runTests() {
   test8cVolumeLandmarks();
   // MULL-3 (#16): within-session-ennakointi (viimeisen sarjan varanto)
   test8dSustainabilityForecast();
+  // H-019 OSA B (γ): kisa-peaking-tehtaan rakenne-lukot B1–B6 + legacy
+  test8eGammaPeakingFactory();
   // H-018 OSA 1: e1RM-kortin kanoninen lähde (insertion-order-robusti, ei last-set)
   testE1rmCardCanonicalSource();
   testE1rmCardPlanBasedGate();
