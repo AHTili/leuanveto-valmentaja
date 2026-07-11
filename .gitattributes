@@ -1,0 +1,2 @@
+# LF-takuu: bash-skriptit ajetaan Ubuntu-pilvisandboxissa — CRLF-rivinvaihdot rikkoisivat ne.
+*.sh text eol=lf
