@@ -15,7 +15,7 @@ import {
   e1rmSystem, e1rmExternal, e1rmAccessory, targetLoadFromE1RM,
   computeBaseline, classifyReadinessZ,
   velocityReadiness, hrvReadiness, varaReadiness, upperBodyMpvReadiness, combineReadiness,
-  getMesocycleWeek, getWeekDef, deltaPctRaw,
+  getMesocycleWeek, getWeekDef, deltaPctRaw, phaseForWeek,
   // H-008 A2 (2026-05-29): getTodayPlan forward-first -resoluutio (eriparisuus-suoja)
   getTodayPlan,
   // H-009 P1a (2026-05-29): identity-coherence-detektori
@@ -1187,6 +1187,12 @@ function test8eGammaPeakingFactory() {
   // Strategia-variantti: varma → opener 90 %.
   const gv = createPeakingMesocycle("2026-07-20", 94, 91, { competition: { meetDateISO: "2026-08-22", lifts: LIFTS, meetStrategy: "varma" } });
   assertClose(gv.weekPlans[4].days.find(d => d.dayType === "competition").slots.find(s => s.role === "opener").loadPctE1RM, 0.90, 1e-9, "γ-kisa: varma-strategia opener 90 %");
+  // B-C2b: phaseForWeek — γ-weekDef.phase voittaa viikkonumero-heuristiikan;
+  // ilman phase-kenttää legacy-kartta ennallaan (bittitarkka).
+  assertEqual(phaseForWeek(1, g), "intensity", "γ-C2b: phaseForWeek(1, γ) = intensity (EI foundation)");
+  assertEqual(phaseForWeek(5, g), "peaking", "γ-C2b: phaseForWeek(5, γ) = peaking (Taper-label ei sokaise)");
+  assertEqual(phaseForWeek(1), "foundation", "γ-C2b: phaseForWeek(1) ilman mesoa = foundation (legacy)");
+  assertEqual(phaseForWeek(13, createDefaultMesocycle("2026-01-05")), "peaking", "γ-C2b: vanha meso ilman phase-kenttää → legacy-kartta");
   // Legacy-regressio (B9/B11): ilman opts:ia vanha 4 vk yhden liikkeen rakenne ennallaan.
   const legacy = createPeakingMesocycle("2026-01-05", 93, 91);
   assertEqual(legacy.weekCount, 4, "γ-legacy: ilman optseja 4 vk (byte-compat)");
@@ -1677,6 +1683,22 @@ async function testRecommendScenarios() {
     assert(!hasTrace(rec, "CAP_RED"), "γ-C2e: EI CAP_REDiä kisapäivänä");
     assertEqual(rec.deltaPct, 0, "γ-C2e: delta koskematon kisapäivänä");
     assert(rec.attemptLoads && rec.attemptLoads.opener > 0, "γ-C2e: yrityskuormat laskettu (K7-6-pohja)");
+  });
+  // B-C2b (B2): VL-cap viikkoleimoista peaking-polulla + invariantti-katto.
+  await scenario("γ-C2f: VL-cap viikkoleimoista (B2)", async () => {
+    const _vl = (r) => (r.traces || []).find(t => t.ruleId === "VL_CAP_RESOLVED")?.after;
+    const wk1 = _vl(await recommend(makeRecommendCtx({ dateISO: "2026-07-20", mesocycle: _gMeso() })));
+    assert(wk1 && wk1.cap <= 15 && wk1.cap > 10, "γ-C2f: vk1 intensity-cap 12.5 (≤15, >10 — EI flat-peaking)");
+    const wk3 = _vl(await recommend(makeRecommendCtx({ dateISO: "2026-08-03", mesocycle: _gMeso() })));
+    assert(wk3 && wk3.cap <= 10, "γ-C2f: vk3 peaking-cap ≤10 (mitattu " + wk3?.cap + ")");
+    const tap = _vl(await recommend(makeRecommendCtx({ dateISO: "2026-08-17", mesocycle: _gMeso() })));
+    assert(tap && tap.cap <= 10, "γ-C2f: taper phase=peaking ≤10 (weekDef.phase voittaa null-labelin)");
+  });
+  await scenario("γ-C2g: invariantti-katto clampaa yli-overriden (B2 known-neg)", async () => {
+    const rec = await recommend(makeRecommendCtx({ dateISO: "2026-08-03", mesocycle: _gMeso(),
+      settings: { bodyweightKg: 91, vlCapPeaking: 12 } }));
+    const vl = (rec.traces || []).find(t => t.ruleId === "VL_CAP_RESOLVED")?.after;
+    assertEqual(vl?.cap, 10, "γ-C2g: settings-override 12 % → clamp tutkimuskattoon 10 %");
   });
 
   // S2: Vk 2 MA, RED+RED → CAP_RED tracessa, deltaPct ≤ 0
@@ -2733,7 +2755,12 @@ function testVlCapWithRtfModel() {
     settings: {},
   });
   assertEqual(capPeakIndividual.source, "rtf-individual", "Peaking + reliable RTF → source rtf-individual");
-  assert(capPeakIndividual.cap > capStrIndividual.cap, "Peaking yksilöllinen cap > Strength (RIR 1 < RIR 2.5 → enemmän VL)");
+  // H-019 B-C2b (B2-invariantti): yksilöllinen peaking-cap elää tutkimuskaton ALLA —
+  // RTF laski ~62 %, katto 10 % voittaa (invariantti taso 2 > yksilöllistys). Alkuperäinen
+  // relaatio (RIR 1 → enemmän VL-tilaa kuin RIR 2.5) säilyy capUnclamped-kentässä.
+  assertEqual(capPeakIndividual.cap, 10, "Peaking yksilöllinen cap clampattu tutkimuskattoon 10 % (B2)");
+  assert(capPeakIndividual.invariantClamped === true, "Peaking-clamp merkitty (invariantClamped)");
+  assert(capPeakIndividual.capUnclamped > capStrIndividual.cap, "Clampaamaton peaking > strength (RIR-matematiikka säilyy capUnclamped:issa)");
 
   // Foundation-blokki: targetRir 4 → V_target ≈ 0.448 → cap ≈ (0.65-0.448)/0.65 = 31 %
   const capFoundIndividual = vlCapForContext({

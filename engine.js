@@ -4324,6 +4324,17 @@ function vlCapForContext(ctx = {}) {
   }
 
   const result = resolve();
+  // H-019 B-C2b (B2-invariantti): tutkimuskaton yläraja phase-kohtaisesti — intensity
+  // ≤ 15 %, peaking ≤ 10 % (CLAUDE.md §2). Invariantti (taso 2) voittaa sekä settings-
+  // overriden että RTF-yksilöllisen capin — yksilöllistys elää katon ALLA (Jukic 2023:
+  // yksi kynnys ei sovi kaikille, mutta peaking-vaiheen tutkimusband on silti katto).
+  const _phaseCeil = { intensity: 15, peaking: 10 };
+  const _invCeil = _phaseCeil[result.phase];
+  if (typeof _invCeil === "number" && typeof result.cap === "number" && result.cap > _invCeil) {
+    result.capUnclamped = result.cap;
+    result.cap = _invCeil;
+    result.invariantClamped = true;
+  }
   // v4.49.2 QF-5: emit VL_CAP_RESOLVED-trace jos kutsuja antoi emitTrace-callbackin.
   // Mahdollistaa audit-enginen verifioida VL-cap-arvoja (cap%, source, targetRir)
   // ilman että cap pitää inferoida slot.velocityStop:ista tai testata erikseen.
@@ -7168,7 +7179,15 @@ function suggestProgressionTool(ctx) {
 // 3) stagnation-advanced variant, 4) phase default (variant index 0).
 // ═══════════════════════════════════════════════════════════════
 
-function phaseForWeek(weekNum) {
+// H-019 B-C2b (γ/B2): eksplisiittinen weekDef.phase voittaa viikkonumero-heuristiikan.
+// γ-kisamesossa vk 1–2 = "intensity", vk 3–5 = "peaking" (myös "Taper"-labelinen vk 5,
+// jonka label-johto ei tunnista). Ilman phase-kenttää (kaikki vanhat mesot) → legacy-
+// kartta ennallaan → bittitarkka.
+function phaseForWeek(weekNum, mesocycle = null) {
+  const explicit = mesocycle?.weekDefs?.[weekNum - 1]?.phase;
+  if (["foundation", "hypertrophy", "strength", "intensity", "peaking"].includes(explicit)) {
+    return explicit;
+  }
   if (weekNum <= 4)  return "foundation";
   if (weekNum <= 8)  return "strength";
   if (weekNum <= 12) return "intensity";
@@ -8465,6 +8484,23 @@ async function recommendPeaking(options = {}) {
   // riskiä väsyneenä) — sama semantiikka kuin pääpolun readinessVxBump. Cap V4.
   if (peakVxBump > 0 && typeof targetVx === "number") {
     targetVx = Math.min(4, targetVx + peakVxBump);
+  }
+
+  // H-019 B-C2b (B2): VL-cap resolvoituu myös peaking-polulla — viikkoleiman phase
+  // ohjaa (intensity ≤ 15 % / peaking ≤ 10 %; "Taper"-viikko kantaa phase="peaking"
+  // jota label-johto ei tunnistaisi). VL_CAP_RESOLVED-emissio antaa audit-katteen
+  // (invariantti A) + pariteetin pääpolun kanssa; UI:n live-cap tulee samasta
+  // resolverista samalla phase-lähteellä (phaseForWeek + weekDef.phase).
+  if (dayType !== "competition") {
+    const _gammaPhase = weekDef?.phase
+      || deriveBlockPhaseFromMesocycle(mesocycle.type, weekNum, weekDef?.label)
+      || "peaking";
+    vlCapForContext({
+      blockPhase: _gammaPhase,
+      exerciseName: primarySlot?.defaultMovementName || null,
+      dayType, targetVx, settings,
+      emitTrace: (t) => trace(t.ruleId, t.before, t.after, t.why || `VL-cap resolvoitu (peaking-polku, phase ${_gammaPhase})`),
+    });
   }
 
   let targetExternalLoad;

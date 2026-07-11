@@ -2888,10 +2888,12 @@ function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg, opts =
       meetDateISO, meetStrategy: strategy, lifts,
     };
     // Kisaliikepäivien slot-rakentajat (työviikot; wk = 1..4).
+    // allowVelocityInput: VBT elää peakingissa (B2) — kisaliikkeiden raskaat sarjat
+    // mittauskelpoisia; live-cap resolvoituu weekDef.phase-leimasta (intensity/peaking).
     const heavyPrimary = (lift, wk) => wk <= 2
-      ? [{ role: "primary", category: lift.category, defaultMovementName: lift.name, sets: 4, reps: 2, targetVx: 1 },
+      ? [{ role: "primary", category: lift.category, defaultMovementName: lift.name, sets: 4, reps: 2, targetVx: 1, allowVelocityInput: true },
          { role: "backoff", category: lift.category, defaultMovementName: lift.name, sets: 2, reps: 3, targetVx: 2 }]
-      : [{ role: "primary", category: lift.category, defaultMovementName: lift.name, sets: 3, reps: 1, targetVx: 1 },
+      : [{ role: "primary", category: lift.category, defaultMovementName: lift.name, sets: 3, reps: 1, targetVx: 1, allowVelocityInput: true },
          { role: "backoff", category: lift.category, defaultMovementName: lift.name, sets: 2, reps: 2, targetVx: 2 }];
     const [muLift, dipLift, pullLift] = [
       lifts.find(l => /muscle/i.test(l.name)) || lifts[0],
@@ -2930,9 +2932,10 @@ function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg, opts =
           { role: "secondary", category: dipLift.category, defaultMovementName: dipLift.name, sets: 2, reps: 1, targetVx: 3 },
         ]},
         { dayOfWeek: 2, dayType: "heavy", label: "Taper — VIIMEINEN RASKAS (kisaliikkeet, B4)", slots: [
-          { role: "primary", category: pullLift.category, defaultMovementName: pullLift.name, sets: 2, reps: 1, targetVx: 1 },
-          { role: "secondary", category: dipLift.category, defaultMovementName: dipLift.name, sets: 2, reps: 1, targetVx: 1 },
-          { role: "secondary", category: muLift.category, defaultMovementName: muLift.name, sets: 2, reps: 1, targetVx: 2 },
+          // Viimeinen raskas = tärkein mittauspäivä (velocity-trendi kertoo terävyyden).
+          { role: "primary", category: pullLift.category, defaultMovementName: pullLift.name, sets: 2, reps: 1, targetVx: 1, allowVelocityInput: true },
+          { role: "secondary", category: dipLift.category, defaultMovementName: dipLift.name, sets: 2, reps: 1, targetVx: 1, allowVelocityInput: true },
+          { role: "secondary", category: muLift.category, defaultMovementName: muLift.name, sets: 2, reps: 1, targetVx: 2, allowVelocityInput: true },
         ]},
         { dayOfWeek: 4, dayType: "speed", label: "Taper — kevyt aktivointi", slots: [
           { role: "primary", category: pullLift.category, defaultMovementName: pullLift.name, sets: 1, reps: 1, targetVx: 4 },
