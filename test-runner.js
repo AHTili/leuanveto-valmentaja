@@ -1085,6 +1085,26 @@ function test8aLearnedParamMath() {
   assertEqual(computeAcrossSetDecay(mixed), 1.0, "8a: sekakuorma → dominoiva 100kg-ryhmä");
   const withWarmup = [mkSet({ actualVx: 5, isWarmup: true, timestamp: "2026-01-05T09:59:00Z" }), ...neu];
   assertEqual(computeAcrossSetDecay(withWarmup), V, "8a: warmup/ei-top ei kelpaa havaintoon");
+
+  // H-019 A4 (tuotantoschema-lukko): persistoidut setit EIVÄT kanna completed-kenttää
+  // (kenttädata 0/424) — fixture ILMAN kenttää on vastattava tuotantoa. Known-pos:
+  // kentättömät kelpaavat (8a oppii tuotannossa). Known-neg: eksplisiittinen false ei.
+  const mkProd = (o) => { const s = mkSet(o); delete s.completed; return s; };
+  const prodFast = [
+    mkProd({ actualVx: 3, timestamp: "2026-01-05T10:01:00Z" }),
+    mkProd({ actualVx: 2, timestamp: "2026-01-05T10:02:00Z" }),
+    mkProd({ actualVx: 1, timestamp: "2026-01-05T10:03:00Z" }),
+  ];
+  assertEqual(computeAcrossSetDecay(prodFast), 1.0, "H019-A4a: tuotantoschema (ei completed-kenttää) → havainto lasketaan");
+  const prodOrch = computeLearnedAcrossSetFatigue({
+    sessions: [{ sessionId: "p1", dateISO: "2026-01-05" }],
+    allSets: prodFast.map(s => ({ ...s, sessionId: "p1" })),
+    mesocycle: { startDateISO: "2026-01-05", weekDefs: [{ deltaPctBase: 0 }] },
+  });
+  assertEqual(prodOrch.n, 1, "H019-A4b: orkestrointi tuotantoschemalla → 1 kelpaava sessio (8a oppii)");
+  const explicitFalse = [mkSet({ actualVx: 3, completed: false, timestamp: "2026-01-05T10:01:00Z" }),
+    ...prodFast.slice(1)];
+  assertEqual(computeAcrossSetDecay(explicitFalse), null, "H019-A4c: eksplisiittinen completed:false ei kelpaa (<3 jää)");
 }
 
 // KORI 8: progressio-monipuolisuus-ladder (suggestProgressionTool). Advisory — ei

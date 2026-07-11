@@ -340,8 +340,13 @@ const ACROSS_SET_FATIGUE_SPEC = {
 // Palauttaa raten (eff-toistoa/sarja) tai null jos ryhmä ei kelpaa (<3 samakuormaista
 // sarjaa). Mediaani = robusti n=3:lla + immuuni yhdelle saturoivalle V0-sarjalle.
 function computeAcrossSetDecay(sets) {
+  // H-019 A2 (completed-fantomikenttä, 3. esiintymä — v4.34.36 + H-006a-fix8 poistivat
+  // saman muualta): persistoidut setit EIVÄT kanna completed-kenttää (0/424 kenttädatassa)
+  // → ehto teki 8a-oppimisesta tuotannossa inertin. Tuotantoscheman laatuportti on jo
+  // reps>0 + actualVx!=null + setRole==="top" (skipped-setit: reps null → suodattuvat).
+  // completed !== false sallii kentättömät persistoidut JA hylkää eksplisiittisen falsen.
   const qual = (sets || []).filter(s =>
-    s && s.setRole === "top" && s.completed && !s.isWarmup
+    s && s.setRole === "top" && s.completed !== false && !s.isWarmup
     && s.actualVx != null && Number.isFinite(s.externalLoadKg) && s.externalLoadKg > 0
     && Number.isFinite(s.reps) && s.reps > 0);
   if (qual.length < ACROSS_SET_LEARN_MIN_SETS) return null;
