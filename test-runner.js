@@ -1366,17 +1366,14 @@ function testCatalogKasipainopenkki() {
     "H018-OSA2-T2 (known-neg): vino (Incline dumbbell press) yhä katalogissa, ei duplikoitu");
   assertEqual(PRESET_MOVEMENTS.filter(m => m.name === "Incline dumbbell press").length, 1,
     "H018-OSA2-T2: vino täsmälleen kerran");
-  // T3: oma lisäys ei tuonut UUTTA duplikaattinimeä. HUOM: katalogissa on 2
-  // pre-existing eksaktia duplikaattia (Hollow body hold, L-sit hold) → globaalia
-  // uniikkius-invarianttia EI voi vielä asserttaa (OBS-044, eri handoff). Lukitaan
-  // sen sijaan että Käsipainopenkki ei lisää dup-määrää baselinen yli.
+  // T3 (H-019 A2 / OBS-044 SULJETTU): 2 pre-existing duplikaattia (Hollow body hold,
+  // L-sit hold) poistettu katalogista → globaali uniikkius-invariantti voimassa.
+  // Normalisoitu nimi (trim+lower) nappaa myös välilyönti/case-variantit.
   const dupNames = Object.entries(
-    PRESET_MOVEMENTS.reduce((acc, m) => { acc[m.name] = (acc[m.name] || 0) + 1; return acc; }, {})
+    PRESET_MOVEMENTS.reduce((acc, m) => { const k = m.name.trim().toLowerCase(); acc[k] = (acc[k] || 0) + 1; return acc; }, {})
   ).filter(([, c]) => c > 1).map(([n]) => n);
-  assert(!dupNames.includes("Käsipainopenkki"),
-    "H018-OSA2-T3: Käsipainopenkki ei ole duplikoitu (oma lisäys integriteetti-puhdas)");
-  assertEqual(dupNames.length, 2,
-    "H018-OSA2-T3 (pre-existing-lukko): tasan 2 pre-existing dup-nimeä (Hollow body hold, L-sit hold → OBS-044); regressio-vartija ettei uusia synny");
+  assertEqual(dupNames.length, 0,
+    "H018-OSA2-T3 (globaali uniikkius, H-019): 0 duplikaattinimeä PRESET_MOVEMENTS:issa — got " + dupNames.join(", "));
 }
 
 // OBS-048 + OBS-049 (2026-06-17): kuorman-johdon VALMENNUKSELLINEN oikeellisuus.

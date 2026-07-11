@@ -302,8 +302,9 @@ const PRESET_MOVEMENTS = [
   { name: "Straight bar dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   { name: "Russian dip", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 3 },
   { name: "Close-grip bench", category: "horisontaalityöntö", isPrimary: false, isPreset: true, tier: 2 },
-  { name: "L-sit hold", category: "core", isPrimary: false, isPreset: true, tier: 3 },
-  { name: "Hollow body hold", category: "core", isPrimary: false, isPreset: true, tier: 3 },
+  // H-019 A2 (OBS-044): "L-sit hold" + "Hollow body hold" -duplikaattirivit poistettu
+  // tästä (alkuperäiset ovat core-lohkossa ylempänä). Jo-seedattuihin asennuksiin nimi-
+  // dedup estää re-additionin; T3-lukko on nyt globaali uniikkius (dupNames.length === 0).
   { name: "Front-foot elevated split squat", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
   { name: "Paused squat", category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
   // v4.27.20: Etukyykky (suomenkielinen) — laDay fsWeek default foundation/strength vaiheissa.
@@ -1508,8 +1509,11 @@ async function ensureNewPresetMovements() {
   if (existingMovements.length === 0) return { added: 0, migrated: 0 }; // seedPresets hoitaa first-install
 
   // ── 1. Add missing preset movements (uudet liikkeet myöhemmistä versioista) ──
-  const existingNames = new Set(existingMovements.map(m => m.name));
-  const missing = PRESET_MOVEMENTS.filter(p => !existingNames.has(p.name));
+  // H-019 A2: nimi-dedup normalisoitu (trim+lowercase) — eksakti vertailu päästi läpi
+  // välilyönti/case-variantit (esim. käyttäjän "jalkaprässi " vs preset "Jalkaprässi"
+  // → kaksi tietuetta, historia hajoaa ID:iden välillä). Estää duplikaattiluokan synnyn.
+  const existingNames = new Set(existingMovements.map(m => (m.name || "").trim().toLowerCase()));
+  const missing = PRESET_MOVEMENTS.filter(p => !existingNames.has(p.name.trim().toLowerCase()));
   const toAdd = missing.map(m => {
     const base = {
       movementId: uid(),
