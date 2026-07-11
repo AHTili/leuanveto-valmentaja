@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- v4.52.10 H-006a-fix4: APP_VERSION dynaaminen UI-näyttöä varten. Päivitä yhdessä sw.js APP_VERSION:n kanssa. -->
-  <meta name="app-version" content="4.56.0" />
+  <meta name="app-version" content="4.56.1" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -8377,7 +8377,7 @@ function renderMesocycle() {
   // β Round B-α-1.9: näkyvä versio-indikaattori + bullet-merkki fallback-seedissä
   // jotta voidaan visuaalisesti erottaa "vanha cached koodi" vs "uusi koodi + null
   // fallback" tilanteet. Sync MANUAALISESTI sw.js:n APP_VERSION:in kanssa.
-  const _syRenderAppVersion = "4.56.0";
+  const _syRenderAppVersion = "4.56.1";
   const _syRenderBW = state.settings?.bodyweightKg || 91;
   const _syRenderE1rmCache = new Map();
   const _syRenderComputeKg = (slot) => {
@@ -12800,6 +12800,11 @@ function bind() {
     const category = $("#new-mov-category")?.value;
     const tutorialUrl = $("#new-mov-video")?.value?.trim() || "";
     if (!name) { showToast("Syötä liikkeen nimi", "bad"); return; }
+    // H-019 A2 (OBS-044): dedup-guard normalisoidulla nimellä — ilman tätä preset-
+    // niminen oma lisäys loi toisen tietueen samalle nimelle (eri movementId) →
+    // historia hajosi ID:iden välille ("ensimmäinen kirjaus" vaikka historiaa on).
+    const _dupMov = (state.movements || []).find(m => (m.name || "").trim().toLowerCase() === name.toLowerCase());
+    if (_dupMov) { showToast(`"${_dupMov.name}" on jo liikepankissa — käytä sitä`, "bad"); return; }
     await addMovement(name, category, tutorialUrl);
     await refresh();
     showToast(`${name} lisätty`, "ok");

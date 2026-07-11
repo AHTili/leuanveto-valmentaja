@@ -810,7 +810,15 @@
 //          yli targetin) → ⚠ Kestävyys-ennuste + kestävä vaihtoehto (vähemmän sarjoja tai
 //          kevyempi kuorma) ENNEN grindiä. K3-1-kalibroitu kuorma ei false-fire. Advisory,
 //          UI-side (recommend() byte-identtinen). Sulkee auditin #16 = 2/3 varaukseton-eliitti.
-const APP_VERSION = "4.56.0";
+// v4.56.1: H-019 OSA A — completed-FANTOMIKENTTÄ + OBS-044-katalogisiivous.
+//          A1-sweep (424 settiä): persistoidut setit eivät kanna completed-kenttää →
+//          computePriorSet/computePriorSessionSummary/computeAcrossSetDecay olivat
+//          sokeita KOKO historialle: "ensimmäinen kirjaus" vaikka historiaa on (kenttä-
+//          case Jalkaprässi/RDL), delta-chip/ghost tyhjiä, 8a-oppiminen inertti.
+//          Ehto poistettu 3 lokuksesta (tuotantoschema-semantiikka + A4-lukko).
+//          Katalogi: Hollow/L-sit-duplikaattirivit pois, nimi-dedup normalisoitu,
+//          addMovement-guard, T3 → globaali uniikkius. EI heal-migraatiota (orvot 0).
+const APP_VERSION = "4.56.1";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.
