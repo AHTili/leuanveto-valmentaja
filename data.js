@@ -2960,7 +2960,7 @@ function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg, opts =
         { week: 2, deltaPctBase: 0.02, label: "Intensiteetti 2", phase: "intensity", heavyReps: 2, heavyTargetVx: 1 },
         { week: 3, deltaPctBase: 0.03, label: "Peaking 1",       phase: "peaking",   heavyReps: 1, heavyTargetVx: 1 },
         { week: 4, deltaPctBase: 0.04, label: "Peaking 2",       phase: "peaking",   heavyReps: 1, heavyTargetVx: 1 },
-        { week: 5, deltaPctBase: 0,    label: "Taper",           phase: "peaking",   heavyReps: 1, heavyTargetVx: 1 },
+        { week: 5, deltaPctBase: 0,    label: "Taper",           phase: "peaking",   heavyReps: 1, heavyTargetVx: 1, isTaper: true },
       ],
       weekPlans: [workWeek(1), workWeek(2), workWeek(3), workWeek(4), taperWeek],
       postCycleAnalysis: null,

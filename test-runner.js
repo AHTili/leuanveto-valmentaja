@@ -1639,6 +1639,46 @@ async function testRecommendScenarios() {
     assert(!hasTrace(rec, "DELOAD_DEPTH_CLAMP"), "H019-V4: ei clampia progressioviikolla");
   });
 
+  // H-019 B-C2 (γ-adaptiivisuus, ratifioitu 11.7. porrastuksella): readiness-capit
+  // peaking-polulla — työviikot täysi cap-only · taper YELLOW advisory / RED aktiivinen ·
+  // kisapäivä bypass (K7-6 ohjaa). Legacy "No readiness caps" korvattu.
+  const _gMeso = () => createPeakingMesocycle("2026-07-20", 94, 91, {
+    competition: { meetDateISO: "2026-08-22", lifts: [
+      { name: "Muscle-up", e1rmExternal: 13 }, { name: "Lisäpainodippi", e1rmExternal: 95 }, { name: "Lisäpainoleuanveto", e1rmExternal: 94 },
+    ], meetStrategy: "normaali" },
+  });
+  const _gYellow = { combined: "YELLOW", capLevel: 1, channels: { velocity: { class: "YELLOW", z: -0.7 }, hrv: { class: "GREEN", z: 0.1 }, vara: { class: "GREEN", z: null, meanOvershoot: 0 } } };
+  const _gRed = { combined: "RED", capLevel: 2, channels: { velocity: { class: "RED", z: -1.5 }, hrv: { class: "YELLOW", z: -0.8 }, vara: { class: "GREEN", z: null, meanOvershoot: 0 } } };
+  await scenario("γ-C2a: YELLOW työviikko → cap-only aktiivinen", async () => {
+    const rec = await recommend(makeRecommendCtx({ dateISO: "2026-07-27", mesocycle: _gMeso(), readiness: _gYellow }));
+    assertClose(rec.deltaPct, -0.01, 1e-9, "γ-C2a: wk2 heavy 0.02 → ×0.5 −2 % = −1 % (työviikko cappaa)");
+    assert(hasTrace(rec, "CAP_YELLOW"), "γ-C2a: CAP_YELLOW-trace peaking-työviikolla");
+  });
+  await scenario("γ-C2b: RED työviikko → heavy→volume + −5 %", async () => {
+    const rec = await recommend(makeRecommendCtx({ dateISO: "2026-07-20", mesocycle: _gMeso(), readiness: _gRed }));
+    assertClose(rec.deltaPct, -0.05, 1e-9, "γ-C2b: RED työviikko → −5 %");
+    assertEqual(rec.dayType, "volume", "γ-C2b: heavy vaihdettu volumeksi (työviikko)");
+    assert(hasTrace(rec, "CAP_RED_DAYTYPE") && hasTrace(rec, "CAP_RED"), "γ-C2b: CAP_RED + DAYTYPE-tracet");
+  });
+  await scenario("γ-C2c: taper YELLOW → advisory-only, ei kevennystä", async () => {
+    const rec = await recommend(makeRecommendCtx({ dateISO: "2026-08-17", mesocycle: _gMeso(), readiness: _gYellow }));
+    assertEqual(rec.deltaPct, 0, "γ-C2c: taper-YELLOW ei muuta deltaa (jännityskohina; intensiteetti = taperin vipu)");
+    assert(hasTrace(rec, "TAPER_YELLOW_ADVISORY"), "γ-C2c: advisory-trace");
+    assert(!hasTrace(rec, "CAP_YELLOW"), "γ-C2c: EI CAP_YELLOW-cappia taperissa");
+  });
+  await scenario("γ-C2d: taper RED → cap aktiivinen + siirtoehdotus", async () => {
+    const rec = await recommend(makeRecommendCtx({ dateISO: "2026-08-17", mesocycle: _gMeso(), readiness: _gRed }));
+    assertClose(rec.deltaPct, -0.05, 1e-9, "γ-C2d: RED cappaa myös taperissa (−5 %)");
+    assert(hasTrace(rec, "TAPER_RED_ADVISORY"), "γ-C2d: viimeisen raskaan siirtoehdotus (advisory)");
+  });
+  await scenario("γ-C2e: kisapäivä → readiness-bypass, K7-6 ohjaa", async () => {
+    const rec = await recommend(makeRecommendCtx({ dateISO: "2026-08-22", mesocycle: _gMeso(), readiness: _gRed }));
+    assert(hasTrace(rec, "MEETDAY_READINESS_BYPASS"), "γ-C2e: bypass kirjattu eksplisiittisesti traceen");
+    assert(!hasTrace(rec, "CAP_RED"), "γ-C2e: EI CAP_REDiä kisapäivänä");
+    assertEqual(rec.deltaPct, 0, "γ-C2e: delta koskematon kisapäivänä");
+    assert(rec.attemptLoads && rec.attemptLoads.opener > 0, "γ-C2e: yrityskuormat laskettu (K7-6-pohja)");
+  });
+
   // S2: Vk 2 MA, RED+RED → CAP_RED tracessa, deltaPct ≤ 0
   await scenario("vk 2 MA RED+RED → CAP_RED", async () => {
     const ctx = makeRecommendCtx({

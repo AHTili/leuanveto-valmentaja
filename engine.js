@@ -8307,7 +8307,8 @@ async function recommendPeaking(options = {}) {
   const weekDef = getWeekDef(mesocycle, weekNum);
   const dayOfWeek = new Date(dateISO).getDay() || 7;
   const dayPlan = getTodayPlan(mesocycle, weekNum, dayOfWeek);
-  const dayType = dayPlan?.dayType || "heavy";
+  // let: γ-adaptiivisuuden RED-työviikko voi vaihtaa heavy→volume (kuten pääpolku).
+  let dayType = dayPlan?.dayType || "heavy";
 
   trace("PEAKING_PHASE", {}, { weekNum, dayType, label: weekDef?.label },
     `PEAKING Vk ${weekNum}: ${weekDef?.label || "?"}`);
@@ -8379,10 +8380,71 @@ async function recommendPeaking(options = {}) {
     trace("COMPETITION_LOADS", {}, attemptLoads, "Kilpailukuormat laskettu");
   }
 
+  // ── γ-adaptiivisuus (H-019 B-C2, ratifioitu 2026-07-11 porrastuksella) ──
+  // Legacy-design "No readiness caps — athlete decides" korvattu porrastetulla
+  // cap-only-semantiikalla (readiness ei koskaan NOSTA kuormaa):
+  //   • TYÖVIIKOT: täysi cap-only kuten pääpolku (YELLOW −2 % ilman negatiivisen
+  //     laimennusta · RED −5/−8 % + heavy→volume · syvyysraja −30 %).
+  //   • TAPER-VIIKKO (weekDef.isTaper): YELLOW = advisory-only (kisaviikon YELLOW on
+  //     usein jännityskohinaa; intensiteetin säilytys on taperin ensisijainen vipu) ·
+  //     RED = aktiivinen cap + viimeisen raskaan siirtoehdotus (advisory, ei auto-siirtoa).
+  //   • KISAPÄIVÄ: EI readiness-cappeja — K7-6 in-meet-yritysvalinta ohjaa yksin.
+  //     Ohitus kirjataan eksplisiittisesti traceen (auditoitavuus).
+  const readiness = options.readiness || null;
+  const peakCapLevel = readiness?.capLevel ?? 0;
+  const isTaperWeek = weekDef?.isTaper === true;
+  let peakVxBump = 0;
+  if (dayType === "competition" && peakCapLevel > 0) {
+    trace("MEETDAY_READINESS_BYPASS", { capLevel: peakCapLevel }, { applied: false },
+      "Kisapäivä: readiness-capit ohitetaan tietoisesti — K7-6 in-meet-yritysvalinta (computeNextAttempt) ohjaa yrityksiä openerin tuloksesta, ei aamusignaalista (ratifioitu 2026-07-11)");
+  } else if (peakCapLevel === 2 && !isTaperWeek && dayType === "heavy") {
+    // RED työviikolla: heavy→volume kuten pääpolku (ENNEN dayMult-laskentaa).
+    trace("CAP_RED_DAYTYPE", { dayType: "heavy" }, { dayType: "volume" }, "RED readiness (peaking-työviikko) → heavy vaihdettu volume:ksi");
+    dayType = "volume";
+  }
+
   // Normal peaking day: compute load from slot reps/vx (not weekDef!)
   // Apply dayMult to delta like normal recommend() does
   const dayMult = DAY_TYPE_MULTIPLIERS[dayType] ?? 1.0;
-  const deltaPct = (weekDef?.deltaPctBase || 0) * dayMult;
+  let deltaPct = (weekDef?.deltaPctBase || 0) * dayMult;
+
+  if (dayType !== "competition") {
+    if (peakCapLevel === 2) {
+      const _oldD = deltaPct;
+      deltaPct = Math.min(deltaPct, 0);
+      const _velRed = readiness?.channels?.velocity?.class === "RED";
+      const _varaRed = readiness?.channels?.vara?.class === "RED";
+      const _red = (_velRed && _varaRed) ? -0.08 : -0.05;
+      deltaPct += _red;
+      peakVxBump = 1;
+      trace("CAP_RED", { deltaPct: _oldD }, { deltaPct },
+        `RED readiness (peaking${isTaperWeek ? "/taper" : ""}) → kuorma ${(_red * 100).toFixed(1)}% + targetVx +1${_velRed && _varaRed ? " (double-red)" : ""}`);
+      if (isTaperWeek) {
+        trace("TAPER_RED_ADVISORY", {}, { suggestion: "siirrä viimeistä raskasta +1 pv" },
+          "RED taper-viikolla: harkitse viimeisen raskaan siirtoa päivällä eteenpäin — palautuminen ajaa terävyyden ohi kisaviikolla");
+      }
+    } else if (peakCapLevel === 1) {
+      if (isTaperWeek) {
+        trace("TAPER_YELLOW_ADVISORY", {}, { deltaPct },
+          "YELLOW taper-viikolla: usein jännityskohinaa — ei automaattista kevennystä (intensiteetin säilytys on taperin ensisijainen vipu). Seuraa trendiä; jos toistuu, kevennä itse.");
+      } else {
+        const _oldD = deltaPct;
+        // Sama K5-7-luokan guard kuin pääpolussa: vain positiivinen delta puolitetaan.
+        deltaPct = deltaPct > 0 ? deltaPct * 0.5 : deltaPct;
+        deltaPct += -0.02;
+        peakVxBump = 1;
+        trace("CAP_YELLOW", { deltaPct: _oldD }, { deltaPct },
+          `YELLOW readiness (peaking-työviikko) → ${_oldD > 0 ? "deltaPct puolitettu + " : ""}kuorma -2.0%`);
+      }
+    }
+    // Syvyysraja kuten pääpolku (invariantti C:n syvä raja).
+    if (deltaPct < -0.30) {
+      const _preClamp = deltaPct;
+      deltaPct = -0.30;
+      trace("DELOAD_DEPTH_CLAMP", { deltaPct: _preClamp }, { deltaPct },
+        `Syvyysraja: kevennysten summa ${(_preClamp * 100).toFixed(1)}% capattu −30,0 %:iin`);
+    }
+  }
 
   // Read reps/vx from primary slot (accurate per-day prescription)
   const primarySlot = dayPlan?.slots?.find(s => s.role === "primary");
@@ -8398,6 +8460,11 @@ async function recommendPeaking(options = {}) {
       targetReps = Math.max(3, targetReps + 2);
       targetVx = Math.min(4, targetVx + 1);
     }
+  }
+  // γ-adaptiivisuus: RED/YELLOW-työviikko (+ RED-taper) → +1 varaa (kevennä, ei failure-
+  // riskiä väsyneenä) — sama semantiikka kuin pääpolun readinessVxBump. Cap V4.
+  if (peakVxBump > 0 && typeof targetVx === "number") {
+    targetVx = Math.min(4, targetVx + peakVxBump);
   }
 
   let targetExternalLoad;
