@@ -5715,10 +5715,14 @@ function renderWorkoutWarmupIntro() {
 }
 
 // Compute the most recent prior-session set for this movement — used for delta chip + first-set ghost
+// H-019 A2: `s.completed`-ehto poistettu — persistoidut setit eivät kanna kenttää (0/424
+// kenttädatassa) → ehto pudotti KAIKKI tallennetut setit (delta-chip + ghost aina tyhjiä).
+// Sama semantiikka kuin computeRecentSessionsForMovement (v4.34.36-fix): skipped + reps null pois.
 function computePriorSet(movementId, excludeSessionId) {
   if (!movementId) return null;
   const candidates = state.allSets
-    .filter(s => s.movementId === movementId && !s.isWarmup && s.completed)
+    .filter(s => s.movementId === movementId && !s.isWarmup
+      && s.setRole !== "skipped" && s.reps !== null && s.reps !== undefined)
     .filter(s => {
       const sess = state.sessions.find(x => x.sessionId === s.sessionId);
       return sess && sess.sessionId !== excludeSessionId;
@@ -5735,10 +5739,15 @@ function computePriorSet(movementId, excludeSessionId) {
 // v4.34.24: täydellinen edellisen session yhteenveto liikkeestä — näyttää KAIKKI sarjat,
 // ei vain viimeinen. Käyttäjäpalaute: "Voisiko liikekohtaisiset muistiinpanot näkyä
 // edellisistä treenistä treenin aikana? Ehkä jopa fiksu katsaus aikaisempiin treeneihin?"
+// H-019 A2 (kenttäcase Jalkaprässi/RDL "ensimmäinen kirjaus vaikka historiaa on"):
+// `s.completed`-ehto poistettu — persistoidut setit eivät kanna kenttää (0/424) →
+// prior-yhteenveto palautti AINA null → K6-1-perustelu, progressTag ja K6-4b/K8-vihjeet
+// sokeita historialle. Sama tuotantoschema-semantiikka kuin v4.34.36-modaalifix.
 function computePriorSessionSummary(movementId, excludeSessionId) {
   if (!movementId) return null;
   const completedSets = state.allSets
-    .filter(s => s.movementId === movementId && !s.isWarmup && s.completed)
+    .filter(s => s.movementId === movementId && !s.isWarmup
+      && s.setRole !== "skipped" && s.reps !== null && s.reps !== undefined)
     .filter(s => {
       const sess = state.sessions.find(x => x.sessionId === s.sessionId);
       return sess && sess.sessionId !== excludeSessionId;
