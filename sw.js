@@ -818,7 +818,11 @@
 //          Ehto poistettu 3 lokuksesta (tuotantoschema-semantiikka + A4-lukko).
 //          Katalogi: Hollow/L-sit-duplikaattirivit pois, nimi-dedup normalisoitu,
 //          addMovement-guard, T3 → globaali uniikkius. EI heal-migraatiota (orvot 0).
-const APP_VERSION = "4.56.1";
+// v4.56.2: H-019 väli-fix — CAP_YELLOW ei laimenna deloadia (vain positiivinen delta
+//          puolitetaan; cap-only: readiness ei koskaan nosta kuormaa suunnitellusta) +
+//          DELOAD_DEPTH_CLAMP: kevennysten summa capataan tasan −30 %:iin (invariantti C:n
+//          syvä raja + JS-float-artefaktin inklusiivisuus). Returner-fleet-violaatio → 0.
+const APP_VERSION = "4.56.2";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.

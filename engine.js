@@ -5563,10 +5563,26 @@ async function recommend(options = {}) {
     trace("CAP_RED", { deltaPct: oldDelta }, { deltaPct }, `RED readiness → kuorma ${(readinessLoadReduction * 100).toFixed(1)}% + targetVx +${readinessVxBump}${velRed && varaRed ? " (double-red: velocity + Vara)" : ""}`);
   } else if (capLevel === 1) {
     const oldDelta = deltaPct;
-    deltaPct = deltaPct * 0.5;
+    // H-019 väli-fix (returner-INVARIANT_VIOLATION; K5-7-luokan guard, 3. esiintymä):
+    // vain POSITIIVINEN delta puolitetaan. Negatiivisen (deload/kevennys) puolitus
+    // NOSTI kuorman yli suunnitellun (−25 % → −14,5 %) = cap-only-rike + invariantti C
+    // -rike. Väsynyt atleetti deload-viikolla saa vähintään täyden kevennyksen.
+    deltaPct = deltaPct > 0 ? deltaPct * 0.5 : deltaPct;
     readinessLoadReduction = -0.02;
     deltaPct += readinessLoadReduction;
-    trace("CAP_YELLOW", { deltaPct: oldDelta }, { deltaPct }, `YELLOW readiness → deltaPct puolitettu + kuorma ${(readinessLoadReduction * 100).toFixed(1)}%`);
+    trace("CAP_YELLOW", { deltaPct: oldDelta }, { deltaPct }, `YELLOW readiness → ${oldDelta > 0 ? "deltaPct puolitettu + " : ""}kuorma ${(readinessLoadReduction * 100).toFixed(1)}%`);
+  }
+
+  // H-019 väli-fix: syvyysraja — readiness-vähennykset eivät vie deltaa invariantti C:n
+  // syvän rajan (−30 %) ohi (esim. deload −25 % + double-RED −8 % = −33 %). Clamp tasan
+  // rajalle + trace. Rajatapaus −25 − 5 osuu täsmälleen doubleen −0.3 (ei float-
+  // artefaktia tälle parille) → läpäisee tiukan < -vertailun ilman clampia; clamp
+  // suojaa syvemmät summat ja mahdolliset artefaktit muilla base-arvoilla.
+  if (deltaPct < -0.30) {
+    const _preClampDelta = deltaPct;
+    deltaPct = -0.30;
+    trace("DELOAD_DEPTH_CLAMP", { deltaPct: _preClampDelta }, { deltaPct },
+      `Syvyysraja: kevennysten summa ${(_preClampDelta * 100).toFixed(1)}% capattu −30,0 %:iin (deload-invariantin syvä raja)`);
   }
 
   // 11. Compute target load — use actual slot reps/Vx when available

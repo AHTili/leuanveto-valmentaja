@@ -1532,6 +1532,48 @@ async function testRecommendScenarios() {
     assertEqual(recHi.suggestionContext?.learnedAcrossSetFatigue, 0.75, "8a A6: luku-clamp 0.9 → 0.75 (±2SD)");
   });
 
+  // H-019 väli-fix (returner-INVARIANT_VIOLATION): readiness-cap × deload-viikko.
+  // V1: YELLOW ei laimenna negatiivista deltaa (cap-only) → −25 % − 2 % = −27 %.
+  await scenario("H019-V1: YELLOW × deload → −27 % (ei laimennusta)", async () => {
+    const rec = await recommend(makeRecommendCtx({ dateISO: "2026-01-26", readiness: {
+      combined: "YELLOW", capLevel: 1,
+      channels: { velocity: { class: "YELLOW", z: -0.7 }, hrv: { class: "GREEN", z: 0.1 }, vara: { class: "GREEN", z: null, meanOvershoot: 0 } },
+    } }));
+    assertClose(rec.deltaPct, -0.27, 1e-9, "H019-V1: deltaPct −27 % (täysi deload + −2 %, EI puolitusta)");
+    assert(hasTrace(rec, "CAP_YELLOW"), "H019-V1: CAP_YELLOW-trace");
+    assert(!hasTrace(rec, "DELOAD_DEPTH_CLAMP"), "H019-V1: ei syvyysclampia (−27 % rajan sisällä)");
+  });
+  // V2 (rajan inklusiivisuus): single-RED × deload = −0.25 − 0.05 osuu TÄSMÄLLEEN
+  // doubleen −0.3 (0.25 on eksakti, summa pyöristyy 0.3-doubleen — EI 0.1+0.2-artefaktia)
+  // → auditin tiukka dp < min -vertailu läpäisee luonnostaan, clampia ei tarvita.
+  await scenario("H019-V2: RED × deload → tasan −30 % (inklusiivinen raja, ei clampia)", async () => {
+    const rec = await recommend(makeRecommendCtx({ dateISO: "2026-01-26", readiness: {
+      combined: "RED", capLevel: 2,
+      channels: { velocity: { class: "RED", z: -1.5 }, hrv: { class: "YELLOW", z: -0.8 }, vara: { class: "GREEN", z: null, meanOvershoot: 0 } },
+    } }));
+    assertEqual(rec.deltaPct, -0.30, "H019-V2: deltaPct TASAN −0.30 (double-eksakti)");
+    assert(!hasTrace(rec, "DELOAD_DEPTH_CLAMP"), "H019-V2: ei clampia — tasan rajalla oleva läpäisee (inklusiivisuus)");
+  });
+  // V3 (syvä known-negative): double-RED × deload = −25 % − 8 % = −33 % → clamp −30 % + trace.
+  await scenario("H019-V3: double-RED × deload → −33 % clampattu −30 %:iin", async () => {
+    const rec = await recommend(makeRecommendCtx({ dateISO: "2026-01-26", readiness: {
+      combined: "RED", capLevel: 2,
+      channels: { velocity: { class: "RED", z: -1.6 }, hrv: { class: "RED", z: -1.4 }, vara: { class: "RED", z: null, meanOvershoot: -1.2 } },
+    } }));
+    assertEqual(rec.deltaPct, -0.30, "H019-V3: syvin mahdollinen delta ei ylitä −30 %:a");
+    assert(hasTrace(rec, "DELOAD_DEPTH_CLAMP"), "H019-V3: DELOAD_DEPTH_CLAMP-trace emittoitu");
+    assert(hasTrace(rec, "CAP_RED"), "H019-V3: CAP_RED-trace (double-red)");
+  });
+  // V4 (known-neg, legacy-lukko): YELLOW × progressioviikko puolittuu yhä ennallaan.
+  await scenario("H019-V4: YELLOW × progressio → puolitus ennallaan", async () => {
+    const rec = await recommend(makeRecommendCtx({ dateISO: "2026-01-12", readiness: {
+      combined: "YELLOW", capLevel: 1,
+      channels: { velocity: { class: "YELLOW", z: -0.7 }, hrv: { class: "GREEN", z: 0.1 }, vara: { class: "GREEN", z: null, meanOvershoot: 0 } },
+    } }));
+    assertClose(rec.deltaPct, -0.0075, 1e-9, "H019-V4: +2.5 % → ×0.5 − 2 % = −0.75 % (legacy)");
+    assert(!hasTrace(rec, "DELOAD_DEPTH_CLAMP"), "H019-V4: ei clampia progressioviikolla");
+  });
+
   // S2: Vk 2 MA, RED+RED → CAP_RED tracessa, deltaPct ≤ 0
   await scenario("vk 2 MA RED+RED → CAP_RED", async () => {
     const ctx = makeRecommendCtx({
