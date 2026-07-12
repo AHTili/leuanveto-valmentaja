@@ -70,6 +70,12 @@
 
 ---
 
+### Oppi 12 — Uusi persistentti tilaluokka rikkoo vanhat 'roska'-heuristiikat (distill 2026-07-12, H-019 B-C3)
+
+Odottava γ-kisablokki on määritelmällisesti ei-aktiivinen JA sessioton — täsmälleen sama signatuuri kuin autocreated-orphan-roskalla. Kolme eri kerrosta (data.js-siivous, Historia-piilotus, siivousnappi) olisi hiljaa tuhonnut/piilottanut atleetin kisablokin. Kun lisäät uuden persistentin tilaluokan (pending/future/draft), sweeppaa KAIKKI heuristiikat joiden oletukset ('sessioton + ei-aktiivinen = roska') se rikkoo — sama perhe kuin stale-detektori-kuvio (K-A1).
+
+---
+
 ## 2. Fallback-loki (P-013 M6)
 
 > Bio/kemia-luokittelija voi pudottaa Fable 5 -session Opus 4.8:aan. Protokolla: **ei keskeytystä** — kirjaa rivi, jatka työtä. Jos frekvenssi häiritsee, raportoi Akselille (syöte 23.6.-päätökseen).
@@ -96,5 +102,6 @@
 | 2026-06-12 | H-016 batch=2 (VAIHE A confirm + VAIHE B paluuramppi-toteutus) | 2 batch-vaihetta (H-016-milestone) | 1 / 0 hylkäystä (VAIHE A -verifier Cowork-auditissa; VAIHE B -verifier VAHVISTETTU 17/17 + 2 kosmeettista huomautusta) | 2 (VAIHE A STOP-gate → ratifiointi → VAIHE B STOP push-portille) | 0 | *(Akseli täyttää)* |
 | 2026-06-13 | **H-018 OSA 1 (OBS-040) — OPUS 4.8 -SESSIO** (ei Fable; manuaali-mallinvaihto) | OSA 1 valmis (kortti→kanoninen, §0-lukko, doc, versio) + OBS-040/041-confirm + OBS-042/043-backlog + H-016-ramppisimulaatio | rubriikki: lukkotesti 1 iteraatio (fixture-kynnys korjattu yli-väitöstä — 112,5→143 realistinen muoto); **monilinssinen verifiointi-workflow: 5 adversariaali-agenttia → 2 PASS / 3 PASS_WITH_CONCERNS / 0 FAIL** (0 hylkäystä; 2 jäännöstä raportoitu: OBS-042 kvantifioitu real-datalla, lukko kontrakti-tasolla) | 4 (OBS-040-confirm → fix-narratiivi-korjaus tuoreesta backupista → ratifiointi → OSA 1) | **1 (tämä Opus-sessio)** | *(Akseli täyttää — Opus 4.8 -kyvykkyyden mittauspiste: ultracode-workflow kantoi monilinssisen verifioinnin)* |
 | 2026-06-13 | **H-018 OSA 2 (OBS-041) — OPUS 4.8** (jatko samassa sessiossa) | A7 katalogi (Käsipainopenkki) + A6-premissi-falsifiointi (runtime) + OBS-044-löydös; pushattu OSA 1 + puhelinverifioitu | lukko 1 iteraatio (T3-kynnys korjattu yli-väitöstä: globaali uniikkius → pre-existing-dup-vartija kun OBS-044 löytyi); **adversariaali-workflow: 4 linssiä → 2 PASS / 2 PASS_WITH_CONCERNS / 0 FAIL** | 2 (A6-premissi-checkpoint → Akselin A7-only-rajaus → toteutus) | 0 | *(Akseli täyttää — Opus 4.8: premissi-falsifiointi + scope-kuri pidettiin, ei autonomista re-scopea)* |
+| 2026-07-12 | **H-019 OSA B loppuun (B-C2c→C3 + finale) — FABLE 5** (jatkosessio; aiemmat: OSA A + B-C1/C2a/C2b) | OSA B valmis → **H-019 kokonaan** (= ROADMAP vaihe 20 rakennettu, NYT-siirto 18→20) | lukot 1 iteraatio/0 hylkäystä (γ-C2-sarja + 4 date-assertia; RTF-legacy-törmäys ratkottu auktoriteettitikkailla: tutkimuskatto voittaa) | 3 (C2a-kuittaus → C2b-jatko → C3+finale; push-STOP auki) | 0 | *(Akseli täyttää)* |
 
 > **Arkistointi-TODO (H-015, puhelinverifioinnin jälkeen):** korjaa HANDOFF §7b:n commit-luku ("8 lokaalia committia f0e9c61..712678d" → oikein: f0e9c61..2ed2e3e pushattiin gate-ratifioinnissa, af5ed9c..dc9b201 push-ratifioinnissa) arkistointikommitin yhteydessä — Akselin ohje 2026-06-10.

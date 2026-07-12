@@ -822,7 +822,14 @@
 //          puolitetaan; cap-only: readiness ei koskaan nosta kuormaa suunnitellusta) +
 //          DELOAD_DEPTH_CLAMP: kevennysten summa capataan tasan −30 %:iin (invariantti C:n
 //          syvä raja + JS-float-artefaktin inklusiivisuus). Returner-fleet-violaatio → 0.
-const APP_VERSION = "4.56.2";
+// v4.57.0: H-019 OSA B — γ-kisa-peaking (la 22.8.2026: MU + dippi + leuka). Kisatehdas
+//          (5 vk: 2×intensity + 2×peaking + taper; kisapäivä 12 slottia, 3 yritystä/laji,
+//          strategiat varma/normaali/aggressiivinen), porrastetut readiness-capit
+//          (työviikot täysi cap-only · taper YELLOW advisory / RED aktiivinen · kisapäivä
+//          ei cappeja, K7-6 yksin), VL-capit viikkoleimoista + tutkimuskaton clamp
+//          (intensity ≤15 / peaking ≤10), per-laji-yrityskuormat omista e1RM:istään,
+//          B8-syöttö-UI + B9-odottava aktivointi (mikään ei muutu ennen 20.7.) + B10-taper-note.
+const APP_VERSION = "4.57.0";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.

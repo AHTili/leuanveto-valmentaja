@@ -6,7 +6,7 @@
 >
 > **Päivitysprotokolla:** vaiheen tila ja NYT-merkki muuttuvat **vain committilla** kun vaihe sulkeutuu — ei muistinvaraisesti. ROADMAP = mikä vaihe; HANDOFF = mikä tehtävä vaiheen sisällä.
 >
-> **Tilannekuva:** 2.6.2026 · HEAD `76d5aa5` · APP_VERSION `4.52.32` · NYT-merkki vaihe 18 (Round B-β HRV-bias). **M1-pohja-puhtaus-arc SULJETTU** (ei R-vaihe-siirtoa): H-008 (MU +82 kg) + H-009/P1a (identity-detektori) + H-010/P1c (pilot-fideliteetti + elävä identity-gate, baseline 136→138) + H-011/P1b (AI-paketin datavirta) + H-013/OBS-007 (day-label @X% rehellistys, suunta C — otsikko ≡ kuorma/e1RM) + H-014 (suunniteltu-vs-toteutunut cobra) + **value-resolution-audit F-1…F-4** (kuorma/e1RM/completion/preview-fragmentaatio; intensiteetti-tietoinen reps-pohjainen clamp; kaikki kiinni, 4.52.32). **NYT-fokus (M2): OBS-022 — todellinen %-progressio (sisä-blokki-intensifikaatio); avoin myös OBS-021 (paketti-%).** Visuaalinen vastine: `prosessikartta-v4.html`.
+> **Tilannekuva:** 12.7.2026 · APP_VERSION `4.57.0` (HEAD = H-019 OSA B -finale) · **NYT-merkki vaihe 20 (Round B-γ — kisa-peaking, kisa la 22.8.2026)**. Suljettu 2.6. jälkeen: OBS-022/M2 (sisä-blokki-intensifikaatio) · 8a V1 (`learnedAcrossSetFatigue`, 4.53.1) · KORI 8 (progressiotikapuut, 4.54.0) · MULL-2 volyymimaamerkit (4.55.0) + MULL-3 within-session-ennuste (4.56.0) · **H-019 OSA A** (completed-fantomikenttä — prior-näkymät + 8a-oppiminen heräsivät tuotannossa, 4.56.1; CAP_YELLOW-deload-fix 4.56.2) · **H-019 OSA B** (γ-kisatehdas + porrastetut readiness-capit + VL-viikkoleimat tutkimuskatolla + per-laji-yrityskuormat + B8-UI + B9-odottava aktivointi). γ-blokki odottaa: **aktivoituu automaattisesti ma 20.7.** — mikään ei muutu sitä ennen (pilot bit-exact). Selainsuite 1003/1003. Visuaalinen vastine: `prosessikartta-v4.html`.
 
 ---
 
@@ -51,7 +51,7 @@ Nämä eivät saa kadota missään vaiheessa.
 
 ## 4. R-sekvenssi v4 — 20 vaihetta
 
-**NYT-merkki: vaihe 18 (Round B-β HRV-bias).**
+**NYT-merkki: vaihe 20 (Round B-γ — kisa-peaking; kisa la 22.8.2026, γ-blokki aktivoituu ma 20.7.).**
 
 | # | Vaihe | Tila | Huomio |
 | --- | --- | --- | --- |
@@ -73,10 +73,10 @@ Nämä eivät saa kadota missään vaiheessa.
 | 15 | β Round A scoping — K1–K8 ratifioitu | VALMIS | ledger L45–L51 |
 | 16 | Round B-α-1 + bug-fix-sarja α-1.6→1.11 | VALMIS | `f47ae1d` → `4252049`, APP_VERSION 4.52.5 |
 | 17 | Round B-α-2 — Lähde 2 primer + K-β-primer audit | VALMIS | toteutettu H-006a (velocity-data-flow, ba63654^7..6676a86) + H-006b (primer + sys-1RM-päivitys + K-β-1/2/4/5-audit + measurements-store type='primer', 70cf681..ba63654). Atletti-realismi: 3-pisteen primer + primer-pohjainen LV-regressio torjuttiin (dippi-velocity epäluotettava); cal-pohjainen LV-regressio aktiivinen recommend():ssa. |
-| 18 | Round B-β — HRV-bias + shadow mode + K-β-HRV audit | **NYT** | ~135–225 riviä; H-006a+H-006b stabiloitu — empiirinen primer-baseline rakentuu ~2 vk arkitreeneissä, vaihe 18 LUONNOS voidaan aloittaa rinnakkain |
+| 18 | Round B-β — HRV-bias + shadow mode + K-β-HRV audit | AVOIN | ~135–225 riviä; H-006a+H-006b stabiloitu; väistyi H-019/γ-kiireellisyyden tieltä (kisa 22.8.) — jatkuu kisakauden jälkeen tai rinnakkain jos tilaa |
 | 19 | Pohja-puhtaus 8/8 -verifiointi | SEURAAVA | reunaehto (a) -gate; edellyttää vaiheen 14b sulkua |
 | 19b | **Kerros 3 (L3a/L3b/L3c)** — ml. L3b-audit + Wizard-eliittiarvio | OSITTAIN (Wizard-materialisaatio VALMIS) | mullistava-määritelmän 3. komponentti (v4 FINAL §7); **Wizard-eliittiarvio (materialisaatio) SULJETTU 2026-07-01** → docs/handoffs/HANDOFF_wizard-pilari-3.md (6/6 + P7∧P8, pushattu 4.52.53); L3a/L3c-audit yhä avoin |
-| 20 | Round B-γ — peaking | LYKÄTTY | VL-cap 20→15→10 %; aktivoidaan ~6 vk ennen kisaa; **sisältää nyt myös Wizard-P3/peaking-lykkäyksen** (kisaviikon kisaliike-intensiteetti) |
+| 20 | Round B-γ — kisa-peaking | **NYT** (rakennettu 4.57.0 — H-019 OSA B) | γ-kisatehdas (5 vk: 2×intensity + 2×peaking + taper; kisapäivä 12 slottia, 3 yritystä/laji) + porrastetut readiness-capit (työviikot täysi cap-only · taper YELLOW advisory/RED aktiivinen · kisapäivä K7-6 yksin) + VL-capit viikkoleimoista tutkimuskatolla (intensity ≤15 / peaking ≤10 %) + per-laji-yrityskuormat + B8-UI + **B9-odottava aktivointi (ma 20.7.)**. Vaihe sulkeutuu kisaan 22.8. · jäljellä: γ-vk-seuranta livedatalla + Wizard-P3/peaking-lykkäyskirjaus |
 | 21 | **KAPSTONI — eliittiverdikti 3 pilarissa** | AVOIN (palautettu sekvenssiin 2026-06-10) | mullistava-määritelmän 4. komponentti (v4 FINAL §13); pilari 1 = reaaliaikainen autoregulaatio — **D1-LINJAUS RATIFIOITU** (docs/OBS-038); **pilari 3 (Wizard-materialisaatio) OSOITETTU 2026-07-01** (puhdas sokea portti 6/6 + P7∧P8); verdikti annetaan vasta kun M1 ∧ M2 ∧ Kerros 3 pystyssä |
 
 **Vaihe 17 (VALMIS, 2026-05-28)** toteutettu kapeammin kuin alkuperäinen ROADMAP-spec: H-006b A1 liike-spesifi primer-rajaus (tankoliikkeet + Lisäpainoleuanveto primerEnabled=true; Dippi+MU false atletti-realismin pohjalta), A2 yksipisteinen primer @ ~60% + sys-1RM-päivitys baseline-vertailusta ±2.5/5% (EI 3-pisteen LV-regressio), A3 K-β-1/2/4/5 audit-engine.mjs, A4 measurements-store type='primer'. 5-vaiheinen validointi: 4 K-β-flagia + LV-r²-tarkistus computeLoadVelocityProfile:ssa (engine.js:2437) — kanoninen 5-vaiheinen. Cal-pohjainen LV-regressio aktiivinen recommend():ssa (engine.js:2735, 4224).

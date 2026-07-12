@@ -144,9 +144,9 @@ OSA A: Ei sovellu (debug).
 
 | Kenttä | Arvo |
 | --- | --- |
-| Sessio päättyi | — |
-| Muuttuneet tiedostot | — |
-| Tehdyt päätökset | — |
-| Validointi | — |
-| Jäi auki | — |
-| Seuraava askel | — |
+| Sessio päättyi | 2026-07-12 · **H-019 VALMIS** (OSA A pushattu aiemmin; OSA B commitit 55dce27…59db24e + finale, odottaa push-lupaa) |
+| Muuttuneet tiedostot | OSA B: `data.js` (γ-kisatehdas competition-moodilla, `gammaPeakingStartDate`, `cleanupOrphanMesocycles` protectIds) · `engine.js` (recommendPeaking porrastetut capit + VL-viikkoleimat + tutkimuskaton clamp + per-laji-yrityskuormat) · `index.html` (B8-modaali, γ-flow, B9-odottava aktivointi, B10-taper-note, orphan-suojat, C2c-johdotus) · `test-runner.js` (1003 testiä: γ-tehdas/capit/VL/per-laji/date-helper) · `sw.js` 4.57.0 |
+| Tehdyt päätökset | B9-**odottava aktivointi**: γ-meso luodaan etukäteen mutta `settings.pendingGammaMesoId` + `maybeActivatePendingGamma()` vaihtavat vasta kun today ≥ 20.7. (välitön aktivointi olisi rikkonut kuluvan viikon before-start-virheellä) · orphan-suoja 3 kerrosta (sessioton kisablokki ei ole roska) · porrastettu readiness-semantiikka ratifioinnin mukaan (työviikot täysi cap-only / taper YELLOW advisory + RED aktiivinen / kisapäivä K7-6 yksin + MEETDAY_READINESS_BYPASS-trace) · MU-ankkuri C-hybridi: B8 esitäyttää kanonisesta Bestistä, atleetti vahvistaa (STOP-gate-kysymys 3 ratkaistu) · lajijärjestys+yritysmäärä B8:n faktoina (kysymys 2) · taper-frekvenssi = 4 sessiota säilytetty (kysymys 5) |
+| Validointi | Syntaksit + smoke 64/64 + pilot **bit-exact** (LOAD-DIFF 0 — B9: mikään ei muutu ennen 20.7.) + wizard 11/11 + selainsuite **1003/1003** headless · preview-E2E: modaali→luonti→reload (γ EI aktivoidu 12.7.)→Historia näyttää odottavan→orphan-siivous poisti 30, γ selvisi · γ-rakenne: viikot intensity/intensity/peaking/peaking/taper, kisapäivä 12 slottia, normaali-openerit MU 4 / dippi 73,5 / leuka 72,5 kg (92 %) |
+| Jäi auki | **Push-lupa** (Selkäranka 8 — STOP) · A7-puhelinverifioinnit (γ-modaali + aiemmat MULL-2/3, #11, #13c, 8a, 4.56.1) · OBS-044 RDL-addendum · OBS-056/057 triage · #14 add-anywhere |
+| Seuraava askel | Akselin push-ratifiointi → arkistoi HANDOFF → `docs/handoffs/HANDOFF_H-019.md` · ROADMAP NYT → vaihe 20 · 20.7. γ aktivoituu automaattisesti; vk 1 datalla LOAD-DIFF-seuranta |
