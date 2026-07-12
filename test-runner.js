@@ -101,8 +101,8 @@ import {
   validateVelocity, validateMvReps, validateLoad, validateReps, validateHRV, validateBodyweight,
   isVelocityTypo, parseNumericInput,
   uid, createDefaultMesocycle,
-  // H-019 OSA B (γ): kisa-peaking-tehdas
-  createPeakingMesocycle,
+  // H-019 OSA B (γ): kisa-peaking-tehdas + aloituspäivä-derivointi (B-C3)
+  createPeakingMesocycle, gammaPeakingStartDate,
   exportFullBackup, importFullBackup,
   initDB,
   shouldShowBackupReminder,
@@ -1198,6 +1198,11 @@ function test8eGammaPeakingFactory() {
   assertEqual(legacy.weekCount, 4, "γ-legacy: ilman optseja 4 vk (byte-compat)");
   assertEqual(legacy.weekDefs[3].label, "Kilpailu", "γ-legacy: vk 4 = Kilpailu");
   assert(legacy.peakingConfig.lifts === undefined, "γ-legacy: ei lifts-kenttää (vanha config-muoto)");
+  // B-C3: gammaPeakingStartDate — kisaviikon maanantai − 28 pv (4 työviikkoa + taper).
+  assertEqual(gammaPeakingStartDate("2026-08-22"), "2026-07-20", "γ-C3: la 22.8. kisa → startti ma 20.7.");
+  assertEqual(gammaPeakingStartDate("2026-08-19"), "2026-07-20", "γ-C3: ke-kisa samalla viikolla → sama ma-startti");
+  assertEqual(gammaPeakingStartDate("2026-08-23"), "2026-07-20", "γ-C3: su-kisa (dow 0→7) → sama ma-startti");
+  assertEqual(new Date(gammaPeakingStartDate("2026-08-22") + "T12:00:00").getDay(), 1, "γ-C3: startti on aina maanantai");
 }
 
 // MULL-2 (#8): volyymimaamerkit — ali-annostus (synergisti) + yli-annostus (MRV).

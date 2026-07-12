@@ -1090,6 +1090,7 @@ import {
   getAllPRs, savePR, deletePR, seedHistoricalPRsIfNeeded,
   MESOCYCLE_TEMPLATES,
   getActiveMesocycle, setActiveMesocycle, saveMesocycle, createDefaultMesocycle, createPeakingMesocycle, getAllMesocycles,
+  gammaPeakingStartDate,
   createHypertrofiaMesocycle, createMaksimivoimaMesocycle, createEksenterinenMesocycle,
   createDUPMesocycle, createSiirtymaMesocycle, createPalautuminenMesocycle, createStreetlifting16WMesocycle,
   generateCustomMesocycle,
@@ -1369,6 +1370,7 @@ async function init() {
   state.prs = await getAllPRs();
   state.allMesocycles = await getAllMesocycles();
   state.mesocycle = await getActiveMesocycle();
+  await maybeActivatePendingGamma(); // H-019 B-C3/B9: γ vaihtuu automaattisesti startissa
   if (!state.mesocycle) {
     state.mesocycle = createDefaultMesocycle(todayISO());
     assignVariantRotation(state.mesocycle.weekPlans);
@@ -1527,6 +1529,7 @@ async function refresh() {
   state.prs = await getAllPRs();
   state.allMesocycles = await getAllMesocycles();
   state.mesocycle = await getActiveMesocycle();
+  await maybeActivatePendingGamma(); // H-019 B-C3/B9: γ vaihtuu automaattisesti startissa
   // v4.38.9: kaikkien liikkeiden progress-data Dashboardin accessory-kuormia varten.
   // Map movementId → { suggestedLoadKg, lastLoadKg, e1RM, ... } sync-lookupille.
   const allProgress = await getAllMovementProgress();
@@ -5715,6 +5718,82 @@ function renderWorkoutWarmupIntro() {
   </div>`;
 }
 
+// H-019 B-C3 (B8): γ-kisa-peaking-aktivointimodaali — kisapäivä + strategia +
+// per-laji-e1RM:t (hybridi: esitäyttö kanonisesta Bestistä, atleetti vahvistaa/muokkaa).
+// Lajijärjestys = kisajärjestys (MU → dippi → leuka), 3 yritystä/laji (K7-6).
+// Palauttaa { meetDateISO, meetStrategy, lifts } tai null (peruutus).
+function showGammaPeakingModal(prefill) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    const liftRows = prefill.lifts.map((l, i) => `
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <span style="flex:1;font-size:13px">${i + 1}. ${escapeHTML(l.name)}</span>
+        <input type="number" inputmode="decimal" step="0.5" id="gamma-e1rm-${i}" value="${l.e1rmExternal ?? ""}" placeholder="e1RM" style="width:90px;min-height:38px">
+        <span class="muted" style="font-size:11px">kg${l.source ? ` · ${escapeHTML(String(l.source))}` : ""}</span>
+      </div>`).join("");
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div style="font-weight:700;font-size:16px">🏆 Kisa-peaking (γ)</div>
+        <div class="muted" style="font-size:12px;margin-top:4px">4 vk kisatyötä + taper-viikko + kisapäivä. Lajijärjestys = kisajärjestys, 3 yritystä/laji.</div>
+        <label style="font-size:12px;margin-top:10px;display:block">Kisapäivä</label>
+        <input type="date" id="gamma-meet-date" value="${prefill.meetDateISO || ""}" style="min-height:38px;width:100%">
+        <div id="gamma-start-info" class="muted" style="font-size:11px;margin-top:4px"></div>
+        <label style="font-size:12px;margin-top:10px;display:block">Strategia</label>
+        <select id="gamma-strategy" style="min-height:38px;width:100%">
+          <option value="varma"${prefill.meetStrategy === "varma" ? " selected" : ""}>Varma — 90 / 95,5 / 100 %</option>
+          <option value="normaali"${!prefill.meetStrategy || prefill.meetStrategy === "normaali" ? " selected" : ""}>Normaali — 92 / 97 / 102 %</option>
+          <option value="aggressiivinen"${prefill.meetStrategy === "aggressiivinen" ? " selected" : ""}>Aggressiivinen — 93 / 99 / 104 %</option>
+        </select>
+        <label style="font-size:12px;margin-top:10px;display:block">Kisalajit + e1RM (esitäytetty historiastasi — tarkista ja muokkaa)</label>
+        ${liftRows}
+        <button class="btn btn-full btn-ok btn-big mt" id="gamma-confirm">🏆 Luo γ-blokki</button>
+        <button class="btn btn-outline btn-full mt" data-modal-cancel>Peruuta</button>
+      </div>`;
+    const close = (val) => { overlay.remove(); resolve(val); };
+    const startInfo = overlay.querySelector("#gamma-start-info");
+    const updateStart = () => {
+      const d = overlay.querySelector("#gamma-meet-date").value;
+      if (!d) { startInfo.textContent = ""; return; }
+      startInfo.textContent = `Blokki alkaa ma ${gammaPeakingStartDate(d)} (4 vk + taper) — nykyinen ohjelma jatkuu siihen asti.`;
+    };
+    overlay.querySelector("#gamma-meet-date").addEventListener("change", updateStart);
+    updateStart();
+    overlay.querySelector("#gamma-confirm").addEventListener("click", () => {
+      const meetDateISO = overlay.querySelector("#gamma-meet-date").value;
+      if (!meetDateISO) { showToast("Syötä kisapäivä", "bad"); return; }
+      const lifts = prefill.lifts.map((l, i) => ({
+        name: l.name,
+        e1rmExternal: parseFloat(overlay.querySelector(`#gamma-e1rm-${i}`).value) || null,
+      }));
+      close({ meetDateISO, meetStrategy: overlay.querySelector("#gamma-strategy").value, lifts });
+    });
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => close(null));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+    document.body.appendChild(overlay);
+  });
+}
+
+// H-019 B-C3 (B9): odottava γ-aktivointi — kisablokki luodaan etukäteen, mutta
+// NYKYINEN ohjelma jatkuu bittitarkasti blokin alkuun (aktivointi heti rikkoisi
+// kuluvan viikon "before-start"-virheellä). Vaihto tapahtuu automaattisesti
+// ensimmäisellä avauksella kun today ≥ γ-startDateISO.
+async function maybeActivatePendingGamma() {
+  const pid = state.settings?.pendingGammaMesoId;
+  if (!pid) return false;
+  const all = await getAllMesocycles();
+  const g = all.find(m => m.mesocycleId === pid);
+  if (!g) { state.settings.pendingGammaMesoId = null; await saveSettings(state.settings); return false; }
+  if (todayISO() < g.startDateISO) return false;
+  await setActiveMesocycle(pid);
+  state.mesocycle = g;
+  state.settings.pendingGammaMesoId = null;
+  await saveSettings(state.settings);
+  showToast("🏆 Kisa-peaking aktivoitu — γ-blokki alkaa tänään!", "ok", 5000);
+  return true;
+}
+
 // Compute the most recent prior-session set for this movement — used for delta chip + first-set ghost
 // H-019 A2: `s.completed`-ehto poistettu — persistoidut setit eivät kanna kenttää (0/424
 // kenttädatassa) → ehto pudotti KAIKKI tallennetut setit (delta-chip + ghost aina tyhjiä).
@@ -7143,6 +7222,13 @@ function renderActiveWorkout() {
     } catch (e) { /* ennuste = lisäarvo, ei kaada renderiä */ }
   }
 
+  // H-019 B-C3 (B10): taper-viikon legibiliteetti — MIKSI volyymi putoaa.
+  let taperNoteHTML = "";
+  if (!isWarmupSet && state.mesocycle?.type === "peaking"
+      && state.mesocycle?.weekDefs?.[(rec?.weekNum ?? 0) - 1]?.isTaper) {
+    taperNoteHTML = `<div style="margin-top:8px;padding:8px 10px;background:rgba(59,130,246,0.10);border-left:3px solid var(--acc);border-radius:6px;font-size:11.5px;line-height:1.45">🎯 <b>Taper:</b> kisaan valmistava kevennys — teho säilyy, väsymys puretaan. Volyymi on leikattu sarjamäärästä; kuormat pidetään kisaterävinä.</div>`;
+  }
+
   // Work-set hero
   const heroHTML = isWarmupSet ? "" : `<div class="load-hero">
     <div class="set-line">
@@ -7157,6 +7243,7 @@ function renderActiveWorkout() {
     <div class="load-edit-hint">Napauta lukua muokataksesi painoa</div>
     ${coldStartHintHTML}
     ${forecastHTML}
+    ${taperNoteHTML}
     ${loadRationaleHTML}
     ${prevGhostHTML}
     ${targetRowHTML}
@@ -9716,8 +9803,10 @@ function renderHistory() {
   }
   const isOrphan = (m) => {
     const isActive = m.mesocycleId === state.mesocycle?.mesocycleId;
+    // B-C3: odottava γ-kisablokki on sessioton kunnes startti — ei orphan, ei piiloteta
+    const isPendingGamma = m.mesocycleId === state.settings?.pendingGammaMesoId;
     const sessionCount = sessionCountByMesocycleId.get(m.mesocycleId) || 0;
-    return !isActive && sessionCount === 0;
+    return !isActive && !isPendingGamma && sessionCount === 0;
   };
   const orphanMesos = allMesosRaw.filter(isOrphan);
   const visibleMesos = allMesosRaw.filter(m => !isOrphan(m)).sort((a, b) => {
@@ -12541,14 +12630,47 @@ function bind() {
         if (computed !== null) e1rmExt = Math.max(0, computed - bw);
       }
 
-      const confirmIdx = await showListModal(
+      const modeIdx = await showListModal(
         `🏆 Peaking-ohjelma`,
         [
-          { label: "Aloita peaking", desc: `e1RM: +${e1rmExt.toFixed(1)} kg · Opener: +${roundToHalf(e1rmExt * 0.92)} kg`, icon: "🏆" },
+          { label: "Kisa-peaking (3 lajia, γ)", desc: "MU + dippi + leuka · kisapäivä + taper · aktivoituu automaattisesti blokin alussa", icon: "🏆" },
+          { label: "Klassinen peaking (1 laji)", desc: `e1RM: +${e1rmExt.toFixed(1)} kg · 4 vk · alkaa heti`, icon: "📈" },
           { label: "Peruuta", desc: "Palaa valikkoon", icon: "↩" },
         ]
       );
-      if (confirmIdx !== 0) return;
+      if (modeIdx === null || modeIdx === 2) return;
+      if (modeIdx === 0) {
+        // H-019 B-C3 (B8, hybridi ratifioitu): per-laji-esitäyttö kanonisesta Bestistä.
+        const GAMMA_LIFTS = ["Muscle-up", "Lisäpainodippi", "Lisäpainoleuanveto"];
+        const prefillLifts = GAMMA_LIFTS.map(name => {
+          const mov = state.movements.find(m => m.name === name);
+          if (!mov) return { name, e1rmExternal: null, source: "ei liikepankissa" };
+          const movSets = state.allSets.filter(x => x.movementId === mov.movementId);
+          const best = computeMovementE1RMBest(movSets, state.sessions || [], state.mesocycle, mov, bw);
+          const ext = (typeof best?.value === "number") ? Math.max(0, roundToHalf(best.value - bw)) : null;
+          return { name, e1rmExternal: ext, source: best?.source || null };
+        });
+        const cfg = await showGammaPeakingModal({
+          meetDateISO: state.settings?.targetCompetitionDateISO || "",
+          meetStrategy: state.settings?.meetStrategy || "normaali",
+          lifts: prefillLifts,
+        });
+        if (!cfg) return;
+        const startISO = gammaPeakingStartDate(cfg.meetDateISO);
+        const leukaE1 = cfg.lifts.find(l => /leuanveto/i.test(l.name))?.e1rmExternal || e1rmExt;
+        const gMeso = createPeakingMesocycle(startISO, leukaE1, bw, { competition: cfg });
+        await saveMesocycle(gMeso);
+        // B9: EI aktivoida heti — nykyinen ohjelma jatkuu bittitarkasti γ-starttiin.
+        state.settings.pendingGammaMesoId = gMeso.mesocycleId;
+        state.settings.targetCompetitionDateISO = cfg.meetDateISO;
+        state.settings.meetStrategy = cfg.meetStrategy;
+        await saveSettings(state.settings);
+        const activatedNow = await maybeActivatePendingGamma();
+        if (!activatedNow) showToast(`🏆 γ-blokki luotu — aktivoituu automaattisesti ma ${startISO}`, "ok", 5000);
+        await computeRecommendation();
+        render();
+        return;
+      }
 
       const peakMeso = createPeakingMesocycle(todayISO(), e1rmExt, bw);
       await saveMesocycle(peakMeso);
@@ -12876,6 +12998,7 @@ function bind() {
     }
     const orphans = (state.allMesocycles || []).filter(m =>
       m.mesocycleId !== state.mesocycle?.mesocycleId &&
+      m.mesocycleId !== state.settings?.pendingGammaMesoId && // B-C3: odottava γ-blokki ei ole roska
       (sessionCounts.get(m.mesocycleId) || 0) === 0
     );
     if (orphans.length === 0) { showToast("Ei tyhjiä ohjelmia siivottavaksi", "ok"); return; }
@@ -12888,7 +13011,10 @@ function bind() {
     if (!ok) return;
     try {
       // cleanupOrphanMesocycles ilman preserveUserChoices = poistaa orphan-mesot
-      const result = await cleanupOrphanMesocycles(state.mesocycle?.mesocycleId);
+      // B-C3: protectIds suojaa odottavan γ-kisablokin (sessioton kunnes startti)
+      const result = await cleanupOrphanMesocycles(state.mesocycle?.mesocycleId, {
+        protectIds: state.settings?.pendingGammaMesoId ? [state.settings.pendingGammaMesoId] : [],
+      });
       state.allMesocycles = await getAllMesocycles();
       showToast(`🧹 Poistettu ${result.deleted} tyhjää ohjelmaa`, "ok", 4000);
       render();

@@ -2086,7 +2086,9 @@ async function saveMesocycle(meso) {
 // + preserveUserChoices=true -tilassa: KAIKKI tallennetut mesosyklit (=ei poistoa)
 // POISTAA: kaikki muut (= autocreated default-mesosyklit, käytöstä jääneet templatet)
 async function cleanupOrphanMesocycles(excludeId = null, opts = {}) {
-  const { preserveUserChoices = false } = opts;
+  // H-019 B-C3 (B9): protectIds — odottava γ-kisablokki on ei-aktiivinen JA sessioton
+  // (= orphan-määritelmä) kunnes startti koittaa; ilman suojaa siivous tuhoaisi sen.
+  const { preserveUserChoices = false, protectIds = [] } = opts;
   const allMesocycles = await getAllMesocycles();
   if (allMesocycles.length <= 1) return { deleted: 0, kept: allMesocycles.length };
 
@@ -2104,6 +2106,7 @@ async function cleanupOrphanMesocycles(excludeId = null, opts = {}) {
   let deleted = 0;
   for (const meso of allMesocycles) {
     if (meso.mesocycleId === excludeId) continue; // Aktiivinen — säilyy aina
+    if (protectIds.includes(meso.mesocycleId)) continue; // B-C3: odottava γ-blokki — säilyy
     if (mesocyclesWithSessions.has(meso.mesocycleId)) continue; // Sessio-historia — säilyy
     // Orphan — poistetaan
     await dbDelete(STORES.mesocycles, meso.mesocycleId);
@@ -2843,6 +2846,20 @@ function createDefaultMesocycle(startDateISO) {
     ],
     postCycleAnalysis: null,
   };
+}
+
+// H-019 B-C3 (B8): γ-blokin aloituspäivä kisapäivästä — taper-viikon maanantai on
+// kisaviikon maanantai, ja 4 työviikkoa alkavat 4 vk sitä ennen. Esim. kisa la 22.8.
+// → kisaviikon ma 17.8. → aloitus ma 20.7. Toimii mille tahansa kisa-viikonpäivälle.
+function gammaPeakingStartDate(meetDateISO) {
+  const d = new Date(meetDateISO + "T12:00:00"); // klo 12 → ei DST-siirtymäongelmia
+  const dow = d.getDay() || 7;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - (dow - 1) - 28);
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, "0");
+  const dd = String(monday.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
 }
 
 // ── Peaking mesocycle (4-week competition prep) ──
@@ -7939,6 +7956,7 @@ export {
   saveMesocycle,
   createDefaultMesocycle,
   createPeakingMesocycle,
+  gammaPeakingStartDate, // H-019 B-C3: γ-aloituspäivä kisapäivästä (B8-UI + testit)
   createHypertrofiaMesocycle,
   createMaksimivoimaMesocycle,
   createEksenterinenMesocycle,
