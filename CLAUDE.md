@@ -173,7 +173,7 @@ Tämä osio korvaa aiemman staattisen "Vaiheiden 1–8 tila" -taulukon. **Ajanta
 
 5. **Checkpoint ennen design-pivottia.** Jos kesken kierroksen avautuu uusi designkysymys (premissi muuttuu, scope laajenee, A1-juuri ei pidäkään) → STOP, raportoi, kysy ennen pivot:ia. Älä ratko sitä autonomisesti samassa kierroksessa.
 
-6. **Effort-jako.** Design (acceptance criteria, premissi, scope, A1-juurianalyysi) → Opus high / xhigh. Mekaaninen toteutus (Edit/Write, runtime-vakio-vaihtoja) → Sonnet. Tämä on kustannus- ja tarkkuus-optimointi, ei statushierarkiaa. *Fable-ikkunassa (→22.6.2026) lead-mallin routing: ks. §10.*
+6. **Effort-jako.** Design (acceptance criteria, premissi, scope, A1-juurianalyysi) → Opus high / xhigh. Mekaaninen toteutus (Edit/Write, runtime-vakio-vaihtoja) → Sonnet. Tämä on kustannus- ja tarkkuus-optimointi, ei statushierarkiaa. *Post-Fable-routing ja kompensaatiot (12.7.2026 alkaen): ks. §10.*
 
 7. **Agent-arkkitehtuuri ei ylirakennettu.** Yksi muutos / yksi liittyvä tiedostosarja → solo-Agent (Plan/Explore tarvittaessa). Useita riippumattomia tiedostosarjoja samassa kierroksessa → Agent Teams `--max-budget`-cap:llä. ÄLÄ käytä Teams:ia banaalille edit-pinolle — overhead ylittää hyödyn.
 
@@ -181,19 +181,20 @@ Tämä osio korvaa aiemman staattisen "Vaiheiden 1–8 tila" -taulukon. **Ajanta
 
 ---
 
-## 10. P-013 — Fable-ikkunan model routing ja fallback (voimassa → 22.6.2026)
+## 10. P-013 — Post-Fable-operointi (Fable-ikkuna suljettu 12.7.2026)
 
-> Ratifioitu 2026-06-10 (Akseli): P-013 M1–M6 kokonaisuutena. Työnjako: **M1–M3** (batch=2 R-vaihetta/handoff, ajettava rubriikki, verifier-subagentti) asuvat `HANDOFF.md`-headerissä · **M4** (muistiprotokolla) `docs/MEMORY.md`:ssä + §8-aloitusprotokollan kohta 5 · **M5–M6 + mittaus** = tämä osio. **23.6.2026 alkaen tämä osio raukeaa:** paluu Opus-leadiin, ellei mittausdata perustele jatkoa. Osio ei muuta §9:n sääntöjä (plan mode designille, /goal vain tarkistettavalle ehdolle, A1-STOP-gate, LOAD-DIFF-SWEEP).
+> Fable-ikkuna (alkup. M5–M6, → 22.6.2026; jatkui käytännössä H-019:n yli) **suljettu 12.7.2026 Akselin päätöksellä** H-019-sulun yhteydessä. Mittausloki + sulkuyhteenveto: `docs/MEMORY.md` osio 3. Tämä osio korvaa aiemman M5/M6-sisällön; **M1–M4 säilyvät ennallaan** (M1–M3 `HANDOFF.md`-headerissä, M4 `docs/MEMORY.md` + §8 kohta 5). Osio ei muuta §9:n sääntöjä.
 
-**M5 — model routing (→22.6.):**
+**Model routing (12.7.2026 alkaen):**
 
-- Lead: **Fable 5**; teammates / mekaaninen exec: **Sonnet** (§9.6 ja §9.7 muuten ennallaan).
-- P-011 LeVe-täydennys, **5. taso:** *"Mythos-luokka vain compound-tason batch-handoffeihin ja pitkiin autonomisiin ajoihin; yksittäinen tiedostomuutos ei perustele Fablea."*
-- 23.6. alkaen: paluu Opus-leadiin, ellei P-013-mittausloki (`docs/MEMORY.md` osio 3) perustele credit-budjettia (kriteeri: teho ≥ ~2× Opus-baseline JA Selkäranka-kuri piti).
+- Lead: **Opus** (design, A1-juurianalyysit, acceptance-kriteerit); mekaaninen exec: **Sonnet** (§9.6 ennallaan).
+- P-011 5. taso säilyy kriteerinä tuleville ikkunoille: *"Mythos-luokka vain compound-tason batch-handoffeihin ja pitkiin autonomisiin ajoihin"* — uusi Fable/Mythos-ikkuna vain Akselin eksplisiittisellä avauksella.
 
-**M6 — fallback-protokolla:**
+**Kompensaatiot (Fable→Opus-siirtymä, Akseli ratifioi 12.7.2026 — kaikki neljä ovat kierroskuria, eivät suosituksia):**
 
-- Bio/kemia-luokittelija voi pudottaa session Opus 4.8 -fallbackiin kesken työn (LeVe:n fysiologia-läheinen sisältö: adaptaatio, palautuminen, kuormitus). **Ei keskeytystä** — Opus 4.8 riittää useimpiin vaiheisiin: kirjaa laukaisija `docs/MEMORY.md` osion 2 fallback-lokiin ja jatka työtä.
-- Jos fallback-frekvenssi nousee häiritseväksi → raportoi Akselille (syöte 23.6.-päätökseen).
+1. **M3-verifier-kynnys matalammaksi:** riippumaton verifier-subagentti **jokaiseen kuormia muuttavaan kierrokseen** — ei vain batch-handoffien STOP-raportteihin.
+2. **STOP-pisteet tiheämmin ja sessiot kapeampina:** yksi löydös / design-kysymys per kierros; leveitä autonomisia kaaria vältetään.
+3. **"Näytä trace, älä väitä" -default kaikkiin numeroraportteihin:** jokainen kuorma-, %- ja diff-luku johdetaan näkyvästä trace/dump-datasta, ei mallin omasta laskusta.
+4. **LOAD-DIFF-sweep push-ehtona säilyy ehdottomana** (§9.4).
 
-**Mittauskirjanpito (23.6.-päätöstä varten):** jokainen Fable-ikkunan Code-sessio kirjaa `docs/MEMORY.md` osion 3 mittauslokiin: (1) R-vaiheita valmiiksi/sessio, (2) rubriikki-iteraatiot + verifier-hylkäykset, (3) relay-kierrokset (Cowork↔Akseli↔Code), (4) fallback-tapahtumat, (5) Akselin kuri-arvio.
+Selkäranka (`docs/SELKARANKA.md`) ja Stop hook -portit (§4) eivät muutu — ne eivät riipu mallista.
