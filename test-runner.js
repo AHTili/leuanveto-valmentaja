@@ -1700,6 +1700,22 @@ async function testRecommendScenarios() {
     const vl = (rec.traces || []).find(t => t.ruleId === "VL_CAP_RESOLVED")?.after;
     assertEqual(vl?.cap, 10, "γ-C2g: settings-override 12 % → clamp tutkimuskattoon 10 %");
   });
+  // B-C2c: per-laji-yrityskuormat — kisapäivän 3 lajia resolvoituvat kukin omasta e1RM:stään.
+  await scenario("γ-C2h: kisapäivän per-laji-yrityskuormat", async () => {
+    const rec = await recommend(makeRecommendCtx({ dateISO: "2026-08-22", mesocycle: _gMeso(), allMovements: [] }));
+    const byLift = rec.attemptLoadsByLift;
+    assert(byLift && Object.keys(byLift).length === 3, "γ-C2h: attemptLoadsByLift 3 lajille");
+    // Konfiguroidut e1RM:t (allSets tyhjä → hierarkian taso 1): (e1+BW)×0.92−BW.
+    assertEqual(byLift["Muscle-up"].opener, 4.5, "γ-C2h: MU-opener (13+91)×0.92−91 → 4.5 kg");
+    assertEqual(byLift["Lisäpainodippi"].opener, 80, "γ-C2h: dippi-opener (95+91)×0.92−91 → 80 kg");
+    assertEqual(byLift["Lisäpainoleuanveto"].opener, 79, "γ-C2h: leuka-opener (94+91)×0.92−91 → 79 kg");
+    assert(hasTrace(rec, "COMPETITION_LOADS_BY_LIFT"), "γ-C2h: per-laji-trace emittoitu");
+    // Display-precedence: byLift voittaa legacy-singlen slotin lajin mukaan.
+    const muOpener = computeDisplayedSlotLoad(
+      { role: "opener", defaultMovementName: "Muscle-up" },
+      { attemptLoads: byLift["Lisäpainoleuanveto"], attemptLoadsByLift: byLift });
+    assertEqual(muOpener, 4.5, "γ-C2h: computeDisplayedSlotLoad — MU-slot saa MU:n kuorman, ei leuan");
+  });
 
   // S2: Vk 2 MA, RED+RED → CAP_RED tracessa, deltaPct ≤ 0
   await scenario("vk 2 MA RED+RED → CAP_RED", async () => {

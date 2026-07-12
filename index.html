@@ -4547,6 +4547,7 @@ function renderDashboard() {
         targetExternalLoad: rec?.targetExternalLoad ?? null,
         accessoryProgressLoad: _accProg ? (_accProg.suggestedLoadKg ?? _accProg.lastLoadKg ?? null) : null,
         attemptLoads: rec?.attemptLoads ?? null,
+        attemptLoadsByLift: rec?.attemptLoadsByLift ?? null,
         variantModifiers: state.settings?.variantModifiers,
       });
       if (isAttempt && rec.attemptLoads) {
@@ -12419,7 +12420,7 @@ function bind() {
       const desc = MOVEMENT_DESCRIPTIONS?.[movName] || null;
       const catalog = slot.slotId ? ACCESSORY_SLOT_CATALOG?.[slot.slotId] : null;
       const weekNum = state.recommendation?.weekNum || 1;
-      const phase = slot.slotId ? phaseForWeek(weekNum) : null;
+      const phase = slot.slotId ? phaseForWeek(weekNum, state.mesocycle) : null;
       showInfoModal({
         title: movName,
         howTo: desc?.howTo || null,
@@ -13593,16 +13594,21 @@ async function startWorkout(backfillDateISO = null) {
       const isSecondary = slot.role === "secondary";
 
       // Competition day: use computed attempt loads
-      if (isAttempt && rec.attemptLoads) {
+      // H-019 B-C2c: per-laji-kuormat — 3 lajin kisapäivällä slotin laji resolvoituu
+      // omasta e1RM:stään (attemptLoadsByLift); fallback legacy-single (1 laji).
+      const _lal = (isAttempt && rec.attemptLoads)
+        ? (rec.attemptLoadsByLift?.[slot.defaultMovementName] || rec.attemptLoads)
+        : null;
+      if (isAttempt && _lal) {
         if (slot.role === "warmup" && Array.isArray(slot.loadPctE1RM)) {
           // Warmup sets use slot-level percentages (handled per-set below)
-          loadKg = rec.attemptLoads.warmupLoads[0] || 0;
+          loadKg = _lal.warmupLoads[0] || 0;
         } else if (slot.role === "opener") {
-          loadKg = rec.attemptLoads.opener;
+          loadKg = _lal.opener;
         } else if (slot.role === "attempt2") {
-          loadKg = rec.attemptLoads.second;
+          loadKg = _lal.second;
         } else if (slot.role === "attempt3") {
-          loadKg = rec.attemptLoads.third;
+          loadKg = _lal.third;
         }
       } else {
         // F-4 UNIFY (value-resolution-audit, 2026-05-31): sama computeDisplayedSlotLoad kuin
@@ -13624,6 +13630,7 @@ async function startWorkout(backfillDateISO = null) {
           targetExternalLoad: rec.targetExternalLoad,
           accessoryProgressLoad: wfAccProgressLoad,
           attemptLoads: rec.attemptLoads,
+          attemptLoadsByLift: rec.attemptLoadsByLift ?? null,
           variantModifiers: state.settings?.variantModifiers,
         });
       }
@@ -13646,8 +13653,8 @@ async function startWorkout(backfillDateISO = null) {
       // Build per-set loads (warmup sets have different loads)
       const setsList = Array.from({ length: slot.sets }, (_, i) => {
         let setLoad = loadKg;
-        if (isAttempt && slot.role === "warmup" && rec.attemptLoads) {
-          setLoad = rec.attemptLoads.warmupLoads[i] || loadKg;
+        if (isAttempt && slot.role === "warmup" && _lal) {
+          setLoad = _lal.warmupLoads[i] || loadKg; // B-C2c: lajin omat lämmittelykuormat
         }
         return {
           idx: i,
@@ -14073,7 +14080,7 @@ function bindWorkoutEvents() {
       exerciseName: exerciseForCap?.name || null,
       movementId: exerciseForCap?.movementId || null,
       targetVx: currentSetForCap?.targetVx ?? null,
-      blockPhase: weekNumForCap ? phaseForWeek(weekNumForCap) : null,
+      blockPhase: weekNumForCap ? phaseForWeek(weekNumForCap, state.mesocycle) : null,
       dayType: state.workout?.dayType || state.recommendation?.dayType,
       settings: state.settings || {},
       allSets: state.allSets || [],
@@ -14130,7 +14137,7 @@ function bindWorkoutEvents() {
       const consecutiveFailures = exercise.sets.slice(0, w.currentSetIdx + 1).filter(s => s.actualVx === 0).length;
       // Block-phase haetaan rec:istä (recommend()-output) tai mesocyclen weekDef:istä
       const weekNum = state.recommendation?.weekNum;
-      const blockPhase = weekNum ? phaseForWeek(weekNum) : null;
+      const blockPhase = weekNum ? phaseForWeek(weekNum, state.mesocycle) : null;
       // v4.34.25: tunnista isolation-liikkeet (hauis/pohje/sivunosto/leg curl/scapular/core)
       // jotta last-set V0 EI laukaise -2.5% ensi vk:lle. Hypertrofian normaali stimulus.
       const isIsolation = isIsolationMovement(exercise.category);
@@ -15773,7 +15780,7 @@ async function saveWorkoutToDb(sessionNotes = "") {
   // Save-layerin jälkeen: kysytään käyttäjältä haluaako tallentaa rinnakkain
   // rtf_test-roolilla → rakentaa henkilökohtaisen kalibrointimallin ilman erillistä testiä.
   const rtfCandidates = [];
-  const blockPhaseForTraces = (rec?.weekNum) ? phaseForWeek(rec.weekNum) : null;
+  const blockPhaseForTraces = (rec?.weekNum) ? phaseForWeek(rec.weekNum, state.mesocycle) : null;
   const dayTypeForTraces = w.dayType || rec?.dayType || null;
 
   // Readiness primer -tulos tallennetaan erillisenä setinä (setRole="readiness_test")

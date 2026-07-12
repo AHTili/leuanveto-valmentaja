@@ -8000,16 +8000,20 @@ function computeDisplayedSlotLoad(slot, opts = {}) {
     targetExternalLoad = null,
     accessoryProgressLoad = null,
     attemptLoads = null,
+    attemptLoadsByLift = null,
     variantModifiers = null,
   } = opts;
   const role = slot.role;
   const vMod = variantLoadModifier(slot.variantName, variantModifiers);
-  // Kisapäivä: attempt/warmup
-  if (["warmup", "opener", "attempt2", "attempt3"].includes(role) && attemptLoads) {
-    if (role === "warmup") return Array.isArray(attemptLoads.warmupLoads) ? (attemptLoads.warmupLoads[0] ?? 0) : 0;
-    if (role === "opener") return attemptLoads.opener ?? null;
-    if (role === "attempt2") return attemptLoads.second ?? null;
-    if (role === "attempt3") return attemptLoads.third ?? null;
+  // Kisapäivä: attempt/warmup. H-019 B-C2c: per-laji-kuormat (attemptLoadsByLift,
+  // avain = slot.defaultMovementName) voittavat legacy-singlen — 3 lajin kisapäivällä
+  // MU/dippi/leuka resolvoituvat kukin OMASTA e1RM:stään. Fallback legacy (1 laji).
+  const _al = attemptLoadsByLift?.[slot.defaultMovementName] || attemptLoads;
+  if (["warmup", "opener", "attempt2", "attempt3"].includes(role) && _al) {
+    if (role === "warmup") return Array.isArray(_al.warmupLoads) ? (_al.warmupLoads[0] ?? 0) : 0;
+    if (role === "opener") return _al.opener ?? null;
+    if (role === "attempt2") return _al.second ?? null;
+    if (role === "attempt3") return _al.third ?? null;
   }
   // Primary
   if (role === "primary") {
@@ -8394,9 +8398,38 @@ async function recommendPeaking(options = {}) {
 
   // Competition day: compute attempt loads
   let attemptLoads = null;
+  let attemptLoadsByLift = null;
   if (dayType === "competition") {
     attemptLoads = computeAttemptLoads(useE1RM, bodyweightKg, mesocycle.peakingConfig, isBarbellPeaking);
     trace("COMPETITION_LOADS", {}, attemptLoads, "Kilpailukuormat laskettu");
+    // H-019 B-C2c: per-laji-yrityskuormat — jokainen kisalaji resolvoituu OMASTA
+    // e1RM:stään. Lähdehierarkia per laji: (1) B8-konfiguroitu lifts[].e1rmExternal
+    // (hybridi: esitäytetty kanonisesta Bestistä, atleetti vahvistanut/muokannut) →
+    // (2) tuore historia-e1RM (viim. 6 top/cal-settiä, sama evidenssi-sort-aritmetiikka
+    // kuin primaaripolku; kaikki kisalajit BW-ankkuroituja → system − BW) → (3) useE1RM.
+    const _lifts = mesocycle.peakingConfig?.lifts;
+    if (Array.isArray(_lifts) && _lifts.length) {
+      const _movs = options.allMovements || (await getAllMovements());
+      const _freshExtE1RM = (liftName) => {
+        const mov = _movs.find(m => m.name === liftName);
+        if (!mov) return null;
+        const vals = allSets
+          .filter(s => s.movementId === mov.movementId
+            && (s.setRole === "top" || s.setRole === "readiness_test" || s.setRole === "calibration"))
+          .sort(_evidenceSort)
+          .slice(-6)
+          .map(s => e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || s.targetReps || 1, s.actualVx ?? s.targetVx ?? 1))
+          .filter(v => v !== null);
+        return vals.length ? Math.max(0, median(vals) - bodyweightKg) : null;
+      };
+      attemptLoadsByLift = {};
+      for (const l of _lifts) {
+        const _le = l.e1rmExternal ?? _freshExtE1RM(l.name) ?? useE1RM;
+        attemptLoadsByLift[l.name] = computeAttemptLoads(_le, bodyweightKg, mesocycle.peakingConfig, false);
+      }
+      trace("COMPETITION_LOADS_BY_LIFT", {}, { lifts: _lifts.map(l => l.name) },
+        `Per-laji kilpailukuormat: ${_lifts.map(l => `${l.name} @ e1RM ${attemptLoadsByLift[l.name].e1rmExternal.toFixed(1)}`).join(" · ")}`);
+    }
   }
 
   // ── γ-adaptiivisuus (H-019 B-C2, ratifioitu 2026-07-11 porrastuksella) ──
@@ -8536,6 +8569,7 @@ async function recommendPeaking(options = {}) {
     accessoryCapActive: false,
     dayPlan,
     attemptLoads,
+    attemptLoadsByLift, // B-C2c: per-laji-yrityskuormat (null ei-kisapäivinä / legacy)
     peakingConfig: mesocycle.peakingConfig,
     traces,
   };
